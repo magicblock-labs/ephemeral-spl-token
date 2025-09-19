@@ -1,4 +1,4 @@
-use crate::error::EphemeralSplError;
+use ephemeral_spl_api::error::EphemeralSplError;
 use {
     crate::processor::*,
     core::{
@@ -67,7 +67,7 @@ pub(crate) fn inner_process_instruction(
             #[cfg(feature = "logging")]
             pinocchio::msg!("Instruction: InitializeMint");
 
-            process_initialize_mint(accounts, instruction_data)
+            process_initialize_ephemeral_ata(accounts, instruction_data)
         }
         // 1 - InitializeEphemeralAta
         1 => {

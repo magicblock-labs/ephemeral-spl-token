@@ -8,6 +8,7 @@ license = { workspace = true}
 edition = { workspace = true}
 
 [dependencies]
+pinocchio = { workspace = true }
 pinocchio-pubkey = { workspace = true }
 
 [lints]

@@ -1,60 +1,42 @@
-mod setup;
 
+use solana_instruction::Instruction;
 use {
-    ephemeral_spl_api::{instruction, EphemeralAta, ID},
-    solana_instruction::{AccountMeta, Instruction},
-    solana_keypair::Keypair,
+    ephemeral_spl_api::{instruction},
+    solana_instruction::{AccountMeta},
     solana_program_test::{tokio, ProgramTest},
     solana_pubkey::Pubkey,
     solana_signer::Signer,
-    solana_system_interface::instruction::create_account,
     solana_transaction::Transaction,
 };
+use ephemeral_spl_api::program::ID;
+use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
+use ephemeral_spl_api::state::{load_mut_unchecked, Initializable, RawType};
 
 pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 
 #[tokio::test]
 async fn initialize_ephemeral_ata() {
-    let mut context = ProgramTest::new("ephemeral_token_program", PROGRAM, None)
+    let context = ProgramTest::new("ephemeral_token_program", PROGRAM, None)
         .start_with_context()
         .await;
 
-    // Derive two arbitrary seeds (no PDA verification is performed by the program ATM)
-    let payer_seed = Pubkey::new_unique();
-    let mint_seed = Pubkey::new_unique();
+    // Derive two arbitrary seeds
+    let payer = context.payer.pubkey();
+    let mint = Pubkey::new_unique();
 
     // Create the ephemeral ATA account owned by our program with proper space
-    let ephemeral_ata = Keypair::new();
-
-    let rent = context.banks_client.get_rent().await.unwrap();
-    let space = EphemeralAta::LEN as u64;
-    let lamports = rent.minimum_balance(space as usize);
-
-    let create_ix = create_account(
-        &context.payer.pubkey(),
-        &ephemeral_ata.pubkey(),
-        lamports,
-        space,
-        &PROGRAM,
-    );
-
-    let tx = Transaction::new_signed_with_payer(
-        &[create_ix],
-        Some(&context.payer.pubkey()),
-        &[&context.payer, &ephemeral_ata],
-        context.last_blockhash,
-    );
-    context.banks_client.process_transaction(tx).await.unwrap();
+    let (ephemeral_ata, bump) = Pubkey::find_program_address(&[payer.to_bytes().as_slice(), mint.to_bytes().as_slice()], &PROGRAM);
 
     // Build our program instruction: discriminator 1 = InitializeEphemeralAta
     let ix = Instruction {
         program_id: PROGRAM,
         accounts: vec![
-            AccountMeta::new(ephemeral_ata.pubkey(), false), // writable account
-            AccountMeta::new_readonly(payer_seed, false),     // payer seed (readonly)
-            AccountMeta::new_readonly(mint_seed, false),      // mint seed  (readonly)
+            AccountMeta::new(ephemeral_ata, false),      // writable account
+            AccountMeta::new_readonly(payer, false),     // payer seed (readonly)
+            AccountMeta::new_readonly(mint, false),      // mint seed  (readonly)
+            AccountMeta::new_readonly(solana_system_interface::program::ID, false),      // system program (readonly)
         ],
-        data: vec![instruction::INITIALIZE_EPHEMERAL_ATA],
+        data: vec![instruction::INITIALIZE_EPHEMERAL_ATA, bump], // instruction data: discriminator + bump
     };
 
     let tx = Transaction::new_signed_with_payer(
@@ -68,7 +50,7 @@ async fn initialize_ephemeral_ata() {
     // Read back the account and ensure it was zero-initialized
     let account = context
         .banks_client
-        .get_account(ephemeral_ata.pubkey())
+        .get_account(ephemeral_ata)
         .await
         .unwrap()
         .expect("ephemeral ata account must exist");
@@ -76,8 +58,8 @@ async fn initialize_ephemeral_ata() {
     assert_eq!(account.owner, PROGRAM); // owned by the program
     assert_eq!(account.data.len(), EphemeralAta::LEN);
 
-    let mut first_eight = [0u8; 8];
-    first_eight.copy_from_slice(&account.data[..8]);
-    let balance = u64::from_le_bytes(first_eight);
-    assert_eq!(balance, 0);
+    let mut mut_acc = account.data.clone();
+    let ephemeral_ata = unsafe { load_mut_unchecked::<EphemeralAta>(mut_acc.as_mut_slice()).unwrap()};
+    assert!(ephemeral_ata.is_initialized());
+    assert_eq!(ephemeral_ata.amount, 0);
 }

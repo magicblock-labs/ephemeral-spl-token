@@ -4,6 +4,8 @@ use pinocchio::program_error::{ProgramError, ToStr};
 pub enum EphemeralSplError {
     // invalid instruction data
     InvalidInstruction,
+    // account already initialized / in use
+    AlreadyInUse,
 }
 
 impl From<EphemeralSplError> for ProgramError {
@@ -19,6 +21,7 @@ impl ToStr for EphemeralSplError {
     {
         match self {
             EphemeralSplError::InvalidInstruction => "Error: Invalid instruction",
+            EphemeralSplError::AlreadyInUse => "Error: Account already in use",
         }
     }
 }
@@ -28,6 +31,7 @@ impl core::convert::TryFrom<u32> for EphemeralSplError {
     fn try_from(value: u32) -> Result<Self, Self::Error> {
         match value {
             0 => Ok(EphemeralSplError::InvalidInstruction),
+            1 => Ok(EphemeralSplError::AlreadyInUse),
             _ => Err(ProgramError::InvalidArgument),
         }
     }

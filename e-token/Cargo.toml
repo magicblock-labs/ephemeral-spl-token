@@ -9,39 +9,26 @@ edition = { workspace = true}
 readme = "./README.md"
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["cdylib"]
 
 [features]
 logging = []
 
 [dependencies]
 pinocchio = { workspace = true }
+pinocchio-log = { workspace = true }
+pinocchio-system = { workspace = true }
 ephemeral-spl-api = { path = "../e-token-api" }
 
 [dev-dependencies]
-agave-feature-set = "2.2.20"
-assert_matches = "1.5.0"
-mollusk-svm = { workspace = true }
-mollusk-svm-fuzz-fixture = { workspace = true }
-num-traits = { workspace = true }
-solana-account = "2.2.1"
 solana-instruction = { workspace = true }
-solana-keypair = "2.2.3"
-solana-program-error = { workspace = true }
-solana-program-option = { workspace = true }
-solana-program-pack = { workspace = true }
-solana-program-test = "2.3.4"
+solana-keypair = { workspace = true }
+solana-program-test = { workspace = true }
 solana-pubkey = { workspace = true }
-solana-rent = "2.2.1"
-solana-sdk-ids = "2.2.1"
-solana-signature = "2.3.0"
-solana-signer = "2.2.1"
-solana-transaction = "2.2.3"
-solana-transaction-error = "2.2.1"
+solana-signer = { workspace = true }
+solana-transaction = { workspace = true }
 solana-system-interface = { workspace = true }
-spl-token = { version="^8", features=["no-entrypoint"] }
-spl-token-2022 = { version="^9", features=["no-entrypoint"] }
-ephemeral-token-program = { path = ".", features = ["logging"] }
+spl-token = { workspace = true, features=["no-entrypoint"] }
 
 [lints]
 workspace = true
