@@ -18,4 +18,6 @@ pub mod instruction {
     pub const INITIALIZE_GLOBAL_VAULT: u8 = 1;
     /// 2 - DepositSplTokens: transfer tokens to global vault and increase EphemeralAta amount
     pub const DEPOSIT_SPL_TOKENS: u8 = 2;
+    /// 3 - WithdrawSplTokens: transfer tokens from global vault back to user and decrease EphemeralAta amount
+    pub const WITHDRAW_SPL_TOKENS: u8 = 3;
 }

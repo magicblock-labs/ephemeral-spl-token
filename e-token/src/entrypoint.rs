@@ -76,6 +76,12 @@ pub(crate) fn inner_process_instruction(
 
             process_deposit_spl_tokens(accounts, instruction_data)
         }
+        3 => {
+            #[cfg(feature = "logging")]
+            pinocchio::msg!("Instruction: WithdrawSplTokens");
+
+            process_withdraw_spl_tokens(accounts, instruction_data)
+        }
         _ => Err(EphemeralSplError::InvalidInstruction.into()),
     }
 }
