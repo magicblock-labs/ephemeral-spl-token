@@ -45,6 +45,7 @@ jobs:
         shell: bash
         run: |
           curl -sSfL https://release.anza.xyz/v${SOLANA_VERSION}/install | sh -s - v${SOLANA_VERSION}
+          export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
           solana --version
 
