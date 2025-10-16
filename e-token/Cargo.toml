@@ -18,9 +18,11 @@ logging = []
 pinocchio = { workspace = true }
 pinocchio-log = { workspace = true }
 pinocchio-system = { workspace = true }
+pinocchio-token = { workspace = true }
 ephemeral-spl-api = { path = "../e-token-api" }
 
 [dev-dependencies]
+solana-program-pack = { workspace = true }
 solana-instruction = { workspace = true }
 solana-keypair = { workspace = true }
 solana-program-test = { workspace = true }
@@ -28,7 +30,7 @@ solana-pubkey = { workspace = true }
 solana-signer = { workspace = true }
 solana-transaction = { workspace = true }
 solana-system-interface = { workspace = true }
-spl-token = { workspace = true, features=["no-entrypoint"] }
+spl-token-interface = "2.0.0"
 
 [lints]
 workspace = true

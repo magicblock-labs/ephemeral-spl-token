@@ -1,14 +1,10 @@
 use ephemeral_spl_api::error::EphemeralSplError;
 use {
     crate::processor::*,
-    core::{
-        mem::MaybeUninit,
-        slice::from_raw_parts,
-    },
+    core::{mem::MaybeUninit, slice::from_raw_parts},
     pinocchio::{
         account_info::AccountInfo,
-        entrypoint::deserialize
-        ,
+        entrypoint::deserialize,
         log::sol_log,
         no_allocator, nostd_panic_handler,
         program_error::{ProgramError, ToStr},
@@ -27,7 +23,7 @@ pub unsafe extern "C" fn entrypoint(input: *mut u8) -> u64 {
     const UNINIT: MaybeUninit<AccountInfo> = MaybeUninit::<AccountInfo>::uninit();
     let mut accounts = [UNINIT; { MAX_TX_ACCOUNTS }];
 
-    let (_, count, instruction_data) = deserialize(input, &mut accounts);
+    let (_, count, instruction_data) = deserialize::<MAX_TX_ACCOUNTS>(input, &mut accounts);
 
     match process_instruction(
         from_raw_parts(accounts.as_ptr() as _, count),
@@ -62,19 +58,23 @@ pub(crate) fn inner_process_instruction(
     };
 
     match *discriminator {
-        // 0 - InitializeMint
         0 => {
-            #[cfg(feature = "logging")]
-            pinocchio::msg!("Instruction: InitializeMint");
-
-            process_initialize_ephemeral_ata(accounts, instruction_data)
-        }
-        // 1 - InitializeEphemeralAta
-        1 => {
             #[cfg(feature = "logging")]
             pinocchio::msg!("Instruction: InitializeEphemeralAta");
 
             process_initialize_ephemeral_ata(accounts, instruction_data)
+        }
+        1 => {
+            #[cfg(feature = "logging")]
+            pinocchio::msg!("Instruction: InitializeGlobalVault");
+
+            process_initialize_global_vault(accounts, instruction_data)
+        }
+        2 => {
+            #[cfg(feature = "logging")]
+            pinocchio::msg!("Instruction: DepositSplTokens");
+
+            process_deposit_spl_tokens(accounts, instruction_data)
         }
         _ => Err(EphemeralSplError::InvalidInstruction.into()),
     }

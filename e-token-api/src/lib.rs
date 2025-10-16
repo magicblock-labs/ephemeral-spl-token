@@ -12,8 +12,10 @@ pub mod program {
 /// Instruction discriminators for the Ephemeral SPL program.
 /// Keep in sync with the on-chain program dispatcher.
 pub mod instruction {
-    /// 0 - InitializeMint (placeholder, mirrors SPL Token API but handled by this program)
-    pub const INITIALIZE_MINT: u8 = 0;
-    /// 1 - InitializeEphemeralAta: initialize the ephemeral ATA account derived from [payer, mint]
-    pub const INITIALIZE_EPHEMERAL_ATA: u8 = 1;
+    /// 0 - InitializeEphemeralAta: initialize the ephemeral ATA account derived from [payer, mint]
+    pub const INITIALIZE_EPHEMERAL_ATA: u8 = 0;
+    /// 1 - InitializeGlobalVault: initialize the global vault account derived from [mint]
+    pub const INITIALIZE_GLOBAL_VAULT: u8 = 1;
+    /// 2 - DepositSplTokens: transfer tokens to global vault and increase EphemeralAta amount
+    pub const DEPOSIT_SPL_TOKENS: u8 = 2;
 }
