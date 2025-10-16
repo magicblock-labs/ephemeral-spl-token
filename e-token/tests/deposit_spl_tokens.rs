@@ -41,7 +41,7 @@ async fn deposit_spl_tokens_increments_ephemeral_amount() {
     // 0) Create and initialize the Mint account
     let rent = context.banks_client.get_rent().await.unwrap();
     let mint_space = Mint::LEN;
-    let mint_lamports = rent.minimum_balance(mint_space as usize);
+    let mint_lamports = rent.minimum_balance(mint_space);
 
     let create_mint_ix = create_account(
         &payer,

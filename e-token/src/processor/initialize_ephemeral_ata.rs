@@ -70,7 +70,7 @@ pub struct InitializeEphemeralAta<'a> {
 impl InitializeEphemeralAta<'_> {
     #[inline]
     pub fn try_from_bytes(bytes: &[u8]) -> Result<InitializeEphemeralAta, ProgramError> {
-        if bytes.len() < 1 {
+        if bytes.is_empty() {
             return Err(ProgramError::InvalidInstructionData);
         }
 

@@ -48,11 +48,11 @@ pub fn process_deposit_spl_tokens(
         .decimals();
 
     pinocchio_token::instructions::TransferChecked {
-        mint: mint_info.into(),
-        from: user_source_token_acc.into(),
-        to: vault_token_acc.into(),
+        mint: mint_info,
+        from: user_source_token_acc,
+        to: vault_token_acc,
         amount: args.amount(),
-        authority: user_authority.into(),
+        authority: user_authority,
         decimals,
     }
     .invoke()?;
