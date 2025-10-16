@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ "**" ]
+
+jobs:
+  test-sbf:
+    name: "cargo test-sbf (features: logging)"
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+      SOLANA_VERSION: 2.3.4
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust from rust-toolchain.toml
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Cache target directory
+        uses: actions/cache@v4
+        with:
+          path: |
+            target
+          key: ${{ runner.os }}-target-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-target-
+
+      - name: Install Solana CLI ${{ env.SOLANA_VERSION }}
+        shell: bash
+        run: |
+          curl -sSfL https://release.anza.xyz/v${SOLANA_VERSION}/install | sh -s - v${SOLANA_VERSION}
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+          solana --version
+
+      - name: Show environment
+        run: |
+          rustc -Vv
+          cargo -V
+          solana --version
+
+      - name: Run SBF tests with logging feature
+        run: |
+          cargo test-sbf --features logging
+
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbf-test-logs
+          path: |
+            target/sbf-tests
+            target/**/*.log
+            **/test-*.log
+          if-no-files-found: ignore
