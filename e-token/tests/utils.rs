@@ -15,6 +15,7 @@ pub struct Pdas {
     pub bump_vault: u8,
 }
 
+#[allow(dead_code)]
 pub struct TokenSetup {
     pub user_tokens: Vec<Pubkey>,
     pub vault_token: Pubkey,

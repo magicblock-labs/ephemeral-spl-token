@@ -3,9 +3,9 @@ resolver = "2"
 members = ["e-token", "e-token-api"]
 
 [workspace.package]
-authors = ["Anza Maintainers <maintainers@anza.xyz>"]
-repository = "https://github.com/solana-program/token"
-license = "Apache-2.0"
+authors = ["MagicBlock Labs <dev@magicblocklabs.xyz>"]
+repository = "https://github.com/magicblock-labs/ephemeral-token"
+license = "MIT"
 edition = "2021"
 
 [workspace.lints.rust.unexpected_cfgs]
@@ -30,6 +30,8 @@ tag-message = "Publish {{crate_name}} v{{version}}"
 consolidate-commits = false
 
 [workspace.dependencies]
+ephemeral-rollups-pinocchio = "0.3.7"
+
 pinocchio = "0.8.4"
 pinocchio-log = "0.4.0"
 pinocchio-pubkey = "0.2.4"
@@ -39,9 +41,13 @@ pinocchio-token = "0.3.0"
 solana-instruction = "3.0.0"
 solana-pubkey = "3.0.0"
 solana-program-pack = "3.0.0"
+solana-program = "3.0.0"
+solana-account = "3.0.0"
 solana-program-test = "3.0.2"
 solana-signer = "3.0.0"
 solana-keypair = "3.0.1"
 solana-transaction = "3.0.1"
 solana-system-interface = { version="2.0.0", features=["bincode"] }
 spl-token = "^8"
+spl-token-interface = "2.0.0"
+magicblock-delegation-program = "1.1.2"
