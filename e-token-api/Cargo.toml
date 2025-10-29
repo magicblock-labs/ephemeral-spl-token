@@ -10,6 +10,7 @@ edition = { workspace = true}
 [dependencies]
 pinocchio = { workspace = true }
 pinocchio-pubkey = { workspace = true }
+ephemeral-rollups-pinocchio = { workspace = true }
 
 [lints]
 workspace = true

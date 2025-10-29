@@ -82,6 +82,24 @@ pub(crate) fn inner_process_instruction(
 
             process_withdraw_spl_tokens(accounts, instruction_data)
         }
+        4 => {
+            #[cfg(feature = "logging")]
+            pinocchio::msg!("Instruction: DelegateEphemeralAta");
+
+            process_delegate_ephemeral_ata(accounts, instruction_data)
+        }
+        5 => {
+            #[cfg(feature = "logging")]
+            pinocchio::msg!("Instruction: UndelegateEphemeralAta");
+
+            process_undelegate_ephemeral_ata(accounts, instruction_data)
+        }
+        196 => {
+            #[cfg(feature = "logging")]
+            pinocchio::msg!("Instruction: UndelegationCallback");
+
+            process_undelegation_callback(accounts, instruction_data)
+        }
         _ => Err(EphemeralSplError::InvalidInstruction.into()),
     }
 }
