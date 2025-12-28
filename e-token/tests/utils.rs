@@ -85,7 +85,7 @@ pub async fn setup_mint_and_token_accounts(
     init_mint_ix.program_id = spl_token_interface::ID;
     instructions.push(init_mint_ix);
 
-    // Create user token accounts
+    // Create user atas
     let token_acc_space = SplAccount::LEN;
     let token_acc_lamports = rent.minimum_balance(token_acc_space);
 
@@ -117,7 +117,7 @@ pub async fn setup_mint_and_token_accounts(
         signers.push(kp);
     }
 
-    // Create and init vault token account owned by PDA
+    // Create vault ata
     let vault_token_kp = Keypair::new();
     let vault_token = vault_token_kp.pubkey();
     instructions.push(create_account(

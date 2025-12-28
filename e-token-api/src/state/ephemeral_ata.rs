@@ -5,6 +5,8 @@ use super::{Initializable, RawType};
 /// Internal representation of a token account data.
 #[repr(C)]
 pub struct EphemeralAta {
+    /// The owner of the eata
+    pub owner: Pubkey,
     /// The mint associated with this account
     pub mint: Pubkey,
     /// The amount of tokens this account holds.

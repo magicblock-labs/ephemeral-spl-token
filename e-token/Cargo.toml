@@ -34,7 +34,7 @@ solana-transaction = { workspace = true }
 solana-system-interface = { workspace = true }
 solana-account = { workspace = true }
 spl-token-interface = { workspace = true }
-magicblock-delegation-program = {workspace = true}
+magicblock-delegation-program = { workspace = true }
 
 [lints]
 workspace = true

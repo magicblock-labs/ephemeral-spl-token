@@ -36,7 +36,18 @@ pub fn process_delegate_ephemeral_ata(
 
     #[allow(clippy::clone_on_copy)]
     let mint = ephemeral_ata.mint.clone();
-    let seeds: &[&[u8]] = &[payer_info.key().as_slice(), mint.as_slice()];
+    #[allow(clippy::clone_on_copy)]
+    let owner = ephemeral_ata.owner.clone();
+    let seeds: &[&[u8]] = &[owner.as_slice(), mint.as_slice()];
+
+    #[cfg(feature = "logging")]
+    {
+        pinocchio::msg!("Delegating eata to: ");
+        pinocchio::pubkey::log(
+            &pinocchio::pubkey::Pubkey::try_from(args.validator().unwrap_or_default())
+                .unwrap_or_default(),
+        );
+    }
 
     // Delegate Ephemeral ATA PDA
     ephemeral_rollups_pinocchio::instruction::delegate_account(

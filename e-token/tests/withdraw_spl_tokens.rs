@@ -27,12 +27,13 @@ async fn withdraw_spl_tokens_decrements_ephemeral_amount() {
         .await;
 
     let payer = context.payer.pubkey();
+    let user = payer; // in this test, user == payer
 
     let mint_kp = Keypair::new();
     let mint = mint_kp.pubkey();
 
     // Derive PDAs and setup mint/accounts via utils
-    let pdas = utils::derive_pdas(PROGRAM, payer, mint);
+    let pdas = utils::derive_pdas(PROGRAM, user, mint);
     let setup = utils::setup_mint_and_token_accounts(
         &mut context,
         payer,
@@ -58,6 +59,7 @@ async fn withdraw_spl_tokens_decrements_ephemeral_amount() {
         accounts: vec![
             AccountMeta::new(ephemeral_ata, false),
             AccountMeta::new_readonly(payer, false),
+            AccountMeta::new_readonly(user, false),
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],

@@ -19,13 +19,14 @@ async fn initialize_ephemeral_ata() {
         .start_with_context()
         .await;
 
-    // Derive two arbitrary seeds
+    // Derive arbitrary keys
     let payer = context.payer.pubkey();
+    let user = Pubkey::new_unique();
     let mint = Pubkey::new_unique();
 
     // Create the ephemeral ATA account owned by our program with proper space
     let (ephemeral_ata, bump) = Pubkey::find_program_address(
-        &[payer.to_bytes().as_slice(), mint.to_bytes().as_slice()],
+        &[user.to_bytes().as_slice(), mint.to_bytes().as_slice()],
         &PROGRAM,
     );
 
@@ -34,7 +35,8 @@ async fn initialize_ephemeral_ata() {
         program_id: PROGRAM,
         accounts: vec![
             AccountMeta::new(ephemeral_ata, false),  // writable account
-            AccountMeta::new_readonly(payer, false), // payer seed (readonly)
+            AccountMeta::new_readonly(payer, false), // payer (funding)
+            AccountMeta::new_readonly(user, false),  // user seed (readonly)
             AccountMeta::new_readonly(mint, false),  // mint seed  (readonly)
             AccountMeta::new_readonly(solana_system_interface::program::ID, false), // system program (readonly)
         ],
@@ -65,4 +67,5 @@ async fn initialize_ephemeral_ata() {
         unsafe { load_mut_unchecked::<EphemeralAta>(mut_acc.as_mut_slice()).unwrap() };
     assert!(ephemeral_ata.is_initialized());
     assert_eq!(ephemeral_ata.amount, 0);
+    assert_eq!(ephemeral_ata.owner, user.to_bytes());
 }

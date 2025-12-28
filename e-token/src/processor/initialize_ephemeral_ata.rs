@@ -17,19 +17,20 @@ pub fn process_initialize_ephemeral_ata(
     instruction_data: &[u8],
 ) -> ProgramResult {
     // Expected accounts:
-    // 0. [writable] Ephemeral ATA account (PDA derived from [payer, mint])
-    // 1. []         Payer (seed)
-    // 2. []         Mint  (seed)
+    // 0. [writable] Ephemeral ATA account (PDA derived from [user, mint])
+    // 1. []         Payer (funding account)
+    // 2. []         User  (seed)
+    // 3. []         Mint  (seed)
 
     let args = InitializeEphemeralAta::try_from_bytes(instruction_data)?;
 
-    let [ephemeral_ata_info, payer_info, mint_info, ..] = accounts else {
+    let [ephemeral_ata_info, payer_info, user_info, mint_info, ..] = accounts else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
     let bump = [args.bump()];
     let seed = [
-        Seed::from(payer_info.key().as_slice()),
+        Seed::from(user_info.key().as_slice()),
         Seed::from(mint_info.key().as_slice()),
         Seed::from(&bump),
     ];
@@ -55,6 +56,8 @@ pub fn process_initialize_ephemeral_ata(
     }
 
     // Initialize the ephemeral ATA
+    // Set the owner to the provided user; payer only funds account creation
+    ephemeral_ata.owner = *user_info.key();
     ephemeral_ata.mint = *mint_info.key();
     ephemeral_ata.amount = 0;
 
