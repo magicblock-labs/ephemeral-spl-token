@@ -22,13 +22,28 @@ pub fn process_withdraw_spl_tokens(
 
     let args = WithdrawArgs::try_from_bytes(instruction_data)?;
 
-    let [ephemeral_ata_info, vault_info, mint_info, vault_source_token_acc, user_dest_token_acc, ..] =
+    let [owner, ephemeral_ata_info, vault_info, mint_info, vault_source_token_acc, user_dest_token_acc, ..] =
         accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
+    if !owner.is_signer() {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
     // Validate EphemeralAta account (writable)
+    unsafe {
+        if ephemeral_ata_info
+            .owner()
+            .ne(&ephemeral_spl_api::program::id())
+        {
+            return Err(ProgramError::InvalidAccountData);
+        }
+    }
+    unsafe {
+        pinocchio::pubkey::log(ephemeral_ata_info.owner());
+    }
     let ephemeral_ata = unsafe {
         load_mut_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_mut_data_unchecked())?
     };
@@ -36,8 +51,11 @@ pub fn process_withdraw_spl_tokens(
     // Validate Vault data account
     let vault = unsafe { load_unchecked::<GlobalVault>(vault_info.borrow_data_unchecked())? };
 
-    // Check mint consistency
-    if ephemeral_ata.mint != *mint_info.key() || vault.mint != *mint_info.key() {
+    // Check eata consistency
+    if ephemeral_ata.mint != *mint_info.key()
+        || vault.mint != *mint_info.key()
+        || ephemeral_ata.owner != *owner.key()
+    {
         return Err(ProgramError::InvalidAccountData);
     }
 

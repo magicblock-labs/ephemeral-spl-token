@@ -27,16 +27,16 @@ pub fn process_initialize_global_vault(
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
-    let bump = [args.bump()];
-    let seed = [Seed::from(mint_info.key().as_slice()), Seed::from(&bump)];
-    let signer_seeds = Signer::from(&seed);
-
     // Make init idempotent
     unsafe {
         if vault_info.owner().eq(&ephemeral_spl_api::program::ID) {
             return Ok(());
         }
     }
+
+    let bump = [args.bump()];
+    let seed = [Seed::from(mint_info.key().as_slice()), Seed::from(&bump)];
+    let signer_seeds = Signer::from(&seed);
 
     CreateAccount {
         from: payer_info,

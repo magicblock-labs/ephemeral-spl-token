@@ -128,6 +128,7 @@ async fn withdraw_spl_tokens_decrements_ephemeral_amount() {
     let ix_withdraw = Instruction {
         program_id: PROGRAM,
         accounts: vec![
+            AccountMeta::new_readonly(payer, true),  // [writable]
             AccountMeta::new(ephemeral_ata, false),  // [writable]
             AccountMeta::new_readonly(vault, false), // [] vault data
             AccountMeta::new_readonly(mint, false),  // [] mint

@@ -1,5 +1,4 @@
 use core::marker::PhantomData;
-use ephemeral_spl_api::error::EphemeralSplError;
 use ephemeral_spl_api::state::RawType;
 use pinocchio::instruction::{Seed, Signer};
 use pinocchio::sysvars::rent::Rent;
@@ -35,14 +34,6 @@ pub fn process_initialize_ephemeral_ata(
             .eq(&ephemeral_spl_api::program::ID)
         {
             return Ok(());
-        }
-
-        // Ensure the ephemeral ATA is not delegated
-        if ephemeral_ata_info
-            .owner()
-            .eq(&ephemeral_rollups_pinocchio::id())
-        {
-            return Err(EphemeralSplError::AlreadyInUse.into());
         }
     }
 
