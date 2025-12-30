@@ -1,6 +1,6 @@
 use core::marker::PhantomData;
 use ephemeral_spl_api::error::EphemeralSplError;
-use ephemeral_spl_api::state::{Initializable, RawType};
+use ephemeral_spl_api::state::RawType;
 use pinocchio::instruction::{Seed, Signer};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
@@ -28,6 +28,24 @@ pub fn process_initialize_ephemeral_ata(
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
+    unsafe {
+        // Make init idempotent
+        if ephemeral_ata_info
+            .owner()
+            .eq(&ephemeral_spl_api::program::ID)
+        {
+            return Ok(());
+        }
+
+        // Ensure the ephemeral ATA is not delegated
+        if ephemeral_ata_info
+            .owner()
+            .eq(&ephemeral_rollups_pinocchio::id())
+        {
+            return Err(EphemeralSplError::AlreadyInUse.into());
+        }
+    }
+
     let bump = [args.bump()];
     let seed = [
         Seed::from(user_info.key().as_slice()),
@@ -49,11 +67,6 @@ pub fn process_initialize_ephemeral_ata(
     let ephemeral_ata = unsafe {
         load_mut_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_mut_data_unchecked())?
     };
-
-    // Ensure the ephemeral ATA is not already initialized
-    if ephemeral_ata.is_initialized() {
-        return Err(EphemeralSplError::AlreadyInUse.into());
-    }
 
     // Initialize the ephemeral ATA
     // Set the owner to the provided user; payer only funds account creation

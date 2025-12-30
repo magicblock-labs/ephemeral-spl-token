@@ -1,6 +1,5 @@
 use core::marker::PhantomData;
-use ephemeral_spl_api::error::EphemeralSplError;
-use ephemeral_spl_api::state::{Initializable, RawType};
+use ephemeral_spl_api::state::RawType;
 use pinocchio::instruction::{Seed, Signer};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
@@ -32,6 +31,13 @@ pub fn process_initialize_global_vault(
     let seed = [Seed::from(mint_info.key().as_slice()), Seed::from(&bump)];
     let signer_seeds = Signer::from(&seed);
 
+    // Make init idempotent
+    unsafe {
+        if vault_info.owner().eq(&ephemeral_spl_api::program::ID) {
+            return Ok(());
+        }
+    }
+
     CreateAccount {
         from: payer_info,
         to: vault_info,
@@ -44,11 +50,6 @@ pub fn process_initialize_global_vault(
     // Ensure account data has the expected size
     let vault =
         unsafe { load_mut_unchecked::<GlobalVault>(vault_info.borrow_mut_data_unchecked())? };
-
-    // Ensure the vault is not already initialized
-    if vault.is_initialized() {
-        return Err(EphemeralSplError::AlreadyInUse.into());
-    }
 
     // Initialize the vault
     vault.mint = *mint_info.key();
