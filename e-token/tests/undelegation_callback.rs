@@ -63,7 +63,7 @@ async fn undelegation_callback_restores_ephemeral_ata() {
     // Setup the delegated PDA
     let mut data = vec![0u8; EphemeralAta::LEN];
     let ephemeral_ata = unsafe { load_mut_unchecked::<EphemeralAta>(data.as_mut_slice()).unwrap() };
-    ephemeral_ata.mint = pinocchio::pubkey::Pubkey::from(mint.to_bytes());
+    ephemeral_ata.mint = pinocchio::Address::new_from_array(mint.to_bytes());
     ephemeral_ata.amount = 500;
     pt.add_account(
         delegated_ata,

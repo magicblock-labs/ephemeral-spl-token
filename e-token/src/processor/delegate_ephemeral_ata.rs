@@ -1,36 +1,36 @@
 use ephemeral_rollups_pinocchio::types::DelegateConfig;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::load_mut_unchecked;
-use pinocchio::{account_info::AccountInfo, program_error::ProgramError, ProgramResult};
+use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
 
 pub fn process_delegate_ephemeral_ata(
-    accounts: &[AccountInfo],
+    accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
     // Expected accounts (in order used below):
-    // 0. []         Payer (seed used to derive Ephemeral ATA PDA)
+    // 0. [signer]   Payer (seed used to derive Ephemeral ATA PDA)
     // 1. [writable] Ephemeral ATA account (PDA derived from [payer, mint]) - signer via seeds
     // 2. []         Owner program (the program owning the delegated PDA)
-    // 3. []         Buffer account (used by the delegation program)
-    // 4. []         Delegation record account
-    // 5. []         Delegation metadata account
-    // 6. []         System program
+    // 3. [writable] Buffer account (used by the delegation program)
+    // 4. [writable] Delegation record account
+    // 5. [writable] Delegation metadata account
+    // 6. []         Delegation program
+    // 7. []         System program
 
     let args = DelegateArgs::try_from_bytes(instruction_data)?;
 
-    let [payer_info, ephemeral_ata_info, owner_program, buffer_acc, delegation_record, delegation_metadata, _delegation_program, _system_program] =
+    let [payer_info, ephemeral_ata_info, owner_program, buffer_acc, delegation_record, delegation_metadata, _delegation_program, system_program] =
         accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
     // Load Ephemeral ATA account
-    let ephemeral_ata = unsafe {
-        load_mut_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_mut_data_unchecked())?
-    };
+    let ephemeral_ata =
+        unsafe { load_mut_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked_mut())? };
 
     let config = DelegateConfig {
-        validator: args.validator(),
+        validator: args.validator().map(Address::new_from_array),
         ..DelegateConfig::default()
     };
 
@@ -38,15 +38,11 @@ pub fn process_delegate_ephemeral_ata(
     let mint = ephemeral_ata.mint.clone();
     #[allow(clippy::clone_on_copy)]
     let owner = ephemeral_ata.owner.clone();
-    let seeds: &[&[u8]] = &[owner.as_slice(), mint.as_slice()];
+    let seeds: &[&[u8]] = &[owner.as_ref(), mint.as_ref()];
 
     #[cfg(feature = "logging")]
     {
-        pinocchio::msg!("Delegating eata to: ");
-        pinocchio::pubkey::log(
-            &pinocchio::pubkey::Pubkey::try_from(args.validator().unwrap_or_default())
-                .unwrap_or_default(),
-        );
+        pinocchio_log::log!("Delegating eata");
     }
 
     // Delegate Ephemeral ATA PDA
@@ -58,6 +54,7 @@ pub fn process_delegate_ephemeral_ata(
             buffer_acc,
             delegation_record,
             delegation_metadata,
+            system_program,
         ],
         seeds,
         args.bump(),

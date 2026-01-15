@@ -1,4 +1,4 @@
-use pinocchio::{account_info::AccountInfo, program_error::ProgramError, ProgramResult};
+use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
 
 /// Undelegation callback invoked by the delegation program.
 ///
@@ -9,7 +9,7 @@ use pinocchio::{account_info::AccountInfo, program_error::ProgramError, ProgramR
 /// 3. [signer]   Undelegate buffer PDA (holds the snapshot of the delegated account)
 /// 4. []         System program
 pub fn process_undelegation_callback(
-    accounts: &[AccountInfo],
+    accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
     let [delegated_acc, buffer_acc, payer, _system_program, ..] = accounts else {
@@ -18,7 +18,7 @@ pub fn process_undelegation_callback(
 
     ephemeral_rollups_pinocchio::instruction::undelegate(
         delegated_acc,
-        &crate::ID,
+        &Address::new_from_array(crate::ID),
         buffer_acc,
         payer,
         &instruction_data[7..],

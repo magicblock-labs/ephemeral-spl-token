@@ -1,18 +1,18 @@
 use core::marker::PhantomData;
 use ephemeral_spl_api::state::RawType;
-use pinocchio::instruction::{Seed, Signer};
+use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
 use pinocchio_system::instructions::CreateAccount;
 use {
     ephemeral_spl_api::state::ephemeral_ata::EphemeralAta,
     ephemeral_spl_api::state::load_mut_unchecked,
-    pinocchio::{account_info::AccountInfo, program_error::ProgramError, ProgramResult},
+    pinocchio::{error::ProgramError, AccountView, ProgramResult},
 };
 
 #[inline(always)]
 pub fn process_initialize_ephemeral_ata(
-    accounts: &[AccountInfo],
+    accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
     // Expected accounts:
@@ -31,7 +31,7 @@ pub fn process_initialize_ephemeral_ata(
         // Make init idempotent
         if ephemeral_ata_info
             .owner()
-            .eq(&ephemeral_spl_api::program::ID)
+            .eq(&ephemeral_spl_api::program::id_address())
         {
             return Ok(());
         }
@@ -39,8 +39,8 @@ pub fn process_initialize_ephemeral_ata(
 
     let bump = [args.bump()];
     let seed = [
-        Seed::from(user_info.key().as_slice()),
-        Seed::from(mint_info.key().as_slice()),
+        Seed::from(user_info.address().as_ref()),
+        Seed::from(mint_info.address().as_ref()),
         Seed::from(&bump),
     ];
     let signer_seeds = Signer::from(&seed);
@@ -49,20 +49,19 @@ pub fn process_initialize_ephemeral_ata(
         from: payer_info,
         to: ephemeral_ata_info,
         space: EphemeralAta::LEN as u64,
-        lamports: Rent::get()?.minimum_balance(EphemeralAta::LEN),
-        owner: &ephemeral_spl_api::program::ID,
+        lamports: Rent::get()?.try_minimum_balance(EphemeralAta::LEN)?,
+        owner: &ephemeral_spl_api::program::id_address(),
     }
     .invoke_signed(&[signer_seeds])?;
 
     // Ensure account data has the expected size
-    let ephemeral_ata = unsafe {
-        load_mut_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_mut_data_unchecked())?
-    };
+    let ephemeral_ata =
+        unsafe { load_mut_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked_mut())? };
 
     // Initialize the ephemeral ATA
     // Set the owner to the provided user; payer only funds account creation
-    ephemeral_ata.owner = *user_info.key();
-    ephemeral_ata.mint = *mint_info.key();
+    ephemeral_ata.owner = user_info.address().clone();
+    ephemeral_ata.mint = mint_info.address().clone();
     ephemeral_ata.amount = 0;
 
     Ok(())
