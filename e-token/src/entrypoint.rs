@@ -56,43 +56,43 @@ pub(crate) fn inner_process_instruction(
     match *discriminator {
         0 => {
             #[cfg(feature = "logging")]
-            pinocchio::msg!("Instruction: InitializeEphemeralAta");
+            pinocchio_log::log!("Instruction: InitializeEphemeralAta");
 
             process_initialize_ephemeral_ata(accounts, instruction_data)
         }
         1 => {
             #[cfg(feature = "logging")]
-            pinocchio::msg!("Instruction: InitializeGlobalVault");
+            pinocchio_log::log!("Instruction: InitializeGlobalVault");
 
             process_initialize_global_vault(accounts, instruction_data)
         }
         2 => {
             #[cfg(feature = "logging")]
-            pinocchio::msg!("Instruction: DepositSplTokens");
+            pinocchio_log::log!("Instruction: DepositSplTokens");
 
             process_deposit_spl_tokens(accounts, instruction_data)
         }
         3 => {
             #[cfg(feature = "logging")]
-            pinocchio::msg!("Instruction: WithdrawSplTokens");
+            pinocchio_log::log!("Instruction: WithdrawSplTokens");
 
             process_withdraw_spl_tokens(accounts, instruction_data)
         }
         4 => {
             #[cfg(feature = "logging")]
-            pinocchio::msg!("Instruction: DelegateEphemeralAta");
+            pinocchio_log::log!("Instruction: DelegateEphemeralAta");
 
             process_delegate_ephemeral_ata(accounts, instruction_data)
         }
         5 => {
             #[cfg(feature = "logging")]
-            pinocchio::msg!("Instruction: UndelegateEphemeralAta");
+            pinocchio_log::log!("Instruction: UndelegateEphemeralAta");
 
             process_undelegate_ephemeral_ata(accounts, instruction_data)
         }
         196 => {
             #[cfg(feature = "logging")]
-            pinocchio::msg!("Instruction: UndelegationCallback");
+            pinocchio_log::log!("Instruction: UndelegationCallback");
 
             process_undelegation_callback(accounts, instruction_data)
         }
