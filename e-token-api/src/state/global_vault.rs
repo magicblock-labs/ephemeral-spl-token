@@ -1,4 +1,4 @@
-use pinocchio::pubkey::Pubkey;
+use pinocchio::Address;
 
 use super::{Initializable, RawType};
 
@@ -6,7 +6,7 @@ use super::{Initializable, RawType};
 #[repr(C)]
 pub struct GlobalVault {
     /// The mint associated with this vault
-    pub mint: Pubkey,
+    pub mint: Address,
 }
 
 impl RawType for GlobalVault {
@@ -16,6 +16,6 @@ impl RawType for GlobalVault {
 impl Initializable for GlobalVault {
     #[inline(always)]
     fn is_initialized(&self) -> bool {
-        self.mint != Pubkey::default()
+        self.mint != Address::default()
     }
 }

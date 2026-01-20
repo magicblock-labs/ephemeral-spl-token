@@ -1,4 +1,4 @@
-use pinocchio::pubkey::Pubkey;
+use pinocchio::Address;
 
 use super::{Initializable, RawType};
 
@@ -6,9 +6,9 @@ use super::{Initializable, RawType};
 #[repr(C)]
 pub struct EphemeralAta {
     /// The owner of the eata
-    pub owner: Pubkey,
+    pub owner: Address,
     /// The mint associated with this account
-    pub mint: Pubkey,
+    pub mint: Address,
     /// The amount of tokens this account holds.
     pub amount: u64,
 }
@@ -20,6 +20,6 @@ impl RawType for EphemeralAta {
 impl Initializable for EphemeralAta {
     #[inline(always)]
     fn is_initialized(&self) -> bool {
-        self.mint != Pubkey::default()
+        self.mint != Address::default()
     }
 }

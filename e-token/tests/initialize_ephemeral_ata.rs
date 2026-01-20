@@ -67,5 +67,5 @@ async fn initialize_ephemeral_ata() {
         unsafe { load_mut_unchecked::<EphemeralAta>(mut_acc.as_mut_slice()).unwrap() };
     assert!(ephemeral_ata.is_initialized());
     assert_eq!(ephemeral_ata.amount, 0);
-    assert_eq!(ephemeral_ata.owner, user.to_bytes());
+    assert_eq!(ephemeral_ata.owner.as_array(), &user.to_bytes());
 }

@@ -1,15 +1,16 @@
 use core::marker::PhantomData;
-use pinocchio::instruction::{Seed, Signer};
+use ephemeral_spl_api::error::EphemeralSplError;
+use pinocchio::cpi::{Seed, Signer};
 use {
     ephemeral_spl_api::state::{
         ephemeral_ata::EphemeralAta, global_vault::GlobalVault, load_mut_unchecked, load_unchecked,
     },
-    pinocchio::{account_info::AccountInfo, program_error::ProgramError, ProgramResult},
+    pinocchio::{error::ProgramError, AccountView, ProgramResult},
 };
 
 #[inline(always)]
 pub fn process_withdraw_spl_tokens(
-    accounts: &[AccountInfo],
+    accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
     // Expected accounts:
@@ -36,37 +37,33 @@ pub fn process_withdraw_spl_tokens(
     unsafe {
         if ephemeral_ata_info
             .owner()
-            .ne(&ephemeral_spl_api::program::id())
+            .ne(&ephemeral_spl_api::program::id_address())
         {
-            return Err(ProgramError::InvalidAccountData);
+            return Err(ProgramError::IllegalOwner);
         }
     }
-    unsafe {
-        pinocchio::pubkey::log(ephemeral_ata_info.owner());
-    }
-    let ephemeral_ata = unsafe {
-        load_mut_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_mut_data_unchecked())?
-    };
+    let ephemeral_ata =
+        unsafe { load_mut_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked_mut())? };
 
     // Validate Vault data account
-    let vault = unsafe { load_unchecked::<GlobalVault>(vault_info.borrow_data_unchecked())? };
+    let vault = unsafe { load_unchecked::<GlobalVault>(vault_info.borrow_unchecked())? };
 
     // Check eata consistency
-    if ephemeral_ata.mint != *mint_info.key()
-        || vault.mint != *mint_info.key()
-        || ephemeral_ata.owner != *owner.key()
+    if ephemeral_ata.mint != *mint_info.address()
+        || vault.mint != *mint_info.address()
+        || ephemeral_ata.owner != *owner.address()
     {
-        return Err(ProgramError::InvalidAccountData);
+        return Err(EphemeralSplError::EphemeralAtaMismatch.into());
     }
 
     // read mint decimals
-    let decimals = pinocchio_token::state::Mint::from_account_info(mint_info)
+    let decimals = pinocchio_token::state::Mint::from_account_view(mint_info)
         .map_err(|_| ProgramError::InvalidAccountData)?
         .decimals();
 
     // Perform transfer from vault token account to user destination, signed by vault PDA
     let bump = [args.bump()];
-    let seeds = [Seed::from(mint_info.key().as_slice()), Seed::from(&bump)];
+    let seeds = [Seed::from(mint_info.address().as_ref()), Seed::from(&bump)];
     let signer = Signer::from(&seeds);
 
     pinocchio_token::instructions::TransferChecked {

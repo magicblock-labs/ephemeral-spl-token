@@ -1,18 +1,18 @@
 use core::marker::PhantomData;
 use ephemeral_spl_api::state::RawType;
-use pinocchio::instruction::{Seed, Signer};
+use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
 use pinocchio_system::instructions::CreateAccount;
 use {
     ephemeral_spl_api::state::global_vault::GlobalVault,
     ephemeral_spl_api::state::load_mut_unchecked,
-    pinocchio::{account_info::AccountInfo, program_error::ProgramError, ProgramResult},
+    pinocchio::{error::ProgramError, AccountView, ProgramResult},
 };
 
 #[inline(always)]
 pub fn process_initialize_global_vault(
-    accounts: &[AccountInfo],
+    accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
     // Expected accounts:
@@ -29,30 +29,32 @@ pub fn process_initialize_global_vault(
 
     // Make init idempotent
     unsafe {
-        if vault_info.owner().eq(&ephemeral_spl_api::program::ID) {
+        if vault_info
+            .owner()
+            .eq(&ephemeral_spl_api::program::id_address())
+        {
             return Ok(());
         }
     }
 
     let bump = [args.bump()];
-    let seed = [Seed::from(mint_info.key().as_slice()), Seed::from(&bump)];
+    let seed = [Seed::from(mint_info.address().as_ref()), Seed::from(&bump)];
     let signer_seeds = Signer::from(&seed);
 
     CreateAccount {
         from: payer_info,
         to: vault_info,
         space: GlobalVault::LEN as u64,
-        lamports: Rent::get()?.minimum_balance(GlobalVault::LEN),
-        owner: &ephemeral_spl_api::program::ID,
+        lamports: Rent::get()?.try_minimum_balance(GlobalVault::LEN)?,
+        owner: &ephemeral_spl_api::program::id_address(),
     }
     .invoke_signed(&[signer_seeds])?;
 
     // Ensure account data has the expected size
-    let vault =
-        unsafe { load_mut_unchecked::<GlobalVault>(vault_info.borrow_mut_data_unchecked())? };
+    let vault = unsafe { load_mut_unchecked::<GlobalVault>(vault_info.borrow_unchecked_mut())? };
 
     // Initialize the vault
-    vault.mint = *mint_info.key();
+    vault.mint = mint_info.address().clone();
 
     Ok(())
 }

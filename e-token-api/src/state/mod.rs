@@ -1,4 +1,4 @@
-use pinocchio::program_error::ProgramError;
+use pinocchio::error::ProgramError;
 
 pub mod ephemeral_ata;
 pub mod global_vault;
