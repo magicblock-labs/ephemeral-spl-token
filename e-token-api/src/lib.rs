@@ -16,8 +16,8 @@ pub mod program {
     }
 }
 
-/// Helper to find a program derived address
-/// Re-export from solana-address
+/// Re-exported `Address` type from solana-address for convenience.
+/// Used throughout the codebase for account address representations.
 pub use solana_address::Address;
 
 /// Instruction discriminators for the Ephemeral SPL program.
