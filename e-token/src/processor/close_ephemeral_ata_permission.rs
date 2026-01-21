@@ -1,7 +1,6 @@
 use core::marker::PhantomData;
 use ephemeral_rollups_pinocchio::acl::{
-    consts::PERMISSION_PROGRAM_ID,
-    instruction::ClosePermissionCpiBuilder,
+    consts::PERMISSION_PROGRAM_ID, instruction::ClosePermissionCpiBuilder,
     pda::permission_pda_from_permissioned_account,
 };
 use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_unchecked, Initializable};

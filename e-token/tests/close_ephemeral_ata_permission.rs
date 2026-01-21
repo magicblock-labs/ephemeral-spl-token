@@ -93,7 +93,11 @@ async fn close_ephemeral_ata_permission() {
     );
     context.banks_client.process_transaction(tx).await.unwrap();
 
-    let permission_account = context.banks_client.get_account(permission_pda).await.unwrap();
+    let permission_account = context
+        .banks_client
+        .get_account(permission_pda)
+        .await
+        .unwrap();
     if let Some(account) = permission_account {
         assert_eq!(account.lamports, 0);
     }
