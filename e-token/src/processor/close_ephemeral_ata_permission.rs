@@ -50,7 +50,7 @@ pub fn process_close_ephemeral_ata_permission(
 
     ClosePermissionCpiBuilder::new(
         payer_info,
-        payer_info, // ephemeral_ata_info
+        ephemeral_ata_info,
         ephemeral_ata_info,
         permission_info,
         &PERMISSION_PROGRAM_ID,
