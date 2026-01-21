@@ -1,3 +1,4 @@
+use ephemeral_rollups_pinocchio::instruction::DelegateAccountCpiBuilder;
 use ephemeral_rollups_pinocchio::types::DelegateConfig;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::load_mut_unchecked;
@@ -45,21 +46,19 @@ pub fn process_delegate_ephemeral_ata(
         pinocchio_log::log!("Delegating eata");
     }
 
-    // Delegate Ephemeral ATA PDA
-    ephemeral_rollups_pinocchio::instruction::delegate_account(
-        &[
-            payer_info,
-            ephemeral_ata_info,
-            owner_program,
-            buffer_acc,
-            delegation_record,
-            delegation_metadata,
-            system_program,
-        ],
-        seeds,
-        args.bump(),
-        config,
+    DelegateAccountCpiBuilder::new(
+        payer_info,
+        ephemeral_ata_info,
+        owner_program,
+        buffer_acc,
+        delegation_record,
+        delegation_metadata,
+        system_program,
     )
+    .seeds(seeds)
+    .bump(args.bump())
+    .config(config)
+    .invoke()
 }
 
 pub struct DelegateArgs {
