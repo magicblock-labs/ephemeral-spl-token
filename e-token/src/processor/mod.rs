@@ -1,4 +1,3 @@
-pub mod close_ephemeral_ata_permission;
 pub mod create_ephemeral_ata_permission;
 pub mod delegate_ephemeral_ata;
 pub mod delegate_ephemeral_ata_permission;
@@ -8,10 +7,8 @@ pub mod initialize_global_vault;
 pub mod undelegate_ephemeral_ata;
 pub mod undelegate_ephemeral_ata_permission;
 pub mod undelegation_callback;
-pub mod update_ephemeral_ata_permission;
 pub mod withdraw_spl_tokens;
 
-pub use close_ephemeral_ata_permission::process_close_ephemeral_ata_permission;
 pub use create_ephemeral_ata_permission::process_create_ephemeral_ata_permission;
 pub use delegate_ephemeral_ata::process_delegate_ephemeral_ata;
 pub use delegate_ephemeral_ata_permission::process_delegate_ephemeral_ata_permission;
@@ -21,5 +18,4 @@ pub use initialize_global_vault::process_initialize_global_vault;
 pub use undelegate_ephemeral_ata::process_undelegate_ephemeral_ata;
 pub use undelegate_ephemeral_ata_permission::process_undelegate_ephemeral_ata_permission;
 pub use undelegation_callback::process_undelegation_callback;
-pub use update_ephemeral_ata_permission::process_update_ephemeral_ata_permission;
 pub use withdraw_spl_tokens::process_withdraw_spl_tokens;

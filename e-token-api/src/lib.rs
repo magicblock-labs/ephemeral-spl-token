@@ -44,8 +44,4 @@ pub mod instruction {
     pub const DELEGATE_EPHEMERAL_ATA_PERMISSION: u8 = 7;
     /// 8 - UndelegateEphemeralAtaPermission: commit and undelegate the permission PDA
     pub const UNDELEGATE_EPHEMERAL_ATA_PERMISSION: u8 = 8;
-    /// 9 - CloseEphemeralAtaPermission: close the permission PDA and reclaim rent
-    pub const CLOSE_EPHEMERAL_ATA_PERMISSION: u8 = 9;
-    /// 10 - UpdateEphemeralAtaPermission: update members for the permission PDA
-    pub const UPDATE_EPHEMERAL_ATA_PERMISSION: u8 = 10;
 }
