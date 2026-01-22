@@ -175,4 +175,45 @@ async fn undelegate_ephemeral_ata_permission_callback() {
     );
 
     context.banks_client.process_transaction(tx).await.unwrap();
+
+    let delegation_pda = Pubkey::find_program_address(
+        &[b"delegation", permission_pda.to_bytes().as_slice()],
+        &DELEGATION_PROGRAM_ID.into(),
+    )
+    .0;
+    let delegation_metadata_pda = Pubkey::find_program_address(
+        &[b"delegation-metadata", permission_pda.to_bytes().as_slice()],
+        &DELEGATION_PROGRAM_ID.into(),
+    )
+    .0;
+
+    let permission_account = context
+        .banks_client
+        .get_account(permission_pda)
+        .await
+        .unwrap()
+        .expect("permission account must exist");
+    let delegation_account = context
+        .banks_client
+        .get_account(delegation_pda)
+        .await
+        .unwrap();
+    let delegation_metadata_account = context
+        .banks_client
+        .get_account(delegation_metadata_pda)
+        .await
+        .unwrap();
+
+    assert_eq!(permission_account.owner, PROGRAM);
+    assert!(
+        delegation_account.is_none()
+            || delegation_account.unwrap().owner != DELEGATION_PROGRAM_ID.into()
+    );
+
+    if let Some(account) = delegation_metadata_account {
+        let metadata =
+            dlp::state::DelegationMetadata::try_from_bytes_with_discriminator(&account.data)
+                .unwrap();
+        assert!(!metadata.is_undelegatable);
+    }
 }

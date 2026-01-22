@@ -30,7 +30,7 @@ tag-message = "Publish {{crate_name}} v{{version}}"
 consolidate-commits = false
 
 [workspace.dependencies]
-ephemeral-rollups-pinocchio = {  path = "/Users/gabrielepicco/Documents/Solana/ephemeral-rollups-sdk/rust/pinocchio"  }
+ephemeral-rollups-pinocchio = { git = "https://github.com/magicblock-labs/ephemeral-rollups-sdk", package = "ephemeral-rollups-pinocchio", rev = "8b2391a" }
 
 pinocchio = { version = "0.10.1", features = ["cpi"] }
 solana-address = { version = "2.0", features = ["curve25519"] }

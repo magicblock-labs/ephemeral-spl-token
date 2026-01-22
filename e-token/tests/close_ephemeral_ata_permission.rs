@@ -98,7 +98,5 @@ async fn close_ephemeral_ata_permission() {
         .get_account(permission_pda)
         .await
         .unwrap();
-    if let Some(account) = permission_account {
-        assert_eq!(account.lamports, 0);
-    }
+    assert!(permission_account.is_none());
 }

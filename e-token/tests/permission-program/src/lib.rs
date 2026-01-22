@@ -45,16 +45,16 @@ fn process_instruction(accounts: &[AccountView], _instruction_data: &[u8]) -> Pr
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    if permission_account.lamports() > 0 {
-        return Ok(());
-    }
-
     let (expected, bump) = Address::find_program_address(
         &[b"permission:", permissioned_account.address().as_ref()],
         &PERMISSION_PROGRAM_ID,
     );
     if expected != *permission_account.address() {
         return Err(ProgramError::InvalidSeeds);
+    }
+
+    if permission_account.lamports() > 0 {
+        return Ok(());
     }
 
     let bump_seed = [bump];

@@ -1,7 +1,9 @@
 use core::marker::PhantomData;
 use ephemeral_rollups_pinocchio::acl::{
-    consts::PERMISSION_PROGRAM_ID, instruction::CreatePermissionCpiBuilder,
+    consts::PERMISSION_PROGRAM_ID,
+    instruction::CreatePermissionCpiBuilder,
     pda::permission_pda_from_permissioned_account,
+    types::{Member, MemberFlags, MembersArgs},
 };
 use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_unchecked, Initializable};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
@@ -54,20 +56,41 @@ pub fn process_create_ephemeral_ata_permission(
         return Err(ProgramError::InvalidSeeds);
     }
 
+    // Idempotent create: if the permission account already exists, return Ok(())
+    // for safe transaction batching rather than treating it as an error.
     if permission_info.lamports() > 0 {
         return Ok(());
     }
 
-    CreatePermissionCpiBuilder::new(
+    let flags_bytes = args.flags_bytes();
+    let mut members_buf = [Member {
+        flags: MemberFlags::new(),
+        #[allow(clippy::clone_on_copy)]
+        pubkey: ephemeral_ata.owner.clone(),
+    }];
+    let members_args = if flags_bytes.iter().any(|b| *b != 0) {
+        members_buf[0].flags = MemberFlags::from_acl_flags_bytes(flags_bytes);
+        Some(MembersArgs {
+            members: Some(&members_buf),
+        })
+    } else {
+        None
+    };
+
+    let mut builder = CreatePermissionCpiBuilder::new(
         ephemeral_ata_info,
         permission_info,
         payer_info,
         system_program,
         &PERMISSION_PROGRAM_ID,
-    )
-    .seeds(&[ephemeral_ata.owner.as_ref(), ephemeral_ata.mint.as_ref()])
-    .bump(args.bump())
-    .invoke()
+    );
+    if let Some(members_args) = members_args {
+        builder = builder.members(members_args);
+    }
+    builder
+        .seeds(&[ephemeral_ata.owner.as_ref(), ephemeral_ata.mint.as_ref()])
+        .bump(args.bump())
+        .invoke()
 }
 
 pub struct CreateEphemeralAtaPermission<'a> {
@@ -93,13 +116,13 @@ impl CreateEphemeralAtaPermission<'_> {
         unsafe { *self.raw }
     }
 
-    // #[inline]
-    // pub fn flags_bytes(&self) -> [u8; 5] {
-    //     let mut bytes = [0u8; 5];
-    //     unsafe {
-    //         let slice = core::slice::from_raw_parts(self.raw.add(1), 5);
-    //         bytes.copy_from_slice(slice);
-    //     }
-    //     bytes
-    // }
+    #[inline]
+    pub fn flags_bytes(&self) -> [u8; 5] {
+        let mut bytes = [0u8; 5];
+        unsafe {
+            let slice = core::slice::from_raw_parts(self.raw.add(1), 5);
+            bytes.copy_from_slice(slice);
+        }
+        bytes
+    }
 }
