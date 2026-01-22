@@ -22,7 +22,7 @@ pub fn process_create_ephemeral_ata_permission(
 
     // Instruction data layout:
     // [0] bump
-    // [1..=5] MemberFlags encoded via MemberFlags::to_acl_flags_bytes.
+    // [1] MemberFlags bitfield encoded via MemberFlags::to_acl_flag_byte.
     let args = CreateEphemeralAtaPermission::try_from_bytes(instruction_data)?;
 
     let [ephemeral_ata_info, permission_info, payer_info, system_program, permission_program, ..] =
@@ -62,34 +62,27 @@ pub fn process_create_ephemeral_ata_permission(
         return Ok(());
     }
 
-    let flags_bytes = args.flags_bytes();
-    let mut members_buf = [Member {
-        flags: MemberFlags::new(),
+    let flag_byte = args.flag_byte();
+    let members_buf = [Member {
+        flags: MemberFlags::from_acl_flag_byte(flag_byte),
         #[allow(clippy::clone_on_copy)]
         pubkey: ephemeral_ata.owner.clone(),
     }];
-    let members_args = if flags_bytes.iter().any(|b| *b != 0) {
-        members_buf[0].flags = MemberFlags::from_acl_flags_bytes(flags_bytes);
-        Some(MembersArgs {
-            members: Some(&members_buf),
-        })
-    } else {
-        None
+    let members_args = MembersArgs {
+        members: Some(&members_buf),
     };
 
-    let mut builder = CreatePermissionCpiBuilder::new(
+    let builder = CreatePermissionCpiBuilder::new(
         ephemeral_ata_info,
         permission_info,
         payer_info,
         system_program,
         &PERMISSION_PROGRAM_ID,
     );
-    if let Some(members_args) = members_args {
-        builder = builder.members(members_args);
-    }
     builder
         .seeds(&[ephemeral_ata.owner.as_ref(), ephemeral_ata.mint.as_ref()])
         .bump(args.bump())
+        .members(members_args)
         .invoke()
 }
 
@@ -101,7 +94,7 @@ pub struct CreateEphemeralAtaPermission<'a> {
 impl CreateEphemeralAtaPermission<'_> {
     #[inline]
     pub fn try_from_bytes(bytes: &[u8]) -> Result<CreateEphemeralAtaPermission, ProgramError> {
-        if bytes.len() < 6 {
+        if bytes.len() < 2 {
             return Err(ProgramError::InvalidInstructionData);
         }
 
@@ -117,12 +110,7 @@ impl CreateEphemeralAtaPermission<'_> {
     }
 
     #[inline]
-    pub fn flags_bytes(&self) -> [u8; 5] {
-        let mut bytes = [0u8; 5];
-        unsafe {
-            let slice = core::slice::from_raw_parts(self.raw.add(1), 5);
-            bytes.copy_from_slice(slice);
-        }
-        bytes
+    pub fn flag_byte(&self) -> u8 {
+        unsafe { *self.raw.add(1) }
     }
 }

@@ -38,7 +38,7 @@ pub mod instruction {
     /// 6 - CreateEphemeralAtaPermission: create a permission account for the ephemeral ATA
     ///     Instruction data:
     ///     [0] bump
-    ///     [1..=5] MemberFlags encoded via MemberFlags::to_acl_flags_bytes.
+    ///     [1] MemberFlags bitfield encoded via MemberFlags::to_acl_flag_byte.
     pub const CREATE_EPHEMERAL_ATA_PERMISSION: u8 = 6;
     /// 7 - DelegateEphemeralAtaPermission: delegate the permission PDA for an ephemeral ATA
     pub const DELEGATE_EPHEMERAL_ATA_PERMISSION: u8 = 7;

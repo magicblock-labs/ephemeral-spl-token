@@ -21,7 +21,7 @@ pub fn process_update_ephemeral_ata_permission(
 ) -> ProgramResult {
     // Instruction data layout:
     // [0] bump
-    // [1..=5] MemberFlags encoded via MemberFlags::to_acl_flags_bytes.
+    // [1] MemberFlags bitfield encoded via MemberFlags::to_acl_flag_byte.
     let args = UpdateEphemeralAtaPermission::try_from_bytes(instruction_data)?;
 
     let [payer_info, ephemeral_ata_info, permission_info, permission_program, ..] = accounts else {
@@ -54,7 +54,7 @@ pub fn process_update_ephemeral_ata_permission(
     }
 
     let members = [Member {
-        flags: MemberFlags::from_acl_flags_bytes(args.flags_bytes()),
+        flags: MemberFlags::from_acl_flag_byte(args.flag_byte()),
         #[allow(clippy::clone_on_copy)]
         pubkey: ephemeral_ata.owner.clone(),
     }];
@@ -82,7 +82,7 @@ pub struct UpdateEphemeralAtaPermission<'a> {
 impl UpdateEphemeralAtaPermission<'_> {
     #[inline]
     pub fn try_from_bytes(bytes: &[u8]) -> Result<UpdateEphemeralAtaPermission, ProgramError> {
-        if bytes.len() < 6 {
+        if bytes.len() < 2 {
             return Err(ProgramError::InvalidInstructionData);
         }
 
@@ -98,12 +98,7 @@ impl UpdateEphemeralAtaPermission<'_> {
     }
 
     #[inline]
-    pub fn flags_bytes(&self) -> [u8; 5] {
-        let mut bytes = [0u8; 5];
-        unsafe {
-            let slice = core::slice::from_raw_parts(self.raw.add(1), 5);
-            bytes.copy_from_slice(slice);
-        }
-        bytes
+    pub fn flag_byte(&self) -> u8 {
+        unsafe { *self.raw.add(1) }
     }
 }

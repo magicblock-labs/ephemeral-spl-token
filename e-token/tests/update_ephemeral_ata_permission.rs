@@ -67,16 +67,14 @@ async fn update_ephemeral_ata_permission() {
             AccountMeta::new_readonly(PERMISSION_PROGRAM_ID.into(), false),
         ],
         data: {
-            let flags = MemberFlags::default().to_acl_flags_bytes();
-            let mut data = vec![instruction::CREATE_EPHEMERAL_ATA_PERMISSION, bump];
-            data.extend_from_slice(&flags);
-            data
+            let flag = MemberFlags::default().to_acl_flag_byte();
+            vec![instruction::CREATE_EPHEMERAL_ATA_PERMISSION, bump, flag]
         },
     };
 
-    let mut updated_flags = MemberFlags::default();
-    updated_flags.remove(MemberFlags::TX_LOGS);
-    updated_flags.remove(MemberFlags::TX_MESSAGE);
+    let mut updated_flags = MemberFlags::new();
+    updated_flags.set(MemberFlags::AUTHORITY);
+    updated_flags.set(MemberFlags::TX_BALANCES);
     let ix_update_permission = Instruction {
         program_id: PROGRAM,
         accounts: vec![
@@ -86,10 +84,8 @@ async fn update_ephemeral_ata_permission() {
             AccountMeta::new_readonly(PERMISSION_PROGRAM_ID.into(), false),
         ],
         data: {
-            let flags = updated_flags.to_acl_flags_bytes();
-            let mut data = vec![instruction::UPDATE_EPHEMERAL_ATA_PERMISSION, bump];
-            data.extend_from_slice(&flags);
-            data
+            let flag = updated_flags.to_acl_flag_byte();
+            vec![instruction::UPDATE_EPHEMERAL_ATA_PERMISSION, bump, flag]
         },
     };
 

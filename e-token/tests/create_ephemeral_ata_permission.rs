@@ -67,11 +67,9 @@ async fn create_ephemeral_ata_permission() {
             AccountMeta::new_readonly(permission_program_id, false),
         ],
         data: {
-            let flags = ephemeral_rollups_pinocchio::acl::types::MemberFlags::default()
-                .to_acl_flags_bytes();
-            let mut data = vec![instruction::CREATE_EPHEMERAL_ATA_PERMISSION, bump];
-            data.extend_from_slice(&flags);
-            data
+            let flag =
+                ephemeral_rollups_pinocchio::acl::types::MemberFlags::default().to_acl_flag_byte();
+            vec![instruction::CREATE_EPHEMERAL_ATA_PERMISSION, bump, flag]
         },
     };
 
