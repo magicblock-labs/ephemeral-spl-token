@@ -45,9 +45,13 @@ pub fn process_create_ephemeral_ata_permission(
     if !ephemeral_ata.is_initialized() {
         return Err(ProgramError::InvalidAccountData);
     }
+    let flag_byte = args.flag_byte();
 
-    if ephemeral_ata.owner != *payer_info.address() {
-        return Err(ProgramError::InvalidAccountData);
+    // Valid in 2 cases:
+    // - Payer is the owner of the eata
+    // - Permisionless, but permission are default (only readable for eata owner)
+    if ephemeral_ata.owner != *payer_info.address() && flag_byte != 0 {
+        return Err(ProgramError::IncorrectAuthority);
     }
 
     let expected_permission =
@@ -62,9 +66,10 @@ pub fn process_create_ephemeral_ata_permission(
         return Ok(());
     }
 
-    let flag_byte = args.flag_byte();
+    let mut members_flag = MemberFlags::from_acl_flag_byte(flag_byte);
+    members_flag.set(MemberFlags::AUTHORITY);
     let members_buf = [Member {
-        flags: MemberFlags::from_acl_flag_byte(flag_byte),
+        flags: members_flag,
         #[allow(clippy::clone_on_copy)]
         pubkey: ephemeral_ata.owner.clone(),
     }];

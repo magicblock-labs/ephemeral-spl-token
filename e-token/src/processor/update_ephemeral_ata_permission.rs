@@ -44,7 +44,7 @@ pub fn process_update_ephemeral_ata_permission(
     }
 
     if ephemeral_ata.owner != *payer_info.address() {
-        return Err(ProgramError::InvalidAccountData);
+        return Err(ProgramError::IncorrectAuthority);
     }
 
     let expected_permission =

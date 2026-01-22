@@ -50,10 +50,6 @@ pub fn process_delegate_ephemeral_ata_permission(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    if ephemeral_ata.owner != *payer_info.address() {
-        return Err(ProgramError::InvalidAccountData);
-    }
-
     let expected_permission =
         permission_pda_from_permissioned_account(ephemeral_ata_info.address());
     if expected_permission != *permission_info.address() {
