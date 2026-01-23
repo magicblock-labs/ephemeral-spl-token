@@ -1,0 +1,622 @@
+{
+  "address": "SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2",
+  "metadata": {
+    "name": "ephemeral_spl_token",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Ephemeral SPL Token Program - Implements MIMD 0013 for temporary SPL token balances that can be delegated to Data Layer Programs (DLPs)"
+  },
+  "instructions": [
+    {
+      "name": "initializeEphemeralAta",
+      "discriminator": [0],
+      "docs": [
+        "Initializes an Ephemeral Associated Token Account (ATA) for a user-mint pair.",
+        "The account is derived as a PDA from [user, mint, bump].",
+        "This instruction is idempotent - returns Ok if already initialized."
+      ],
+      "accounts": [
+        {
+          "name": "ephemeralAta",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "user"
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "user",
+          "docs": ["The owner of the ephemeral ATA"]
+        },
+        {
+          "name": "mint",
+          "docs": ["The SPL token mint"]
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "bump",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "initializeGlobalVault",
+      "discriminator": [1],
+      "docs": [
+        "Initializes a Global Vault for a specific mint.",
+        "The vault holds actual SPL tokens and is derived as a PDA from [mint, bump].",
+        "Only one vault exists per mint."
+      ],
+      "accounts": [
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "mint",
+          "docs": ["The SPL token mint for this vault"]
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "bump",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "depositSplTokens",
+      "discriminator": [2],
+      "docs": [
+        "Deposits SPL tokens into an ephemeral ATA.",
+        "Transfers tokens from the user's token account to the global vault,",
+        "and credits the amount to the user's ephemeral ATA balance."
+      ],
+      "accounts": [
+        {
+          "name": "ephemeralAta",
+          "writable": true,
+          "docs": ["The ephemeral ATA to credit"]
+        },
+        {
+          "name": "vault",
+          "docs": ["The global vault data account for this mint"]
+        },
+        {
+          "name": "mint",
+          "docs": ["The SPL token mint"]
+        },
+        {
+          "name": "sourceToken",
+          "writable": true,
+          "docs": ["The user's source token account to transfer from"]
+        },
+        {
+          "name": "vaultToken",
+          "writable": true,
+          "docs": ["The vault's token account to receive tokens"]
+        },
+        {
+          "name": "authority",
+          "signer": true,
+          "docs": ["The authority over the source token account"]
+        },
+        {
+          "name": "tokenProgram",
+          "docs": ["SPL Token Program"],
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "withdrawSplTokens",
+      "discriminator": [3],
+      "docs": [
+        "Withdraws SPL tokens from an ephemeral ATA.",
+        "Transfers tokens from the global vault to the user's token account,",
+        "and debits the amount from the user's ephemeral ATA balance.",
+        "Only the owner of the ephemeral ATA can withdraw."
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true,
+          "docs": ["The owner of the ephemeral ATA (must sign)"]
+        },
+        {
+          "name": "ephemeralAta",
+          "writable": true,
+          "docs": ["The ephemeral ATA to debit"]
+        },
+        {
+          "name": "vault",
+          "docs": ["The global vault data account for this mint"]
+        },
+        {
+          "name": "mint",
+          "docs": ["The SPL token mint"]
+        },
+        {
+          "name": "vaultSource",
+          "writable": true,
+          "docs": ["The vault's token account to transfer from"]
+        },
+        {
+          "name": "userDest",
+          "writable": true,
+          "docs": ["The user's token account to receive tokens"]
+        },
+        {
+          "name": "tokenProgram",
+          "docs": ["SPL Token Program"],
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "bump",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "delegateEphemeralAta",
+      "discriminator": [4],
+      "docs": [
+        "Delegates an ephemeral ATA to a Data Layer Program (DLP).",
+        "This allows the DLP to manage the ephemeral ATA state.",
+        "Optionally specify a validator to restrict delegation."
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true,
+          "docs": ["The payer for any rent/fees"]
+        },
+        {
+          "name": "ephemeralAta",
+          "writable": true,
+          "docs": ["The ephemeral ATA to delegate (signer via PDA seeds)"]
+        },
+        {
+          "name": "ownerProgram",
+          "docs": ["The program that will own the delegated account"]
+        },
+        {
+          "name": "buffer",
+          "writable": true,
+          "docs": ["Delegation buffer account"]
+        },
+        {
+          "name": "delegationRecord",
+          "writable": true,
+          "docs": ["Delegation record account"]
+        },
+        {
+          "name": "delegationMetadata",
+          "writable": true,
+          "docs": ["Delegation metadata account"]
+        },
+        {
+          "name": "delegationProgram",
+          "docs": ["The Delegation Program"],
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "bump",
+          "type": "u8"
+        },
+        {
+          "name": "validator",
+          "type": {
+            "option": {
+              "array": ["u8", 32]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "undelegateEphemeralAta",
+      "discriminator": [5],
+      "docs": [
+        "Undelegates an ephemeral ATA from a Data Layer Program.",
+        "Commits state and returns control of the ephemeral ATA to this program."
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true,
+          "docs": ["The payer (must be the owner of the ephemeral ATA)"]
+        },
+        {
+          "name": "ata",
+          "writable": true,
+          "docs": ["The user's SPL token account (ATA for [payer, mint])"]
+        },
+        {
+          "name": "ephemeralAta",
+          "writable": true,
+          "docs": ["The ephemeral ATA to undelegate"]
+        },
+        {
+          "name": "magicContext",
+          "writable": true,
+          "docs": ["Magic context account for undelegation"]
+        },
+        {
+          "name": "magicProgram",
+          "docs": ["The Magic Program for undelegation"],
+          "address": "Magic11111111111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "createEphemeralAtaPermission",
+      "discriminator": [6],
+      "docs": [
+        "Creates a permission account for an ephemeral ATA.",
+        "This enables ACL-based access control on the ephemeral ATA.",
+        "Idempotent - returns Ok if permission already exists."
+      ],
+      "accounts": [
+        {
+          "name": "ephemeralAta",
+          "writable": true,
+          "docs": ["The ephemeral ATA to create permission for (signer via PDA seeds)"]
+        },
+        {
+          "name": "permission",
+          "writable": true,
+          "docs": ["The permission account to create (PDA from [\"permission:\", ephemeral_ata])"]
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true,
+          "docs": ["The payer for rent"]
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "permissionProgram",
+          "docs": ["The Permission Program (ACL)"],
+          "address": "ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1"
+        }
+      ],
+      "args": [
+        {
+          "name": "bump",
+          "type": "u8"
+        },
+        {
+          "name": "flags",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "delegateEphemeralAtaPermission",
+      "discriminator": [7],
+      "docs": [
+        "Delegates an ephemeral ATA's permission account to a DLP.",
+        "This allows fine-grained permission management during delegation."
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true,
+          "docs": ["The payer for any rent/fees (also used as authority)"]
+        },
+        {
+          "name": "ephemeralAta",
+          "writable": true,
+          "docs": ["The ephemeral ATA whose permission is being delegated (signer via PDA seeds)"]
+        },
+        {
+          "name": "permissionProgram",
+          "docs": ["The Permission Program (ACL)"],
+          "address": "ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1"
+        },
+        {
+          "name": "permission",
+          "writable": true,
+          "docs": ["The permission account to delegate"]
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "buffer",
+          "writable": true,
+          "docs": ["Delegation buffer account"]
+        },
+        {
+          "name": "record",
+          "writable": true,
+          "docs": ["Delegation record account"]
+        },
+        {
+          "name": "metadata",
+          "writable": true,
+          "docs": ["Delegation metadata account"]
+        },
+        {
+          "name": "delegationProgram",
+          "docs": ["The Delegation Program"],
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "validator",
+          "docs": ["Validator to restrict delegation (can be any pubkey)"]
+        }
+      ],
+      "args": [
+        {
+          "name": "bump",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "undelegateEphemeralAtaPermission",
+      "discriminator": [8],
+      "docs": [
+        "Undelegates an ephemeral ATA's permission account from a DLP.",
+        "Returns control of the permission to this program."
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true,
+          "docs": ["The payer (must be the owner of the ephemeral ATA)"]
+        },
+        {
+          "name": "ephemeralAta",
+          "writable": true,
+          "docs": ["The ephemeral ATA whose permission is being undelegated"]
+        },
+        {
+          "name": "permission",
+          "writable": true,
+          "docs": ["The permission account to undelegate"]
+        },
+        {
+          "name": "permissionProgram",
+          "docs": ["The Permission Program (ACL)"],
+          "address": "ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1"
+        },
+        {
+          "name": "magicProgram",
+          "docs": ["The Magic Program for undelegation"],
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magicContext",
+          "writable": true,
+          "docs": ["Magic context account for undelegation"]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "resetEphemeralAtaPermission",
+      "discriminator": [9],
+      "docs": [
+        "Resets the permission flags on an ephemeral ATA's permission account.",
+        "Only the owner of the ephemeral ATA can reset permissions."
+      ],
+      "accounts": [
+        {
+          "name": "ephemeralAta",
+          "writable": true,
+          "docs": ["The ephemeral ATA whose permission is being reset (signer via PDA seeds)"]
+        },
+        {
+          "name": "permission",
+          "writable": true,
+          "docs": ["The permission account to reset"]
+        },
+        {
+          "name": "owner",
+          "signer": true,
+          "docs": ["The owner of the ephemeral ATA (must sign)"]
+        },
+        {
+          "name": "permissionProgram",
+          "docs": ["The Permission Program (ACL)"],
+          "address": "ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1"
+        }
+      ],
+      "args": [
+        {
+          "name": "bump",
+          "type": "u8"
+        },
+        {
+          "name": "flags",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "undelegationCallback",
+      "discriminator": [196],
+      "docs": [
+        "Callback invoked by the Delegation Program during undelegation.",
+        "Restores the ephemeral ATA state after undelegation completes.",
+        "This instruction should only be called by the Delegation Program."
+      ],
+      "accounts": [
+        {
+          "name": "delegatedAccount",
+          "writable": true,
+          "docs": ["The account being undelegated (Ephemeral ATA PDA)"]
+        },
+        {
+          "name": "bufferAccount",
+          "signer": true,
+          "docs": ["The delegation buffer account holding the snapshot (must sign)"]
+        },
+        {
+          "name": "payer",
+          "docs": ["The payer account"]
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "delegationProgramData",
+          "type": "bytes"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "EphemeralAta",
+      "discriminator": []
+    },
+    {
+      "name": "GlobalVault",
+      "discriminator": []
+    }
+  ],
+  "types": [
+    {
+      "name": "EphemeralAta",
+      "docs": [
+        "Ephemeral Associated Token Account.",
+        "Stores a virtual token balance for a user-mint pair.",
+        "PDA seeds: [owner, mint]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "docs": ["The owner of this ephemeral ATA"],
+            "type": "pubkey"
+          },
+          {
+            "name": "mint",
+            "docs": ["The SPL token mint associated with this ATA"],
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "docs": ["The virtual token balance"],
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GlobalVault",
+      "docs": [
+        "Global Vault for a specific mint.",
+        "Holds the actual SPL tokens backing all ephemeral ATAs for this mint.",
+        "PDA seeds: [mint]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint",
+            "docs": ["The SPL token mint for this vault"],
+            "type": "pubkey"
+          }
+        ]
+      }
+    }
+  ],
+  "errors": [
+    {
+      "code": 0,
+      "name": "InvalidInstruction",
+      "msg": "Invalid instruction data or discriminator"
+    },
+    {
+      "code": 1,
+      "name": "AlreadyInUse",
+      "msg": "Account is already initialized or in use"
+    },
+    {
+      "code": 2,
+      "name": "EphemeralAtaMismatch",
+      "msg": "Ephemeral ATA, Vault, Mint, or Owner mismatch"
+    }
+  ],
+  "constants": [
+    {
+      "name": "EPHEMERAL_ATA_SIZE",
+      "type": "u64",
+      "value": "72"
+    },
+    {
+      "name": "GLOBAL_VAULT_SIZE",
+      "type": "u64",
+      "value": "32"
+    }
+  ]
+}

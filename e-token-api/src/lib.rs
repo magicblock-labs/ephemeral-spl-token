@@ -35,4 +35,18 @@ pub mod instruction {
     pub const DELEGATE_EPHEMERAL_ATA: u8 = 4;
     /// 5 - UndelegateEphemeralAta: commit state and undelegate an ephemeral ATA via the delegation program
     pub const UNDELEGATE_EPHEMERAL_ATA: u8 = 5;
+    /// 6 - CreateEphemeralAtaPermission: create a permission account for the ephemeral ATA
+    ///     Instruction data:
+    ///     [0] bump
+    ///     [1] MemberFlags bitfield encoded via MemberFlags::to_acl_flag_byte.
+    pub const CREATE_EPHEMERAL_ATA_PERMISSION: u8 = 6;
+    /// 7 - DelegateEphemeralAtaPermission: delegate the permission PDA for an ephemeral ATA
+    pub const DELEGATE_EPHEMERAL_ATA_PERMISSION: u8 = 7;
+    /// 8 - UndelegateEphemeralAtaPermission: commit and undelegate the permission PDA
+    pub const UNDELEGATE_EPHEMERAL_ATA_PERMISSION: u8 = 8;
+    /// 9 - ResetEphemeralAtaPermission: reset permission members to creation-time defaults
+    ///     Instruction data:
+    ///     [0] bump
+    ///     [1] MemberFlags bitfield encoded via MemberFlags::to_acl_flag_byte.
+    pub const RESET_EPHEMERAL_ATA_PERMISSION: u8 = 9;
 }
