@@ -44,4 +44,9 @@ pub mod instruction {
     pub const DELEGATE_EPHEMERAL_ATA_PERMISSION: u8 = 7;
     /// 8 - UndelegateEphemeralAtaPermission: commit and undelegate the permission PDA
     pub const UNDELEGATE_EPHEMERAL_ATA_PERMISSION: u8 = 8;
+    /// 9 - ResetEphemeralAtaPermission: reset permission members to creation-time defaults
+    ///     Instruction data:
+    ///     [0] bump
+    ///     [1] MemberFlags bitfield encoded via MemberFlags::to_acl_flag_byte.
+    pub const RESET_EPHEMERAL_ATA_PERMISSION: u8 = 9;
 }
