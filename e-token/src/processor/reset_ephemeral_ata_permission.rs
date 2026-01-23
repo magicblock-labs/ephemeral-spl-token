@@ -47,7 +47,7 @@ pub fn process_reset_ephemeral_ata_permission(
         return Err(ProgramError::IncorrectAuthority);
     }
 
-    // TODO(GabrielePicco): pass bump once supported in the
+    // TODO(GabrielePicco): pass bump once supported in the SDK
     let expected_permission =
         permission_pda_from_permissioned_account(ephemeral_ata_info.address());
     if expected_permission != *permission_info.address() {

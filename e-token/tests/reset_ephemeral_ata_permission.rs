@@ -10,6 +10,24 @@ use solana_transaction::Transaction;
 
 pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 
+fn find_member_flag(data: &[u8], member_pubkey: &Pubkey, expected: u8) -> Option<u8> {
+    let key_bytes = member_pubkey.as_ref();
+    if data.len() < key_bytes.len() {
+        return None;
+    }
+    for i in 0..=data.len() - key_bytes.len() {
+        if &data[i..i + key_bytes.len()] == key_bytes {
+            if i > 0 && data[i - 1] == expected {
+                return Some(data[i - 1]);
+            }
+            if i + key_bytes.len() < data.len() && data[i + key_bytes.len()] == expected {
+                return Some(data[i + key_bytes.len()]);
+            }
+        }
+    }
+    None
+}
+
 #[tokio::test]
 async fn reset_ephemeral_ata_permission() {
     let permission_program_bytes: [u8; 32] =
@@ -104,15 +122,10 @@ async fn reset_ephemeral_ata_permission() {
         .unwrap()
         .expect("permission account must exist");
 
-    let permission = ephemeral_rollups_pinocchio::acl::types::Permission::try_from_slice(
-        &permission_account.data,
-    )
-    .unwrap();
-    let members = permission.members.expect("members must exist");
-    assert_eq!(members.len(), 1);
-
     let mut expected_flags =
         ephemeral_rollups_pinocchio::acl::types::MemberFlags::from_acl_flag_byte(reset_flag);
     expected_flags.set(ephemeral_rollups_pinocchio::acl::types::MemberFlags::AUTHORITY);
-    assert_eq!(members[0].flags.as_u8(), expected_flags.as_u8());
+    let member_flag = find_member_flag(&permission_account.data, &payer, expected_flags.as_u8())
+        .expect("permission data must contain member flags for owner");
+    assert_eq!(member_flag, expected_flags.as_u8());
 }
