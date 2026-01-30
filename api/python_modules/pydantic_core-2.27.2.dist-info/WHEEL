@@ -1,0 +1,5 @@
+Wheel-Version: 1.0
+Generator: maturin (1.8.6)
+Root-Is-Purelib: false
+Tag: cp312-cp312-pyodide_2024_0_wasm32
+
