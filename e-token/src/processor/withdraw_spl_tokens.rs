@@ -15,12 +15,13 @@ pub fn process_withdraw_spl_tokens(
     instruction_data: &[u8],
 ) -> ProgramResult {
     // Expected accounts:
-    // 0. [writable] Ephemeral ATA data account (PDA [payer, mint])
-    // 1. []         Global Vault data account (PDA [mint])
-    // 2. []         Mint account (readonly)
-    // 3. [writable] Vault source token account (SPL Token)
-    // 4. [writable] User destination token account (SPL Token)
-    // 5. []         Token program
+    // 0. [signer]   Owner (payer, authority to withdraw)
+    // 1. [writable] Ephemeral ATA data account (PDA [owner, mint])
+    // 2. []         Global Vault data account (PDA [mint])
+    // 3. []         Mint account (readonly)
+    // 4. [writable] Vault source token account (SPL Token)
+    // 5. [writable] User destination token account (SPL Token)
+    // 6. []         Token program
 
     let args = WithdrawArgs::try_from_bytes(instruction_data)?;
 
