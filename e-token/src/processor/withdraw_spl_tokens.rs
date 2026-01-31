@@ -1,3 +1,4 @@
+use super::utils;
 use core::marker::PhantomData;
 use ephemeral_spl_api::error::EphemeralSplError;
 use pinocchio::cpi::{Seed, Signer};
@@ -23,7 +24,7 @@ pub fn process_withdraw_spl_tokens(
 
     let args = WithdrawArgs::try_from_bytes(instruction_data)?;
 
-    let [owner, ephemeral_ata_info, vault_info, mint_info, vault_source_token_acc, user_dest_token_acc, ..] =
+    let [owner, ephemeral_ata_info, vault_info, mint_info, vault_source_token_acc, user_dest_token_acc, token_program_info, ..] =
         accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
@@ -66,12 +67,13 @@ pub fn process_withdraw_spl_tokens(
     let seeds = [Seed::from(mint_info.address().as_ref()), Seed::from(&bump)];
     let signer = Signer::from(&seeds);
 
-    pinocchio_token::instructions::TransferChecked {
+    utils::TransferChecked {
         mint: mint_info,
         from: vault_source_token_acc,
         to: user_dest_token_acc,
-        amount: args.amount(),
         authority: vault_info, // PDA authority over the vault token account
+        token_program: token_program_info,
+        amount: args.amount(),
         decimals,
     }
     .invoke_signed(&[signer])?;

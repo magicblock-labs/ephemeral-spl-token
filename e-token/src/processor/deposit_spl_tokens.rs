@@ -1,3 +1,4 @@
+use super::utils;
 use core::marker::PhantomData;
 use {
     ephemeral_spl_api::state::{
@@ -22,7 +23,7 @@ pub fn process_deposit_spl_tokens(
 
     let args = DepositArgs::try_from_bytes(instruction_data)?;
 
-    let [ephemeral_ata_info, vault_info, mint_info, user_source_token_acc, vault_token_acc, user_authority, ..] =
+    let [ephemeral_ata_info, vault_info, mint_info, user_source_token_acc, vault_token_acc, user_authority, token_program_info, ..] =
         accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
@@ -40,18 +41,19 @@ pub fn process_deposit_spl_tokens(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    // Perform the actual SPL Token transfer via CPI using pinocchio-token
-    // Read mint decimals and invoke transfer_checked
+    // Perform the actual SPL Token transfer via CPI using custom token transfer
+    // Read mint decimals and invoke transfer_checked with custom token program
     let decimals = pinocchio_token::state::Mint::from_account_view(mint_info)
         .map_err(|_| ProgramError::InvalidAccountData)?
         .decimals();
 
-    pinocchio_token::instructions::TransferChecked {
+    utils::TransferChecked {
         mint: mint_info,
         from: user_source_token_acc,
         to: vault_token_acc,
-        amount: args.amount(),
         authority: user_authority,
+        token_program: token_program_info,
+        amount: args.amount(),
         decimals,
     }
     .invoke()?;
