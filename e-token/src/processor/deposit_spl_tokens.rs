@@ -43,7 +43,7 @@ pub fn process_deposit_spl_tokens(
 
     // Perform the actual SPL Token transfer via CPI using custom token transfer
     // Read mint decimals and invoke transfer_checked with custom token program
-    let decimals = pinocchio_token::state::Mint::from_account_view(mint_info)
+    let decimals = utils::Mint::from_account_view(mint_info)
         .map_err(|_| ProgramError::InvalidAccountData)?
         .decimals();
 

@@ -59,7 +59,7 @@ pub fn process_withdraw_spl_tokens(
     }
 
     // read mint decimals
-    let decimals = pinocchio_token::state::Mint::from_account_view(mint_info)
+    let decimals = utils::Mint::from_account_view(mint_info)
         .map_err(|_| ProgramError::InvalidAccountData)?
         .decimals();
 
