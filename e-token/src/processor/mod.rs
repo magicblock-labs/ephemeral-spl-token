@@ -8,7 +8,6 @@ pub mod reset_ephemeral_ata_permission;
 pub mod undelegate_ephemeral_ata;
 pub mod undelegate_ephemeral_ata_permission;
 pub mod undelegation_callback;
-pub mod utils;
 pub mod withdraw_spl_tokens;
 
 pub use create_ephemeral_ata_permission::process_create_ephemeral_ata_permission;

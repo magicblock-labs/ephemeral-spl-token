@@ -1,4 +1,3 @@
-use super::utils;
 use core::marker::PhantomData;
 use ephemeral_spl_api::error::EphemeralSplError;
 use pinocchio::cpi::{Seed, Signer};
@@ -58,22 +57,26 @@ pub fn process_withdraw_spl_tokens(
         return Err(EphemeralSplError::EphemeralAtaMismatch.into());
     }
 
-    // read mint decimals
-    let decimals = utils::Mint::from_account_view(mint_info)
-        .map_err(|_| ProgramError::InvalidAccountData)?
-        .decimals();
+    // read mint decimals directly from account data (works for both legacy and Token-2022)
+    let decimals = {
+        let data = unsafe { mint_info.borrow_unchecked() };
+        if data.len() < 45 {
+            return Err(ProgramError::InvalidAccountData);
+        }
+        data[44]
+    };
 
     // Perform transfer from vault token account to user destination, signed by vault PDA
     let bump = [args.bump()];
     let seeds = [Seed::from(mint_info.address().as_ref()), Seed::from(&bump)];
     let signer = Signer::from(&seeds);
 
-    utils::TransferChecked {
+    pinocchio_token_2022::instructions::TransferChecked {
         mint: mint_info,
         from: vault_source_token_acc,
         to: user_dest_token_acc,
         authority: vault_info, // PDA authority over the vault token account
-        token_program: token_program_info,
+        token_program: token_program_info.address(),
         amount: args.amount(),
         decimals,
     }

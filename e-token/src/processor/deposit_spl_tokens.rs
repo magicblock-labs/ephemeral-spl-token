@@ -1,4 +1,3 @@
-use super::utils;
 use core::marker::PhantomData;
 use {
     ephemeral_spl_api::state::{
@@ -42,17 +41,21 @@ pub fn process_deposit_spl_tokens(
     }
 
     // Perform the actual SPL Token transfer via CPI using custom token transfer
-    // Read mint decimals and invoke transfer_checked with custom token program
-    let decimals = utils::Mint::from_account_view(mint_info)
-        .map_err(|_| ProgramError::InvalidAccountData)?
-        .decimals();
+    // Read mint decimals directly from account data (works for both legacy and Token-2022)
+    let decimals = {
+        let data = unsafe { mint_info.borrow_unchecked() };
+        if data.len() < 45 {
+            return Err(ProgramError::InvalidAccountData);
+        }
+        data[44]
+    };
 
-    utils::TransferChecked {
+    pinocchio_token_2022::instructions::TransferChecked {
         mint: mint_info,
         from: user_source_token_acc,
         to: vault_token_acc,
         authority: user_authority,
-        token_program: token_program_info,
+        token_program: token_program_info.address(),
         amount: args.amount(),
         decimals,
     }

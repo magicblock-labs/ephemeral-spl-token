@@ -1,6 +1,6 @@
 use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_unchecked};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
-use pinocchio_token::state::TokenAccount;
+use pinocchio_token_2022::state::TokenAccount;
 
 /// Undelegate an Ephemeral ATA by calling into the delegation program helper that
 /// schedules a commit and performs undelegation.
