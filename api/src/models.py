@@ -44,6 +44,7 @@ class DepositSplTokensRequest(ClusterConfig):
     amount: int = Field(..., description="Amount of tokens to deposit", ge=0)
     ephemeral_ata: str = Field(..., description="Ephemeral ATA PDA")
     vault: str = Field(..., description="Global vault PDA")
+    token_program: Optional[str] = Field(None, description="Token program ID override (defaults to SPL Token)")
 
 
 class WithdrawSplTokensRequest(ClusterConfig):
@@ -56,6 +57,7 @@ class WithdrawSplTokensRequest(ClusterConfig):
     ephemeral_ata: str = Field(..., description="Ephemeral ATA PDA")
     vault: str = Field(..., description="Global vault PDA")
     vault_bump: int = Field(..., description="Global vault bump", ge=0, le=255)
+    token_program: Optional[str] = Field(None, description="Token program ID override (defaults to SPL Token)")
 
 
 class DelegateEphemeralAtaRequest(ClusterConfig):
@@ -126,3 +128,16 @@ class ResetEphemeralAtaPermissionRequest(ClusterConfig):
     ephemeral_ata: str = Field(..., description="Ephemeral ATA PDA")
     ephemeral_ata_bump: int = Field(..., description="Ephemeral ATA bump", ge=0, le=255)
     permission: str = Field(..., description="Permission PDA")
+
+
+class CheckedTransferRequest(ClusterConfig):
+    """Transfer SPL tokens with checked mint and decimals (TransferChecked)."""
+    source: str = Field(..., description="Source token account (writable)")
+    destination: str = Field(..., description="Destination token account (writable)")
+    mint: str = Field(..., description="Token mint (readonly)")
+    authority: str = Field(..., description="Authority/owner of source token account (signer)")
+    amount: int = Field(..., description="Amount of tokens to transfer", ge=0)
+    decimals: int = Field(..., description="Expected token decimals", ge=0, le=18)
+    ephemeral_ata: str = Field(..., description="Ephemeral ATA PDA")
+    ephemeral_ata_bump: int = Field(..., description="Ephemeral ATA bump", ge=0, le=255)
+    token_program: Optional[str] = Field(None, description="Token program ID override (defaults to SPL Token)")

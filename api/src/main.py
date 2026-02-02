@@ -26,6 +26,7 @@ def create_app():
         DelegateEphemeralAtaPermissionRequest,
         UndelegateEphemeralAtaPermissionRequest,
         ResetEphemeralAtaPermissionRequest,
+        CheckedTransferRequest,
     )
     from .builder import builder, serialize_transaction
 
@@ -94,6 +95,7 @@ def create_app():
                 req.amount,
                 req.ephemeral_ata,
                 req.vault,
+                req.token_program,
             )
             tx = await serialize_transaction(ix, req.authority, req.cluster_url)
             return TransactionResponse(transaction=tx)
@@ -112,6 +114,7 @@ def create_app():
                 req.ephemeral_ata,
                 req.vault,
                 req.vault_bump,
+                req.token_program,
             )
             tx = await serialize_transaction(ix, req.owner, req.cluster_url)
             return TransactionResponse(transaction=tx)
@@ -212,6 +215,23 @@ def create_app():
                 req.permission,
             )
             tx = await serialize_transaction(ix, req.owner, req.cluster_url)
+            return TransactionResponse(transaction=tx)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    @app.post("/tx/checked-transfer", response_model=TransactionResponse, tags=["Transactions"])
+    async def checked_transfer(req: CheckedTransferRequest):
+        try:
+            ix = builder.checked_transfer(
+                req.source,
+                req.destination,
+                req.mint,
+                req.amount,
+                req.decimals,
+                req.authority,
+                req.token_program,
+            )
+            tx = await serialize_transaction(ix, req.authority, req.cluster_url)
             return TransactionResponse(transaction=tx)
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))

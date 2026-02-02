@@ -259,8 +259,10 @@ class InstructionBuilder:
         amount: int,
         ephemeral_ata: str,
         vault: str,
+        token_program: Optional[str] = None,
     ) -> Instruction:
         data = struct.pack("<BQ", 2, amount)
+        token_prog = _pubkey_bytes(token_program) if token_program else self.token_program
         accounts = [
             AccountMeta(_pubkey_bytes(ephemeral_ata), False, True),
             AccountMeta(_pubkey_bytes(vault), False, False),
@@ -268,7 +270,7 @@ class InstructionBuilder:
             AccountMeta(_pubkey_bytes(source_token), False, True),
             AccountMeta(_pubkey_bytes(vault_token), False, True),
             AccountMeta(_pubkey_bytes(authority), True, False),
-            AccountMeta(self.token_program, False, False),
+            AccountMeta(token_prog, False, False),
         ]
         return Instruction(self.program_id, data, accounts)
 
@@ -282,8 +284,10 @@ class InstructionBuilder:
         ephemeral_ata: str,
         vault: str,
         vault_bump: int,
+        token_program: Optional[str] = None,
     ) -> Instruction:
         data = struct.pack("<BQB", 3, amount, vault_bump)
+        token_prog = _pubkey_bytes(token_program) if token_program else self.token_program
         accounts = [
             AccountMeta(_pubkey_bytes(owner), True, False),
             AccountMeta(_pubkey_bytes(ephemeral_ata), False, True),
@@ -291,7 +295,7 @@ class InstructionBuilder:
             AccountMeta(_pubkey_bytes(mint), False, False),
             AccountMeta(_pubkey_bytes(vault_source), False, True),
             AccountMeta(_pubkey_bytes(user_dest), False, True),
-            AccountMeta(self.token_program, False, False),
+            AccountMeta(token_prog, False, False),
         ]
         return Instruction(self.program_id, data, accounts)
 
@@ -423,6 +427,38 @@ class InstructionBuilder:
             AccountMeta(self.permission_program, False, False),
         ]
         return Instruction(self.program_id, data, accounts)
+
+    def checked_transfer(
+        self,
+        source: str,
+        destination: str,
+        mint: str,
+        amount: int,
+        decimals: int,
+        authority: str,
+        token_program: Optional[str] = None,
+    ) -> Instruction:
+        """SPL token TransferChecked instruction (discriminator 12).
+        token_program: Token program ID override (defaults to self.token_program)
+        
+        Transfers tokens from source to destination with mint/decimals validation.
+        
+        Accounts:
+        - source (writable): source token account
+        - mint (readonly): token mint
+        - destination (writable): destination token account
+        - authority (signer): source account owner/delegate
+        """
+
+        data = struct.pack("<BQB", 12, amount, decimals)
+        token_prog = _pubkey_bytes(token_program) if token_program else self.token_program
+        accounts = [
+            AccountMeta(_pubkey_bytes(source), False, True),
+            AccountMeta(_pubkey_bytes(mint), False, False),
+            AccountMeta(_pubkey_bytes(destination), False, True),
+            AccountMeta(_pubkey_bytes(authority), True, False),
+        ]
+        return Instruction(token_prog, data, accounts)
 
 
 builder = InstructionBuilder()
