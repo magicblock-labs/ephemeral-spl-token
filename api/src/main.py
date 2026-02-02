@@ -27,6 +27,7 @@ def create_app():
         UndelegateEphemeralAtaPermissionRequest,
         ResetEphemeralAtaPermissionRequest,
         CheckedTransferRequest,
+        InitializeAtaRequest,
     )
     from .builder import builder, serialize_transaction
 
@@ -232,6 +233,21 @@ def create_app():
                 req.token_program,
             )
             tx = await serialize_transaction(ix, req.authority, req.cluster_url)
+            return TransactionResponse(transaction=tx)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    @app.post("/tx/initialize-ata", response_model=TransactionResponse, tags=["Transactions"])
+    async def initialize_ata(req: InitializeAtaRequest):
+        try:
+            ix = builder.initialize_ata(
+                req.payer,
+                req.user,
+                req.mint,
+                req.ata,
+                req.token_program,
+            )
+            tx = await serialize_transaction(ix, req.payer, req.cluster_url)
             return TransactionResponse(transaction=tx)
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))

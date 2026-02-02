@@ -214,6 +214,7 @@ class InstructionBuilder:
         self.delegation_program = _pubkey_bytes(settings.delegation_program)
         self.permission_program = _pubkey_bytes(settings.permission_program)
         self.magic_program = _pubkey_bytes(settings.magic_program)
+        self.ata_program = _pubkey_bytes(settings.ata_program)
 
     def initialize_ephemeral_ata(
         self,
@@ -459,6 +460,38 @@ class InstructionBuilder:
             AccountMeta(_pubkey_bytes(authority), True, False),
         ]
         return Instruction(token_prog, data, accounts)
+
+    def initialize_ata(
+        self,
+        payer: str,
+        user: str,
+        mint: str,
+        ata: str,
+        token_program: Optional[str] = None,
+    ) -> Instruction:
+        """Associated Token Account (ATA) Initialize instruction.
+        
+        Initializes an associated token account for a user and mint pair.
+        
+        Accounts:
+        - payer (writable, signer): payer for account creation
+        - ata (writable): associated token account to be created
+        - user (readonly): owner of the ATA
+        - mint (readonly): token mint
+        - system_program (readonly): system program
+        - token_program (readonly): token program
+        """
+        data = b""  # ATA Create instruction has no data (empty input means Create)
+        token_prog = _pubkey_bytes(token_program) if token_program else self.token_program
+        accounts = [
+            AccountMeta(_pubkey_bytes(payer), True, True),
+            AccountMeta(_pubkey_bytes(ata), False, True),
+            AccountMeta(_pubkey_bytes(user), False, False),
+            AccountMeta(_pubkey_bytes(mint), False, False),
+            AccountMeta(self.system_program, False, False),
+            AccountMeta(token_prog, False, False),
+        ]
+        return Instruction(self.ata_program, data, accounts)
 
 
 builder = InstructionBuilder()

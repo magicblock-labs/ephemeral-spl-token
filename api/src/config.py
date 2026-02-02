@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     delegation_program: str = "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
     permission_program: str = "ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1"
     magic_program: str = "Magic11111111111111111111111111111111111111"
+    ata_program: str = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
 
     class Config:
         env_prefix = "EPHEMERAL_"

@@ -141,3 +141,12 @@ class CheckedTransferRequest(ClusterConfig):
     ephemeral_ata: str = Field(..., description="Ephemeral ATA PDA")
     ephemeral_ata_bump: int = Field(..., description="Ephemeral ATA bump", ge=0, le=255)
     token_program: Optional[str] = Field(None, description="Token program ID override (defaults to SPL Token)")
+
+
+class InitializeAtaRequest(ClusterConfig):
+    """Initialize an Associated Token Account for a user-mint pair."""
+    payer: str = Field(..., description="Payer pubkey (signer)")
+    user: str = Field(..., description="Owner of the ATA")
+    mint: str = Field(..., description="SPL token mint")
+    ata: str = Field(..., description="Associated Token Account address")
+    token_program: Optional[str] = Field(None, description="Token program ID override (defaults to SPL Token)")
