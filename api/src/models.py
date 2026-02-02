@@ -138,8 +138,6 @@ class CheckedTransferRequest(ClusterConfig):
     authority: str = Field(..., description="Authority/owner of source token account (signer)")
     amount: int = Field(..., description="Amount of tokens to transfer", ge=0)
     decimals: int = Field(..., description="Expected token decimals", ge=0, le=18)
-    ephemeral_ata: str = Field(..., description="Ephemeral ATA PDA")
-    ephemeral_ata_bump: int = Field(..., description="Ephemeral ATA bump", ge=0, le=255)
     token_program: Optional[str] = Field(None, description="Token program ID override (defaults to SPL Token)")
 
 
