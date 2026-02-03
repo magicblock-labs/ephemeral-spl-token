@@ -1,0 +1,30 @@
+app = "ephemeral-spl-token-api"
+primary_region = "sin"
+
+[build]
+dockerfile = "Dockerfile"
+
+[env]
+EPHEMERAL_CLUSTER_URL = "https://rpc.magicblock.app/mainnet"
+
+[[services]]
+internal_port = 8000
+processes = ["app"]
+
+[services.http_checks]
+enabled = true
+interval = 10000
+timeout = 5000
+grace_period = "5s"
+method = "GET"
+path = "/"
+protocol = "http"
+tls_skip_verify = false
+
+[[services.ports]]
+port = 80
+handlers = ["http"]
+
+[[services.ports]]
+port = 443
+handlers = ["tls", "http"]
