@@ -8,3 +8,13 @@
 node_modules
 test-ledger
 dist
+
+# Python
+__pycache__/
+**/__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Test snapshots (generated, not committed)
+api/tests/snapshots.json

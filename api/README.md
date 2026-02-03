@@ -97,46 +97,61 @@ Response:
 
 ## Testing
 
-Two test scripts are provided to verify all API endpoints:
-
-### Quick Test Script
-Run all endpoint tests with a simple Python script:
+### Setup
 
 ```bash
-python test_endpoints.py
+# Create virtual environment and install dependencies
+python3 -m venv .venv
+source .venv/bin/activate
+pip install pytest httpx fastapi pydantic pydantic-settings
 ```
 
-This provides a summary of all tests with pass/fail status.
+### Snapshot Tests (Transaction Determinism)
 
-### Comprehensive Pytest Tests
-Run detailed tests with pytest:
+Snapshot tests ensure that API changes don't alter the serialized transaction output. This is useful when refactoring the API (e.g., moving PDA computation server-side) while ensuring byte-for-byte identical transactions.
 
 ```bash
-# Install pytest
-pip install pytest
+# Run snapshot tests
+source .venv/bin/activate
+pytest tests/test_snapshots.py -v
+```
 
-# Run all tests
-pytest test_api.py -v
+**How it works:**
+1. The blockhash is mocked to a fixed value for deterministic output
+2. Tests compare the exact base64 transaction string against saved snapshots
+3. If the output changes, the test fails with a diff
+
+**Workflow for refactoring:**
+
+```bash
+# 1. Generate snapshots BEFORE making changes
+python tests/generate_snapshots.py
+
+# 2. Make your API changes (simplify interface, move computation server-side, etc.)
+
+# 3. Run tests to verify output is unchanged
+pytest tests/test_snapshots.py -v
+
+# 4. If tests fail, either fix your code or regenerate snapshots if change is intentional
+python tests/generate_snapshots.py
+```
+
+### API Endpoint Tests
+
+Run endpoint tests to verify all API functionality:
+
+```bash
+# Run all endpoint tests
+pytest tests/test_api.py -v
 
 # Run specific test class
-pytest test_api.py::TestHealthEndpoints -v
-
-# Run with quiet output
-pytest test_api.py -q
+pytest tests/test_api.py::TestHealthEndpoints -v
 ```
 
-Both test scripts cover:
-- Health check endpoints
-- All ephemeral ATA operations
-- Global vault operations
-- Token deposit/withdrawal
-- Permission management
-- Token transfers
-- ATA creation
-- Error handling and validation
-- Transaction format verification
+### Test Coverage
 
-For detailed testing information, see [TESTING.md](TESTING.md).
+- **Snapshot tests** (`test_snapshots.py`): Transaction determinism, byte-for-byte comparison
+- **API tests** (`test_api.py`): Endpoint functionality, validation, error handling
 
 ## Cloudflare Workers Deployment
 
