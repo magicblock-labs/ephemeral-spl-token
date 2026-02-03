@@ -22,16 +22,16 @@ class InitializeEphemeralAtaRequest(ClusterConfig):
     payer: str = Field(..., description="Payer pubkey (signer)")
     user: str = Field(..., description="Owner of the ephemeral ATA")
     mint: str = Field(..., description="SPL token mint")
-    ephemeral_ata: str = Field(..., description="Ephemeral ATA PDA")
-    ephemeral_ata_bump: int = Field(..., description="Ephemeral ATA bump", ge=0, le=255)
+    ephemeral_ata: Optional[str] = Field(None, description="Ephemeral ATA PDA (derived if not provided)")
+    ephemeral_ata_bump: Optional[int] = Field(None, description="Ephemeral ATA bump (derived if not provided)", ge=0, le=255)
 
 
 class InitializeGlobalVaultRequest(ClusterConfig):
     """Initialize a Global Vault for a specific mint."""
     payer: str = Field(..., description="Payer pubkey (signer)")
     mint: str = Field(..., description="SPL token mint")
-    vault: str = Field(..., description="Global vault PDA")
-    vault_bump: int = Field(..., description="Global vault bump", ge=0, le=255)
+    vault: Optional[str] = Field(None, description="Global vault PDA (derived if not provided)")
+    vault_bump: Optional[int] = Field(None, description="Global vault bump (derived if not provided)", ge=0, le=255)
 
 
 class DepositSplTokensRequest(ClusterConfig):
@@ -39,11 +39,11 @@ class DepositSplTokensRequest(ClusterConfig):
     authority: str = Field(..., description="Authority over source token account (signer)")
     user: str = Field(..., description="Owner of the ephemeral ATA")
     mint: str = Field(..., description="SPL token mint")
-    source_token: str = Field(..., description="User's source token account")
-    vault_token: str = Field(..., description="Vault's token account")
+    source_token: Optional[str] = Field(None, description="User's source token account (derived from authority if not provided)")
+    vault_token: Optional[str] = Field(None, description="Vault's token account (derived if not provided)")
     amount: int = Field(..., description="Amount of tokens to deposit", ge=0)
-    ephemeral_ata: str = Field(..., description="Ephemeral ATA PDA")
-    vault: str = Field(..., description="Global vault PDA")
+    ephemeral_ata: Optional[str] = Field(None, description="Ephemeral ATA PDA (derived if not provided)")
+    vault: Optional[str] = Field(None, description="Global vault PDA (derived if not provided)")
     token_program: Optional[str] = Field(None, description="Token program ID override (defaults to SPL Token)")
 
 
@@ -51,12 +51,12 @@ class WithdrawSplTokensRequest(ClusterConfig):
     """Withdraw SPL tokens from an ephemeral ATA."""
     owner: str = Field(..., description="Owner of ephemeral ATA (signer)")
     mint: str = Field(..., description="SPL token mint")
-    vault_source: str = Field(..., description="Vault's source token account")
-    user_dest: str = Field(..., description="User's destination token account")
+    vault_source: Optional[str] = Field(None, description="Vault's source token account (derived if not provided)")
+    user_dest: Optional[str] = Field(None, description="User's destination token account (derived from owner if not provided)")
     amount: int = Field(..., description="Amount of tokens to withdraw", ge=0)
-    ephemeral_ata: str = Field(..., description="Ephemeral ATA PDA")
-    vault: str = Field(..., description="Global vault PDA")
-    vault_bump: int = Field(..., description="Global vault bump", ge=0, le=255)
+    ephemeral_ata: Optional[str] = Field(None, description="Ephemeral ATA PDA (derived if not provided)")
+    vault: Optional[str] = Field(None, description="Global vault PDA (derived if not provided)")
+    vault_bump: Optional[int] = Field(None, description="Global vault bump (derived if not provided)", ge=0, le=255)
     token_program: Optional[str] = Field(None, description="Token program ID override (defaults to SPL Token)")
 
 
@@ -70,8 +70,8 @@ class DelegateEphemeralAtaRequest(ClusterConfig):
     delegation_record: str = Field(..., description="Delegation record account")
     delegation_metadata: str = Field(..., description="Delegation metadata account")
     validator: Optional[str] = Field(None, description="Optional validator pubkey")
-    ephemeral_ata: str = Field(..., description="Ephemeral ATA PDA")
-    ephemeral_ata_bump: int = Field(..., description="Ephemeral ATA bump", ge=0, le=255)
+    ephemeral_ata: Optional[str] = Field(None, description="Ephemeral ATA PDA (derived if not provided)")
+    ephemeral_ata_bump: Optional[int] = Field(None, description="Ephemeral ATA bump (derived if not provided)", ge=0, le=255)
 
 
 class UndelegateEphemeralAtaRequest(ClusterConfig):
@@ -79,9 +79,9 @@ class UndelegateEphemeralAtaRequest(ClusterConfig):
     payer: str = Field(..., description="Payer/owner pubkey (signer)")
     user: str = Field(..., description="Owner of the ephemeral ATA")
     mint: str = Field(..., description="SPL token mint")
-    ata: str = Field(..., description="User's SPL token account")
+    ata: Optional[str] = Field(None, description="User's SPL token account (derived if not provided)")
     magic_context: str = Field(..., description="Magic context account")
-    ephemeral_ata: str = Field(..., description="Ephemeral ATA PDA")
+    ephemeral_ata: Optional[str] = Field(None, description="Ephemeral ATA PDA (derived if not provided)")
 
 
 class CreateEphemeralAtaPermissionRequest(ClusterConfig):
@@ -90,9 +90,9 @@ class CreateEphemeralAtaPermissionRequest(ClusterConfig):
     user: str = Field(..., description="Owner of the ephemeral ATA")
     mint: str = Field(..., description="SPL token mint")
     flags: int = Field(..., description="Permission flags (MemberFlags bitfield)", ge=0, le=255)
-    ephemeral_ata: str = Field(..., description="Ephemeral ATA PDA")
-    ephemeral_ata_bump: int = Field(..., description="Ephemeral ATA bump", ge=0, le=255)
-    permission: str = Field(..., description="Permission PDA")
+    ephemeral_ata: Optional[str] = Field(None, description="Ephemeral ATA PDA (derived if not provided)")
+    ephemeral_ata_bump: Optional[int] = Field(None, description="Ephemeral ATA bump (derived if not provided)", ge=0, le=255)
+    permission: Optional[str] = Field(None, description="Permission PDA (derived if not provided)")
 
 
 class DelegateEphemeralAtaPermissionRequest(ClusterConfig):
@@ -104,9 +104,9 @@ class DelegateEphemeralAtaPermissionRequest(ClusterConfig):
     record: str = Field(..., description="Delegation record account")
     metadata: str = Field(..., description="Delegation metadata account")
     validator: str = Field(..., description="Validator to restrict delegation")
-    ephemeral_ata: str = Field(..., description="Ephemeral ATA PDA")
-    ephemeral_ata_bump: int = Field(..., description="Ephemeral ATA bump", ge=0, le=255)
-    permission: str = Field(..., description="Permission PDA")
+    ephemeral_ata: Optional[str] = Field(None, description="Ephemeral ATA PDA (derived if not provided)")
+    ephemeral_ata_bump: Optional[int] = Field(None, description="Ephemeral ATA bump (derived if not provided)", ge=0, le=255)
+    permission: Optional[str] = Field(None, description="Permission PDA (derived if not provided)")
 
 
 class UndelegateEphemeralAtaPermissionRequest(ClusterConfig):
@@ -115,8 +115,8 @@ class UndelegateEphemeralAtaPermissionRequest(ClusterConfig):
     user: str = Field(..., description="Owner of the ephemeral ATA")
     mint: str = Field(..., description="SPL token mint")
     magic_context: str = Field(..., description="Magic context account")
-    ephemeral_ata: str = Field(..., description="Ephemeral ATA PDA")
-    permission: str = Field(..., description="Permission PDA")
+    ephemeral_ata: Optional[str] = Field(None, description="Ephemeral ATA PDA (derived if not provided)")
+    permission: Optional[str] = Field(None, description="Permission PDA (derived if not provided)")
 
 
 class ResetEphemeralAtaPermissionRequest(ClusterConfig):
@@ -125,9 +125,9 @@ class ResetEphemeralAtaPermissionRequest(ClusterConfig):
     user: str = Field(..., description="Owner of the ephemeral ATA")
     mint: str = Field(..., description="SPL token mint")
     flags: int = Field(..., description="New permission flags", ge=0, le=255)
-    ephemeral_ata: str = Field(..., description="Ephemeral ATA PDA")
-    ephemeral_ata_bump: int = Field(..., description="Ephemeral ATA bump", ge=0, le=255)
-    permission: str = Field(..., description="Permission PDA")
+    ephemeral_ata: Optional[str] = Field(None, description="Ephemeral ATA PDA (derived if not provided)")
+    ephemeral_ata_bump: Optional[int] = Field(None, description="Ephemeral ATA bump (derived if not provided)", ge=0, le=255)
+    permission: Optional[str] = Field(None, description="Permission PDA (derived if not provided)")
 
 
 class CheckedTransferRequest(ClusterConfig):
@@ -137,7 +137,7 @@ class CheckedTransferRequest(ClusterConfig):
     mint: str = Field(..., description="Token mint (readonly)")
     authority: str = Field(..., description="Authority/owner of source token account (signer)")
     amount: int = Field(..., description="Amount of tokens to transfer", ge=0)
-    decimals: int = Field(..., description="Expected token decimals", ge=0, le=18)
+    decimals: Optional[int] = Field(None, description="Expected token decimals (fetched from mint if not provided)", ge=0, le=18)
     token_program: Optional[str] = Field(None, description="Token program ID override (defaults to SPL Token)")
 
 
@@ -146,5 +146,5 @@ class InitializeAtaRequest(ClusterConfig):
     payer: str = Field(..., description="Payer pubkey (signer)")
     user: str = Field(..., description="Owner of the ATA")
     mint: str = Field(..., description="SPL token mint")
-    ata: str = Field(..., description="Associated Token Account address")
+    ata: Optional[str] = Field(None, description="Associated Token Account address (derived if not provided)")
     token_program: Optional[str] = Field(None, description="Token program ID override (defaults to SPL Token)")

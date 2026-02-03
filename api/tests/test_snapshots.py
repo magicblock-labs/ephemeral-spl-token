@@ -9,7 +9,7 @@ Usage:
     pytest test_snapshots.py -v
 
     # Regenerate snapshots after intentional changes
-    python generate_snapshots.py
+    python update_master_snapshot.py
 """
 
 import json
@@ -20,19 +20,19 @@ from unittest.mock import patch, AsyncMock
 # Fixed blockhash for deterministic tests (32 zero bytes)
 FIXED_BLOCKHASH = b'\x00' * 32
 
-# Load snapshots
-SNAPSHOTS_FILE = Path(__file__).parent / "snapshots.json"
+# Load master snapshot
+MASTER_SNAPSHOT_FILE = Path(__file__).parent / "MASTER_SNAPSHOT.json"
 
 
-def load_snapshots() -> dict:
-    """Load expected transaction snapshots from JSON file."""
-    if not SNAPSHOTS_FILE.exists():
+def load_master_snapshot() -> dict:
+    """Load expected transaction snapshots from master snapshot file."""
+    if not MASTER_SNAPSHOT_FILE.exists():
         return {}
-    with open(SNAPSHOTS_FILE) as f:
+    with open(MASTER_SNAPSHOT_FILE) as f:
         return json.load(f)
 
 
-SNAPSHOTS = load_snapshots()
+MASTER_SNAPSHOT = load_master_snapshot()
 
 
 @pytest.fixture
@@ -52,7 +52,8 @@ def client(mock_blockhash):
     return TestClient(app)
 
 
-# Test fixtures - these inputs should produce stable outputs
+# Test fixtures - MINIMAL inputs, derivable fields removed
+# API will derive PDAs from user/mint
 TEST_INPUTS = {
     "initialize_ephemeral_ata": {
         "endpoint": "/tx/initialize-ephemeral-ata",
@@ -60,8 +61,7 @@ TEST_INPUTS = {
             "payer": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
             "user": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
             "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-            "ephemeral_ata": "So11111111111111111111111111111111111111112",
-            "ephemeral_ata_bump": 255,
+            # ephemeral_ata and ephemeral_ata_bump derived by API
         },
     },
     "initialize_global_vault": {
@@ -69,8 +69,7 @@ TEST_INPUTS = {
         "payload": {
             "payer": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
             "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-            "vault": "So11111111111111111111111111111111111111112",
-            "vault_bump": 254,
+            # vault and vault_bump derived by API
         },
     },
     "deposit_spl_tokens": {
@@ -79,11 +78,8 @@ TEST_INPUTS = {
             "authority": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
             "user": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
             "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-            "source_token": "So11111111111111111111111111111111111111112",
-            "vault_token": "11111111111111111111111111111111",
             "amount": 1000000,
-            "ephemeral_ata": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
-            "vault": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            # source_token, vault_token, ephemeral_ata, vault derived by API
         },
     },
     "withdraw_spl_tokens": {
@@ -91,12 +87,8 @@ TEST_INPUTS = {
         "payload": {
             "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
             "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-            "vault_source": "So11111111111111111111111111111111111111112",
-            "user_dest": "11111111111111111111111111111111",
             "amount": 500000,
-            "ephemeral_ata": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
-            "vault": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-            "vault_bump": 253,
+            # vault_source, user_dest, ephemeral_ata, vault, vault_bump derived by API
         },
     },
     "delegate_ephemeral_ata": {
@@ -109,8 +101,7 @@ TEST_INPUTS = {
             "buffer": "11111111111111111111111111111111",
             "delegation_record": "ComputeBudget111111111111111111111111111111",
             "delegation_metadata": "Vote111111111111111111111111111111111111111",
-            "ephemeral_ata": "Stake11111111111111111111111111111111111111",
-            "ephemeral_ata_bump": 252,
+            # ephemeral_ata and ephemeral_ata_bump derived by API
         },
     },
     "delegate_ephemeral_ata_with_validator": {
@@ -123,9 +114,8 @@ TEST_INPUTS = {
             "buffer": "11111111111111111111111111111111",
             "delegation_record": "ComputeBudget111111111111111111111111111111",
             "delegation_metadata": "Vote111111111111111111111111111111111111111",
-            "ephemeral_ata": "Stake11111111111111111111111111111111111111",
-            "ephemeral_ata_bump": 252,
             "validator": "Config1111111111111111111111111111111111111",
+            # ephemeral_ata and ephemeral_ata_bump derived by API
         },
     },
     "undelegate_ephemeral_ata": {
@@ -134,9 +124,8 @@ TEST_INPUTS = {
             "payer": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
             "user": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
             "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-            "ata": "So11111111111111111111111111111111111111112",
             "magic_context": "11111111111111111111111111111111",
-            "ephemeral_ata": "ComputeBudget111111111111111111111111111111",
+            # ata and ephemeral_ata derived by API
         },
     },
     "create_ephemeral_ata_permission": {
@@ -146,9 +135,7 @@ TEST_INPUTS = {
             "user": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
             "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
             "flags": 3,
-            "ephemeral_ata": "So11111111111111111111111111111111111111112",
-            "ephemeral_ata_bump": 251,
-            "permission": "11111111111111111111111111111111",
+            # ephemeral_ata, ephemeral_ata_bump, permission derived by API
         },
     },
     "delegate_ephemeral_ata_permission": {
@@ -161,9 +148,7 @@ TEST_INPUTS = {
             "record": "11111111111111111111111111111111",
             "metadata": "ComputeBudget111111111111111111111111111111",
             "validator": "Vote111111111111111111111111111111111111111",
-            "ephemeral_ata": "Stake11111111111111111111111111111111111111",
-            "ephemeral_ata_bump": 250,
-            "permission": "Config1111111111111111111111111111111111111",
+            # ephemeral_ata, ephemeral_ata_bump, permission derived by API
         },
     },
     "undelegate_ephemeral_ata_permission": {
@@ -173,8 +158,7 @@ TEST_INPUTS = {
             "user": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
             "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
             "magic_context": "So11111111111111111111111111111111111111112",
-            "ephemeral_ata": "11111111111111111111111111111111",
-            "permission": "ComputeBudget111111111111111111111111111111",
+            # ephemeral_ata and permission derived by API
         },
     },
     "reset_ephemeral_ata_permission": {
@@ -184,9 +168,7 @@ TEST_INPUTS = {
             "user": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
             "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
             "flags": 7,
-            "ephemeral_ata": "So11111111111111111111111111111111111111112",
-            "ephemeral_ata_bump": 249,
-            "permission": "11111111111111111111111111111111",
+            # ephemeral_ata, ephemeral_ata_bump, permission derived by API
         },
     },
     "checked_transfer": {
@@ -196,7 +178,7 @@ TEST_INPUTS = {
             "destination": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
             "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
             "amount": 1000000,
-            "decimals": 6,
+            "decimals": 6,  # Still required - RPC fetch not implemented
             "authority": "So11111111111111111111111111111111111111112",
         },
     },
@@ -206,7 +188,7 @@ TEST_INPUTS = {
             "payer": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
             "user": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
             "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-            "ata": "So11111111111111111111111111111111111111112",
+            # ata derived by API
         },
     },
 }
@@ -234,7 +216,7 @@ class TestTransactionSnapshots:
     @pytest.mark.parametrize("case_name", TEST_INPUTS.keys())
     def test_transaction_matches_snapshot(self, client, case_name):
         """Transaction output must match recorded snapshot."""
-        if case_name not in SNAPSHOTS:
+        if case_name not in MASTER_SNAPSHOT:
             pytest.skip(f"No snapshot for {case_name} - run generate_snapshots.py")
 
         case = TEST_INPUTS[case_name]
@@ -245,7 +227,7 @@ class TestTransactionSnapshots:
         assert response.status_code == 200, f"Request failed: {response.json()}"
 
         actual_tx = response.json()["transaction"]
-        expected_tx = SNAPSHOTS[case_name]
+        expected_tx = MASTER_SNAPSHOT[case_name]
 
         if actual_tx != expected_tx:
             # Provide helpful diff info

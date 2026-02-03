@@ -16,5 +16,3 @@ __pycache__/
 .venv/
 .pytest_cache/
 
-# Test snapshots (generated, not committed)
-api/tests/snapshots.json

@@ -101,6 +101,7 @@ Response:
 
 ```bash
 # Create virtual environment and install dependencies
+cd api
 python3 -m venv .venv
 source .venv/bin/activate
 pip install pytest httpx fastapi pydantic pydantic-settings
@@ -124,16 +125,16 @@ pytest tests/test_snapshots.py -v
 **Workflow for refactoring:**
 
 ```bash
-# 1. Generate snapshots BEFORE making changes
-python tests/generate_snapshots.py
+# 1. Update master snapshot BEFORE making changes
+python tests/update_master_snapshot.py
 
 # 2. Make your API changes (simplify interface, move computation server-side, etc.)
 
 # 3. Run tests to verify output is unchanged
 pytest tests/test_snapshots.py -v
 
-# 4. If tests fail, either fix your code or regenerate snapshots if change is intentional
-python tests/generate_snapshots.py
+# 4. If tests fail, either fix your code or update the master snapshot if change is intentional
+python tests/update_master_snapshot.py
 ```
 
 ### API Endpoint Tests

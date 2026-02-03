@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-Generate transaction snapshots for deterministic testing.
+Update the master snapshot for deterministic testing.
 
 This script generates the expected transaction outputs with a fixed blockhash.
 Run this BEFORE refactoring to capture baseline, then run tests to verify.
 
 Usage:
     cd api/tests
-    python generate_snapshots.py
+    python update_master_snapshot.py
 
     # Or to see what would be generated without saving:
-    python generate_snapshots.py --dry-run
+    python update_master_snapshot.py --dry-run
 """
 
 import json
@@ -27,7 +27,7 @@ FIXED_BLOCKHASH = b'\x00' * 32
 # Import test inputs
 from tests.test_snapshots import TEST_INPUTS
 
-SNAPSHOTS_FILE = Path(__file__).parent / "snapshots.json"
+MASTER_SNAPSHOT_FILE = Path(__file__).parent / "MASTER_SNAPSHOT.json"
 
 
 def generate_snapshots(dry_run: bool = False) -> dict:
@@ -84,12 +84,12 @@ def main():
         sys.exit(1)
 
     if dry_run:
-        print("\n[DRY RUN] Would write to snapshots.json:")
+        print("\n[DRY RUN] Would write to MASTER_SNAPSHOT.json:")
         print(json.dumps(snapshots, indent=2)[:500] + "...")
     else:
-        with open(SNAPSHOTS_FILE, "w") as f:
+        with open(MASTER_SNAPSHOT_FILE, "w") as f:
             json.dump(snapshots, f, indent=2)
-        print(f"\n✓ Wrote {len(snapshots)} snapshots to {SNAPSHOTS_FILE}")
+        print(f"\n✓ Wrote {len(snapshots)} snapshots to {MASTER_SNAPSHOT_FILE}")
 
     print(f"\nTotal: {len(snapshots)} test cases")
 
