@@ -108,13 +108,16 @@ async def _get_latest_blockhash(cluster_url: Optional[str] = None) -> bytes:
 
 
 async def serialize_transaction(
-    instruction: Instruction,
+    instruction: Instruction | list[Instruction],
     payer: str,
     cluster_url: Optional[str] = None,
 ) -> str:
     """Serialize an unsigned legacy transaction and return base64."""
     blockhash = await _get_latest_blockhash(cluster_url)
     payer_pk = _pubkey_bytes(payer)
+
+    # Handle both single instruction and list of instructions
+    instructions = [instruction] if isinstance(instruction, Instruction) else instruction
 
     key_meta: dict[bytes, dict[str, bool]] = {}
 
@@ -127,9 +130,12 @@ async def serialize_transaction(
             existing["writable"] = existing["writable"] or writable
 
     add_key(payer_pk, True, True)
-    for meta in instruction.accounts:
-        add_key(meta.pubkey, meta.is_signer, meta.is_writable)
-    add_key(instruction.program_id, False, False)
+    
+    # Collect all accounts from all instructions
+    for instr in instructions:
+        for meta in instr.accounts:
+            add_key(meta.pubkey, meta.is_signer, meta.is_writable)
+        add_key(instr.program_id, False, False)
 
     seen: set[bytes] = set()
     keys: list[bytes] = []
@@ -141,28 +147,32 @@ async def serialize_transaction(
 
     push(payer_pk)
 
-    def iter_accounts():
-        for meta in instruction.accounts:
-            yield meta.pubkey
+    # Collect all pubkeys from all instructions
+    all_pubkeys = []
+    for instr in instructions:
+        for meta in instr.accounts:
+            all_pubkeys.append(meta.pubkey)
 
-    for pubkey in iter_accounts():
+    for pubkey in all_pubkeys:
         meta = key_meta[pubkey]
         if meta["signer"] and meta["writable"]:
             push(pubkey)
-    for pubkey in iter_accounts():
+    for pubkey in all_pubkeys:
         meta = key_meta[pubkey]
         if meta["signer"] and not meta["writable"]:
             push(pubkey)
-    for pubkey in iter_accounts():
+    for pubkey in all_pubkeys:
         meta = key_meta[pubkey]
         if not meta["signer"] and meta["writable"]:
             push(pubkey)
-    for pubkey in iter_accounts():
+    for pubkey in all_pubkeys:
         meta = key_meta[pubkey]
         if not meta["signer"] and not meta["writable"]:
             push(pubkey)
 
-    push(instruction.program_id)
+    # Add all program IDs at the end
+    for instr in instructions:
+        push(instr.program_id)
 
     num_signers = sum(1 for k in keys if key_meta[k]["signer"])
     num_readonly_signed = sum(
@@ -179,23 +189,27 @@ async def serialize_transaction(
     ])
 
     index_map = {pubkey: idx for idx, pubkey in enumerate(keys)}
-    account_indices = [index_map[meta.pubkey] for meta in instruction.accounts]
-
-    instruction_bytes = (
-        bytes([index_map[instruction.program_id]])
-        + _encode_length(len(account_indices))
-        + bytes(account_indices)
-        + _encode_length(len(instruction.data))
-        + instruction.data
-    )
+    
+    # Build instruction bytes for all instructions
+    instruction_bytes_list = []
+    for instr in instructions:
+        account_indices = [index_map[meta.pubkey] for meta in instr.accounts]
+        instruction_bytes = (
+            bytes([index_map[instr.program_id]])
+            + _encode_length(len(account_indices))
+            + bytes(account_indices)
+            + _encode_length(len(instr.data))
+            + instr.data
+        )
+        instruction_bytes_list.append(instruction_bytes)
 
     message = (
         header
         + _encode_length(len(keys))
         + b"".join(keys)
         + blockhash
-        + _encode_length(1)
-        + instruction_bytes
+        + _encode_length(len(instructions))
+        + b"".join(instruction_bytes_list)
     )
 
     signatures = b"".join([b"\x00" * 64 for _ in range(num_signers)])
@@ -208,7 +222,7 @@ class InstructionBuilder:
 
     def __init__(self) -> None:
         settings = get_settings()
-        self.program_id = _pubkey_bytes(settings.program_id)
+        self.program_id = _pubkey_bytes(settings.ephemeral_spl_token_program)
         self.system_program = _pubkey_bytes(settings.system_program)
         self.token_program = _pubkey_bytes(settings.token_program)
         self.delegation_program = _pubkey_bytes(settings.delegation_program)
@@ -492,6 +506,31 @@ class InstructionBuilder:
             AccountMeta(token_prog, False, False),
         ]
         return Instruction(self.ata_program, data, accounts)
+    
+    def deposit_private_balance(
+        self,
+        authority: str,
+        user: str,
+        mint: str,
+        source_token: str,
+        vault_token: str,
+        amount: int,
+        ephemeral_ata: str,
+        vault: str,
+        token_program: Optional[str] = None,
+    ) -> Instruction:
+        data = struct.pack("<BQ", 2, amount)
+        token_prog = _pubkey_bytes(token_program) if token_program else self.token_program
+        accounts = [
+            AccountMeta(_pubkey_bytes(ephemeral_ata), False, True),
+            AccountMeta(_pubkey_bytes(vault), False, False),
+            AccountMeta(_pubkey_bytes(mint), False, False),
+            AccountMeta(_pubkey_bytes(source_token), False, True),
+            AccountMeta(_pubkey_bytes(vault_token), False, True),
+            AccountMeta(_pubkey_bytes(authority), True, False),
+            AccountMeta(token_prog, False, False),
+        ]
+        return Instruction(self.program_id, data, accounts)
 
 
 builder = InstructionBuilder()

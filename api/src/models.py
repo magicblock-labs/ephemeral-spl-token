@@ -148,3 +148,23 @@ class InitializeAtaRequest(ClusterConfig):
     mint: str = Field(..., description="SPL token mint")
     ata: str = Field(..., description="Associated Token Account address")
     token_program: Optional[str] = Field(None, description="Token program ID override (defaults to SPL Token)")
+
+
+class DepositPrivateBalanceRequest(ClusterConfig):
+    """Deposit SPL tokens and initialize necessary accounts in a single transaction.
+    
+    Note: All account addresses are automatically derived from user, mint, and ephemeral_spl_token_program:
+    - source_token: Derived as ATA from [user, token_program, mint]
+    - vault, ephemeral_ata, user_ata, vault_ata: Derived as PDAs
+    - Delegation PDAs: Auto-derived from ephemeral_ata and ephemeral_spl_token_program
+    - user is also the authority (payer/signer)
+    """
+    user: str = Field(..., description="User pubkey (owner of ephemeral ATA, source token account, and payer/signer)")
+    mint: str = Field(..., description="SPL token mint")
+    amount: int = Field(..., description="Amount of tokens to deposit", ge=0)
+    # Optional overrides
+    validator: Optional[str] = Field(None, description="Optional validator pubkey for delegation")
+    ephemeral_spl_token_program: Optional[str] = Field(None, description="Ephemeral SPL Token Program ID override (defaults from config)")
+    token_program: Optional[str] = Field(None, description="Token program ID override (defaults to SPL Token)")
+    permission_program: Optional[str] = Field(None, description="Permission program ID override (defaults from config)")
+    delegation_program: Optional[str] = Field(None, description="Delegation program ID override (defaults from config)")
