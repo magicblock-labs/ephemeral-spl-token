@@ -85,7 +85,6 @@ async def check_accounts(
     accounts: dict[str, str],
     cluster_url: Optional[str] = None,
     delegation_program: Optional[str] = None,
-    delegation_programs: Optional[dict[str, str]] = None,
 ) -> dict[str, AccountState]:
     """
     Check multiple accounts in parallel (Promise.all pattern).
@@ -93,8 +92,7 @@ async def check_accounts(
     Args:
         accounts: Dict mapping account name to pubkey
         cluster_url: Optional RPC URL override
-        delegation_program: Optional delegation program ID (for backward compatibility)
-        delegation_programs: Dict mapping account names to their delegation program IDs for delegation status check
+        delegation_program: Optional delegation program ID to check delegation status
     
     Returns:
         Dict mapping account name to AccountState
@@ -108,25 +106,33 @@ async def check_accounts(
     results = await asyncio.gather(*tasks.values())
     state_dict = dict(zip(tasks.keys(), results))
     
-    # Build effective delegation programs dict
-    deleg_programs = delegation_programs or {}
-    if delegation_program:
-        # For backward compatibility, if no delegation_programs dict provided, use single delegation_program for ephemeral_ata
-        if "ephemeral_ata" not in deleg_programs:
-            deleg_programs["ephemeral_ata"] = delegation_program
-    
-    # Check delegation status for each account that has a delegation program specified
-    for account_name, deleg_prog in deleg_programs.items():
-        if account_name in state_dict:
-            account = state_dict[account_name]
-            if account.exists and account.owner == deleg_prog:
-                # Create new AccountState with is_delegated=True
+    # Check each account and set delegation status
+    for account_name, account in state_dict.items():
+        if not account.exists:
+            # Account not initialized
+            state_dict[account_name] = AccountState(
+                exists=False,
+                is_delegated=False,
+            )
+        elif delegation_program:
+            # Account exists, check if it's delegated to the delegation program
+            if account.owner == delegation_program:
+                # Account is delegated
                 state_dict[account_name] = AccountState(
                     exists=account.exists,
                     owner=account.owner,
                     lamports=account.lamports,
                     data=account.data,
                     is_delegated=True,
+                )
+            else:
+                # Account exists but not delegated
+                state_dict[account_name] = AccountState(
+                    exists=account.exists,
+                    owner=account.owner,
+                    lamports=account.lamports,
+                    data=account.data,
+                    is_delegated=False,
                 )
     
     return state_dict

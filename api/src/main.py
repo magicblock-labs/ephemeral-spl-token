@@ -15,29 +15,25 @@ def create_app():
 
     from .config import get_settings, Settings
     from .models import (
-        TransactionResponse,
-        InitializeEphemeralAtaRequest,
-        InitializeGlobalVaultRequest,
-        DepositSplTokensRequest,
-        WithdrawSplTokensRequest,
-        DelegateEphemeralAtaRequest,
-        UndelegateEphemeralAtaRequest,
-        CreateEphemeralAtaPermissionRequest,
-        DelegateEphemeralAtaPermissionRequest,
-        UndelegateEphemeralAtaPermissionRequest,
-        ResetEphemeralAtaPermissionRequest,
-        CheckedTransferRequest,
-        InitializeAtaRequest,
-        DepositPrivateBalanceRequest,
-    )
+         TransactionResponse,
+         InitializeEphemeralAtaRequest,
+         InitializeGlobalVaultRequest,
+         DepositSplTokensRequest,
+         WithdrawSplTokensRequest,
+         DelegateEphemeralAtaRequest,
+         UndelegateEphemeralAtaRequest,
+         CreateEphemeralAtaPermissionRequest,
+         DelegateEphemeralAtaPermissionRequest,
+         UndelegateEphemeralAtaPermissionRequest,
+         ResetEphemeralAtaPermissionRequest,
+         CheckedTransferRequest,
+         InitializeAtaRequest,
+         InitializeOrDepositToPrivateAccount,
+     )
     from .builder import builder, serialize_transaction
     from .rpc import check_accounts
     from .pda import (
         derive_accounts,
-        derive_vault_ata,
-        derive_delegation_pdas,
-        derive_permission,
-        derive_permission_delegation_pdas,
     )
 
     @asynccontextmanager
@@ -266,76 +262,56 @@ def create_app():
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
         
-    @app.post("/tx/deposit_private_balance", response_model=TransactionResponse, tags=["Transactions"])
-    async def deposit_private_balance(req: DepositPrivateBalanceRequest):
+    @app.post("/tx/initialize-or-deposit-to-private-account", response_model=TransactionResponse, tags=["Transactions"])
+    async def initialize_or_deposit_to_private_account(req: InitializeOrDepositToPrivateAccount):
         """
-        Deposit SPL tokens and initialize necessary accounts in a single transaction.
+        Initialize necessary accounts and/or deposit SPL tokens to private account in a single transaction.
         
-        Automatically derives accounts from user and mint:
-        - vault (PDA from mint)
-        - ephemeral_ata (PDA from [user, mint])
-        - user_ata (standard ATA from user and mint)
-        - vault_ata (standard ATA for vault)
+        All accounts are derived from user and mint:
+        - vault, vault_ata, ephemeral_ata, user_ata, permission
+        - delegation PDAs for ephemeral_ata and permission
         
-        Checks account states in parallel (Promise.all pattern):
-        - Global vault initialization
-        - Vault's token account initialization
-        - User's token account initialization
-        - Ephemeral ATA initialization
-        - Ephemeral ATA delegation status
-        
-        Creates and aggregates only the necessary instructions based on account states.
+        Creates only necessary initialization/delegation instructions based on account state checks.
+        If amount > 0, includes a deposit instruction.
         """
         try:
-            # Derive all accounts from user and mint
+            # Use defaults from settings if not provided in request
+            ephemeral_spl_token_program = req.ephemeral_spl_token_program or settings.ephemeral_spl_token_program
+            token_program = req.token_program or settings.token_program
+            permission_program = req.permission_program or settings.permission_program
+            delegation_program = req.delegation_program or settings.delegation_program
+            
+            # Derive all accounts from user and mint in one call
             derived = derive_accounts(
                 req.user,
                 req.mint,
-                ephemeral_program=req.ephemeral_spl_token_program,
-                token_program=req.token_program,
-            )
-            # source_token is the same as user_ata
-            source_token = derived.user_ata
-            
-            vault_ata = derive_vault_ata(
-                derived.vault,
-                req.mint,
-                token_program=req.token_program,
-            )
-            
-            # Derive delegation PDAs from ephemeral_ata and ephemeral_spl_token_program
-            ephemeral_program = req.ephemeral_spl_token_program or settings.ephemeral_spl_token_program
-            delegation_pdas = derive_delegation_pdas(
-                derived.ephemeral_ata,
-                ephemeral_program,
-                delegation_program=req.delegation_program,
-            )
-            
-            # Derive permission and its delegation PDAs
-            permission, permission_bump = derive_permission(derived.ephemeral_ata)
-            permission_delegation_pdas = derive_permission_delegation_pdas(
-                permission,
-                permission_program=req.permission_program,
-                delegation_program=req.delegation_program,
+                ephemeral_spl_token_program=ephemeral_spl_token_program,
+                token_program=token_program,
+                permission_program=permission_program,
+                delegation_program=delegation_program,
             )
             
             # Check all accounts in parallel (Promise.all pattern)
             account_checks = {
                 "vault": derived.vault,
-                "vault_token": vault_ata,
-                "ata": derived.user_ata,
+                "vault_ata": derived.vault_ata,
+                "user_ata": derived.user_ata,
                 "ephemeral_ata": derived.ephemeral_ata,
-                "permission": permission,
+                "permission": derived.permission,
             }
-            # Pass delegation programs for each account that can be delegated
+            # Pass delegation program for checking delegation status
             account_states = await check_accounts(
                 account_checks,
                 req.cluster_url,
-                delegation_programs={
-                    "ephemeral_ata": ephemeral_program,
-                    "permission": req.permission_program or settings.permission_program,
-                },
+                delegation_program=delegation_program,
             )
+            
+            # Check if ephemeral_ata or permission are already delegated
+            if account_states["ephemeral_ata"].is_delegated:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Ephemeral ATA is already delegated. Cannot initialize or deposit, please undelegate first.",
+                )
             
             # Build list of instructions based on account states
             instructions = []
@@ -351,24 +327,24 @@ def create_app():
                 instructions.append(init_vault_ix)
             
             # Initialize vault's ATA if not already initialized
-            if not account_states["vault_token"].exists:
+            if not account_states["vault_ata"].exists:
                 init_vault_ata_ix = builder.initialize_ata(
                     req.user,
                     derived.vault,
                     req.mint,
-                    vault_ata,
-                    req.token_program,
+                    derived.vault_ata,
+                    token_program,
                 )
                 instructions.append(init_vault_ata_ix)
             
             # Initialize user's ATA if not already initialized
-            if not account_states["ata"].exists:
+            if not account_states["user_ata"].exists:
                 init_ata_ix = builder.initialize_ata(
                     req.user,
                     req.user,
                     req.mint,
                     derived.user_ata,
-                    req.token_program,
+                    token_program,
                 )
                 instructions.append(init_ata_ix)
             
@@ -389,10 +365,10 @@ def create_app():
                     req.user,
                     req.user,
                     req.mint,
-                    req.ephemeral_spl_token_program,
-                    delegation_pdas.delegation_buffer,
-                    delegation_pdas.delegation_record,
-                    delegation_pdas.delegation_metadata,
+                    ephemeral_spl_token_program,
+                    derived.eata_delegation_buffer,
+                    derived.eata_delegation_record,
+                    derived.eata_delegation_metadata,
                     derived.ephemeral_ata,
                     derived.ephemeral_ata_bump,
                     req.validator,
@@ -407,7 +383,7 @@ def create_app():
                     0,  # flags: default permissions
                     derived.ephemeral_ata,
                     derived.ephemeral_ata_bump,
-                    permission,
+                    derived.permission,
                 )
                 instructions.append(create_permission_ix)
             
@@ -415,29 +391,30 @@ def create_app():
             if account_states["permission"].exists and not account_states["permission"].is_delegated:
                 delegate_permission_ix = builder.delegate_ephemeral_ata_permission(
                     req.user,
-                    permission_delegation_pdas.delegation_buffer,
-                    permission_delegation_pdas.delegation_record,
-                    permission_delegation_pdas.delegation_metadata,
+                    derived.permission_delegation_buffer,
+                    derived.permission_delegation_record,
+                    derived.permission_delegation_metadata,
                     req.validator or settings.default_validator,  # validator: use provided or default from config
                     derived.ephemeral_ata,
                     derived.ephemeral_ata_bump,
-                    permission,
+                    derived.permission,
                 )
                 instructions.append(delegate_permission_ix)
             
-            # Always include the deposit instruction
-            deposit_ix = builder.deposit_private_balance(
-                req.user,
-                req.user,
-                req.mint,
-                source_token,
-                vault_ata,
-                req.amount,
-                derived.ephemeral_ata,
-                derived.vault,
-                req.token_program,
-            )
-            instructions.append(deposit_ix)
+            # Include deposit instruction if amount > 0
+            if req.amount > 0:
+                deposit_ix = builder.deposit_private_balance(
+                    req.user,
+                    req.user,
+                    req.mint,
+                    derived.user_ata,
+                    derived.vault_ata,
+                    req.amount,
+                    derived.ephemeral_ata,
+                    derived.vault,
+                    token_program,
+                )
+                instructions.append(deposit_ix)
             
             # Serialize all instructions in one transaction
             tx = await serialize_transaction(instructions, req.user, req.cluster_url)

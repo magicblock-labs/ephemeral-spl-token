@@ -150,19 +150,25 @@ class InitializeAtaRequest(ClusterConfig):
     token_program: Optional[str] = Field(None, description="Token program ID override (defaults to SPL Token)")
 
 
-class DepositPrivateBalanceRequest(ClusterConfig):
-    """Deposit SPL tokens and initialize necessary accounts in a single transaction.
+class InitializeOrDepositToPrivateAccount(ClusterConfig):
+    """Initialize necessary accounts and/or deposit SPL tokens to private account in a single transaction.
     
-    Note: All account addresses are automatically derived from user, mint, and ephemeral_spl_token_program:
-    - source_token: Derived as ATA from [user, token_program, mint]
-    - vault, ephemeral_ata, user_ata, vault_ata: Derived as PDAs
-    - Delegation PDAs: Auto-derived from ephemeral_ata and ephemeral_spl_token_program
+    This endpoint:
+    - Derives all accounts from user and mint
+    - Checks which accounts need initialization
+    - Creates only necessary initialization instructions for uninitialized accounts
+    - Creates delegation instructions for accounts that exist but are not delegated
+    - Deposits tokens if amount > 0
+    
+    All account addresses are automatically derived from user, mint, and program IDs:
+    - vault, vault_ata, ephemeral_ata, user_ata, permission
+    - Delegation PDAs for ephemeral_ata and permission
     - user is also the authority (payer/signer)
     """
     user: str = Field(..., description="User pubkey (owner of ephemeral ATA, source token account, and payer/signer)")
     mint: str = Field(..., description="SPL token mint")
-    amount: int = Field(..., description="Amount of tokens to deposit", ge=0)
     # Optional overrides
+    amount: int = Field(default=0, description="Amount of tokens to deposit (defaults to 0 for initialization only)", ge=0)
     validator: Optional[str] = Field(None, description="Optional validator pubkey for delegation")
     ephemeral_spl_token_program: Optional[str] = Field(None, description="Ephemeral SPL Token Program ID override (defaults from config)")
     token_program: Optional[str] = Field(None, description="Token program ID override (defaults to SPL Token)")

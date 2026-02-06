@@ -74,14 +74,21 @@ class DerivedAccounts(NamedTuple):
     """Accounts derived from user and mint."""
     vault: str
     vault_bump: int
+    vault_ata: str
     ephemeral_ata: str
     ephemeral_ata_bump: int
     user_ata: str
     permission: str
     permission_bump: int
+    eata_delegation_record: str
+    eata_delegation_metadata: str
+    eata_delegation_buffer: str
+    permission_delegation_buffer: str
+    permission_delegation_record: str
+    permission_delegation_metadata: str
 
 
-def derive_accounts(user: str, mint: str, ephemeral_spl_token_program: str = None, token_program: str = None) -> DerivedAccounts:
+def derive_accounts(user: str, mint: str, ephemeral_spl_token_program: str = None, token_program: str = None, permission_program: str = None, delegation_program: str = None) -> DerivedAccounts:
     """
     Derive all necessary accounts from just user and mint addresses.
     
@@ -90,223 +97,64 @@ def derive_accounts(user: str, mint: str, ephemeral_spl_token_program: str = Non
         mint: Token mint pubkey (base58)
         ephemeral_spl_token_program: Ephemeral SPL Token program ID (defaults to config)
         token_program: SPL Token program ID (defaults to config)
+        permission_program: Permission program ID (defaults to config)
+        delegation_program: Delegation program ID (defaults to config)
     
     Returns:
         DerivedAccounts with all derived account addresses and bumps
     """
     settings = get_settings()
-    program_id = _pubkey_bytes(ephemeral_spl_token_program or settings.ephemeral_spl_token_program)
+    ephemeral_spl_token_program_bytes = _pubkey_bytes(ephemeral_spl_token_program or settings.ephemeral_spl_token_program)
+    permission_program_bytes = _pubkey_bytes(permission_program or settings.permission_program)
+    delegation_program_bytes = _pubkey_bytes(delegation_program or settings.delegation_program)
+    token_program_bytes = _pubkey_bytes(token_program or settings.token_program)
+    ata_program_bytes = _pubkey_bytes(settings.ata_program)
     user_bytes = _pubkey_bytes(user)
     mint_bytes = _pubkey_bytes(mint)
     
     # Derive vault: PDA from [mint]
-    vault_pubkey, vault_bump = _find_pda([mint_bytes], program_id)
+    vault_pubkey, vault_bump = _find_pda([mint_bytes], ephemeral_spl_token_program_bytes)
+    
+    # Derive vault ATA: Standard ATA for vault
+    vault_bytes = _pubkey_bytes(vault_pubkey)
+    vault_ata_pubkey, _ = _find_pda([vault_bytes, token_program_bytes, mint_bytes], ata_program_bytes)
     
     # Derive ephemeral ATA: PDA from [user, mint]
-    ephemeral_ata_pubkey, ephemeral_ata_bump = _find_pda([user_bytes, mint_bytes], program_id)
+    ephemeral_ata_pubkey, ephemeral_ata_bump = _find_pda([user_bytes, mint_bytes], ephemeral_spl_token_program_bytes)
     
     # Derive user ATA: Standard ATA program derivation
     # ATA is derived from [owner, token_program, mint] using ATA program
-    token_prog_id = _pubkey_bytes(token_program or settings.token_program)
-    ata_program_id = _pubkey_bytes(settings.ata_program)
-    user_ata_pubkey, _ = _find_pda([user_bytes, token_prog_id, mint_bytes], ata_program_id)
+    user_ata_pubkey, _ = _find_pda([user_bytes, token_program_bytes, mint_bytes], ata_program_bytes)
     
-    # Derive permission: PDA from ["permission:", ephemeral_ata]
+    # Derive permission: PDA from ["permission:", ephemeral_ata] using permission program
     # Convert ephemeral_ata back to bytes for this derivation
     ephemeral_ata_bytes = _pubkey_bytes(ephemeral_ata_pubkey)
-    permission_pubkey, permission_bump = _find_pda([b"permission:", ephemeral_ata_bytes], program_id)
+    permission_pubkey, permission_bump = _find_pda([b"permission:", ephemeral_ata_bytes], permission_program_bytes)
+    permission_bytes = _pubkey_bytes(permission_pubkey)
+    
+    # Derive delegation PDAs from ephemeral_ata and programs
+    eata_delegation_record, _ = _find_pda([b"delegation", ephemeral_ata_bytes], delegation_program_bytes)
+    eata_delegation_metadata, _ = _find_pda([b"delegation-metadata", ephemeral_ata_bytes], delegation_program_bytes)
+    eata_delegation_buffer, _ = _find_pda([b"buffer", ephemeral_ata_bytes], ephemeral_spl_token_program_bytes)
+    
+    # Derive permission delegation PDAs from permission and programs
+    permission_delegation_record, _ = _find_pda([b"delegation", permission_bytes], delegation_program_bytes)
+    permission_delegation_metadata, _ = _find_pda([b"delegation-metadata", permission_bytes], delegation_program_bytes)
+    permission_delegation_buffer, _ = _find_pda([b"buffer", permission_bytes], permission_program_bytes)
     
     return DerivedAccounts(
         vault=vault_pubkey,
         vault_bump=vault_bump,
+        vault_ata=vault_ata_pubkey,
         ephemeral_ata=ephemeral_ata_pubkey,
         ephemeral_ata_bump=ephemeral_ata_bump,
         user_ata=user_ata_pubkey,
         permission=permission_pubkey,
         permission_bump=permission_bump,
-    )
-
-
-def derive_vault(mint: str, ephemeral_spl_token_program: str = None) -> tuple[str, int]:
-    """Derive global vault PDA from mint."""
-    settings = get_settings()
-    program_id = _pubkey_bytes(ephemeral_spl_token_program or settings.ephemeral_spl_token_program)
-    mint_bytes = _pubkey_bytes(mint)
-    return _find_pda([mint_bytes], program_id)
-
-
-def derive_ephemeral_ata(user: str, mint: str, ephemeral_spl_token_program: str = None) -> tuple[str, int]:
-    """Derive ephemeral ATA PDA from user and mint."""
-    settings = get_settings()
-    program_id = _pubkey_bytes(ephemeral_spl_token_program or settings.ephemeral_spl_token_program)
-    user_bytes = _pubkey_bytes(user)
-    mint_bytes = _pubkey_bytes(mint)
-    return _find_pda([user_bytes, mint_bytes], program_id)
-
-
-def derive_user_ata(user: str, mint: str, token_program: str = None) -> str:
-    """Derive user's standard ATA from user and mint."""
-    settings = get_settings()
-    token_prog_id = _pubkey_bytes(token_program or settings.token_program)
-    ata_program_id = _pubkey_bytes(settings.ata_program)
-    user_bytes = _pubkey_bytes(user)
-    mint_bytes = _pubkey_bytes(mint)
-    ata_pubkey, _ = _find_pda([user_bytes, token_prog_id, mint_bytes], ata_program_id)
-    return ata_pubkey
-
-
-def derive_vault_ata(vault: str, mint: str, token_program: str = None) -> str:
-    """Derive vault's ATA from vault address and mint."""
-    settings = get_settings()
-    token_prog_id = _pubkey_bytes(token_program or settings.token_program)
-    ata_program_id = _pubkey_bytes(settings.ata_program)
-    vault_bytes = _pubkey_bytes(vault)
-    mint_bytes = _pubkey_bytes(mint)
-    vault_ata_pubkey, _ = _find_pda([vault_bytes, token_prog_id, mint_bytes], ata_program_id)
-    return vault_ata_pubkey
-
-
-def derive_permission(ephemeral_ata: str, ephemeral_spl_token_program: str = None) -> tuple[str, int]:
-    """Derive permission PDA from ephemeral ATA."""
-    settings = get_settings()
-    program_id = _pubkey_bytes(ephemeral_spl_token_program or settings.ephemeral_spl_token_program)
-    ephemeral_ata_bytes = _pubkey_bytes(ephemeral_ata)
-    permission, permission_bump = _find_pda([b"permission:", ephemeral_ata_bytes], program_id)
-    return permission, permission_bump
-
-
-class DelegationPDAs(NamedTuple):
-    """Delegation program PDAs derived from ephemeral ATA."""
-    delegation_record: str
-    delegation_metadata: str
-    delegation_buffer: str
-    undelegate_buffer: str
-    commit_state: str
-    commit_record: str
-
-
-def derive_delegation_pdas(
-    ephemeral_ata: str,
-    ephemeral_spl_token_program: str,
-    delegation_program: str = None,
-) -> DelegationPDAs:
-    """
-    Derive all delegation PDAs from ephemeral ATA and programs.
-    
-    Delegation PDAs are derived using the delegation program and ephemeral SPL token program:
-    - delegation_record: ["delegation", ephemeral_ata] with delegation_program
-    - delegation_metadata: ["delegation-metadata", ephemeral_ata] with delegation_program
-    - delegation_buffer: ["buffer", ephemeral_ata] with ephemeral_spl_token_program
-    - undelegate_buffer: ["undelegate-buffer", ephemeral_ata] with delegation_program
-    - commit_state: ["state-diff", ephemeral_ata] with delegation_program
-    - commit_record: ["commit-state-record", ephemeral_ata] with delegation_program
-    
-    Args:
-        ephemeral_ata: The ephemeral ATA address (base58)
-        ephemeral_spl_token_program: The ephemeral SPL token program ID (base58)
-        delegation_program: Delegation program ID (defaults from config)
-    
-    Returns:
-        DelegationPDAs with all delegation-related account addresses
-    """
-    settings = get_settings()
-    delegation_prog_id = _pubkey_bytes(delegation_program or settings.delegation_program)
-    ephemeral_prog_id = _pubkey_bytes(ephemeral_spl_token_program)
-    ephemeral_ata_bytes = _pubkey_bytes(ephemeral_ata)
-    
-    # All these PDAs use delegation_program except delegation_buffer
-    delegation_record, _ = _find_pda([b"delegation", ephemeral_ata_bytes], delegation_prog_id)
-    delegation_metadata, _ = _find_pda([b"delegation-metadata", ephemeral_ata_bytes], delegation_prog_id)
-    delegation_buffer, _ = _find_pda([b"buffer", ephemeral_ata_bytes], ephemeral_prog_id)  # Uses ephemeral_spl_token_program!
-    undelegate_buffer, _ = _find_pda([b"undelegate-buffer", ephemeral_ata_bytes], delegation_prog_id)
-    commit_state, _ = _find_pda([b"state-diff", ephemeral_ata_bytes], delegation_prog_id)
-    commit_record, _ = _find_pda([b"commit-state-record", ephemeral_ata_bytes], delegation_prog_id)
-    
-    return DelegationPDAs(
-        delegation_record=delegation_record,
-        delegation_metadata=delegation_metadata,
-        delegation_buffer=delegation_buffer,
-        undelegate_buffer=undelegate_buffer,
-        commit_state=commit_state,
-        commit_record=commit_record,
-    )
-
-
-def derive_delegation_record(ephemeral_ata: str, delegation_program: str = None) -> str:
-    """Derive delegation record PDA from ephemeral ATA."""
-    settings = get_settings()
-    delegation_prog_id = _pubkey_bytes(delegation_program or settings.delegation_program)
-    ephemeral_ata_bytes = _pubkey_bytes(ephemeral_ata)
-    record, _ = _find_pda([b"delegation", ephemeral_ata_bytes], delegation_prog_id)
-    return record
-
-
-def derive_delegation_metadata(ephemeral_ata: str, delegation_program: str = None) -> str:
-    """Derive delegation metadata PDA from ephemeral ATA."""
-    settings = get_settings()
-    delegation_prog_id = _pubkey_bytes(delegation_program or settings.delegation_program)
-    ephemeral_ata_bytes = _pubkey_bytes(ephemeral_ata)
-    metadata, _ = _find_pda([b"delegation-metadata", ephemeral_ata_bytes], delegation_prog_id)
-    return metadata
-
-
-def derive_delegation_buffer(ephemeral_ata: str, ephemeral_spl_token_program: str) -> str:
-    """Derive delegation buffer PDA from ephemeral ATA and ephemeral SPL token program.
-    
-    Note: This uses ephemeral_spl_token_program, NOT delegation_program!
-    """
-    ephemeral_prog_id = _pubkey_bytes(ephemeral_spl_token_program)
-    ephemeral_ata_bytes = _pubkey_bytes(ephemeral_ata)
-    buffer, _ = _find_pda([b"buffer", ephemeral_ata_bytes], ephemeral_prog_id)
-    return buffer
-
-
-def derive_undelegate_buffer(ephemeral_ata: str, delegation_program: str = None) -> str:
-    """Derive undelegate buffer PDA from ephemeral ATA."""
-    settings = get_settings()
-    delegation_prog_id = _pubkey_bytes(delegation_program or settings.delegation_program)
-    ephemeral_ata_bytes = _pubkey_bytes(ephemeral_ata)
-    buffer, _ = _find_pda([b"undelegate-buffer", ephemeral_ata_bytes], delegation_prog_id)
-    return buffer
-
-
-class PermissionDelegationPDAs(NamedTuple):
-    """Delegation program PDAs derived from permission account."""
-    delegation_buffer: str
-    delegation_record: str
-    delegation_metadata: str
-
-
-def derive_permission_delegation_pdas(
-    permission: str,
-    permission_program: str = None,
-    delegation_program: str = None,
-) -> PermissionDelegationPDAs:
-    """
-    Derive all permission delegation PDAs from permission account and programs.
-    
-    Similar to ephemeral_ata delegation, but uses permission as the delegated account.
-    Permission is owned by permission_program, not ephemeral_spl_token_program.
-    
-    Args:
-        permission: The permission account address (base58)
-        permission_program: The permission program ID (base58)
-        delegation_program: Delegation program ID (defaults from config)
-    
-    Returns:
-        PermissionDelegationPDAs with all delegation-related account addresses
-    """
-    settings = get_settings()
-    delegation_prog_id = _pubkey_bytes(delegation_program or settings.delegation_program)
-    permission_prog_id = _pubkey_bytes(permission_program or settings.permission_program)
-    permission_bytes = _pubkey_bytes(permission)
-    
-    delegation_record, _ = _find_pda([b"delegation", permission_bytes], delegation_prog_id)
-    delegation_metadata, _ = _find_pda([b"delegation-metadata", permission_bytes], delegation_prog_id)
-    delegation_buffer, _ = _find_pda([b"buffer", permission_bytes], permission_prog_id)
-    
-    return PermissionDelegationPDAs(
-        delegation_buffer=delegation_buffer,
-        delegation_record=delegation_record,
-        delegation_metadata=delegation_metadata,
+        eata_delegation_record=eata_delegation_record,
+        eata_delegation_metadata=eata_delegation_metadata,
+        eata_delegation_buffer=eata_delegation_buffer,
+        permission_delegation_buffer=permission_delegation_buffer,
+        permission_delegation_record=permission_delegation_record,
+        permission_delegation_metadata=permission_delegation_metadata,
     )
