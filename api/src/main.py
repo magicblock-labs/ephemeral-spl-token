@@ -275,6 +275,8 @@ def create_app():
         If amount > 0, includes a deposit instruction.
         """
         try:
+            settings = get_settings()
+            
             # Use defaults from settings if not provided in request
             ephemeral_spl_token_program = req.ephemeral_spl_token_program or settings.ephemeral_spl_token_program
             token_program = req.token_program or settings.token_program
