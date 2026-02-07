@@ -38,6 +38,7 @@ pinocchio-log = "0.5.1"
 pinocchio-pubkey = "0.3"
 pinocchio-system = "0.5"
 pinocchio-token = "0.5"
+pinocchio-associated-token-account = "0.3"
 
 solana-instruction = "3.0.0"
 solana-pubkey = "4.0.0"
@@ -51,4 +52,5 @@ solana-transaction = "3.0.1"
 solana-system-interface = { version="2.0.0", features=["bincode"] }
 spl-token = "9.0.0"
 spl-token-interface = "2.0.0"
+spl-associated-token-account = "8.0.0"
 magicblock-delegation-program = "=1.1.2"

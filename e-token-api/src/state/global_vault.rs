@@ -7,6 +7,7 @@ use super::{Initializable, RawType};
 pub struct GlobalVault {
     /// The mint associated with this vault
     pub mint: Address,
+    pub token_account: Address,
 }
 
 impl RawType for GlobalVault {

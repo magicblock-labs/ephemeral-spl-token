@@ -52,6 +52,7 @@ pub fn process_withdraw_spl_tokens(
     if ephemeral_ata.mint != *mint_info.address()
         || vault.mint != *mint_info.address()
         || ephemeral_ata.owner != *owner.address()
+        || vault.token_account != *vault_source_token_acc.address()
     {
         return Err(EphemeralSplError::EphemeralAtaMismatch.into());
     }

@@ -1,4 +1,5 @@
 use core::marker::PhantomData;
+
 use {
     ephemeral_spl_api::state::{
         ephemeral_ata::EphemeralAta, global_vault::GlobalVault, load_mut_unchecked, load_unchecked,
@@ -35,8 +36,18 @@ pub fn process_deposit_spl_tokens(
     // Validate Vault data account
     let vault = unsafe { load_unchecked::<GlobalVault>(vault_info.borrow_unchecked())? };
 
+    // check if vault is owned by the current program
+    unsafe {
+        if vault_info.owner().ne(&ephemeral_spl_api::program::id_address()) {
+            return Err(ProgramError::IllegalOwner);
+        }
+    }
+
     // Check mint consistency
-    if ephemeral_ata.mint != *mint_info.address() || vault.mint != *mint_info.address() {
+    if ephemeral_ata.mint != *mint_info.address()
+        || vault.mint != *mint_info.address()
+        || vault.token_account != *vault_token_acc.address()
+    {
         return Err(ProgramError::InvalidAccountData);
     }
 

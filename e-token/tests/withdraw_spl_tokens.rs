@@ -51,7 +51,7 @@ async fn withdraw_spl_tokens_decrements_ephemeral_amount() {
     let bump_vault = pdas.bump_vault;
     let user_source = setup.user_tokens[0];
     let user_dest = setup.user_tokens[1];
-    let vault_token = setup.vault_token;
+    let vault_token = spl_associated_token_account::get_associated_token_address(&vault, &mint);
 
     // Initialize Ephemeral ATA
     let ix_init_ata = Instruction {
@@ -73,7 +73,10 @@ async fn withdraw_spl_tokens_decrements_ephemeral_amount() {
             AccountMeta::new(vault, false),
             AccountMeta::new_readonly(payer, false),
             AccountMeta::new_readonly(mint, false),
-            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+            AccountMeta::new(vault_token, false), // vault token account
+            AccountMeta::new_readonly(spl_token_interface::ID, false), // token program
+            AccountMeta::new_readonly(solana_system_interface::program::ID, false), // system program
+            AccountMeta::new_readonly(spl_associated_token_account::ID, false), // associated token program
         ],
         data: vec![instruction::INITIALIZE_GLOBAL_VAULT, bump_vault],
     };

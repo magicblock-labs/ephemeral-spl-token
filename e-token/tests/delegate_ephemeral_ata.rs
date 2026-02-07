@@ -67,13 +67,18 @@ async fn delegate_ephemeral_ata_succeeds() {
         data: vec![instruction::INITIALIZE_EPHEMERAL_ATA, pdas.bump_ata],
     };
 
+    let vault_token_acc = spl_associated_token_account::get_associated_token_address(&pdas.vault, &mint);
+
     let ix_init_vault = Instruction {
         program_id: PROGRAM,
         accounts: vec![
             AccountMeta::new(pdas.vault, false),
             AccountMeta::new_readonly(payer, false),
             AccountMeta::new_readonly(mint, false),
-            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+            AccountMeta::new(vault_token_acc, false), // vault token account
+            AccountMeta::new_readonly(spl_token_interface::ID, false), // token program
+            AccountMeta::new_readonly(solana_system_interface::program::ID, false), // system program
+            AccountMeta::new_readonly(spl_associated_token_account::ID, false), // associated token program
         ],
         data: vec![instruction::INITIALIZE_GLOBAL_VAULT, pdas.bump_vault],
     };
@@ -204,13 +209,18 @@ async fn delegate_ephemeral_ata_non_owner_succeeds() {
         data: vec![instruction::INITIALIZE_EPHEMERAL_ATA, pdas.bump_ata],
     };
 
+    let vault_token_acc = spl_associated_token_account::get_associated_token_address(&pdas.vault, &mint);
+
     let ix_init_vault = Instruction {
         program_id: PROGRAM,
         accounts: vec![
             AccountMeta::new(pdas.vault, false),
             AccountMeta::new_readonly(payer, false),
             AccountMeta::new_readonly(mint, false),
-            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+            AccountMeta::new(vault_token_acc, false), // vault token account
+            AccountMeta::new_readonly(spl_token_interface::ID, false), // token program
+            AccountMeta::new_readonly(solana_system_interface::program::ID, false), // system program
+            AccountMeta::new_readonly(spl_associated_token_account::ID, false), // associated token program
         ],
         data: vec![instruction::INITIALIZE_GLOBAL_VAULT, pdas.bump_vault],
     };

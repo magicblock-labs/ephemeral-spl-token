@@ -50,7 +50,7 @@ async fn deposit_spl_tokens_increments_ephemeral_amount() {
     let vault = pdas.vault;
     let bump_vault = pdas.bump_vault;
     let user_ata = setup.user_tokens[0];
-    let vault_ata = setup.vault_token;
+    let vault_ata = spl_associated_token_account::get_associated_token_address(&pdas.vault, &mint);
 
     // Assert initial SPL token balances
     let user_token_acc_before = context
@@ -61,15 +61,6 @@ async fn deposit_spl_tokens_increments_ephemeral_amount() {
         .expect("user token account must exist");
     let user_token_state_before = Account::unpack(&user_token_acc_before.data).unwrap();
     assert_eq!(user_token_state_before.amount, STARTING_BALANCE);
-
-    let vault_token_acc_before = context
-        .banks_client
-        .get_account(vault_ata)
-        .await
-        .unwrap()
-        .expect("vault token account must exist");
-    let vault_token_state_before = Account::unpack(&vault_token_acc_before.data).unwrap();
-    assert_eq!(vault_token_state_before.amount, 0);
 
     // 1) Initialize Ephemeral ATA
     let ix_init_ata = Instruction {
@@ -91,7 +82,10 @@ async fn deposit_spl_tokens_increments_ephemeral_amount() {
             AccountMeta::new(vault, false),
             AccountMeta::new_readonly(payer, false),
             AccountMeta::new_readonly(mint, false),
-            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+            AccountMeta::new(vault_ata, false), // vault token account
+            AccountMeta::new_readonly(spl_token_interface::ID, false), // token program
+            AccountMeta::new_readonly(solana_system_interface::program::ID, false), // system program
+            AccountMeta::new_readonly(spl_associated_token_account::ID, false), // associated token program
         ],
         data: vec![instruction::INITIALIZE_GLOBAL_VAULT, bump_vault],
     };
@@ -108,6 +102,15 @@ async fn deposit_spl_tokens_increments_ephemeral_amount() {
         .process_transaction(tx_init)
         .await
         .unwrap();
+
+    let vault_token_acc_before = context
+        .banks_client
+        .get_account(vault_ata)
+        .await
+        .unwrap()
+        .expect("vault token account must exist");
+    let vault_token_state_before = Account::unpack(&vault_token_acc_before.data).unwrap();
+    assert_eq!(vault_token_state_before.amount, 0);
 
     // 3) Deposit amount from payer's token to vault's token and increment Ephemeral ATA amount
     let amount: u64 = 100 * 10u64.pow(DECIMALS as u32);

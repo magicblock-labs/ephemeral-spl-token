@@ -23,7 +23,7 @@ pub fn process_initialize_global_vault(
 
     let args = InitializeGlobalVault::try_from_bytes(instruction_data)?;
 
-    let [vault_info, payer_info, mint_info, ..] = accounts else {
+    let [vault_info, payer_info, mint_info, vault_token_acc_info, token_program_info, system_program_info, _associated_token_program_info, ..] = accounts else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
@@ -48,13 +48,24 @@ pub fn process_initialize_global_vault(
         lamports: Rent::get()?.try_minimum_balance(GlobalVault::LEN)?,
         owner: &ephemeral_spl_api::program::id_address(),
     }
-    .invoke_signed(&[signer_seeds])?;
+    .invoke_signed(&[signer_seeds.clone()])?;
 
     // Ensure account data has the expected size
     let vault = unsafe { load_mut_unchecked::<GlobalVault>(vault_info.borrow_unchecked_mut())? };
 
+    pinocchio_associated_token_account::instructions::Create {
+        funding_account: payer_info,
+        account: vault_token_acc_info,
+        wallet: vault_info,
+        mint: mint_info,
+        system_program: system_program_info,
+        token_program: token_program_info,
+    }
+    .invoke()?;
+
     // Initialize the vault
     vault.mint = mint_info.address().clone();
+    vault.token_account = vault_token_acc_info.address().clone();
 
     Ok(())
 }
