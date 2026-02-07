@@ -8,16 +8,17 @@ class Settings(BaseSettings):
     """API configuration settings."""
 
     # Solana cluster URLs
-    cluster_url: str = "https://rpc.magicblock.app/mainnet"
-    tee_cluster_url: str = "https://tee.magicblock.app"
+    endpoint_url: str = "https://rpc.magicblock.app/mainnet"
+    tee_endpoint_url: str = "https://tee.magicblock.app"
 
-    # Program IDs
+    # Constant IDs
     ephemeral_spl_token_program: str = "SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2"
     system_program: str = "11111111111111111111111111111111"
     token_program: str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
     delegation_program: str = "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
     permission_program: str = "ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1"
     magic_program: str = "Magic11111111111111111111111111111111111111"
+    magic_context: str = "MagicContext1111111111111111111111111111111"
     ata_program: str = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
     
     # Default validator for permission delegation

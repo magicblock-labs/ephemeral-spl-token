@@ -1,102 +1,34 @@
 """PDA derivation utilities for Ephemeral SPL Token program and related programs."""
 
-import hashlib
 from typing import NamedTuple
+
+from solders.pubkey import Pubkey
 
 from .config import get_settings
 
 
-_B58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
-_B58_INDEX = {ch: i for i, ch in enumerate(_B58_ALPHABET)}
-
-
-def _b58decode(value: str) -> bytes:
-    """Decode a base58 string into bytes."""
-    num = 0
-    for ch in value:
-        num = num * 58 + _B58_INDEX[ch]
-    if num == 0:
-        decoded = b""
-    else:
-        decoded = num.to_bytes((num.bit_length() + 7) // 8, "big")
-    pad = len(value) - len(value.lstrip("1"))
-    return (b"\x00" * pad) + decoded
-
-
-def _b58encode(data: bytes) -> str:
-    """Encode bytes to base58 string."""
-    if not data:
-        return ""
-    
-    num = int.from_bytes(data, "big")
-    encoded = ""
-    while num > 0:
-        num, remainder = divmod(num, 58)
-        encoded = _B58_ALPHABET[remainder] + encoded
-    
-    # Add leading 1s for leading zeros
-    pad = len(data) - len(data.lstrip(b"\x00"))
-    return "1" * pad + encoded
-
-
 def _pubkey_bytes(value: str) -> bytes:
-    """Convert a base58 pubkey string to bytes."""
-    key = _b58decode(value)
-    if len(key) != 32:
-        raise ValueError("Invalid pubkey length")
-    return key
-
-
-def _is_on_curve(pubkey_bytes: bytes) -> bool:
-    """Check if a point is on the ed25519 curve."""
-    # Simplified check - in production would use proper ed25519 math
-    # For now, we'll use a simple heuristic
-    # A proper implementation would check using ed25519 point operations
-    try:
-        # Import ed25519 if available for proper curve checking
-        import nacl.signing
-        # Try to construct a public key - if it fails, it's off-curve
-        nacl.signing.VerifyKey(pubkey_bytes)
-        return True
-    except Exception:
-        return False
+    """Convert a base58 pubkey string to bytes using solders."""
+    pubkey = Pubkey.from_string(value)
+    return bytes(pubkey)
 
 
 def _find_pda(seeds: list[bytes], program_id: bytes) -> tuple[str, int]:
     """
-    Find a Program Derived Address (PDA) using SHA256 hashing.
+    Find a Program Derived Address (PDA) using solders.
     Matches Solana's findProgramAddressSync behavior.
+    
+    Args:
+        seeds: List of seed bytes
+        program_id: Program ID as bytes
     
     Returns:
         Tuple of (pubkey_b58, bump)
     """
-    
-    nonce = 255
-    while nonce != 0:
-        try:
-            # Concatenate all seeds with nonce
-            seeds_with_nonce = seeds + [bytes([nonce])]
-            seed_data = b"".join(seeds_with_nonce)
-            
-            # Append program_id and the magic string "ProgramDerivedAddress"
-            hash_input = seed_data + program_id + b"ProgramDerivedAddress"
-            hash_result = hashlib.sha256(hash_input).digest()
-            
-            # Check if the address is off-curve (valid PDA must be off-curve)
-            if _is_on_curve(hash_result):
-                # On-curve, try next nonce
-                nonce -= 1
-                continue
-            
-            # Off-curve, valid PDA found
-            pubkey_b58 = _b58encode(hash_result)
-            print(f"  bump: {nonce}")
-            print(f"  pda: {pubkey_b58}")
-            return pubkey_b58, nonce
-        except Exception as e:
-            nonce -= 1
-    
-    raise ValueError("Could not find valid PDA")
+    program_pubkey = Pubkey(program_id)
+    pda, bump = Pubkey.find_program_address(seeds, program_pubkey)
+    pubkey_b58 = str(pda)
+    return pubkey_b58, bump
 
 
 class DerivedAccounts(NamedTuple):
@@ -147,14 +79,13 @@ def derive_accounts(user: str, mint: str, ephemeral_spl_token_program: str = Non
     # Derive vault ATA: Standard ATA for vault
     vault_bytes = _pubkey_bytes(vault_pubkey)
     vault_ata_pubkey, _ = _find_pda([vault_bytes, token_program_bytes, mint_bytes], ata_program_bytes)
+
+    # Derive user ATA: Standard ATA program derivation
+    user_ata_pubkey, _ = _find_pda([user_bytes, token_program_bytes, mint_bytes], ata_program_bytes)
     
     # Derive ephemeral ATA: PDA from [user, mint]
     ephemeral_ata_pubkey, ephemeral_ata_bump = _find_pda([user_bytes, mint_bytes], ephemeral_spl_token_program_bytes)
-    
-    # Derive user ATA: Standard ATA program derivation
-    # ATA is derived from [owner, token_program, mint] using ATA program
-    user_ata_pubkey, _ = _find_pda([user_bytes, token_program_bytes, mint_bytes], ata_program_bytes)
-    
+
     # Derive permission: PDA from ["permission:", ephemeral_ata] using permission program
     # Convert ephemeral_ata back to bytes for this derivation
     ephemeral_ata_bytes = _pubkey_bytes(ephemeral_ata_pubkey)

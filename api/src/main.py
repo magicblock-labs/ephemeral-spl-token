@@ -15,25 +15,22 @@ def create_app():
 
     from .config import get_settings, Settings
     from .models import (
-         TransactionResponse,
-         InitializeEphemeralAtaRequest,
-         InitializeGlobalVaultRequest,
-         DepositSplTokensRequest,
-         WithdrawSplTokensRequest,
-         DelegateEphemeralAtaRequest,
-         UndelegateEphemeralAtaRequest,
-         CreateEphemeralAtaPermissionRequest,
-         DelegateEphemeralAtaPermissionRequest,
-         UndelegateEphemeralAtaPermissionRequest,
-         ResetEphemeralAtaPermissionRequest,
-         CheckedTransferRequest,
-         InitializeAtaRequest,
-         InitializeOrDepositToPrivateAccount,
-     )
+        TransactionResponse,
+        InitializeEphemeralAtaRequest,
+        InitializeGlobalVaultRequest,
+        DepositSplTokensRequest,
+        WithdrawRequest,
+        DelegateEphemeralAtaRequest,
+        UndelegateEphemeralAtaRequest,
+        TransferAmountRequest,
+        InitializeAtaRequest,
+        DepositRequest,
+        PrepareWithdrawalRequest
+    )
     from .builder import builder, serialize_transaction
-    from .rpc import check_accounts
+    from .rpc import check_accounts, get_mint_decimals
     from .pda import (
-        derive_accounts,
+        derive_accounts
     )
 
     @asynccontextmanager
@@ -47,13 +44,156 @@ def create_app():
         lifespan=lifespan,
     )
 
+    async def build_deposit_instructions(user, mint, amount, endpoint_url, validator, ephemeral_spl_token_program, token_program, permission_program, delegation_program):
+        """
+        Build instructions to initialize accounts and optionally deposit tokens.
+        
+        Returns a list of instructions based on account state checks.
+        """
+        
+        # Derive all accounts from user and mint in one call
+        derived = derive_accounts(
+            user,
+            mint,
+            ephemeral_spl_token_program=ephemeral_spl_token_program,
+            token_program=token_program,
+            permission_program=permission_program,
+            delegation_program=delegation_program,
+        )
+        
+        # Check all accounts in parallel (Promise.all pattern)
+        account_checks = {
+            "vault": derived.vault,
+            "vault_ata": derived.vault_ata,
+            "user_ata": derived.user_ata,
+            "ephemeral_ata": derived.ephemeral_ata,
+            "permission": derived.permission,
+        }
+        # Pass delegation program for checking delegation status
+        account_states = await check_accounts(
+            account_checks,
+            endpoint_url,
+            delegation_program=delegation_program,
+        )
+        
+        # Check if ephemeral_ata or permission are already delegated
+        if account_states["ephemeral_ata"].is_delegated:
+            raise HTTPException(
+                status_code=400,
+                detail="Ephemeral ATA is already delegated. Cannot initialize or deposit, please undelegate first.",
+            )
+        
+        # Build list of instructions based on account states
+        instructions = []
+        
+        # Initialize global vault if not already initialized
+        if not account_states["vault"].exists:
+            init_vault_ix = builder.initialize_global_vault(
+                user,
+                mint,
+                derived.vault,
+                derived.vault_bump,
+            )
+            instructions.append(init_vault_ix)
+        
+        # Initialize vault's ATA if not already initialized
+        if not account_states["vault_ata"].exists:
+            init_vault_ata_ix = builder.initialize_ata(
+                user,
+                derived.vault,
+                mint,
+                derived.vault_ata,
+                token_program,
+            )
+            instructions.append(init_vault_ata_ix)
+        
+        # Initialize user's ATA if not already initialized
+        if not account_states["user_ata"].exists:
+            init_ata_ix = builder.initialize_ata(
+                user,
+                user,
+                mint,
+                derived.user_ata,
+                token_program,
+            )
+            instructions.append(init_ata_ix)
+        
+        # Initialize ephemeral ATA if not already initialized
+        if not account_states["ephemeral_ata"].exists:
+            init_ephemeral_ata_ix = builder.initialize_ephemeral_ata(
+                user,
+                user,
+                mint,
+                derived.ephemeral_ata,
+                derived.ephemeral_ata_bump,
+            )
+            instructions.append(init_ephemeral_ata_ix)
+        
+        # Delegate ephemeral ATA if not already delegated
+        if account_states["ephemeral_ata"].exists and not account_states["ephemeral_ata"].is_delegated:
+            delegate_ix = builder.delegate_ephemeral_ata(
+                user,
+                user,
+                mint,
+                ephemeral_spl_token_program,
+                derived.eata_delegation_buffer,
+                derived.eata_delegation_record,
+                derived.eata_delegation_metadata,
+                derived.ephemeral_ata,
+                derived.ephemeral_ata_bump,
+                validator,
+            )
+            instructions.append(delegate_ix)
+        
+        # Initialize ephemeral ATA's permission if not already initialized
+        if not account_states["permission"].exists:
+            create_permission_ix = builder.create_ephemeral_ata_permission(
+                user,
+                mint,
+                0,  # flags: default permissions
+                derived.ephemeral_ata,
+                derived.ephemeral_ata_bump,
+                derived.permission,
+            )
+            instructions.append(create_permission_ix)
+        
+        # Delegate ephemeral ATA's permission if not already delegated
+        if account_states["permission"].exists and not account_states["permission"].is_delegated:
+            delegate_permission_ix = builder.delegate_ephemeral_ata_permission(
+                user,
+                derived.permission_delegation_buffer,
+                derived.permission_delegation_record,
+                derived.permission_delegation_metadata,
+                validator,
+                derived.ephemeral_ata,
+                derived.ephemeral_ata_bump,
+                derived.permission,
+            )
+            instructions.append(delegate_permission_ix)
+        
+        # Include deposit instruction if amount > 0
+        if amount > 0:
+            deposit_ix = builder.deposit_spl_tokens(
+                user,
+                derived.user_ata,
+                derived.vault_ata,
+                amount,
+                derived.ephemeral_ata,
+                derived.vault,
+                mint,
+                token_program,
+            )
+            instructions.append(deposit_ix)
+        
+        return instructions
+
     @app.get("/", tags=["Health"])
     async def root():
         settings = get_settings()
         return {
             "status": "ok",
             "ephemeral_spl_token_program": settings.ephemeral_spl_token_program,
-            "cluster_url": settings.cluster_url,
+            "endpoint_url": settings.endpoint_url,
         }
 
     @app.get("/config", response_model=Settings, tags=["Config"])
@@ -64,14 +204,26 @@ def create_app():
     @app.post("/tx/initialize-ephemeral-ata", response_model=TransactionResponse, tags=["Transactions"])
     async def initialize_ephemeral_ata(req: InitializeEphemeralAtaRequest):
         try:
+            settings = get_settings()
+            endpoint_url = req.endpoint_url or settings.endpoint_url
+
+            # Use defaults from settings if not provided in request
+            derived = derive_accounts(
+                req.owner,
+                req.mint,
+                ephemeral_spl_token_program=settings.ephemeral_spl_token_program,
+                token_program=settings.token_program,
+                permission_program=settings.permission_program,
+                delegation_program=settings.delegation_program,
+            )
             ix = builder.initialize_ephemeral_ata(
                 req.payer,
-                req.user,
+                req.owner,
                 req.mint,
-                req.ephemeral_ata,
-                req.ephemeral_ata_bump,
+                derived.ephemeral_ata,
+                derived.ephemeral_ata_bump,
             )
-            tx = await serialize_transaction(ix, req.payer, req.cluster_url)
+            tx = await serialize_transaction(ix, req.payer, endpoint_url)
             return TransactionResponse(transaction=tx)
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
@@ -79,13 +231,25 @@ def create_app():
     @app.post("/tx/initialize-global-vault", response_model=TransactionResponse, tags=["Transactions"])
     async def initialize_global_vault(req: InitializeGlobalVaultRequest):
         try:
+            settings = get_settings()
+            endpoint_url = req.endpoint_url or settings.endpoint_url
+
+            # Use defaults from settings if not provided in request
+            derived = derive_accounts(
+                req.payer,
+                req.mint,
+                ephemeral_spl_token_program=settings.ephemeral_spl_token_program,
+                token_program=settings.token_program,
+                permission_program=settings.permission_program,
+                delegation_program=settings.delegation_program,
+            )
             ix = builder.initialize_global_vault(
                 req.payer,
                 req.mint,
-                req.vault,
-                req.vault_bump,
+                derived.vault,
+                derived.vault_bump,
             )
-            tx = await serialize_transaction(ix, req.payer, req.cluster_url)
+            tx = await serialize_transaction(ix, req.payer, endpoint_url)
             return TransactionResponse(transaction=tx)
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
@@ -93,37 +257,63 @@ def create_app():
     @app.post("/tx/deposit-spl-tokens", response_model=TransactionResponse, tags=["Transactions"])
     async def deposit_spl_tokens(req: DepositSplTokensRequest):
         try:
-            ix = builder.deposit_spl_tokens(
-                req.authority,
+
+            settings = get_settings()
+            endpoint_url = req.endpoint_url or settings.endpoint_url
+
+            # Use defaults from settings if not provided in request
+            derived = derive_accounts(
                 req.user,
                 req.mint,
-                req.source_token,
-                req.vault_token,
-                req.amount,
-                req.ephemeral_ata,
-                req.vault,
-                req.token_program,
+                ephemeral_spl_token_program=settings.ephemeral_spl_token_program,
+                token_program=settings.token_program,
+                permission_program=settings.permission_program,
+                delegation_program=settings.delegation_program,
             )
-            tx = await serialize_transaction(ix, req.authority, req.cluster_url)
+            ix = builder.deposit_spl_tokens(
+                req.owner,
+                req.user,
+                req.mint,
+                derived.user_ata,
+                derived.vault_ata,
+                req.amount,
+                derived.ephemeral_ata,
+                derived.vault,
+                settings.token_program,
+            )
+            tx = await serialize_transaction(ix, req.owner, endpoint_url)
             return TransactionResponse(transaction=tx)
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
 
     @app.post("/tx/withdraw-spl-tokens", response_model=TransactionResponse, tags=["Transactions"])
-    async def withdraw_spl_tokens(req: WithdrawSplTokensRequest):
+    async def withdraw_spl_tokens(req: WithdrawRequest):
         try:
+
+            settings = get_settings()
+            endpoint_url = req.endpoint_url or settings.endpoint_url
+
+            # Use defaults from settings if not provided in request
+            derived = derive_accounts(
+                req.user,
+                req.mint,
+                ephemeral_spl_token_program=settings.ephemeral_spl_token_program,
+                token_program=settings.token_program,
+                permission_program=settings.permission_program,
+                delegation_program=settings.delegation_program,
+            )
             ix = builder.withdraw_spl_tokens(
                 req.owner,
                 req.mint,
-                req.vault_source,
-                req.user_dest,
+                derived.vault_ata,
+                derived.user_ata,
                 req.amount,
-                req.ephemeral_ata,
-                req.vault,
-                req.vault_bump,
-                req.token_program,
+                derived.ephemeral_ata,
+                derived.vault,
+                derived.vault_bump,
+                settings.token_program,
             )
-            tx = await serialize_transaction(ix, req.owner, req.cluster_url)
+            tx = await serialize_transaction(ix, req.owner, endpoint_url)
             return TransactionResponse(transaction=tx)
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
@@ -131,19 +321,32 @@ def create_app():
     @app.post("/tx/delegate-ephemeral-ata", response_model=TransactionResponse, tags=["Transactions"])
     async def delegate_ephemeral_ata(req: DelegateEphemeralAtaRequest):
         try:
+
+            settings = get_settings()
+            endpoint_url = req.endpoint_url or settings.endpoint_url
+
+            # Use defaults from settings if not provided in request
+            derived = derive_accounts(
+                req.user,
+                req.mint,
+                ephemeral_spl_token_program=settings.ephemeral_spl_token_program,
+                token_program=settings.token_program,
+                permission_program=settings.permission_program,
+                delegation_program=settings.delegation_program,
+            )
             ix = builder.delegate_ephemeral_ata(
                 req.payer,
                 req.user,
                 req.mint,
                 req.owner_program,
-                req.buffer,
-                req.delegation_record,
-                req.delegation_metadata,
-                req.ephemeral_ata,
-                req.ephemeral_ata_bump,
+                derived.eata_delegation_buffer,
+                derived.eata_delegation_record,
+                derived.eata_delegation_metadata,
+                derived.ephemeral_ata,
+                derived.ephemeral_ata_bump,
                 req.validator,
             )
-            tx = await serialize_transaction(ix, req.payer, req.cluster_url)
+            tx = await serialize_transaction(ix, req.payer, endpoint_url)
             return TransactionResponse(transaction=tx)
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
@@ -151,98 +354,67 @@ def create_app():
     @app.post("/tx/undelegate-ephemeral-ata", response_model=TransactionResponse, tags=["Transactions"])
     async def undelegate_ephemeral_ata(req: UndelegateEphemeralAtaRequest):
         try:
+
+            settings = get_settings()
+            endpoint_url = req.endpoint_url or settings.tee_endpoint_url
+
+            # Use defaults from settings if not provided in request
+            derived = derive_accounts(
+                req.user,
+                req.mint,
+                ephemeral_spl_token_program=settings.ephemeral_spl_token_program,
+                token_program=settings.token_program,
+                permission_program=settings.permission_program,
+                delegation_program=settings.delegation_program,
+            )
             ix = builder.undelegate_ephemeral_ata(
                 req.payer,
-                req.ata,
-                req.magic_context,
-                req.ephemeral_ata,
+                derived.user_ata,
+                derived.ephemeral_ata,
             )
-            cluster = req.cluster_url or settings.tee_cluster_url
-            tx = await serialize_transaction(ix, req.payer, cluster)
-            return TransactionResponse(transaction=tx)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=str(e))
 
-    @app.post("/tx/create-ephemeral-ata-permission", response_model=TransactionResponse, tags=["Transactions"])
-    async def create_ephemeral_ata_permission(req: CreateEphemeralAtaPermissionRequest):
-        try:
-            ix = builder.create_ephemeral_ata_permission(
-                req.payer,
-                req.mint,
-                req.flags,
-                req.ephemeral_ata,
-                req.ephemeral_ata_bump,
-                req.permission,
-            )
-            tx = await serialize_transaction(ix, req.payer, req.cluster_url)
-            return TransactionResponse(transaction=tx)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=str(e))
-
-    @app.post("/tx/delegate-ephemeral-ata-permission", response_model=TransactionResponse, tags=["Transactions"])
-    async def delegate_ephemeral_ata_permission(req: DelegateEphemeralAtaPermissionRequest):
-        try:
-            ix = builder.delegate_ephemeral_ata_permission(
-                req.payer,
-                req.buffer,
-                req.record,
-                req.metadata,
-                req.validator,
-                req.ephemeral_ata,
-                req.ephemeral_ata_bump,
-                req.permission,
-            )
-            tx = await serialize_transaction(ix, req.payer, req.cluster_url)
-            return TransactionResponse(transaction=tx)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=str(e))
-
-    @app.post("/tx/undelegate-ephemeral-ata-permission", response_model=TransactionResponse, tags=["Transactions"])
-    async def undelegate_ephemeral_ata_permission(req: UndelegateEphemeralAtaPermissionRequest):
-        try:
-            ix = builder.undelegate_ephemeral_ata_permission(
-                req.payer,
-                req.magic_context,
-                req.ephemeral_ata,
-                req.permission,
-            )
-            cluster = req.cluster_url or settings.tee_cluster_url
-            tx = await serialize_transaction(ix, req.payer, cluster)
-            return TransactionResponse(transaction=tx)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=str(e))
-
-    @app.post("/tx/reset-ephemeral-ata-permission", response_model=TransactionResponse, tags=["Transactions"])
-    async def reset_ephemeral_ata_permission(req: ResetEphemeralAtaPermissionRequest):
-        try:
-            ix = builder.reset_ephemeral_ata_permission(
-                req.owner,
-                req.mint,
-                req.flags,
-                req.ephemeral_ata,
-                req.ephemeral_ata_bump,
-                req.permission,
-            )
-            cluster = req.cluster_url or settings.tee_cluster_url
-            tx = await serialize_transaction(ix, req.owner, cluster)
+            tx = await serialize_transaction(ix, req.payer, endpoint_url)
             return TransactionResponse(transaction=tx)
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
 
     @app.post("/tx/checked-transfer", response_model=TransactionResponse, tags=["Transactions"])
-    async def checked_transfer(req: CheckedTransferRequest):
+    async def checked_transfer(req: TransferAmountRequest):
         try:
+            settings = get_settings()
+            cluster = req.endpoint_url or settings.tee_endpoint_url
+
+            # Use defaults from settings if not provided in request
+            derived_sender = derive_accounts(
+                req.sender,
+                req.mint,
+                ephemeral_spl_token_program=settings.ephemeral_spl_token_program,
+                token_program=settings.token_program,
+                permission_program=settings.permission_program,
+                delegation_program=settings.delegation_program,
+            )
+            derived_recipient = derive_accounts(
+                req.recipient,
+                req.mint,
+                ephemeral_spl_token_program=settings.ephemeral_spl_token_program,
+                token_program=settings.token_program,
+                permission_program=settings.permission_program,
+                delegation_program=settings.delegation_program,
+            )
+            
+            # Fetch decimals from mint account
+            decimals = await get_mint_decimals(req.mint, cluster)
+            
             ix = builder.checked_transfer(
-                req.source,
-                req.destination,
+                derived_sender.user_ata,
+                derived_recipient.user_ata,
                 req.mint,
                 req.amount,
-                req.decimals,
-                req.authority,
-                req.token_program,
+                decimals,
+                req.sender,
+                settings.token_program,
             )
-            cluster = req.cluster_url or settings.tee_cluster_url
-            tx = await serialize_transaction(ix, req.authority, cluster)
+            tx = await serialize_transaction(ix, req.sender, cluster)
             return TransactionResponse(transaction=tx)
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
@@ -250,39 +422,135 @@ def create_app():
     @app.post("/tx/initialize-ata", response_model=TransactionResponse, tags=["Transactions"])
     async def initialize_ata(req: InitializeAtaRequest):
         try:
+
+            settings = get_settings()
+            endpoint_url = req.endpoint_url or settings.endpoint_url
+
+            # Use defaults from settings if not provided in request
+            derived = derive_accounts(
+                req.owner,
+                req.mint,
+                ephemeral_spl_token_program=settings.ephemeral_spl_token_program,
+                token_program=settings.token_program,
+                permission_program=settings.permission_program,
+                delegation_program=settings.delegation_program,
+            )
+            
             ix = builder.initialize_ata(
                 req.payer,
-                req.user,
+                req.owner,
                 req.mint,
-                req.ata,
-                req.token_program,
+                derived.user_ata,
+                settings.token_program,
             )
-            tx = await serialize_transaction(ix, req.payer, req.cluster_url)
+            tx = await serialize_transaction(ix, req.payer, endpoint_url)
+            return TransactionResponse(transaction=tx)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    
+
+
+    # === Private Transaction Endpoints (tx/private/...) ===
+
+
+    @app.post("/tx/private/deposit", response_model=TransactionResponse, tags=["Private Transactions"])
+    async def private_deposit(req: DepositRequest):
+        """
+        Deposit SPL token account on Solana for private transfer.
+
+        This initialization process includes the following steps:
+        - Initialize global vault (if not already initialized)
+        - Initialize vault's ATA (if not already initialized)
+        - Initialize user's ATA (if not already initialized)
+        - Initialize ephemeral ATA (if not already initialized)
+        - Delegate ephemeral ATA (if not already delegated)
+        - Initialize ephemeral ATA's permission (if not already initialized)
+        - Delegate ephemeral ATA's permission (if not already delegated)
+        - Deposit SPL tokens (if amount > 0)
+        """
+        try:
+            settings = get_settings()
+            endpoint_url = req.endpoint_url or settings.endpoint_url
+
+            # Use defaults from settings if not provided in request
+            ephemeral_spl_token_program = settings.ephemeral_spl_token_program
+            token_program = settings.token_program
+            permission_program = settings.permission_program
+            delegation_program = settings.delegation_program
+            validator = settings.default_validator
+            amount = req.amount or 0
+            user = req.user
+            mint = req.mint
+
+            instructions = await build_deposit_instructions(user, mint, amount, endpoint_url, validator, ephemeral_spl_token_program, token_program, permission_program, delegation_program)
+            
+            # Serialize all instructions in one transaction
+            tx = await serialize_transaction(instructions, user, endpoint_url)
             return TransactionResponse(transaction=tx)
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
         
-    @app.post("/tx/initialize-or-deposit-to-private-account", response_model=TransactionResponse, tags=["Transactions"])
-    async def initialize_or_deposit_to_private_account(req: InitializeOrDepositToPrivateAccount):
+    @app.post("/tx/private/transfer-amount", response_model=TransactionResponse, tags=["Private Transactions"])
+    async def private_transfer_amount(req: TransferAmountRequest):
         """
-        Initialize necessary accounts and/or deposit SPL tokens to private account in a single transaction.
-        
-        All accounts are derived from user and mint:
-        - vault, vault_ata, ephemeral_ata, user_ata, permission
-        - delegation PDAs for ephemeral_ata and permission
-        
-        Creates only necessary initialization/delegation instructions based on account state checks.
-        If amount > 0, includes a deposit instruction.
+        Transfer SPL token amount (checked_transfer) privately.
         """
         try:
             settings = get_settings()
-            
+            endpoint_url = req.endpoint_url or settings.tee_endpoint_url
+
             # Use defaults from settings if not provided in request
-            ephemeral_spl_token_program = req.ephemeral_spl_token_program or settings.ephemeral_spl_token_program
-            token_program = req.token_program or settings.token_program
-            permission_program = req.permission_program or settings.permission_program
-            delegation_program = req.delegation_program or settings.delegation_program
+            derived_sender = derive_accounts(
+                req.sender,
+                req.mint,
+                ephemeral_spl_token_program=settings.ephemeral_spl_token_program,
+                token_program=settings.token_program,
+                permission_program=settings.permission_program,
+                delegation_program=settings.delegation_program,
+            )
+            derived_recipient = derive_accounts(
+                req.recipient,
+                req.mint,
+                ephemeral_spl_token_program=settings.ephemeral_spl_token_program,
+                token_program=settings.token_program,
+                permission_program=settings.permission_program,
+                delegation_program=settings.delegation_program,
+            )
+
+            # Fetch decimals from mint account
+            decimals = await get_mint_decimals(req.mint, endpoint_url)
+
+            ix = builder.checked_transfer(
+                derived_sender.user_ata,
+                derived_recipient.user_ata,
+                req.mint,
+                req.amount,
+                decimals,
+                req.sender,
+                settings.token_program,
+            )
             
+            tx = await serialize_transaction(ix, req.sender, endpoint_url)
+            return TransactionResponse(transaction=tx)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    @app.post("/tx/private/prepare-withdrawal", response_model=TransactionResponse, tags=["Private Transactions"])
+    async def private_prepare_withdrawal(req: PrepareWithdrawalRequest):
+        """
+        Undelegate ephemeral ATA from Private Ephemeral Rollup and prepare for withdrawal on Solana.
+        """
+        try:
+            settings = get_settings()
+            endpoint_url = req.endpoint_url or settings.tee_endpoint_url
+
+            # Use defaults from settings if not provided in request
+            ephemeral_spl_token_program = settings.ephemeral_spl_token_program
+            token_program = settings.token_program
+            permission_program = settings.permission_program
+            delegation_program = settings.delegation_program
+            endpoint_url = req.endpoint_url or settings.endpoint_url
+
             # Derive all accounts from user and mint in one call
             derived = derive_accounts(
                 req.user,
@@ -292,134 +560,55 @@ def create_app():
                 permission_program=permission_program,
                 delegation_program=delegation_program,
             )
-            
-            # Check all accounts in parallel (Promise.all pattern)
-            account_checks = {
-                "vault": derived.vault,
-                "vault_ata": derived.vault_ata,
-                "user_ata": derived.user_ata,
-                "ephemeral_ata": derived.ephemeral_ata,
-                "permission": derived.permission,
-            }
-            # Pass delegation program for checking delegation status
-            account_states = await check_accounts(
-                account_checks,
-                req.cluster_url,
+
+            ix = builder.undelegate_ephemeral_ata(
+                req.user,
+                derived.user_ata,
+                derived.ephemeral_ata,
+            )
+
+            tx = await serialize_transaction(ix, req.user, endpoint_url)
+            return TransactionResponse(transaction=tx)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    @app.post("/tx/private/withdraw", response_model=TransactionResponse, tags=["Private Transactions"])
+    async def private_withdraw(req: WithdrawRequest):
+        """
+        Withdraw SPL tokens from an ephemeral ATA on Solana.
+        """
+        try:
+            settings = get_settings()
+
+            # Use defaults from settings if not provided in request
+            ephemeral_spl_token_program = settings.ephemeral_spl_token_program
+            token_program = settings.token_program
+            permission_program = settings.permission_program
+            delegation_program = settings.delegation_program
+            endpoint_url = req.endpoint_url or settings.endpoint_url
+
+            # Derive all accounts from user and mint in one call
+            derived = derive_accounts(
+                req.user,
+                req.mint,
+                ephemeral_spl_token_program=ephemeral_spl_token_program,
+                token_program=token_program,
+                permission_program=permission_program,
                 delegation_program=delegation_program,
             )
-            
-            # Check if ephemeral_ata or permission are already delegated
-            if account_states["ephemeral_ata"].is_delegated:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Ephemeral ATA is already delegated. Cannot initialize or deposit, please undelegate first.",
-                )
-            
-            # Build list of instructions based on account states
-            instructions = []
-            
-            # Initialize global vault if not already initialized
-            if not account_states["vault"].exists:
-                init_vault_ix = builder.initialize_global_vault(
-                    req.user,
-                    req.mint,
-                    derived.vault,
-                    derived.vault_bump,
-                )
-                instructions.append(init_vault_ix)
-            
-            # Initialize vault's ATA if not already initialized
-            if not account_states["vault_ata"].exists:
-                init_vault_ata_ix = builder.initialize_ata(
-                    req.user,
-                    derived.vault,
-                    req.mint,
-                    derived.vault_ata,
-                    token_program,
-                )
-                instructions.append(init_vault_ata_ix)
-            
-            # Initialize user's ATA if not already initialized
-            if not account_states["user_ata"].exists:
-                init_ata_ix = builder.initialize_ata(
-                    req.user,
-                    req.user,
-                    req.mint,
-                    derived.user_ata,
-                    token_program,
-                )
-                instructions.append(init_ata_ix)
-            
-            # Initialize ephemeral ATA if not already initialized
-            if not account_states["ephemeral_ata"].exists:
-                init_ephemeral_ata_ix = builder.initialize_ephemeral_ata(
-                    req.user,
-                    req.user,
-                    req.mint,
-                    derived.ephemeral_ata,
-                    derived.ephemeral_ata_bump,
-                )
-                instructions.append(init_ephemeral_ata_ix)
-            
-            # Delegate ephemeral ATA if not already delegated
-            if account_states["ephemeral_ata"].exists and not account_states["ephemeral_ata"].is_delegated:
-                delegate_ix = builder.delegate_ephemeral_ata(
-                    req.user,
-                    req.user,
-                    req.mint,
-                    ephemeral_spl_token_program,
-                    derived.eata_delegation_buffer,
-                    derived.eata_delegation_record,
-                    derived.eata_delegation_metadata,
-                    derived.ephemeral_ata,
-                    derived.ephemeral_ata_bump,
-                    req.validator,
-                )
-                instructions.append(delegate_ix)
-            
-            # Initialize ephemeral ATA's permission if not already initialized
-            if not account_states["permission"].exists:
-                create_permission_ix = builder.create_ephemeral_ata_permission(
-                    req.user,
-                    req.mint,
-                    0,  # flags: default permissions
-                    derived.ephemeral_ata,
-                    derived.ephemeral_ata_bump,
-                    derived.permission,
-                )
-                instructions.append(create_permission_ix)
-            
-            # Delegate ephemeral ATA's permission if not already delegated
-            if account_states["permission"].exists and not account_states["permission"].is_delegated:
-                delegate_permission_ix = builder.delegate_ephemeral_ata_permission(
-                    req.user,
-                    derived.permission_delegation_buffer,
-                    derived.permission_delegation_record,
-                    derived.permission_delegation_metadata,
-                    req.validator or settings.default_validator,  # validator: use provided or default from config
-                    derived.ephemeral_ata,
-                    derived.ephemeral_ata_bump,
-                    derived.permission,
-                )
-                instructions.append(delegate_permission_ix)
-            
-            # Include deposit instruction if amount > 0
-            if req.amount > 0:
-                deposit_ix = builder.deposit_private_balance(
-                    req.user,
-                    req.user,
-                    req.mint,
-                    derived.user_ata,
-                    derived.vault_ata,
-                    req.amount,
-                    derived.ephemeral_ata,
-                    derived.vault,
-                    token_program,
-                )
-                instructions.append(deposit_ix)
-            
-            # Serialize all instructions in one transaction
-            tx = await serialize_transaction(instructions, req.user, req.cluster_url)
+
+            ix = builder.withdraw_spl_tokens(
+                req.owner,
+                req.mint,
+                derived.vault_ata,
+                derived.user_ata,
+                req.amount,
+                derived.ephemeral_ata,
+                derived.vault,
+                derived.vault_bump,
+                token_program,
+            )
+            tx = await serialize_transaction(ix, req.owner, endpoint_url)
             return TransactionResponse(transaction=tx)
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))

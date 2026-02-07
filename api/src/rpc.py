@@ -44,11 +44,11 @@ class AccountState:
 
 async def get_account_info(
     pubkey: str,
-    cluster_url: Optional[str] = None,
+    endpoint_url: Optional[str] = None,
 ) -> AccountState:
     """Fetch account info from RPC and determine if it's initialized/delegated."""
     settings = get_settings()
-    url = cluster_url or settings.cluster_url
+    url = endpoint_url or settings.endpoint_url
     
     payload = {
         "jsonrpc": "2.0",
@@ -83,7 +83,7 @@ async def get_account_info(
 
 async def check_accounts(
     accounts: dict[str, str],
-    cluster_url: Optional[str] = None,
+    endpoint_url: Optional[str] = None,
     delegation_program: Optional[str] = None,
 ) -> dict[str, AccountState]:
     """
@@ -91,7 +91,7 @@ async def check_accounts(
     
     Args:
         accounts: Dict mapping account name to pubkey
-        cluster_url: Optional RPC URL override
+        endpoint_url: Optional RPC URL override
         delegation_program: Optional delegation program ID to check delegation status
     
     Returns:
@@ -101,7 +101,7 @@ async def check_accounts(
     
     tasks = {}
     for name, pubkey in accounts.items():
-        tasks[name] = get_account_info(pubkey, cluster_url)
+        tasks[name] = get_account_info(pubkey, endpoint_url)
     
     results = await asyncio.gather(*tasks.values())
     state_dict = dict(zip(tasks.keys(), results))
@@ -138,28 +138,28 @@ async def check_accounts(
     return state_dict
 
 
-async def is_vault_initialized(vault_pubkey: str, cluster_url: Optional[str] = None) -> bool:
+async def is_vault_initialized(vault_pubkey: str, endpoint_url: Optional[str] = None) -> bool:
     """Check if global vault is initialized by checking if any data exists."""
-    account = await get_account_info(vault_pubkey, cluster_url)
+    account = await get_account_info(vault_pubkey, endpoint_url)
     return account.exists and len(account.data) > 0
 
 
-async def is_ata_initialized(ata_pubkey: str, cluster_url: Optional[str] = None) -> bool:
+async def is_ata_initialized(ata_pubkey: str, endpoint_url: Optional[str] = None) -> bool:
     """Check if an ATA is initialized by checking if any data exists."""
-    account = await get_account_info(ata_pubkey, cluster_url)
+    account = await get_account_info(ata_pubkey, endpoint_url)
     return account.exists and len(account.data) > 0
 
 
-async def is_ephemeral_ata_initialized(ephemeral_ata_pubkey: str, cluster_url: Optional[str] = None) -> bool:
+async def is_ephemeral_ata_initialized(ephemeral_ata_pubkey: str, endpoint_url: Optional[str] = None) -> bool:
     """Check if ephemeral ATA is initialized by checking if any data exists."""
-    account = await get_account_info(ephemeral_ata_pubkey, cluster_url)
+    account = await get_account_info(ephemeral_ata_pubkey, endpoint_url)
     return account.exists and len(account.data) > 0
 
 
 async def is_ephemeral_ata_delegated(
     ephemeral_ata_pubkey: str,
     delegation_program_owner: Optional[str] = None,
-    cluster_url: Optional[str] = None,
+    endpoint_url: Optional[str] = None,
 ) -> bool:
     """
     Check if ephemeral ATA is delegated by comparing its owner to the delegation program.
@@ -167,12 +167,43 @@ async def is_ephemeral_ata_delegated(
     Args:
         ephemeral_ata_pubkey: The ephemeral ATA account address
         delegation_program_owner: The expected owner if delegated (delegation program address)
-        cluster_url: Optional RPC URL override
+        endpoint_url: Optional RPC URL override
     
     Returns:
         True if account owner matches the delegation program owner, False otherwise
     """
-    account = await get_account_info(ephemeral_ata_pubkey, cluster_url)
+    account = await get_account_info(ephemeral_ata_pubkey, endpoint_url)
     if not account.exists or not account.owner:
         return False
     return account.owner == delegation_program_owner
+
+
+async def get_mint_decimals(mint_pubkey: str, endpoint_url: Optional[str] = None) -> int:
+    """
+    Fetch the decimals from a mint account.
+    
+    The mint account data structure has decimals at byte offset 44 (1 byte).
+    
+    Args:
+        mint_pubkey: The mint account address
+        endpoint_url: Optional RPC URL override
+    
+    Returns:
+        The number of decimals (0-18), or 0 if unable to fetch
+    """
+    account = await get_account_info(mint_pubkey, endpoint_url)
+    
+    if not account.exists or not account.data:
+        return 0
+    
+    try:
+        # Mint data is base64 encoded string
+        import base64
+        mint_data = base64.b64decode(account.data)
+        # Decimals are at byte 44 (1 byte)
+        if len(mint_data) >= 45:
+            return mint_data[44]
+        return 0
+    except Exception as e:
+        print(f"Error decoding mint decimals for {mint_pubkey}: {e}")
+        return 0

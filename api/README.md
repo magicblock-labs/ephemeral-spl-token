@@ -19,13 +19,14 @@ uv run uvicorn src.main:create_app --factory --reload --port 8080
 
 Environment variables (prefix: `EPHEMERAL_`):
 
-| Variable | Default | Description |
-|----------|---------|-------------|
+| Variable                | Default                              | Description        |
+| ----------------------- | ------------------------------------ | ------------------ |
 | `EPHEMERAL_CLUSTER_URL` | `https://rpc.magicblock.app/mainnet` | Solana cluster URL |
 
 ## API Documentation
 
 Once running, visit:
+
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
 - OpenAPI JSON: http://localhost:8000/openapi.json
@@ -38,41 +39,47 @@ Note: Cloudflare Python Workers cannot use native Solana packages yet, so PDA ad
 and bump seeds must be provided by the client.
 
 ### Health & Configuration
-| Endpoint | Description |
-|----------|-------------|
-| `GET /` | Health check - returns status and program ID |
+
+| Endpoint      | Description                                          |
+| ------------- | ---------------------------------------------------- |
+| `GET /`       | Health check - returns status and program ID         |
 | `GET /config` | Get current configuration (cluster URL, program IDs) |
 
 ### Ephemeral ATA Operations
-| Endpoint | Description |
-|----------|-------------|
-| `POST /tx/initialize-ephemeral-ata` | Initialize an Ephemeral ATA |
-| `POST /tx/delegate-ephemeral-ata` | Delegate ephemeral ATA to DLP |
-| `POST /tx/undelegate-ephemeral-ata` | Undelegate ephemeral ATA |
+
+| Endpoint                            | Description                   |
+| ----------------------------------- | ----------------------------- |
+| `POST /tx/initialize-ephemeral-ata` | Initialize an Ephemeral ATA   |
+| `POST /tx/delegate-ephemeral-ata`   | Delegate ephemeral ATA to DLP |
+| `POST /tx/undelegate-ephemeral-ata` | Undelegate ephemeral ATA      |
 
 ### Global Vault Operations
-| Endpoint | Description |
-|----------|-------------|
-| `POST /tx/initialize-global-vault` | Initialize a Global Vault |
-| `POST /tx/deposit-spl-tokens` | Deposit tokens into ephemeral ATA |
-| `POST /tx/withdraw-spl-tokens` | Withdraw tokens from ephemeral ATA |
+
+| Endpoint                           | Description                        |
+| ---------------------------------- | ---------------------------------- |
+| `POST /tx/initialize-global-vault` | Initialize a Global Vault          |
+| `POST /tx/deposit-spl-tokens`      | Deposit tokens into ephemeral ATA  |
+| `POST /tx/withdraw-spl-tokens`     | Withdraw tokens from ephemeral ATA |
 
 ### Permission Management
-| Endpoint | Description |
-|----------|-------------|
-| `POST /tx/create-ephemeral-ata-permission` | Create permission account |
-| `POST /tx/delegate-ephemeral-ata-permission` | Delegate permission to DLP |
-| `POST /tx/undelegate-ephemeral-ata-permission` | Undelegate permission |
-| `POST /tx/reset-ephemeral-ata-permission` | Reset permission flags |
+
+| Endpoint                                       | Description                |
+| ---------------------------------------------- | -------------------------- |
+| `POST /tx/create-ephemeral-ata-permission`     | Create permission account  |
+| `POST /tx/delegate-ephemeral-ata-permission`   | Delegate permission to DLP |
+| `POST /tx/undelegate-ephemeral-ata-permission` | Undelegate permission      |
+| `POST /tx/reset-ephemeral-ata-permission`      | Reset permission flags     |
 
 ### Token Operations
-| Endpoint | Description |
-|----------|-------------|
+
+| Endpoint                    | Description                                        |
+| --------------------------- | -------------------------------------------------- |
 | `POST /tx/checked-transfer` | Transfer SPL tokens with checked mint and decimals |
 
 ### Associated Token Account (ATA)
-| Endpoint | Description |
-|----------|-------------|
+
+| Endpoint                  | Description                                             |
+| ------------------------- | ------------------------------------------------------- |
 | `POST /tx/initialize-ata` | Create an Associated Token Account for a user-mint pair |
 
 ## Example Usage
@@ -88,6 +95,7 @@ curl -X POST http://localhost:8000/tx/initialize-ephemeral-ata \
 ```
 
 Response:
+
 ```json
 {
   "transaction": "base64EncodedTransaction...",
@@ -100,6 +108,7 @@ Response:
 Two test scripts are provided to verify all API endpoints:
 
 ### Quick Test Script
+
 Run all endpoint tests with a simple Python script:
 
 ```bash
@@ -109,6 +118,7 @@ python test_endpoints.py
 This provides a summary of all tests with pass/fail status.
 
 ### Comprehensive Pytest Tests
+
 Run detailed tests with pytest:
 
 ```bash
@@ -116,16 +126,17 @@ Run detailed tests with pytest:
 pip install pytest
 
 # Run all tests
-pytest test_api.py -v
+pytest tests/test_api.py -v
 
 # Run specific test class
-pytest test_api.py::TestHealthEndpoints -v
+pytest tests/test_api.py::TestHealthEndpoints -v
 
 # Run with quiet output
-pytest test_api.py -q
+pytest tests/test_api.py -q
 ```
 
 Both test scripts cover:
+
 - Health check endpoints
 - All ephemeral ATA operations
 - Global vault operations

@@ -96,11 +96,8 @@ class APITester:
         
         # Initialize ephemeral ATA
         self.test("POST", "/tx/initialize-ephemeral-ata", {
-            "payer": SAMPLE_PAYER,
             "user": SAMPLE_USER,
             "mint": SAMPLE_MINT,
-            "ephemeral_ata": SAMPLE_ATA,
-            "ephemeral_ata_bump": 255,
         })
 
         # Delegate ephemeral ATA
@@ -109,11 +106,6 @@ class APITester:
             "user": SAMPLE_USER,
             "mint": SAMPLE_MINT,
             "owner_program": SAMPLE_OWNER_PROGRAM,
-            "buffer": SAMPLE_BUFFER,
-            "delegation_record": SAMPLE_DELEGATION_RECORD,
-            "delegation_metadata": SAMPLE_DELEGATION_METADATA,
-            "ephemeral_ata": SAMPLE_ATA,
-            "ephemeral_ata_bump": 255,
         })
 
         # Undelegate ephemeral ATA
@@ -121,9 +113,7 @@ class APITester:
             "payer": SAMPLE_PAYER,
             "user": SAMPLE_USER,
             "mint": SAMPLE_MINT,
-            "ata": SAMPLE_ATA,
             "magic_context": SAMPLE_MAGIC_CONTEXT,
-            "ephemeral_ata": SAMPLE_ATA,
         })
 
     def test_vault_endpoints(self):
@@ -133,8 +123,6 @@ class APITester:
         self.test("POST", "/tx/initialize-global-vault", {
             "payer": SAMPLE_PAYER,
             "mint": SAMPLE_MINT,
-            "vault": SAMPLE_VAULT,
-            "vault_bump": 255,
         })
 
     def test_deposit_withdraw_endpoints(self):
@@ -143,26 +131,18 @@ class APITester:
         
         # Deposit SPL tokens
         self.test("POST", "/tx/deposit-spl-tokens", {
-            "authority": SAMPLE_AUTHORITY,
+            "owner": SAMPLE_AUTHORITY,
             "user": SAMPLE_USER,
             "mint": SAMPLE_MINT,
-            "source_token": SAMPLE_SOURCE,
-            "vault_token": SAMPLE_VAULT_TOKEN,
             "amount": 1000000,
-            "ephemeral_ata": SAMPLE_ATA,
-            "vault": SAMPLE_VAULT,
         })
 
         # Withdraw SPL tokens
         self.test("POST", "/tx/withdraw-spl-tokens", {
             "owner": SAMPLE_USER,
+            "user": SAMPLE_USER,
             "mint": SAMPLE_MINT,
-            "vault_source": SAMPLE_VAULT_SOURCE,
-            "user_dest": SAMPLE_DEST,
             "amount": 500000,
-            "ephemeral_ata": SAMPLE_ATA,
-            "vault": SAMPLE_VAULT,
-            "vault_bump": 255,
         })
 
     def test_permission_endpoints(self):
@@ -175,9 +155,6 @@ class APITester:
             "user": SAMPLE_USER,
             "mint": SAMPLE_MINT,
             "flags": 1,
-            "ephemeral_ata": SAMPLE_ATA,
-            "ephemeral_ata_bump": 255,
-            "permission": SAMPLE_PERMISSION,
         })
 
         # Delegate ephemeral ATA permission
@@ -185,13 +162,7 @@ class APITester:
             "payer": SAMPLE_PAYER,
             "user": SAMPLE_USER,
             "mint": SAMPLE_MINT,
-            "buffer": SAMPLE_BUFFER,
-            "record": SAMPLE_DELEGATION_RECORD,
-            "metadata": SAMPLE_DELEGATION_METADATA,
             "validator": SAMPLE_PAYER,
-            "ephemeral_ata": SAMPLE_ATA,
-            "ephemeral_ata_bump": 255,
-            "permission": SAMPLE_PERMISSION,
         })
 
         # Undelegate ephemeral ATA permission
@@ -200,8 +171,6 @@ class APITester:
             "user": SAMPLE_USER,
             "mint": SAMPLE_MINT,
             "magic_context": SAMPLE_MAGIC_CONTEXT,
-            "ephemeral_ata": SAMPLE_ATA,
-            "permission": SAMPLE_PERMISSION,
         })
 
         # Reset ephemeral ATA permission
@@ -210,9 +179,6 @@ class APITester:
             "user": SAMPLE_USER,
             "mint": SAMPLE_MINT,
             "flags": 0,
-            "ephemeral_ata": SAMPLE_ATA,
-            "ephemeral_ata_bump": 255,
-            "permission": SAMPLE_PERMISSION,
         })
 
     def test_token_endpoints(self):

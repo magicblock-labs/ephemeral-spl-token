@@ -6,6 +6,8 @@ import struct
 from dataclasses import dataclass
 from typing import Optional
 
+from solders.pubkey import Pubkey
+
 from .config import get_settings
 
 # Support both Pyodide (browser/workers) and native Python environments
@@ -34,28 +36,10 @@ except ImportError:
             return response.json()
 
 
-_B58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
-_B58_INDEX = {ch: i for i, ch in enumerate(_B58_ALPHABET)}
-
-
-def _b58decode(value: str) -> bytes:
-    """Decode a base58 string into bytes."""
-    num = 0
-    for ch in value:
-        num = num * 58 + _B58_INDEX[ch]
-    if num == 0:
-        decoded = b""
-    else:
-        decoded = num.to_bytes((num.bit_length() + 7) // 8, "big")
-    pad = len(value) - len(value.lstrip("1"))
-    return (b"\x00" * pad) + decoded
-
-
 def _pubkey_bytes(value: str) -> bytes:
-    key = _b58decode(value)
-    if len(key) != 32:
-        raise ValueError("Invalid pubkey length")
-    return key
+    """Convert a base58 pubkey string to bytes using solders."""
+    pubkey = Pubkey.from_string(value)
+    return bytes(pubkey)
 
 
 def _encode_length(value: int) -> bytes:
@@ -87,10 +71,10 @@ class Instruction:
     accounts: list[AccountMeta]
 
 
-async def _get_latest_blockhash(cluster_url: Optional[str] = None) -> bytes:
+async def _get_latest_blockhash(endpoint_url: Optional[str] = None) -> bytes:
     """Fetch recent blockhash from cluster RPC."""
     settings = get_settings()
-    url = cluster_url or settings.cluster_url
+    url = endpoint_url or settings.endpoint_url
     payload = {
         "jsonrpc": "2.0",
         "id": 1,
@@ -101,19 +85,19 @@ async def _get_latest_blockhash(cluster_url: Optional[str] = None) -> bytes:
         blockhash = data["result"]["value"]["blockhash"]
     except Exception as exc:
         raise ValueError(f"RPC error: {data}") from exc
-    blockhash_bytes = _b58decode(blockhash)
-    if len(blockhash_bytes) != 32:
-        raise ValueError("Invalid blockhash length")
-    return blockhash_bytes
+    # Decode blockhash as a base58 string using solders
+    from solders.hash import Hash
+    blockhash_obj = Hash.from_string(blockhash)
+    return bytes(blockhash_obj)
 
 
 async def serialize_transaction(
     instruction: Instruction | list[Instruction],
     payer: str,
-    cluster_url: Optional[str] = None,
+    endpoint_url: Optional[str] = None,
 ) -> str:
     """Serialize an unsigned legacy transaction and return base64."""
-    blockhash = await _get_latest_blockhash(cluster_url)
+    blockhash = await _get_latest_blockhash(endpoint_url)
     payer_pk = _pubkey_bytes(payer)
 
     # Handle both single instruction and list of instructions
@@ -228,6 +212,7 @@ class InstructionBuilder:
         self.delegation_program = _pubkey_bytes(settings.delegation_program)
         self.permission_program = _pubkey_bytes(settings.permission_program)
         self.magic_program = _pubkey_bytes(settings.magic_program)
+        self.magic_context = _pubkey_bytes(settings.magic_context)
         self.ata_program = _pubkey_bytes(settings.ata_program)
 
     def initialize_ephemeral_ata(
@@ -266,14 +251,13 @@ class InstructionBuilder:
 
     def deposit_spl_tokens(
         self,
-        authority: str,
-        user: str,
-        mint: str,
+        owner: str,
         source_token: str,
         vault_token: str,
         amount: int,
         ephemeral_ata: str,
         vault: str,
+        mint: str,
         token_program: Optional[str] = None,
     ) -> Instruction:
         data = struct.pack("<BQ", 2, amount)
@@ -284,7 +268,7 @@ class InstructionBuilder:
             AccountMeta(_pubkey_bytes(mint), False, False),
             AccountMeta(_pubkey_bytes(source_token), False, True),
             AccountMeta(_pubkey_bytes(vault_token), False, True),
-            AccountMeta(_pubkey_bytes(authority), True, False),
+            AccountMeta(_pubkey_bytes(owner), True, False),
             AccountMeta(token_prog, False, False),
         ]
         return Instruction(self.program_id, data, accounts)
@@ -349,7 +333,6 @@ class InstructionBuilder:
         self,
         payer: str,
         ata: str,
-        magic_context: str,
         ephemeral_ata: str,
     ) -> Instruction:
         data = bytes([5])
@@ -357,7 +340,7 @@ class InstructionBuilder:
             AccountMeta(_pubkey_bytes(payer), True, False),
             AccountMeta(_pubkey_bytes(ata), False, True),
             AccountMeta(_pubkey_bytes(ephemeral_ata), False, True),
-            AccountMeta(_pubkey_bytes(magic_context), False, True),
+            AccountMeta(self.magic_context, False, True),
             AccountMeta(self.magic_program, False, False),
         ]
         return Instruction(self.program_id, data, accounts)
@@ -410,7 +393,6 @@ class InstructionBuilder:
     def undelegate_ephemeral_ata_permission(
         self,
         payer: str,
-        magic_context: str,
         ephemeral_ata: str,
         permission: str,
     ) -> Instruction:
@@ -421,7 +403,7 @@ class InstructionBuilder:
             AccountMeta(_pubkey_bytes(permission), False, True),
             AccountMeta(self.permission_program, False, False),
             AccountMeta(self.magic_program, False, False),
-            AccountMeta(_pubkey_bytes(magic_context), False, True),
+            AccountMeta(self.magic_context, False, True),
         ]
         return Instruction(self.program_id, data, accounts)
 
@@ -478,59 +460,34 @@ class InstructionBuilder:
     def initialize_ata(
         self,
         payer: str,
-        user: str,
+        owner: str,
         mint: str,
         ata: str,
         token_program: Optional[str] = None,
     ) -> Instruction:
         """Associated Token Account (ATA) Initialize instruction.
         
-        Initializes an associated token account for a user and mint pair.
+        Initializes an associated token account for an owner and mint pair.
         
         Accounts:
         - payer (writable, signer): payer for account creation
         - ata (writable): associated token account to be created
-        - user (readonly): owner of the ATA
+        - owner (readonly): owner of the ATA
         - mint (readonly): token mint
         - system_program (readonly): system program
         - token_program (readonly): token program
         """
-        data = b""  # ATA Create instruction has no data (empty input means Create)
+        data = bytes([1])  # Instruction discriminator for Initialize
         token_prog = _pubkey_bytes(token_program) if token_program else self.token_program
         accounts = [
             AccountMeta(_pubkey_bytes(payer), True, True),
             AccountMeta(_pubkey_bytes(ata), False, True),
-            AccountMeta(_pubkey_bytes(user), False, False),
+            AccountMeta(_pubkey_bytes(owner), False, False),
             AccountMeta(_pubkey_bytes(mint), False, False),
             AccountMeta(self.system_program, False, False),
             AccountMeta(token_prog, False, False),
         ]
         return Instruction(self.ata_program, data, accounts)
     
-    def deposit_private_balance(
-        self,
-        authority: str,
-        user: str,
-        mint: str,
-        source_token: str,
-        vault_token: str,
-        amount: int,
-        ephemeral_ata: str,
-        vault: str,
-        token_program: Optional[str] = None,
-    ) -> Instruction:
-        data = struct.pack("<BQ", 2, amount)
-        token_prog = _pubkey_bytes(token_program) if token_program else self.token_program
-        accounts = [
-            AccountMeta(_pubkey_bytes(ephemeral_ata), False, True),
-            AccountMeta(_pubkey_bytes(vault), False, False),
-            AccountMeta(_pubkey_bytes(mint), False, False),
-            AccountMeta(_pubkey_bytes(source_token), False, True),
-            AccountMeta(_pubkey_bytes(vault_token), False, True),
-            AccountMeta(_pubkey_bytes(authority), True, False),
-            AccountMeta(token_prog, False, False),
-        ]
-        return Instruction(self.program_id, data, accounts)
-
 
 builder = InstructionBuilder()

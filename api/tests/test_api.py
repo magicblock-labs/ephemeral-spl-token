@@ -47,16 +47,16 @@ class TestHealthEndpoints:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "ok"
-        assert "program_id" in data
-        assert "cluster_url" in data
+        assert "ephemeral_spl_token_program" in data
+        assert "endpoint_url" in data
 
     def test_config_endpoint(self, client):
         """Test GET /config endpoint."""
         response = client.get("/config")
         assert response.status_code == 200
         data = response.json()
-        assert "cluster_url" in data
-        assert "program_id" in data
+        assert "endpoint_url" in data
+        assert "ephemeral_spl_token_program" in data
         assert "token_program" in data
 
 
@@ -67,10 +67,8 @@ class TestEphemeralAtaEndpoints:
         """Test POST /tx/initialize-ephemeral-ata."""
         response = client.post("/tx/initialize-ephemeral-ata", json={
             "payer": PAYER,
-            "user": USER,
+            "owner": USER,
             "mint": MINT,
-            "ephemeral_ata": ATA,
-            "ephemeral_ata_bump": 255,
         })
         assert response.status_code == 200
         data = response.json()
@@ -85,11 +83,6 @@ class TestEphemeralAtaEndpoints:
             "user": USER,
             "mint": MINT,
             "owner_program": OWNER_PROGRAM,
-            "buffer": BUFFER,
-            "delegation_record": DELEGATION_RECORD,
-            "delegation_metadata": DELEGATION_METADATA,
-            "ephemeral_ata": ATA,
-            "ephemeral_ata_bump": 255,
         })
         assert response.status_code == 200
         data = response.json()
@@ -101,9 +94,6 @@ class TestEphemeralAtaEndpoints:
             "payer": PAYER,
             "user": USER,
             "mint": MINT,
-            "ata": ATA,
-            "magic_context": MAGIC_CONTEXT,
-            "ephemeral_ata": ATA,
         })
         assert response.status_code == 200
         data = response.json()
@@ -118,8 +108,6 @@ class TestVaultEndpoints:
         response = client.post("/tx/initialize-global-vault", json={
             "payer": PAYER,
             "mint": MINT,
-            "vault": VAULT,
-            "vault_bump": 255,
         })
         assert response.status_code == 200
         data = response.json()
@@ -133,14 +121,10 @@ class TestDepositWithdrawEndpoints:
     def test_deposit_spl_tokens(self, client):
         """Test POST /tx/deposit-spl-tokens."""
         response = client.post("/tx/deposit-spl-tokens", json={
-            "authority": AUTHORITY,
+            "owner": AUTHORITY,
             "user": USER,
             "mint": MINT,
-            "source_token": SOURCE,
-            "vault_token": VAULT_TOKEN,
             "amount": 1000000,
-            "ephemeral_ata": ATA,
-            "vault": VAULT,
         })
         assert response.status_code == 200
         data = response.json()
@@ -150,13 +134,9 @@ class TestDepositWithdrawEndpoints:
         """Test POST /tx/withdraw-spl-tokens."""
         response = client.post("/tx/withdraw-spl-tokens", json={
             "owner": USER,
+            "user": USER,
             "mint": MINT,
-            "vault_source": VAULT_SOURCE,
-            "user_dest": DEST,
             "amount": 500000,
-            "ephemeral_ata": ATA,
-            "vault": VAULT,
-            "vault_bump": 255,
         })
         assert response.status_code == 200
         data = response.json()
@@ -173,9 +153,6 @@ class TestPermissionEndpoints:
             "user": USER,
             "mint": MINT,
             "flags": 1,
-            "ephemeral_ata": ATA,
-            "ephemeral_ata_bump": 255,
-            "permission": PERMISSION,
         })
         assert response.status_code == 200
         data = response.json()
@@ -187,13 +164,7 @@ class TestPermissionEndpoints:
             "payer": PAYER,
             "user": USER,
             "mint": MINT,
-            "buffer": BUFFER,
-            "record": DELEGATION_RECORD,
-            "metadata": DELEGATION_METADATA,
             "validator": PAYER,
-            "ephemeral_ata": ATA,
-            "ephemeral_ata_bump": 255,
-            "permission": PERMISSION,
         })
         assert response.status_code == 200
         data = response.json()
@@ -206,8 +177,6 @@ class TestPermissionEndpoints:
             "user": USER,
             "mint": MINT,
             "magic_context": MAGIC_CONTEXT,
-            "ephemeral_ata": ATA,
-            "permission": PERMISSION,
         })
         assert response.status_code == 200
         data = response.json()
@@ -220,9 +189,6 @@ class TestPermissionEndpoints:
             "user": USER,
             "mint": MINT,
             "flags": 0,
-            "ephemeral_ata": ATA,
-            "ephemeral_ata_bump": 255,
-            "permission": PERMISSION,
         })
         assert response.status_code == 200
         data = response.json()
@@ -235,12 +201,10 @@ class TestTokenEndpoints:
     def test_checked_transfer(self, client):
         """Test POST /tx/checked-transfer."""
         response = client.post("/tx/checked-transfer", json={
-            "source": SOURCE,
-            "destination": DEST,
+            "sender": PAYER,
+            "recipient": USER,
             "mint": MINT,
             "amount": 1000000,
-            "decimals": 6,
-            "authority": AUTHORITY,
         })
         assert response.status_code == 200
         data = response.json()
@@ -256,9 +220,8 @@ class TestAtaEndpoints:
         """Test POST /tx/initialize-ata."""
         response = client.post("/tx/initialize-ata", json={
             "payer": PAYER,
-            "user": USER,
+            "owner": USER,
             "mint": MINT,
-            "ata": ATA,
         })
         assert response.status_code == 200
         data = response.json()
@@ -270,10 +233,8 @@ class TestAtaEndpoints:
         """Test POST /tx/initialize-ata with custom token program."""
         response = client.post("/tx/initialize-ata", json={
             "payer": PAYER,
-            "user": USER,
+            "owner": USER,
             "mint": MINT,
-            "ata": ATA,
-            "token_program": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
         })
         assert response.status_code == 200
         data = response.json()
@@ -286,33 +247,67 @@ class TestErrorHandling:
     def test_missing_required_field(self, client):
         """Test request with missing required field."""
         response = client.post("/tx/initialize-ephemeral-ata", json={
-            "payer": PAYER,
             "user": USER,
-            # Missing "mint" and other required fields
+            # Missing "mint" required field
         })
         assert response.status_code == 422  # Validation error
 
     def test_invalid_pubkey_format(self, client):
         """Test request with invalid pubkey format."""
         response = client.post("/tx/initialize-ephemeral-ata", json={
-            "payer": "not-a-valid-pubkey!!!",
-            "user": USER,
+            "user": "not-a-valid-pubkey!!!",
             "mint": MINT,
-            "ephemeral_ata": ATA,
-            "ephemeral_ata_bump": 255,
         })
         assert response.status_code == 400  # Bad request
 
-    def test_invalid_bump_seed(self, client):
-        """Test request with invalid bump seed."""
-        response = client.post("/tx/initialize-ephemeral-ata", json={
-            "payer": PAYER,
+
+class TestPrivateEndpoints:
+    """Test private transaction endpoints."""
+
+    def test_private_transfer_amount(self, client):
+        """Test POST /tx/private/transfer-amount."""
+        response = client.post("/tx/private/transfer-amount", json={
+            "sender": PAYER,
+            "recipient": USER,
+            "mint": MINT,
+            "amount": 1000000,
+        })
+        assert response.status_code == 200
+        data = response.json()
+        assert "transaction" in data
+
+    def test_private_prepare_withdrawal(self, client):
+        """Test POST /tx/private/prepare-withdrawal."""
+        response = client.post("/tx/private/prepare-withdrawal", json={
             "user": USER,
             "mint": MINT,
-            "ephemeral_ata": ATA,
-            "ephemeral_ata_bump": 256,  # Invalid: > 255
         })
-        assert response.status_code == 422  # Validation error
+        assert response.status_code == 200
+        data = response.json()
+        assert "transaction" in data
+
+    def test_private_withdraw(self, client):
+        """Test POST /tx/private/withdraw."""
+        response = client.post("/tx/private/withdraw", json={
+            "owner": USER,
+            "user": USER,
+            "mint": MINT,
+            "amount": 500000,
+        })
+        assert response.status_code == 200
+        data = response.json()
+        assert "transaction" in data
+
+    def test_private_deposit(self, client):
+        """Test POST /tx/private/deposit."""
+        response = client.post("/tx/private/deposit", json={
+            "user": USER,
+            "mint": MINT,
+            "amount": 1000000,
+        })
+        assert response.status_code == 200
+        data = response.json()
+        assert "transaction" in data
 
 
 class TestTransactionFormat:
@@ -323,9 +318,8 @@ class TestTransactionFormat:
         import base64
         response = client.post("/tx/initialize-ata", json={
             "payer": PAYER,
-            "user": USER,
+            "owner": USER,
             "mint": MINT,
-            "ata": ATA,
         })
         data = response.json()
         tx = data["transaction"]
@@ -341,9 +335,8 @@ class TestTransactionFormat:
         """Test response has required fields."""
         response = client.post("/tx/initialize-ata", json={
             "payer": PAYER,
-            "user": USER,
+            "owner": USER,
             "mint": MINT,
-            "ata": ATA,
         })
         data = response.json()
         
