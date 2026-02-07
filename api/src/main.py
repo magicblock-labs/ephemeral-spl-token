@@ -42,6 +42,12 @@ def create_app():
         description="Build transactions for the MagicBlock Private token program (https://docs.magicblock.gg/pages/private-ephemeral-rollups-pers)",
         version="0.1.0",
         lifespan=lifespan,
+        servers=[
+            {
+                "url": "https://api.docs.magicblock.app",
+                "description": "Private Transfer API (Beta)",
+            },
+        ],
     )
 
     async def build_deposit_instructions(user, mint, amount, endpoint_url, validator, ephemeral_spl_token_program, token_program, permission_program, delegation_program):
@@ -453,7 +459,7 @@ def create_app():
     # === Private Transaction Endpoints (tx/private/...) ===
 
 
-    @app.post("/tx/private/deposit", response_model=TransactionResponse, tags=["Private Transactions"])
+    @app.post("/private/tx/deposit", response_model=TransactionResponse, tags=["Private Transactions"])
     async def private_deposit(req: DepositRequest):
         """
         Deposit SPL token account on Solana for private transfer.
@@ -490,7 +496,7 @@ def create_app():
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
         
-    @app.post("/tx/private/transfer-amount", response_model=TransactionResponse, tags=["Private Transactions"])
+    @app.post("/private/tx/transfer-amount", response_model=TransactionResponse, tags=["Private Transactions"])
     async def private_transfer_amount(req: TransferAmountRequest):
         """
         Transfer SPL token amount (checked_transfer) privately.
@@ -535,7 +541,7 @@ def create_app():
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
 
-    @app.post("/tx/private/prepare-withdrawal", response_model=TransactionResponse, tags=["Private Transactions"])
+    @app.post("/private/tx/prepare-withdrawal", response_model=TransactionResponse, tags=["Private Transactions"])
     async def private_prepare_withdrawal(req: PrepareWithdrawalRequest):
         """
         Undelegate ephemeral ATA from Private Ephemeral Rollup and prepare for withdrawal on Solana.
@@ -572,7 +578,7 @@ def create_app():
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
 
-    @app.post("/tx/private/withdraw", response_model=TransactionResponse, tags=["Private Transactions"])
+    @app.post("/private/tx/withdraw", response_model=TransactionResponse, tags=["Private Transactions"])
     async def private_withdraw(req: WithdrawRequest):
         """
         Withdraw SPL tokens from an ephemeral ATA on Solana.
