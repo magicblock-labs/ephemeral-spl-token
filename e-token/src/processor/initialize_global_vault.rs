@@ -48,7 +48,7 @@ pub fn process_initialize_global_vault(
         lamports: Rent::get()?.try_minimum_balance(GlobalVault::LEN)?,
         owner: &ephemeral_spl_api::program::id_address(),
     }
-    .invoke_signed(&[signer_seeds.clone()])?;
+    .invoke_signed(&[signer_seeds])?;
 
     // Ensure account data has the expected size
     let vault = unsafe { load_mut_unchecked::<GlobalVault>(vault_info.borrow_unchecked_mut())? };
