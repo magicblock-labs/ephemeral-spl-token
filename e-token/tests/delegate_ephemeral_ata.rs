@@ -47,9 +47,7 @@ async fn delegate_ephemeral_ata_succeeds() {
         &mut context,
         payer,
         &mint_kp,
-        pdas.vault,
         6,
-        1_000,
         1,
     )
     .await;
@@ -190,9 +188,7 @@ async fn delegate_ephemeral_ata_non_owner_succeeds() {
         &mut context,
         payer,
         &mint_kp,
-        pdas.vault,
         6,
-        1_000,
         1,
     )
     .await;

@@ -4,7 +4,6 @@ use solana_program_test::ProgramTestContext;
 use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use solana_system_interface::instruction::create_account;
-use solana_transaction::Transaction;
 use spl_token_interface::instruction::{initialize_account, initialize_mint};
 use spl_token_interface::state::{Account as SplAccount, Mint};
 
@@ -18,7 +17,6 @@ pub struct Pdas {
 #[allow(dead_code)]
 pub struct TokenSetup {
     pub user_tokens: Vec<Pubkey>,
-    pub vault_token: Pubkey,
 }
 
 pub fn derive_pdas(program: Pubkey, owner: Pubkey, mint: Pubkey) -> Pdas {
@@ -45,9 +43,7 @@ pub async fn setup_mint_and_token_accounts(
     context: &mut ProgramTestContext,
     payer: Pubkey,
     mint_kp: &Keypair,
-    vault_owner: Pubkey,
     decimals: u8,
-    starting_balance: u64,
     user_accounts: usize,
 ) -> TokenSetup {
     assert!(
@@ -117,48 +113,7 @@ pub async fn setup_mint_and_token_accounts(
         signers.push(kp);
     }
 
-    // Create vault ata
-    let vault_token_kp = Keypair::new();
-    let vault_token = vault_token_kp.pubkey();
-    instructions.push(create_account(
-        &payer,
-        &vault_token,
-        token_acc_lamports,
-        token_acc_space as u64,
-        &spl_token_interface::ID,
-    ));
-    let mut init_vault_ix =
-        initialize_account(&spl_token_interface::ID, &vault_token, &mint, &vault_owner).unwrap();
-    init_vault_ix.program_id = spl_token_interface::ID;
-    instructions.push(init_vault_ix);
-    signers.push(&vault_token_kp);
-
-    // Mint starting balance to first user token
-    let first_user = user_tokens[0];
-    let mut mint_to_ix = spl_token_interface::instruction::mint_to(
-        &spl_token_interface::ID,
-        &mint,
-        &first_user,
-        &payer,
-        &[],
-        starting_balance,
-    )
-    .unwrap();
-    mint_to_ix.program_id = spl_token_interface::ID;
-    instructions.push(mint_to_ix);
-
-    // Submit transaction
-    let tx = Transaction::new_signed_with_payer(
-        &instructions,
-        Some(&payer),
-        &signers,
-        context.last_blockhash,
-    );
-
-    context.banks_client.process_transaction(tx).await.unwrap();
-
     TokenSetup {
         user_tokens,
-        vault_token,
     }
 }

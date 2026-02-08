@@ -18,7 +18,6 @@ mod utils;
 pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 
 const DECIMALS: u8 = 6;
-const STARTING_BALANCE: u64 = 10_000 * 10u64.pow(DECIMALS as u32);
 
 #[tokio::test]
 async fn withdraw_spl_tokens_decrements_ephemeral_amount() {
@@ -38,9 +37,7 @@ async fn withdraw_spl_tokens_decrements_ephemeral_amount() {
         &mut context,
         payer,
         &mint_kp,
-        pdas.vault,
         DECIMALS,
-        STARTING_BALANCE,
         2,
     )
     .await;

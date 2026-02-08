@@ -16,7 +16,6 @@ mod utils;
 pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 
 const DECIMALS: u8 = 6; // canonical USDC decimals
-const STARTING_BALANCE: u64 = 10_000 * 10u64.pow(DECIMALS as u32); // payer holds 10,000 tokens
 
 #[tokio::test]
 async fn initialize_global_vault() {
@@ -35,9 +34,7 @@ async fn initialize_global_vault() {
         &mut context,
         payer,
         &mint_kp,
-        pdas.vault,
         DECIMALS,
-        STARTING_BALANCE,
         1,
     )
     .await;

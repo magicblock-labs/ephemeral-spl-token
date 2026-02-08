@@ -38,9 +38,7 @@ async fn deposit_spl_tokens_increments_ephemeral_amount() {
         &mut context,
         payer,
         &mint_kp,
-        pdas.vault,
         DECIMALS,
-        STARTING_BALANCE,
         1,
     )
     .await;
