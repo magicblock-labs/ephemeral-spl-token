@@ -33,11 +33,12 @@ class DepositSplTokensRequest(ClusterConfig):
     amount: int = Field(..., description="Amount of tokens to deposit", ge=0)
 
 
-class WithdrawRequest(ClusterConfig):
+class WithdrawRequest(BaseModel):
     owner: str = Field(..., description="Owner of ephemeral ATA (payer and signer)")
     user: str = Field(..., description="Owner of the ephemeral ATA")
     mint: str = Field(..., description="SPL token mint")
     amount: int = Field(..., description="Amount of tokens to withdraw", ge=0)
+    endpoint_url: Optional[str] = Field(None, description="Solana endpoint URL override")
 
 
 class DelegateEphemeralAtaRequest(ClusterConfig):
@@ -81,11 +82,12 @@ class ResetEphemeralAtaPermissionRequest(ClusterConfig):
     flags: int = Field(..., description="New permission flags", ge=0, le=255)
 
 
-class TransferAmountRequest(ClusterConfig):
+class TransferAmountRequest(BaseModel):
     sender: str = Field(..., description="Sender pubkey (signer, owner of source ATA)")
     recipient: str = Field(..., description="Recipient pubkey (owner of destination ATA)")
     mint: str = Field(..., description="Token mint (readonly)")
     amount: int = Field(..., description="Amount of tokens to transfer", ge=0)
+    endpoint_url: Optional[str] = Field(None, description="Solana endpoint URL override")
 
 
 class InitializeAtaRequest(ClusterConfig):
@@ -94,13 +96,16 @@ class InitializeAtaRequest(ClusterConfig):
     mint: str = Field(..., description="SPL token mint")
 
 
-class DepositRequest(ClusterConfig):
+class DepositRequest(BaseModel):
     user: str = Field(..., description="User pubkey (owner of ephemeral ATA, source token account, and payer/signer)")
     mint: str = Field(..., description="SPL token mint")
     amount: int = Field(default=0, description="Amount of tokens to deposit (defaults to 0 for initialization only)", ge=0)
+    validator: Optional[str] = Field(None, description="Optional validator pubkey (defaults to default_validator from settings)")
+    endpoint_url: Optional[str] = Field(None, description="Solana endpoint URL override")
 
 
-class PrepareWithdrawalRequest(ClusterConfig):
+class PrepareWithdrawalRequest(BaseModel):
     user: str = Field(..., description="Owner of the ephemeral ATA")
     mint: str = Field(..., description="SPL token mint")
+    endpoint_url: Optional[str] = Field(None, description="Solana endpoint URL override")
 

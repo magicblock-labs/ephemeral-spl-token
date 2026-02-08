@@ -301,8 +301,6 @@ class InstructionBuilder:
     def delegate_ephemeral_ata(
         self,
         payer: str,
-        user: str,
-        mint: str,
         owner_program: str,
         buffer: str,
         delegation_record: str,

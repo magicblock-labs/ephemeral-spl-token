@@ -252,8 +252,6 @@ class TestInstructionBuilder:
         """Test building delegate_ephemeral_ata without validator."""
         builder = InstructionBuilder()
         payer = VALID_PUBKEY
-        user = VALID_PUBKEY2
-        mint = MINT
         owner_program = VALID_PUBKEY3
         buffer = VALID_PUBKEY
         record = VALID_PUBKEY2
@@ -262,7 +260,7 @@ class TestInstructionBuilder:
         bump = 50
         
         ix = builder.delegate_ephemeral_ata(
-            payer, user, mint, owner_program, buffer,
+            payer, owner_program, buffer,
             record, metadata, ephemeral_ata, bump
         )
         
@@ -274,8 +272,6 @@ class TestInstructionBuilder:
         """Test building delegate_ephemeral_ata with validator."""
         builder = InstructionBuilder()
         payer = VALID_PUBKEY
-        user = VALID_PUBKEY2
-        mint = MINT
         owner_program = VALID_PUBKEY3
         buffer = VALID_PUBKEY
         record = VALID_PUBKEY2
@@ -285,7 +281,7 @@ class TestInstructionBuilder:
         validator = VALID_PUBKEY
         
         ix = builder.delegate_ephemeral_ata(
-            payer, user, mint, owner_program, buffer,
+            payer, owner_program, buffer,
             record, metadata, ephemeral_ata, bump, validator
         )
         

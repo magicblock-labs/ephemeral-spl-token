@@ -178,6 +178,31 @@ async def is_ephemeral_ata_delegated(
     return account.owner == delegation_program_owner
 
 
+async def get_mint_program(mint_pubkey: str, endpoint_url: Optional[str] = None) -> str:
+    """
+    Fetch the owner program of a mint account.
+    
+    Args:
+        mint_pubkey: The mint account address
+        endpoint_url: Optional RPC URL override
+    
+    Returns:
+        The program ID that owns the mint (typically SPL Token Program)
+    
+    Raises:
+        ValueError: If mint account does not exist
+    """
+    account = await get_account_info(mint_pubkey, endpoint_url)
+    
+    if not account.exists:
+        raise ValueError(f"Mint account does not exist: {mint_pubkey}")
+    
+    if not account.owner:
+        raise ValueError(f"Could not determine owner program for mint: {mint_pubkey}")
+    
+    return account.owner
+
+
 async def get_mint_decimals(mint_pubkey: str, endpoint_url: Optional[str] = None) -> int:
     """
     Fetch the decimals from a mint account.

@@ -28,7 +28,7 @@ def create_app():
         PrepareWithdrawalRequest
     )
     from .builder import builder, serialize_transaction
-    from .rpc import check_accounts, get_mint_decimals
+    from .rpc import check_accounts, get_mint_decimals, get_mint_program
     from .pda import (
         derive_accounts
     )
@@ -49,6 +49,25 @@ def create_app():
             },
         ],
     )
+
+    async def get_token_program(mint: str, endpoint_url: str) -> str:
+        """
+        Fetch token program from mint account, fallback to settings default.
+        
+        Args:
+            mint: Token mint pubkey
+            endpoint_url: RPC endpoint URL
+            
+        Returns:
+            Token program ID (fetched from mint or from settings)
+        """
+        try:
+            return await get_mint_program(mint, endpoint_url)
+        except Exception:
+            # Fallback to default token program from settings
+            settings = get_settings()
+            return settings.token_program
+
 
     async def build_deposit_instructions(user, mint, amount, endpoint_url, validator, ephemeral_spl_token_program, token_program, permission_program, delegation_program):
         """
@@ -125,6 +144,7 @@ def create_app():
             instructions.append(init_ata_ix)
         
         # Initialize ephemeral ATA if not already initialized
+        ephemeral_ata_just_initialized = False
         if not account_states["ephemeral_ata"].exists:
             init_ephemeral_ata_ix = builder.initialize_ephemeral_ata(
                 user,
@@ -134,13 +154,27 @@ def create_app():
                 derived.ephemeral_ata_bump,
             )
             instructions.append(init_ephemeral_ata_ix)
+            ephemeral_ata_just_initialized = True
+
+        # Include deposit instruction if amount > 0
+        if not account_states["ephemeral_ata"].is_delegated:
+            if amount > 0:
+                deposit_ix = builder.deposit_spl_tokens(
+                    user,
+                    derived.user_ata,
+                    derived.vault_ata,
+                    amount,
+                    derived.ephemeral_ata,
+                    derived.vault,
+                    mint,
+                    token_program,
+                )
+                instructions.append(deposit_ix)
         
         # Delegate ephemeral ATA if not already delegated
-        if account_states["ephemeral_ata"].exists and not account_states["ephemeral_ata"].is_delegated:
+        if ephemeral_ata_just_initialized or not account_states["ephemeral_ata"].is_delegated:
             delegate_ix = builder.delegate_ephemeral_ata(
                 user,
-                user,
-                mint,
                 ephemeral_spl_token_program,
                 derived.eata_delegation_buffer,
                 derived.eata_delegation_record,
@@ -151,7 +185,9 @@ def create_app():
             )
             instructions.append(delegate_ix)
         
+        
         # Initialize ephemeral ATA's permission if not already initialized
+        permission_just_initialized = False
         if not account_states["permission"].exists:
             create_permission_ix = builder.create_ephemeral_ata_permission(
                 user,
@@ -162,9 +198,10 @@ def create_app():
                 derived.permission,
             )
             instructions.append(create_permission_ix)
+            permission_just_initialized = True
         
         # Delegate ephemeral ATA's permission if not already delegated
-        if account_states["permission"].exists and not account_states["permission"].is_delegated:
+        if permission_just_initialized or not account_states["permission"].is_delegated:
             delegate_permission_ix = builder.delegate_ephemeral_ata_permission(
                 user,
                 derived.permission_delegation_buffer,
@@ -176,20 +213,6 @@ def create_app():
                 derived.permission,
             )
             instructions.append(delegate_permission_ix)
-        
-        # Include deposit instruction if amount > 0
-        if amount > 0:
-            deposit_ix = builder.deposit_spl_tokens(
-                user,
-                derived.user_ata,
-                derived.vault_ata,
-                amount,
-                derived.ephemeral_ata,
-                derived.vault,
-                mint,
-                token_program,
-            )
-            instructions.append(deposit_ix)
         
         return instructions
 
@@ -204,6 +227,9 @@ def create_app():
 
     @app.get("/config", response_model=Settings, tags=["Config"])
     async def get_config():
+        """
+        Get configuration settings for default endpoints, programs, and validator.
+        """
         settings = get_settings()
         return settings
 
@@ -213,12 +239,15 @@ def create_app():
             settings = get_settings()
             endpoint_url = req.endpoint_url or settings.endpoint_url
 
+            # Fetch token program from mint (with fallback to settings)
+            token_program = await get_token_program(req.mint, endpoint_url)
+
             # Use defaults from settings if not provided in request
             derived = derive_accounts(
                 req.owner,
                 req.mint,
                 ephemeral_spl_token_program=settings.ephemeral_spl_token_program,
-                token_program=settings.token_program,
+                token_program=token_program,
                 permission_program=settings.permission_program,
                 delegation_program=settings.delegation_program,
             )
@@ -241,11 +270,17 @@ def create_app():
             endpoint_url = req.endpoint_url or settings.endpoint_url
 
             # Use defaults from settings if not provided in request
+            # Fetch token program from mint (with fallback to settings)
+
+            token_program = await get_token_program(req.mint, endpoint_url)
+
+            
+
             derived = derive_accounts(
                 req.payer,
                 req.mint,
                 ephemeral_spl_token_program=settings.ephemeral_spl_token_program,
-                token_program=settings.token_program,
+                token_program=token_program,
                 permission_program=settings.permission_program,
                 delegation_program=settings.delegation_program,
             )
@@ -268,11 +303,17 @@ def create_app():
             endpoint_url = req.endpoint_url or settings.endpoint_url
 
             # Use defaults from settings if not provided in request
+            # Fetch token program from mint (with fallback to settings)
+
+            token_program = await get_token_program(req.mint, endpoint_url)
+
+            
+
             derived = derive_accounts(
                 req.user,
                 req.mint,
                 ephemeral_spl_token_program=settings.ephemeral_spl_token_program,
-                token_program=settings.token_program,
+                token_program=token_program,
                 permission_program=settings.permission_program,
                 delegation_program=settings.delegation_program,
             )
@@ -300,11 +341,17 @@ def create_app():
             endpoint_url = req.endpoint_url or settings.endpoint_url
 
             # Use defaults from settings if not provided in request
+            # Fetch token program from mint (with fallback to settings)
+
+            token_program = await get_token_program(req.mint, endpoint_url)
+
+            
+
             derived = derive_accounts(
                 req.user,
                 req.mint,
                 ephemeral_spl_token_program=settings.ephemeral_spl_token_program,
-                token_program=settings.token_program,
+                token_program=token_program,
                 permission_program=settings.permission_program,
                 delegation_program=settings.delegation_program,
             )
@@ -332,18 +379,22 @@ def create_app():
             endpoint_url = req.endpoint_url or settings.endpoint_url
 
             # Use defaults from settings if not provided in request
+            # Fetch token program from mint (with fallback to settings)
+
+            token_program = await get_token_program(req.mint, endpoint_url)
+
+            
+
             derived = derive_accounts(
                 req.user,
                 req.mint,
                 ephemeral_spl_token_program=settings.ephemeral_spl_token_program,
-                token_program=settings.token_program,
+                token_program=token_program,
                 permission_program=settings.permission_program,
                 delegation_program=settings.delegation_program,
             )
             ix = builder.delegate_ephemeral_ata(
                 req.payer,
-                req.user,
-                req.mint,
                 req.owner_program,
                 derived.eata_delegation_buffer,
                 derived.eata_delegation_record,
@@ -365,11 +416,17 @@ def create_app():
             endpoint_url = req.endpoint_url or settings.tee_endpoint_url
 
             # Use defaults from settings if not provided in request
+            # Fetch token program from mint (with fallback to settings)
+
+            token_program = await get_token_program(req.mint, endpoint_url)
+
+            
+
             derived = derive_accounts(
                 req.user,
                 req.mint,
                 ephemeral_spl_token_program=settings.ephemeral_spl_token_program,
-                token_program=settings.token_program,
+                token_program=token_program,
                 permission_program=settings.permission_program,
                 delegation_program=settings.delegation_program,
             )
@@ -388,28 +445,38 @@ def create_app():
     async def checked_transfer(req: TransferAmountRequest):
         try:
             settings = get_settings()
-            cluster = req.endpoint_url or settings.tee_endpoint_url
+            endpoint_url = req.endpoint_url or settings.tee_endpoint_url
 
             # Use defaults from settings if not provided in request
+            # Fetch token program from mint (with fallback to settings)
+
+            token_program = await get_token_program(req.mint, endpoint_url)
+
             derived_sender = derive_accounts(
                 req.sender,
                 req.mint,
                 ephemeral_spl_token_program=settings.ephemeral_spl_token_program,
-                token_program=settings.token_program,
+                token_program=token_program,
                 permission_program=settings.permission_program,
                 delegation_program=settings.delegation_program,
             )
+            # Fetch token program from mint (with fallback to settings)
+
+            token_program = await get_token_program(req.mint, endpoint_url)
+
+            
+
             derived_recipient = derive_accounts(
                 req.recipient,
                 req.mint,
                 ephemeral_spl_token_program=settings.ephemeral_spl_token_program,
-                token_program=settings.token_program,
+                token_program=token_program,
                 permission_program=settings.permission_program,
                 delegation_program=settings.delegation_program,
             )
             
             # Fetch decimals from mint account
-            decimals = await get_mint_decimals(req.mint, cluster)
+            decimals = await get_mint_decimals(req.mint, endpoint_url)
             
             ix = builder.checked_transfer(
                 derived_sender.user_ata,
@@ -420,7 +487,7 @@ def create_app():
                 req.sender,
                 settings.token_program,
             )
-            tx = await serialize_transaction(ix, req.sender, cluster)
+            tx = await serialize_transaction(ix, req.sender, endpoint_url)
             return TransactionResponse(transaction=tx)
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
@@ -433,11 +500,17 @@ def create_app():
             endpoint_url = req.endpoint_url or settings.endpoint_url
 
             # Use defaults from settings if not provided in request
+            # Fetch token program from mint (with fallback to settings)
+
+            token_program = await get_token_program(req.mint, endpoint_url)
+
+            
+
             derived = derive_accounts(
                 req.owner,
                 req.mint,
                 ephemeral_spl_token_program=settings.ephemeral_spl_token_program,
-                token_program=settings.token_program,
+                token_program=token_program,
                 permission_program=settings.permission_program,
                 delegation_program=settings.delegation_program,
             )
@@ -469,10 +542,10 @@ def create_app():
         - Initialize vault's ATA (if not already initialized)
         - Initialize user's ATA (if not already initialized)
         - Initialize ephemeral ATA (if not already initialized)
+        - Deposit SPL tokens (if amount > 0)
         - Delegate ephemeral ATA (if not already delegated)
         - Initialize ephemeral ATA's permission (if not already initialized)
         - Delegate ephemeral ATA's permission (if not already delegated)
-        - Deposit SPL tokens (if amount > 0)
         """
         try:
             settings = get_settings()
@@ -506,19 +579,29 @@ def create_app():
             endpoint_url = req.endpoint_url or settings.tee_endpoint_url
 
             # Use defaults from settings if not provided in request
+            # Fetch token program from mint (with fallback to settings)
+
+            token_program = await get_token_program(req.mint, endpoint_url)
+
             derived_sender = derive_accounts(
                 req.sender,
                 req.mint,
                 ephemeral_spl_token_program=settings.ephemeral_spl_token_program,
-                token_program=settings.token_program,
+                token_program=token_program,
                 permission_program=settings.permission_program,
                 delegation_program=settings.delegation_program,
             )
+            # Fetch token program from mint (with fallback to settings)
+
+            token_program = await get_token_program(req.mint, endpoint_url)
+
+            
+
             derived_recipient = derive_accounts(
                 req.recipient,
                 req.mint,
                 ephemeral_spl_token_program=settings.ephemeral_spl_token_program,
-                token_program=settings.token_program,
+                token_program=token_program,
                 permission_program=settings.permission_program,
                 delegation_program=settings.delegation_program,
             )

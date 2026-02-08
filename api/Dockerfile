@@ -10,7 +10,7 @@ RUN pip install --no-cache-dir uv && uv sync --frozen
 COPY src ./src
 
 # Expose port
-EXPOSE 8000
+EXPOSE 4000
 
 # Run API
-CMD [".venv/bin/python", "-m", "uvicorn", "src.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+CMD [".venv/bin/python", "-m", "uvicorn", "src.main:_get_app", "--factory", "--host", "0.0.0.0", "--port", "4000"]

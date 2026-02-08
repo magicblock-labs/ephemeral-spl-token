@@ -9,7 +9,7 @@ EPHEMERAL_ENDPOINT_URL = "https://rpc.magicblock.app/mainnet"
 EPHEMERAL_TEE_ENDPOINT_URL = "https://tee.magicblock.app"
 
 [[services]]
-internal_port = 8000
+internal_port = 4000
 processes = ["app"]
 protocol = "tcp"
 script_checks = []
