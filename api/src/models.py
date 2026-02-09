@@ -98,7 +98,7 @@ class InitializeAtaRequest(ClusterConfig):
 
 class DepositRequest(BaseModel):
     payer: str = Field(..., description="Payer pubkey (signer)")
-    user: str = Field(..., description="User pubkey (owner of ephemeral ATA, source token account, and payer/signer)")
+    user: str = Field(..., description="User pubkey (owner of source token account)")
     mint: str = Field(..., description="SPL token mint")
     amount: int = Field(default=0, description="Amount of tokens to deposit (defaults to 0 for initialization only)", ge=0)
     validator: Optional[str] = Field(None, description="Optional validator pubkey (defaults to default_validator from settings)")
