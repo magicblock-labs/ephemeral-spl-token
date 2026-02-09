@@ -414,27 +414,32 @@ class TestDepositRequest:
     def test_deposit_request_required_fields(self):
         """Test required fields."""
         req = DepositRequest(
-            user=VALID_PUBKEY,
-            mint=VALID_PUBKEY_2,
+            payer=VALID_PUBKEY,
+            user=VALID_PUBKEY_2,
+            mint=VALID_PUBKEY_3,
         )
-        assert req.user == VALID_PUBKEY
-        assert req.mint == VALID_PUBKEY_2
+        assert req.payer == VALID_PUBKEY
+        assert req.user == VALID_PUBKEY_2
+        assert req.mint == VALID_PUBKEY_3
         assert req.amount == 0  # Default
 
     def test_deposit_request_with_amount(self):
         """Test DepositRequest with amount."""
         req = DepositRequest(
-            user=VALID_PUBKEY,
-            mint=VALID_PUBKEY_2,
+            payer=VALID_PUBKEY,
+            user=VALID_PUBKEY_2,
+            mint=VALID_PUBKEY_3,
             amount=1000000,
         )
+        assert req.payer == VALID_PUBKEY
         assert req.amount == 1000000
 
     def test_deposit_request_default_amount(self):
         """Test that amount defaults to 0."""
         req = DepositRequest(
-            user=VALID_PUBKEY,
-            mint=VALID_PUBKEY_2,
+            payer=VALID_PUBKEY,
+            user=VALID_PUBKEY_2,
+            mint=VALID_PUBKEY_3,
         )
         assert req.amount == 0
 
@@ -442,10 +447,39 @@ class TestDepositRequest:
         """Test that negative amount is rejected."""
         with pytest.raises(ValidationError):
             DepositRequest(
-                user=VALID_PUBKEY,
-                mint=VALID_PUBKEY_2,
+                payer=VALID_PUBKEY,
+                user=VALID_PUBKEY_2,
+                mint=VALID_PUBKEY_3,
                 amount=-1,
             )
+
+    def test_deposit_request_missing_payer(self):
+        """Test validation with missing payer."""
+        with pytest.raises(ValidationError):
+            DepositRequest(
+                user=VALID_PUBKEY,
+                mint=VALID_PUBKEY_2,
+            )
+
+    def test_deposit_request_with_validator(self):
+        """Test DepositRequest with optional validator."""
+        req = DepositRequest(
+            payer=VALID_PUBKEY,
+            user=VALID_PUBKEY_2,
+            mint=VALID_PUBKEY_3,
+            validator=VALID_PUBKEY,
+        )
+        assert req.validator == VALID_PUBKEY
+
+    def test_deposit_request_with_endpoint(self):
+        """Test DepositRequest with optional endpoint."""
+        req = DepositRequest(
+            payer=VALID_PUBKEY,
+            user=VALID_PUBKEY_2,
+            mint=VALID_PUBKEY_3,
+            endpoint_url=VALID_ENDPOINT,
+        )
+        assert req.endpoint_url == VALID_ENDPOINT
 
 
 class TestPrepareWithdrawalRequest:

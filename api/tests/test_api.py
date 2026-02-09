@@ -254,6 +254,7 @@ class TestPrivateEndpoints:
     def test_private_deposit(self, client):
         """Test POST /private/tx/deposit."""
         response = client.post("/private/tx/deposit", json={
+            "payer": PAYER,
             "user": USER,
             "mint": MINT,
             "amount": 1000000,

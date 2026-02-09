@@ -69,7 +69,7 @@ def create_app():
             return settings.token_program
 
 
-    async def build_deposit_instructions(user, mint, amount, endpoint_url, validator, ephemeral_spl_token_program, token_program, permission_program, delegation_program):
+    async def build_deposit_instructions(payer, user, mint, amount, endpoint_url, validator, ephemeral_spl_token_program, token_program, permission_program, delegation_program):
         """
         Build instructions to initialize accounts and optionally deposit tokens.
         
@@ -114,7 +114,7 @@ def create_app():
         # Initialize global vault if not already initialized
         if not account_states["vault"].exists:
             init_vault_ix = builder.initialize_global_vault(
-                user,
+                payer,
                 mint,
                 derived.vault,
                 derived.vault_bump,
@@ -124,7 +124,7 @@ def create_app():
         # Initialize vault's ATA if not already initialized
         if not account_states["vault_ata"].exists:
             init_vault_ata_ix = builder.initialize_ata(
-                user,
+                payer,
                 derived.vault,
                 mint,
                 derived.vault_ata,
@@ -135,7 +135,7 @@ def create_app():
         # Initialize user's ATA if not already initialized
         if not account_states["user_ata"].exists:
             init_ata_ix = builder.initialize_ata(
-                user,
+                payer,
                 user,
                 mint,
                 derived.user_ata,
@@ -147,7 +147,7 @@ def create_app():
         ephemeral_ata_just_initialized = False
         if not account_states["ephemeral_ata"].exists:
             init_ephemeral_ata_ix = builder.initialize_ephemeral_ata(
-                user,
+                payer,
                 user,
                 mint,
                 derived.ephemeral_ata,
@@ -174,7 +174,7 @@ def create_app():
         # Delegate ephemeral ATA if not already delegated
         if ephemeral_ata_just_initialized or not account_states["ephemeral_ata"].is_delegated:
             delegate_ix = builder.delegate_ephemeral_ata(
-                user,
+                payer,
                 ephemeral_spl_token_program,
                 derived.eata_delegation_buffer,
                 derived.eata_delegation_record,
@@ -190,7 +190,7 @@ def create_app():
         permission_just_initialized = False
         if not account_states["permission"].exists:
             create_permission_ix = builder.create_ephemeral_ata_permission(
-                user,
+                payer,
                 mint,
                 0,  # flags: default permissions
                 derived.ephemeral_ata,
@@ -203,7 +203,7 @@ def create_app():
         # Delegate ephemeral ATA's permission if not already delegated
         if permission_just_initialized or not account_states["permission"].is_delegated:
             delegate_permission_ix = builder.delegate_ephemeral_ata_permission(
-                user,
+                payer,
                 derived.permission_delegation_buffer,
                 derived.permission_delegation_record,
                 derived.permission_delegation_metadata,
@@ -561,10 +561,10 @@ def create_app():
             user = req.user
             mint = req.mint
 
-            instructions = await build_deposit_instructions(user, mint, amount, endpoint_url, validator, ephemeral_spl_token_program, token_program, permission_program, delegation_program)
+            instructions = await build_deposit_instructions(req.payer, user, mint, amount, endpoint_url, validator, ephemeral_spl_token_program, token_program, permission_program, delegation_program)
             
             # Serialize all instructions in one transaction
-            tx = await serialize_transaction(instructions, user, endpoint_url)
+            tx = await serialize_transaction(instructions, req.payer, endpoint_url)
             return TransactionResponse(transaction=tx)
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
