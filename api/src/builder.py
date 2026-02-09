@@ -346,7 +346,6 @@ class InstructionBuilder:
     def create_ephemeral_ata_permission(
         self,
         payer: str,
-        mint: str,
         flags: int,
         ephemeral_ata: str,
         ephemeral_ata_bump: int,

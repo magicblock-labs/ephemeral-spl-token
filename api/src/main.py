@@ -191,7 +191,6 @@ def create_app():
         if not account_states["permission"].exists:
             create_permission_ix = builder.create_ephemeral_ata_permission(
                 payer,
-                mint,
                 0,  # flags: default permissions
                 derived.ephemeral_ata,
                 derived.ephemeral_ata_bump,
