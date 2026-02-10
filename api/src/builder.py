@@ -309,11 +309,14 @@ class InstructionBuilder:
         ephemeral_ata_bump: int,
         validator: Optional[str] = None,
     ) -> Instruction:
+        """Delegate an ephemeral ATA to a validator.
+        
+        Serialization: discriminator (1) + bump + optional validator bytes (0 or 32 bytes)
+        """
+        data = struct.pack("<BB", 4, ephemeral_ata_bump)
         if validator:
             validator_bytes = _pubkey_bytes(validator)
-            data = struct.pack("<BB", 4, ephemeral_ata_bump) + bytes([1]) + validator_bytes
-        else:
-            data = struct.pack("<BB", 4, ephemeral_ata_bump) + bytes([0])
+            data += validator_bytes
 
         accounts = [
             AccountMeta(_pubkey_bytes(payer), True, True),
