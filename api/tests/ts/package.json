@@ -1,0 +1,19 @@
+{
+  "name": "test-ledger-not",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@magicblock-labs/ephemeral-rollups-sdk": "^0.8.5",
+    "@solana/web3.js": "^1.98.4",
+    "axios": "^1.13.4",
+    "tweetnacl": "^1.0.3"
+  },
+  "devDependencies": {
+    "vitest": "^2.0.0",
+    "dotenv": "^16.0.0"
+  }
+}

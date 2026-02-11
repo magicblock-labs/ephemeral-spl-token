@@ -12,6 +12,8 @@ _app = None
 
 def create_app():
     from fastapi import FastAPI, HTTPException
+    from fastapi.responses import JSONResponse
+    from starlette.requests import Request
 
     from .config import get_settings, Settings
     from .models import (
@@ -49,6 +51,13 @@ def create_app():
             },
         ],
     )
+
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(request: Request, exc: HTTPException):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail},
+        )
 
     async def get_token_program(mint: str, endpoint_url: str) -> str:
         """
@@ -259,6 +268,8 @@ def create_app():
             )
             tx = await serialize_transaction(ix, req.payer, endpoint_url)
             return TransactionResponse(transaction=tx)
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
 
@@ -291,6 +302,8 @@ def create_app():
             )
             tx = await serialize_transaction(ix, req.payer, endpoint_url)
             return TransactionResponse(transaction=tx)
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
 
@@ -329,6 +342,8 @@ def create_app():
             )
             tx = await serialize_transaction(ix, req.owner, endpoint_url)
             return TransactionResponse(transaction=tx)
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
 
@@ -367,6 +382,8 @@ def create_app():
             )
             tx = await serialize_transaction(ix, req.owner, endpoint_url)
             return TransactionResponse(transaction=tx)
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
 
@@ -404,6 +421,8 @@ def create_app():
             )
             tx = await serialize_transaction(ix, req.payer, endpoint_url)
             return TransactionResponse(transaction=tx)
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
 
@@ -437,6 +456,8 @@ def create_app():
 
             tx = await serialize_transaction(ix, req.payer, endpoint_url)
             return TransactionResponse(transaction=tx)
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
 
@@ -488,6 +509,8 @@ def create_app():
             )
             tx = await serialize_transaction(ix, req.sender, endpoint_url)
             return TransactionResponse(transaction=tx)
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
 
@@ -523,6 +546,8 @@ def create_app():
             )
             tx = await serialize_transaction(ix, req.payer, endpoint_url)
             return TransactionResponse(transaction=tx)
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
     
@@ -565,7 +590,9 @@ def create_app():
             # Serialize all instructions in one transaction
             tx = await serialize_transaction(instructions, req.payer, endpoint_url)
             return TransactionResponse(transaction=tx)
-        except Exception as e:
+            except HTTPException:
+            raise
+            except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
         
     @app.post("/private/tx/transfer-amount", response_model=TransactionResponse, tags=["Private Transactions"])
@@ -620,6 +647,8 @@ def create_app():
             
             tx = await serialize_transaction(ix, req.sender, endpoint_url)
             return TransactionResponse(transaction=tx)
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
 
@@ -657,6 +686,8 @@ def create_app():
 
             tx = await serialize_transaction(ix, req.user, endpoint_url)
             return TransactionResponse(transaction=tx)
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
 
@@ -698,6 +729,8 @@ def create_app():
             )
             tx = await serialize_transaction(ix, req.owner, endpoint_url)
             return TransactionResponse(transaction=tx)
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
 
