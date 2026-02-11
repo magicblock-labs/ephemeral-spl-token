@@ -340,7 +340,7 @@ class InstructionBuilder:
         accounts = [
             AccountMeta(_pubkey_bytes(payer), True, False),
             AccountMeta(_pubkey_bytes(ata), False, True),
-            AccountMeta(_pubkey_bytes(ephemeral_ata), False, True),
+            AccountMeta(_pubkey_bytes(ephemeral_ata), False, False),
             AccountMeta(self.magic_context, False, True),
             AccountMeta(self.magic_program, False, False),
         ]
