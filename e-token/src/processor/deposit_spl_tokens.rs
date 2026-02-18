@@ -4,6 +4,7 @@ use {
         ephemeral_ata::EphemeralAta, global_vault::GlobalVault, load_mut_unchecked, load_unchecked,
     },
     pinocchio::{error::ProgramError, AccountView, ProgramResult},
+    pinocchio_token_2022::state::Mint,
 };
 
 #[inline(always)]
@@ -22,7 +23,7 @@ pub fn process_deposit_spl_tokens(
 
     let args = DepositArgs::try_from_bytes(instruction_data)?;
 
-    let [ephemeral_ata_info, vault_info, mint_info, user_source_token_acc, vault_token_acc, user_authority, ..] =
+    let [ephemeral_ata_info, vault_info, mint_info, user_source_token_acc, vault_token_acc, user_authority, token_program_info, ..] =
         accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
@@ -40,18 +41,27 @@ pub fn process_deposit_spl_tokens(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    // Perform the actual SPL Token transfer via CPI using pinocchio-token
-    // Read mint decimals and invoke transfer_checked
-    let decimals = pinocchio_token::state::Mint::from_account_view(mint_info)
-        .map_err(|_| ProgramError::InvalidAccountData)?
-        .decimals();
+    // Perform the actual SPL Token transfer via CPI using custom token transfer.
+    // Parse the base mint layout shared by both legacy SPL Token and Token-2022.
+    let decimals = {
+        let mint_data = unsafe { mint_info.borrow_unchecked() };
+        if mint_data.len() < Mint::BASE_LEN {
+            return Err(ProgramError::InvalidAccountData);
+        }
+        let mint = unsafe { Mint::from_bytes_unchecked(mint_data) };
+        if !mint.is_initialized() {
+            return Err(ProgramError::UninitializedAccount);
+        }
+        mint.decimals()
+    };
 
-    pinocchio_token::instructions::TransferChecked {
+    pinocchio_token_2022::instructions::TransferChecked {
         mint: mint_info,
         from: user_source_token_acc,
         to: vault_token_acc,
-        amount: args.amount(),
         authority: user_authority,
+        token_program: token_program_info.address(),
+        amount: args.amount(),
         decimals,
     }
     .invoke()?;

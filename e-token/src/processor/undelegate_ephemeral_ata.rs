@@ -1,6 +1,6 @@
 use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_unchecked};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
-use pinocchio_token::state::TokenAccount;
+use pinocchio_token_2022::state::TokenAccount;
 
 /// Undelegate an Ephemeral ATA by calling into the delegation program helper that
 /// schedules a commit and performs undelegation.
@@ -8,7 +8,7 @@ use pinocchio_token::state::TokenAccount;
 /// Expected accounts (in order used below):
 /// 0. [signer]   Payer
 /// 1. [writable] User ATA account (SPL ATA for [payer, mint])
-/// 2. [writable] Ephemeral ATA account (PDA derived from [payer, mint])
+/// 2. [] Ephemeral ATA account (PDA derived from [payer, mint])
 /// 3. [writable] Magic context account (as required by the delegation program)
 /// 4. []         Delegation program ID (aka magic program)
 pub fn process_undelegate_ephemeral_ata(
@@ -46,8 +46,14 @@ pub fn process_undelegate_ephemeral_ata(
 
     // Validate that the provided ATA account is a valid SPL token account for [payer, mint].
     {
-        let token_acc = TokenAccount::from_account_view(ata_info)
-            .map_err(|_| ProgramError::InvalidAccountData)?;
+        let token_data = unsafe { ata_info.borrow_unchecked() };
+        if token_data.len() < TokenAccount::BASE_LEN {
+            return Err(ProgramError::InvalidAccountData);
+        }
+        let token_acc = unsafe { TokenAccount::from_bytes_unchecked(token_data) };
+        if !token_acc.is_initialized() {
+            return Err(ProgramError::UninitializedAccount);
+        }
 
         if token_acc.mint() != &mint || token_acc.owner() != payer.address() {
             return Err(ProgramError::InvalidAccountData);

@@ -6,6 +6,7 @@ use {
         ephemeral_ata::EphemeralAta, global_vault::GlobalVault, load_mut_unchecked, load_unchecked,
     },
     pinocchio::{error::ProgramError, AccountView, ProgramResult},
+    pinocchio_token_2022::state::Mint,
 };
 
 #[inline(always)]
@@ -14,16 +15,17 @@ pub fn process_withdraw_spl_tokens(
     instruction_data: &[u8],
 ) -> ProgramResult {
     // Expected accounts:
-    // 0. [writable] Ephemeral ATA data account (PDA [payer, mint])
-    // 1. []         Global Vault data account (PDA [mint])
-    // 2. []         Mint account (readonly)
-    // 3. [writable] Vault source token account (SPL Token)
-    // 4. [writable] User destination token account (SPL Token)
-    // 5. []         Token program
+    // 0. [signer]   Owner (payer, authority to withdraw)
+    // 1. [writable] Ephemeral ATA data account (PDA [owner, mint])
+    // 2. []         Global Vault data account (PDA [mint])
+    // 3. []         Mint account (readonly)
+    // 4. [writable] Vault source token account (SPL Token)
+    // 5. [writable] User destination token account (SPL Token)
+    // 6. []         Token program
 
     let args = WithdrawArgs::try_from_bytes(instruction_data)?;
 
-    let [owner, ephemeral_ata_info, vault_info, mint_info, vault_source_token_acc, user_dest_token_acc, ..] =
+    let [owner, ephemeral_ata_info, vault_info, mint_info, vault_source_token_acc, user_dest_token_acc, token_program_info, ..] =
         accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
@@ -56,22 +58,31 @@ pub fn process_withdraw_spl_tokens(
         return Err(EphemeralSplError::EphemeralAtaMismatch.into());
     }
 
-    // read mint decimals
-    let decimals = pinocchio_token::state::Mint::from_account_view(mint_info)
-        .map_err(|_| ProgramError::InvalidAccountData)?
-        .decimals();
+    // Parse the base mint layout shared by both legacy SPL Token and Token-2022.
+    let decimals = {
+        let mint_data = unsafe { mint_info.borrow_unchecked() };
+        if mint_data.len() < Mint::BASE_LEN {
+            return Err(ProgramError::InvalidAccountData);
+        }
+        let mint = unsafe { Mint::from_bytes_unchecked(mint_data) };
+        if !mint.is_initialized() {
+            return Err(ProgramError::UninitializedAccount);
+        }
+        mint.decimals()
+    };
 
     // Perform transfer from vault token account to user destination, signed by vault PDA
     let bump = [args.bump()];
     let seeds = [Seed::from(mint_info.address().as_ref()), Seed::from(&bump)];
     let signer = Signer::from(&seeds);
 
-    pinocchio_token::instructions::TransferChecked {
+    pinocchio_token_2022::instructions::TransferChecked {
         mint: mint_info,
         from: vault_source_token_acc,
         to: user_dest_token_acc,
-        amount: args.amount(),
         authority: vault_info, // PDA authority over the vault token account
+        token_program: token_program_info.address(),
+        amount: args.amount(),
         decimals,
     }
     .invoke_signed(&[signer])?;
