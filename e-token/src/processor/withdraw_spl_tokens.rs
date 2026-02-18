@@ -6,6 +6,7 @@ use {
         ephemeral_ata::EphemeralAta, global_vault::GlobalVault, load_mut_unchecked, load_unchecked,
     },
     pinocchio::{error::ProgramError, AccountView, ProgramResult},
+    pinocchio_token_2022::state::Mint,
 };
 
 #[inline(always)]
@@ -57,13 +58,17 @@ pub fn process_withdraw_spl_tokens(
         return Err(EphemeralSplError::EphemeralAtaMismatch.into());
     }
 
-    // read mint decimals directly from account data (works for both legacy and Token-2022)
+    // Parse the base mint layout shared by both legacy SPL Token and Token-2022.
     let decimals = {
-        let data = unsafe { mint_info.borrow_unchecked() };
-        if data.len() < 45 {
+        let mint_data = unsafe { mint_info.borrow_unchecked() };
+        if mint_data.len() < Mint::BASE_LEN {
             return Err(ProgramError::InvalidAccountData);
         }
-        data[44]
+        let mint = unsafe { Mint::from_bytes_unchecked(mint_data) };
+        if !mint.is_initialized() {
+            return Err(ProgramError::UninitializedAccount);
+        }
+        mint.decimals()
     };
 
     // Perform transfer from vault token account to user destination, signed by vault PDA

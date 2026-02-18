@@ -4,6 +4,7 @@ use {
         ephemeral_ata::EphemeralAta, global_vault::GlobalVault, load_mut_unchecked, load_unchecked,
     },
     pinocchio::{error::ProgramError, AccountView, ProgramResult},
+    pinocchio_token_2022::state::Mint,
 };
 
 #[inline(always)]
@@ -40,14 +41,18 @@ pub fn process_deposit_spl_tokens(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    // Perform the actual SPL Token transfer via CPI using custom token transfer
-    // Read mint decimals directly from account data (works for both legacy and Token-2022)
+    // Perform the actual SPL Token transfer via CPI using custom token transfer.
+    // Parse the base mint layout shared by both legacy SPL Token and Token-2022.
     let decimals = {
-        let data = unsafe { mint_info.borrow_unchecked() };
-        if data.len() < 45 {
+        let mint_data = unsafe { mint_info.borrow_unchecked() };
+        if mint_data.len() < Mint::BASE_LEN {
             return Err(ProgramError::InvalidAccountData);
         }
-        data[44]
+        let mint = unsafe { Mint::from_bytes_unchecked(mint_data) };
+        if !mint.is_initialized() {
+            return Err(ProgramError::UninitializedAccount);
+        }
+        mint.decimals()
     };
 
     pinocchio_token_2022::instructions::TransferChecked {
