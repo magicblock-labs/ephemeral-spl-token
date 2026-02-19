@@ -69,6 +69,11 @@ fn process_associated_token_program_mock(
 
     // Idempotent path: account already exists as a token account.
     if *ata.owner == *token_program.key && ata.data_len() == SplAccount::LEN {
+        let ata_data = ata.try_borrow_data()?;
+        let ata_state = SplAccount::unpack(&ata_data)?;
+        if ata_state.mint != *mint.key || ata_state.owner != *wallet.key {
+            return Err(ProgramError::InvalidAccountData);
+        }
         return Ok(());
     }
 
