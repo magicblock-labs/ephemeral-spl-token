@@ -22,9 +22,9 @@ const STARTING_BALANCE: u64 = 10_000 * 10u64.pow(DECIMALS as u32);
 
 #[tokio::test]
 async fn withdraw_spl_tokens_decrements_ephemeral_amount() {
-    let mut context = ProgramTest::new("ephemeral_token_program", PROGRAM, None)
-        .start_with_context()
-        .await;
+    let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
+    utils::add_associated_token_program(&mut pt);
+    let mut context = pt.start_with_context().await;
 
     let payer = context.payer.pubkey();
     let user = payer; // in this test, user == payer
@@ -38,7 +38,6 @@ async fn withdraw_spl_tokens_decrements_ephemeral_amount() {
         &mut context,
         payer,
         &mint_kp,
-        pdas.vault,
         DECIMALS,
         STARTING_BALANCE,
         2,
@@ -51,7 +50,7 @@ async fn withdraw_spl_tokens_decrements_ephemeral_amount() {
     let bump_vault = pdas.bump_vault;
     let user_source = setup.user_tokens[0];
     let user_dest = setup.user_tokens[1];
-    let vault_token = setup.vault_token;
+    let vault_token = utils::derive_associated_token_address(vault, mint);
 
     // Initialize Ephemeral ATA
     let ix_init_ata = Instruction {
@@ -73,6 +72,9 @@ async fn withdraw_spl_tokens_decrements_ephemeral_amount() {
             AccountMeta::new(vault, false),
             AccountMeta::new_readonly(payer, false),
             AccountMeta::new_readonly(mint, false),
+            AccountMeta::new(vault_token, false), // vault token account
+            AccountMeta::new_readonly(spl_token_interface::ID, false), // token program
+            AccountMeta::new_readonly(utils::associated_token_program_id(), false), // associated token program
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
         data: vec![instruction::INITIALIZE_GLOBAL_VAULT, bump_vault],

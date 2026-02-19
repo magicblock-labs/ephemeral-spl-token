@@ -88,6 +88,20 @@
           "docs": ["The SPL token mint for this vault"]
         },
         {
+          "name": "vaultToken",
+          "writable": true,
+          "docs": ["The vault associated token account"]
+        },
+        {
+          "name": "tokenProgram",
+          "docs": ["SPL Token Program"]
+        },
+        {
+          "name": "associatedTokenProgram",
+          "docs": ["SPL Associated Token Program"],
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
           "name": "systemProgram",
           "address": "11111111111111111111111111111111"
         }
@@ -585,6 +599,11 @@
             "name": "mint",
             "docs": ["The SPL token mint for this vault"],
             "type": "pubkey"
+          },
+          {
+            "name": "tokenAccount",
+            "docs": ["The token account used by this vault"],
+            "type": "pubkey"
           }
         ]
       }
@@ -616,7 +635,7 @@
     {
       "name": "GLOBAL_VAULT_SIZE",
       "type": "u64",
-      "value": "32"
+      "value": "64"
     }
   ]
 }

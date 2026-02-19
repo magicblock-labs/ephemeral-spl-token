@@ -1686,6 +1686,7 @@ dependencies = [
  "ephemeral-spl-api",
  "magicblock-delegation-program",
  "pinocchio 0.10.1",
+ "pinocchio-associated-token-account",
  "pinocchio-log",
  "pinocchio-system 0.5.0",
  "pinocchio-token-2022",
@@ -3366,6 +3367,18 @@ dependencies = [
  "solana-account-view",
  "solana-address 2.0.0",
  "solana-define-syscall 4.0.1",
+ "solana-instruction-view",
+ "solana-program-error 3.0.0",
+]
+
+[[package]]
+name = "pinocchio-associated-token-account"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0bd92823a97fb327d7509dfd7cbfa3ead56e9fc0e131972bc0e28ab7036be31a"
+dependencies = [
+ "solana-account-view",
+ "solana-address 2.0.0",
  "solana-instruction-view",
  "solana-program-error 3.0.0",
 ]

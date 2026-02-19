@@ -47,6 +47,16 @@ pub fn process_withdraw_spl_tokens(
     let ephemeral_ata =
         unsafe { load_mut_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked_mut())? };
 
+    // Validate vault ownership before reading raw data.
+    unsafe {
+        if vault_info
+            .owner()
+            .ne(&ephemeral_spl_api::program::id_address())
+        {
+            return Err(ProgramError::IllegalOwner);
+        }
+    }
+
     // Validate Vault data account
     let vault = unsafe { load_unchecked::<GlobalVault>(vault_info.borrow_unchecked())? };
 
@@ -54,6 +64,7 @@ pub fn process_withdraw_spl_tokens(
     if ephemeral_ata.mint != *mint_info.address()
         || vault.mint != *mint_info.address()
         || ephemeral_ata.owner != *owner.address()
+        || vault.token_account != *vault_source_token_acc.address()
     {
         return Err(EphemeralSplError::EphemeralAtaMismatch.into());
     }

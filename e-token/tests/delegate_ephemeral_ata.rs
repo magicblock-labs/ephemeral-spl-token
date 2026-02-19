@@ -19,6 +19,7 @@ pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 async fn delegate_ephemeral_ata_succeeds() {
     let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
     pt.prefer_bpf(true);
+    utils::add_associated_token_program(&mut pt);
 
     // Setup the delegation program
     let data = read_file("tests/fixtures/dlp.so");
@@ -43,16 +44,8 @@ async fn delegate_ephemeral_ata_succeeds() {
 
     // Derive the PDAs for our program and setup token accounts
     let pdas = utils::derive_pdas(PROGRAM, user, mint);
-    let setup = utils::setup_mint_and_token_accounts(
-        &mut context,
-        payer,
-        &mint_kp,
-        pdas.vault,
-        6,
-        1_000,
-        1,
-    )
-    .await;
+    let setup =
+        utils::setup_mint_and_token_accounts(&mut context, payer, &mint_kp, 6, 1_000, 1).await;
 
     // Initialize the Ephemeral ATA and Global Vault (required by the program state)
     let ix_init_ata = Instruction {
@@ -67,12 +60,17 @@ async fn delegate_ephemeral_ata_succeeds() {
         data: vec![instruction::INITIALIZE_EPHEMERAL_ATA, pdas.bump_ata],
     };
 
+    let vault_token_acc = utils::derive_associated_token_address(pdas.vault, mint);
+
     let ix_init_vault = Instruction {
         program_id: PROGRAM,
         accounts: vec![
             AccountMeta::new(pdas.vault, false),
             AccountMeta::new_readonly(payer, false),
             AccountMeta::new_readonly(mint, false),
+            AccountMeta::new(vault_token_acc, false), // vault token account
+            AccountMeta::new_readonly(spl_token_interface::ID, false), // token program
+            AccountMeta::new_readonly(utils::associated_token_program_id(), false), // associated token program
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
         data: vec![instruction::INITIALIZE_GLOBAL_VAULT, pdas.bump_vault],
@@ -159,6 +157,7 @@ async fn delegate_ephemeral_ata_succeeds() {
 async fn delegate_ephemeral_ata_non_owner_succeeds() {
     let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
     pt.prefer_bpf(true);
+    utils::add_associated_token_program(&mut pt);
 
     let data = read_file("tests/fixtures/dlp.so");
     pt.add_account(
@@ -181,16 +180,8 @@ async fn delegate_ephemeral_ata_non_owner_succeeds() {
     let mint = mint_kp.pubkey();
 
     let pdas = utils::derive_pdas(PROGRAM, user, mint);
-    let setup = utils::setup_mint_and_token_accounts(
-        &mut context,
-        payer,
-        &mint_kp,
-        pdas.vault,
-        6,
-        1_000,
-        1,
-    )
-    .await;
+    let setup =
+        utils::setup_mint_and_token_accounts(&mut context, payer, &mint_kp, 6, 1_000, 1).await;
 
     let ix_init_ata = Instruction {
         program_id: PROGRAM,
@@ -204,12 +195,17 @@ async fn delegate_ephemeral_ata_non_owner_succeeds() {
         data: vec![instruction::INITIALIZE_EPHEMERAL_ATA, pdas.bump_ata],
     };
 
+    let vault_token_acc = utils::derive_associated_token_address(pdas.vault, mint);
+
     let ix_init_vault = Instruction {
         program_id: PROGRAM,
         accounts: vec![
             AccountMeta::new(pdas.vault, false),
             AccountMeta::new_readonly(payer, false),
             AccountMeta::new_readonly(mint, false),
+            AccountMeta::new(vault_token_acc, false), // vault token account
+            AccountMeta::new_readonly(spl_token_interface::ID, false), // token program
+            AccountMeta::new_readonly(utils::associated_token_program_id(), false), // associated token program
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
         data: vec![instruction::INITIALIZE_GLOBAL_VAULT, pdas.bump_vault],

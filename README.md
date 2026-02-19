@@ -9,7 +9,7 @@ Ephemeral SPL Token program implementing [MIMD 0013](https://github.com/magicblo
 ## Key functionalities
 The program exposes the following instructions (see `e-token-api/src/lib.rs`):
 - `0` InitializeEphemeralAta — create the Ephemeral ATA PDA derived from `[payer, mint]`.
-- `1` InitializeGlobalVault — create the global vault PDA derived from `[mint]`.
+- `1` InitializeGlobalVault — create the global vault PDA derived from `[mint]` and its vault ATA.
 - `2` DepositSplTokens — transfer tokens from the user into the global vault and increase the Ephemeral ATA balance.
 - `3` WithdrawSplTokens — transfer tokens back to the user from the global vault and decrease the Ephemeral ATA balance.
 - `4` DelegateEphemeralAta — delegate the Ephemeral ATA to a DLP program using PDA seeds.
@@ -47,4 +47,3 @@ Tips:
 ## Notes
 - The workspace depends on `ephemeral-rollups-pinocchio` and several Solana crates; ensure your local environment matches the versions declared in the workspace `Cargo.toml`.
 - The program enables additional logs when compiled with the `logging` feature; this is useful for debugging both unit and integration tests.
-
