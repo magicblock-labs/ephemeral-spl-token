@@ -287,6 +287,7 @@ class InstructionBuilder:
     ) -> Instruction:
         data = struct.pack("<BQB", 3, amount, vault_bump)
         token_prog = _pubkey_bytes(token_program) if token_program else self.token_program
+
         accounts = [
             AccountMeta(_pubkey_bytes(owner), True, False),
             AccountMeta(_pubkey_bytes(ephemeral_ata), False, True),

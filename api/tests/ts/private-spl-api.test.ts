@@ -24,7 +24,7 @@ describe("Ephemeral SPL Token Transactions", async () => {
   const ENDPOINT_RPC = process.env.PROVIDER_ENDPOINT || "https://api.devnet.solana.com";
   const API_URL = process.env.API_URL || "https://api.docs.magicblock.app";
   const EPHEMERAL_ENDPOINT_RPC = process.env.EPHEMERAL_ENDPOINT_RPC || "https://tee.magicblock.app";
-  const MINT = process.env.MINT || "Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr";
+  const MINT = process.env.MINT || "BTGw9VWza6Cr1NowmKAnNc8y1UTS4Vs9DkjzSnVkAEaz";
   console.log("Using RPC Endpoint:", ENDPOINT_RPC);
   console.log("Using API URL:", API_URL);
   console.log("Using Ephemeral Endpoint URL:", EPHEMERAL_ENDPOINT_RPC);
@@ -108,7 +108,7 @@ describe("Ephemeral SPL Token Transactions", async () => {
         payer: keypair.publicKey.toString(),
         user: keypair.publicKey.toString(),
         mint: MINT,
-        amount: 0,
+        amount: 10,
         endpoint_url: ENDPOINT_RPC,
       };
       try {
@@ -195,7 +195,7 @@ describe("Ephemeral SPL Token Transactions", async () => {
         owner: keypair.publicKey.toString(),
         user: keypair.publicKey.toString(),
         mint: MINT,
-        amount: 100,
+        amount: 1,
         endpoint_url: ENDPOINT_RPC,
       };
 

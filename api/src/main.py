@@ -160,11 +160,13 @@ def create_app():
         # Include deposit instruction if amount > 0
         if not account_states["ephemeral_ata"].is_delegated:
             if amount > 0:
+                # Fetch decimals from mint account
+                decimals = await get_mint_decimals(mint, endpoint_url)
                 deposit_ix = builder.deposit_spl_tokens(
                     user,
                     derived.user_ata,
                     derived.vault_ata,
-                    amount,
+                    amount * (10 ** decimals),
                     derived.ephemeral_ata,
                     derived.vault,
                     mint,
@@ -304,10 +306,10 @@ def create_app():
 
             # Use defaults from settings if not provided in request
             # Fetch token program from mint (with fallback to settings)
-
             token_program = await get_token_program(req.mint, endpoint_url)
 
-            
+            # Fetch decimals from mint account
+            decimals = await get_mint_decimals(req.mint, endpoint_url)
 
             derived = derive_accounts(
                 req.user,
@@ -323,7 +325,7 @@ def create_app():
                 req.mint,
                 derived.user_ata,
                 derived.vault_ata,
-                req.amount,
+                req.amount * (10 ** decimals),
                 derived.ephemeral_ata,
                 derived.vault,
                 settings.token_program,
@@ -355,12 +357,16 @@ def create_app():
                 permission_program=settings.permission_program,
                 delegation_program=settings.delegation_program,
             )
+
+            # Fetch decimals from mint account
+            decimals = await get_mint_decimals(req.mint, endpoint_url)
+
             ix = builder.withdraw_spl_tokens(
                 req.owner,
                 req.mint,
                 derived.vault_ata,
                 derived.user_ata,
-                req.amount,
+                req.amount * (10 ** decimals),
                 derived.ephemeral_ata,
                 derived.vault,
                 derived.vault_bump,
@@ -461,9 +467,9 @@ def create_app():
                 delegation_program=settings.delegation_program,
             )
             # Fetch token program from mint (with fallback to settings)
-
             token_program = await get_token_program(req.mint, endpoint_url)
-
+            # Fetch decimals from mint account
+            decimals = await get_mint_decimals(req.mint, endpoint_url)
             
 
             derived_recipient = derive_accounts(
@@ -474,9 +480,7 @@ def create_app():
                 permission_program=settings.permission_program,
                 delegation_program=settings.delegation_program,
             )
-            
-            # Fetch decimals from mint account
-            decimals = await get_mint_decimals(req.mint, endpoint_url)
+        
             
             ix = builder.checked_transfer(
                 derived_sender.user_ata,
@@ -688,12 +692,15 @@ def create_app():
                 delegation_program=delegation_program,
             )
 
+            # Fetch decimals from mint account
+            decimals = await get_mint_decimals(req.mint, endpoint_url)
+
             ix = builder.withdraw_spl_tokens(
                 req.owner,
                 req.mint,
                 derived.vault_ata,
                 derived.user_ata,
-                req.amount,
+                req.amount * (10 ** decimals),
                 derived.ephemeral_ata,
                 derived.vault,
                 derived.vault_bump,
