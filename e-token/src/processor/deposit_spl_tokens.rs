@@ -29,6 +29,16 @@ pub fn process_deposit_spl_tokens(
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
+    // Validate EphemeralAta ownership first, before reading raw data.
+    unsafe {
+        if ephemeral_ata_info
+            .owner()
+            .ne(&ephemeral_spl_api::program::id_address())
+        {
+            return Err(ProgramError::IllegalOwner);
+        }
+    }
+
     // Validate EphemeralAta account
     let ephemeral_ata =
         unsafe { load_mut_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked_mut())? };

@@ -79,7 +79,7 @@ async fn deposit_spl_tokens_increments_ephemeral_amount() {
         program_id: PROGRAM,
         accounts: vec![
             AccountMeta::new(vault, false),
-            AccountMeta::new_readonly(payer, false),
+            AccountMeta::new(payer, true),
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new(vault_ata, false), // vault token account
             AccountMeta::new_readonly(spl_token_interface::ID, false), // token program

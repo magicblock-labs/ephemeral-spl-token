@@ -24,7 +24,7 @@ async fn delegate_ephemeral_ata_succeeds() {
     // Setup the delegation program
     let data = read_file("tests/fixtures/dlp.so");
     pt.add_account(
-        ephemeral_rollups_pinocchio::ID.into(),
+        ephemeral_rollups_pinocchio::ID,
         Account {
             lamports: Rent::default().minimum_balance(data.len()).max(1),
             data,
@@ -66,7 +66,7 @@ async fn delegate_ephemeral_ata_succeeds() {
         program_id: PROGRAM,
         accounts: vec![
             AccountMeta::new(pdas.vault, false),
-            AccountMeta::new_readonly(payer, false),
+            AccountMeta::new(payer, true),
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new(vault_token_acc, false), // vault token account
             AccountMeta::new_readonly(spl_token_interface::ID, false), // token program
@@ -107,11 +107,11 @@ async fn delegate_ephemeral_ata_succeeds() {
     );
     let (delegation_record_pda, _) = Pubkey::find_program_address(
         &[b"delegation", pdas.ephemeral_ata.as_ref()],
-        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID.into(),
+        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,
     );
     let (delegation_metadata_pda, _) = Pubkey::find_program_address(
         &[b"delegation-metadata", pdas.ephemeral_ata.as_ref()],
-        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID.into(),
+        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,
     );
 
     let ix_delegate = Instruction {
@@ -123,7 +123,7 @@ async fn delegate_ephemeral_ata_succeeds() {
             AccountMeta::new(buffer_pda, false),         // buffer PDA (created in CPI)
             AccountMeta::new(delegation_record_pda, false), // delegation record PDA
             AccountMeta::new(delegation_metadata_pda, false), // delegation metadata PDA
-            AccountMeta::new_readonly(ephemeral_rollups_pinocchio::ID.into(), false), // delegation program
+            AccountMeta::new_readonly(ephemeral_rollups_pinocchio::ID, false), // delegation program
             AccountMeta::new_readonly(solana_system_interface::program::ID, false), // system program
         ],
         data: vec![instruction::DELEGATE_EPHEMERAL_ATA, pdas.bump_ata],
@@ -147,7 +147,7 @@ async fn delegate_ephemeral_ata_succeeds() {
     assert!(ata_account.is_some());
     assert_eq!(
         ata_account.unwrap().owner,
-        ephemeral_spl_api::program::DELEGATION_PROGRAM_ID.into()
+        ephemeral_spl_api::program::DELEGATION_PROGRAM_ID
     );
 
     let _ = setup;
@@ -161,7 +161,7 @@ async fn delegate_ephemeral_ata_non_owner_succeeds() {
 
     let data = read_file("tests/fixtures/dlp.so");
     pt.add_account(
-        ephemeral_rollups_pinocchio::ID.into(),
+        ephemeral_rollups_pinocchio::ID,
         Account {
             lamports: Rent::default().minimum_balance(data.len()).max(1),
             data,
@@ -201,7 +201,7 @@ async fn delegate_ephemeral_ata_non_owner_succeeds() {
         program_id: PROGRAM,
         accounts: vec![
             AccountMeta::new(pdas.vault, false),
-            AccountMeta::new_readonly(payer, false),
+            AccountMeta::new(payer, true),
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new(vault_token_acc, false), // vault token account
             AccountMeta::new_readonly(spl_token_interface::ID, false), // token program
@@ -229,11 +229,11 @@ async fn delegate_ephemeral_ata_non_owner_succeeds() {
     );
     let (delegation_record_pda, _) = Pubkey::find_program_address(
         &[b"delegation", pdas.ephemeral_ata.as_ref()],
-        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID.into(),
+        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,
     );
     let (delegation_metadata_pda, _) = Pubkey::find_program_address(
         &[b"delegation-metadata", pdas.ephemeral_ata.as_ref()],
-        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID.into(),
+        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,
     );
 
     let ix_delegate = Instruction {
@@ -245,7 +245,7 @@ async fn delegate_ephemeral_ata_non_owner_succeeds() {
             AccountMeta::new(buffer_pda, false),
             AccountMeta::new(delegation_record_pda, false),
             AccountMeta::new(delegation_metadata_pda, false),
-            AccountMeta::new_readonly(ephemeral_rollups_pinocchio::ID.into(), false),
+            AccountMeta::new_readonly(ephemeral_rollups_pinocchio::ID, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
         data: vec![instruction::DELEGATE_EPHEMERAL_ATA, pdas.bump_ata],
@@ -268,7 +268,7 @@ async fn delegate_ephemeral_ata_non_owner_succeeds() {
     assert!(ata_account.is_some());
     assert_eq!(
         ata_account.unwrap().owner,
-        ephemeral_spl_api::program::DELEGATION_PROGRAM_ID.into()
+        ephemeral_spl_api::program::DELEGATION_PROGRAM_ID
     );
 
     let _ = setup;

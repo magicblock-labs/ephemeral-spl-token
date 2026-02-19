@@ -47,9 +47,9 @@ async fn initialize_global_vault() {
     let ix = Instruction {
         program_id: PROGRAM,
         accounts: vec![
-            AccountMeta::new(pdas.vault, false),     // writable vault account
-            AccountMeta::new_readonly(payer, false), // payer (funds, not part of seeds)
-            AccountMeta::new_readonly(mint, false),  // mint (seed)
+            AccountMeta::new(pdas.vault, false),    // writable vault account
+            AccountMeta::new(payer, true),          // payer (funds, signer)
+            AccountMeta::new_readonly(mint, false), // mint (seed)
             AccountMeta::new(vault_token_acc, false), // vault token account
             AccountMeta::new_readonly(spl_token_interface::ID, false), // token program
             AccountMeta::new_readonly(utils::associated_token_program_id(), false), // associated token program
@@ -130,7 +130,7 @@ async fn initialize_global_vault_migrates_legacy_layout() {
         program_id: PROGRAM,
         accounts: vec![
             AccountMeta::new(pdas.vault, false),
-            AccountMeta::new_readonly(payer, false),
+            AccountMeta::new(payer, true),
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new(vault_token_acc, false),
             AccountMeta::new_readonly(spl_token_interface::ID, false),

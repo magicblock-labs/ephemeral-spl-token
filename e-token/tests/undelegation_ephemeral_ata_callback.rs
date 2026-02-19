@@ -38,7 +38,7 @@ async fn undelegation_callback_restores_ephemeral_ata() {
     // Setup the delegation program
     let data = read_file("tests/fixtures/dlp.so");
     pt.add_account(
-        ephemeral_rollups_pinocchio::ID.into(),
+        ephemeral_rollups_pinocchio::ID,
         Account {
             lamports: Rent::default().minimum_balance(data.len()).max(1),
             data,
@@ -70,7 +70,7 @@ async fn undelegation_callback_restores_ephemeral_ata() {
         Account {
             lamports: LAMPORTS_PER_SOL,
             data: data.clone(),
-            owner: ephemeral_rollups_pinocchio::ID.into(),
+            owner: ephemeral_rollups_pinocchio::ID,
             executable: false,
             rent_epoch: 0,
         },
@@ -92,13 +92,13 @@ async fn undelegation_callback_restores_ephemeral_ata() {
     pt.add_account(
         Pubkey::find_program_address(
             &[b"delegation", delegated_ata.to_bytes().as_slice()],
-            &DELEGATION_PROGRAM_ID.into(),
+            &DELEGATION_PROGRAM_ID,
         )
         .0,
         Account {
             lamports: Rent::default().minimum_balance(delegation_record_data.len()),
             data: delegation_record_data,
-            owner: DELEGATION_PROGRAM_ID.into(),
+            owner: DELEGATION_PROGRAM_ID,
             executable: false,
             rent_epoch: 0,
         },
@@ -118,13 +118,13 @@ async fn undelegation_callback_restores_ephemeral_ata() {
     pt.add_account(
         Pubkey::find_program_address(
             &[b"delegation-metadata", delegated_ata.to_bytes().as_slice()],
-            &DELEGATION_PROGRAM_ID.into(),
+            &DELEGATION_PROGRAM_ID,
         )
         .0,
         Account {
             lamports: Rent::default().minimum_balance(delegation_metadata_data.len()),
             data: delegation_metadata_data,
-            owner: DELEGATION_PROGRAM_ID.into(),
+            owner: DELEGATION_PROGRAM_ID,
             executable: false,
             rent_epoch: 0,
         },
@@ -136,7 +136,7 @@ async fn undelegation_callback_restores_ephemeral_ata() {
         Account {
             lamports: Rent::default().minimum_balance(0),
             data: vec![],
-            owner: DELEGATION_PROGRAM_ID.into(),
+            owner: DELEGATION_PROGRAM_ID,
             executable: false,
             rent_epoch: 0,
         },
@@ -150,7 +150,7 @@ async fn undelegation_callback_restores_ephemeral_ata() {
         Account {
             lamports: LAMPORTS_PER_SOL,
             data: vec![],
-            owner: DELEGATION_PROGRAM_ID.into(),
+            owner: DELEGATION_PROGRAM_ID,
             executable: false,
             rent_epoch: 0,
         },

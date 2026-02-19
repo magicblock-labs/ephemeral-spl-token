@@ -60,9 +60,11 @@ pub fn process_initialize_global_vault(
 
         // Migrate legacy vaults from 32-byte layout (mint only) to 64-byte layout.
         // TODO: Remove this migration path once all deployed vaults are upgraded.
-        let legacy_data = unsafe { vault_info.borrow_unchecked() };
-        let legacy_mint = unsafe { &*(legacy_data.as_ptr() as *const pinocchio::Address) };
-        if legacy_mint != mint_info.address() {
+        let legacy_mint = {
+            let legacy_data = unsafe { vault_info.borrow_unchecked() };
+            unsafe { (*(legacy_data.as_ptr() as *const pinocchio::Address)).clone() }
+        };
+        if legacy_mint.ne(mint_info.address()) {
             return Err(ProgramError::InvalidAccountData);
         }
 

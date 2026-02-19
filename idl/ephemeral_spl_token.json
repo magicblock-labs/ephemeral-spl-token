@@ -94,7 +94,8 @@
         },
         {
           "name": "tokenProgram",
-          "docs": ["SPL Token Program"]
+          "docs": ["SPL Token Program"],
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
         {
           "name": "associatedTokenProgram",
