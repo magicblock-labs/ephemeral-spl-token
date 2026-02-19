@@ -29,15 +29,38 @@ pub fn process_deposit_spl_tokens(
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
+    // Validate EphemeralAta ownership first, before reading raw data.
+    unsafe {
+        if ephemeral_ata_info
+            .owner()
+            .ne(&ephemeral_spl_api::program::id_address())
+        {
+            return Err(ProgramError::IllegalOwner);
+        }
+    }
+
     // Validate EphemeralAta account
     let ephemeral_ata =
         unsafe { load_mut_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked_mut())? };
+
+    // Validate vault ownership first, before reading raw data.
+    unsafe {
+        if vault_info
+            .owner()
+            .ne(&ephemeral_spl_api::program::id_address())
+        {
+            return Err(ProgramError::IllegalOwner);
+        }
+    }
 
     // Validate Vault data account
     let vault = unsafe { load_unchecked::<GlobalVault>(vault_info.borrow_unchecked())? };
 
     // Check mint consistency
-    if ephemeral_ata.mint != *mint_info.address() || vault.mint != *mint_info.address() {
+    if ephemeral_ata.mint != *mint_info.address()
+        || vault.mint != *mint_info.address()
+        || vault.token_account != *vault_token_acc.address()
+    {
         return Err(ProgramError::InvalidAccountData);
     }
 

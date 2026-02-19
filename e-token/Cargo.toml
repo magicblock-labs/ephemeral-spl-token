@@ -20,6 +20,7 @@ pinocchio = { workspace = true }
 pinocchio-log = { workspace = true }
 pinocchio-system = { workspace = true }
 pinocchio-token-2022 = { workspace = true }
+pinocchio-associated-token-account = { workspace = true }
 ephemeral-spl-api = { path = "../e-token-api" }
 
 [dev-dependencies]

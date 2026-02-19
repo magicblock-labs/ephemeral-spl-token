@@ -19,7 +19,7 @@ async fn delegate_ephemeral_ata_permission_succeeds() {
 
     let acl_data = read_file("tests/fixtures/acl.so");
     pt.add_account(
-        PERMISSION_PROGRAM_ID.into(),
+        PERMISSION_PROGRAM_ID,
         Account {
             lamports: Rent::default().minimum_balance(acl_data.len()).max(1),
             data: acl_data,
@@ -31,7 +31,7 @@ async fn delegate_ephemeral_ata_permission_succeeds() {
 
     let dlp_data = read_file("tests/fixtures/dlp.so");
     pt.add_account(
-        ephemeral_rollups_pinocchio::ID.into(),
+        ephemeral_rollups_pinocchio::ID,
         Account {
             lamports: Rent::default().minimum_balance(dlp_data.len()).max(1),
             data: dlp_data,
@@ -65,7 +65,7 @@ async fn delegate_ephemeral_ata_permission_succeeds() {
     );
     let (permission_pda, _) = Pubkey::find_program_address(
         &[b"permission:", ephemeral_ata.as_ref()],
-        &PERMISSION_PROGRAM_ID.into(),
+        &PERMISSION_PROGRAM_ID,
     );
 
     let ix_init_ata = Instruction {
@@ -87,7 +87,7 @@ async fn delegate_ephemeral_ata_permission_succeeds() {
             AccountMeta::new(permission_pda, false),
             AccountMeta::new(payer, true),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
-            AccountMeta::new_readonly(PERMISSION_PROGRAM_ID.into(), false),
+            AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
         ],
         data: {
             let flag =
@@ -110,15 +110,15 @@ async fn delegate_ephemeral_ata_permission_succeeds() {
 
     let (buffer_pda, _) = Pubkey::find_program_address(
         &[b"buffer", permission_pda.as_ref()],
-        &PERMISSION_PROGRAM_ID.into(),
+        &PERMISSION_PROGRAM_ID,
     );
     let (delegation_record_pda, _) = Pubkey::find_program_address(
         &[b"delegation", permission_pda.as_ref()],
-        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID.into(),
+        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,
     );
     let (delegation_metadata_pda, _) = Pubkey::find_program_address(
         &[b"delegation-metadata", permission_pda.as_ref()],
-        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID.into(),
+        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,
     );
 
     let ix_delegate_permission = Instruction {
@@ -126,13 +126,13 @@ async fn delegate_ephemeral_ata_permission_succeeds() {
         accounts: vec![
             AccountMeta::new(payer, true),
             AccountMeta::new(ephemeral_ata, false),
-            AccountMeta::new_readonly(PERMISSION_PROGRAM_ID.into(), false),
+            AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
             AccountMeta::new(permission_pda, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
             AccountMeta::new(buffer_pda, false),
             AccountMeta::new(delegation_record_pda, false),
             AccountMeta::new(delegation_metadata_pda, false),
-            AccountMeta::new_readonly(ephemeral_rollups_pinocchio::ID.into(), false),
+            AccountMeta::new_readonly(ephemeral_rollups_pinocchio::ID, false),
             AccountMeta::new_readonly(validator, false),
         ],
         data: vec![instruction::DELEGATE_EPHEMERAL_ATA_PERMISSION, bump],
@@ -158,7 +158,7 @@ async fn delegate_ephemeral_ata_permission_succeeds() {
         .expect("permission account must exist");
     assert_eq!(
         permission_account.owner,
-        ephemeral_spl_api::program::DELEGATION_PROGRAM_ID.into()
+        ephemeral_spl_api::program::DELEGATION_PROGRAM_ID
     );
 }
 
@@ -169,7 +169,7 @@ async fn delegate_ephemeral_ata_permission_non_owner_succeeds() {
 
     let acl_data = read_file("tests/fixtures/acl.so");
     pt.add_account(
-        PERMISSION_PROGRAM_ID.into(),
+        PERMISSION_PROGRAM_ID,
         Account {
             lamports: Rent::default().minimum_balance(acl_data.len()).max(1),
             data: acl_data,
@@ -181,7 +181,7 @@ async fn delegate_ephemeral_ata_permission_non_owner_succeeds() {
 
     let dlp_data = read_file("tests/fixtures/dlp.so");
     pt.add_account(
-        ephemeral_rollups_pinocchio::ID.into(),
+        ephemeral_rollups_pinocchio::ID,
         Account {
             lamports: Rent::default().minimum_balance(dlp_data.len()).max(1),
             data: dlp_data,
@@ -215,7 +215,7 @@ async fn delegate_ephemeral_ata_permission_non_owner_succeeds() {
     );
     let (permission_pda, _) = Pubkey::find_program_address(
         &[b"permission:", ephemeral_ata.as_ref()],
-        &PERMISSION_PROGRAM_ID.into(),
+        &PERMISSION_PROGRAM_ID,
     );
 
     let ix_init_ata = Instruction {
@@ -237,7 +237,7 @@ async fn delegate_ephemeral_ata_permission_non_owner_succeeds() {
             AccountMeta::new(permission_pda, false),
             AccountMeta::new(payer, true),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
-            AccountMeta::new_readonly(PERMISSION_PROGRAM_ID.into(), false),
+            AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
         ],
         data: {
             let flag =
@@ -260,15 +260,15 @@ async fn delegate_ephemeral_ata_permission_non_owner_succeeds() {
 
     let (buffer_pda, _) = Pubkey::find_program_address(
         &[b"buffer", permission_pda.as_ref()],
-        &PERMISSION_PROGRAM_ID.into(),
+        &PERMISSION_PROGRAM_ID,
     );
     let (delegation_record_pda, _) = Pubkey::find_program_address(
         &[b"delegation", permission_pda.as_ref()],
-        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID.into(),
+        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,
     );
     let (delegation_metadata_pda, _) = Pubkey::find_program_address(
         &[b"delegation-metadata", permission_pda.as_ref()],
-        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID.into(),
+        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,
     );
 
     let ix_delegate_permission = Instruction {
@@ -276,13 +276,13 @@ async fn delegate_ephemeral_ata_permission_non_owner_succeeds() {
         accounts: vec![
             AccountMeta::new(payer, true),
             AccountMeta::new(ephemeral_ata, false),
-            AccountMeta::new_readonly(PERMISSION_PROGRAM_ID.into(), false),
+            AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
             AccountMeta::new(permission_pda, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
             AccountMeta::new(buffer_pda, false),
             AccountMeta::new(delegation_record_pda, false),
             AccountMeta::new(delegation_metadata_pda, false),
-            AccountMeta::new_readonly(ephemeral_rollups_pinocchio::ID.into(), false),
+            AccountMeta::new_readonly(ephemeral_rollups_pinocchio::ID, false),
             AccountMeta::new_readonly(validator, false),
         ],
         data: vec![instruction::DELEGATE_EPHEMERAL_ATA_PERMISSION, bump],
@@ -308,6 +308,6 @@ async fn delegate_ephemeral_ata_permission_non_owner_succeeds() {
         .expect("permission account must exist");
     assert_eq!(
         permission_account.owner,
-        ephemeral_spl_api::program::DELEGATION_PROGRAM_ID.into()
+        ephemeral_spl_api::program::DELEGATION_PROGRAM_ID
     );
 }

@@ -1,13 +1,22 @@
 use solana_keypair::Keypair;
+use solana_program::{
+    account_info::AccountInfo,
+    entrypoint::ProgramResult,
+    program::{invoke, invoke_signed},
+    program_error::ProgramError,
+    rent::Rent,
+    sysvar::Sysvar,
+};
 use solana_program_pack::Pack;
-use solana_program_test::ProgramTestContext;
-use solana_pubkey::Pubkey;
+use solana_program_test::{processor, ProgramTest, ProgramTestContext};
+use solana_pubkey::{pubkey, Pubkey};
 use solana_signer::Signer;
 use solana_system_interface::instruction::create_account;
 use solana_transaction::Transaction;
-use spl_token_interface::instruction::{initialize_account, initialize_mint};
+use spl_token_interface::instruction::{initialize_account, initialize_account3, initialize_mint};
 use spl_token_interface::state::{Account as SplAccount, Mint};
 
+#[allow(dead_code)]
 pub struct Pdas {
     pub ephemeral_ata: Pubkey,
     pub bump_ata: u8,
@@ -18,7 +27,92 @@ pub struct Pdas {
 #[allow(dead_code)]
 pub struct TokenSetup {
     pub user_tokens: Vec<Pubkey>,
-    pub vault_token: Pubkey,
+}
+
+const ASSOCIATED_TOKEN_PROGRAM_ID: Pubkey = pubkey!("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
+
+pub fn associated_token_program_id() -> Pubkey {
+    ASSOCIATED_TOKEN_PROGRAM_ID
+}
+
+fn process_associated_token_program_mock(
+    _program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    instruction_data: &[u8],
+) -> ProgramResult {
+    if instruction_data.is_empty() || instruction_data[0] > 1 {
+        return Err(ProgramError::InvalidInstructionData);
+    }
+
+    let [funding, ata, wallet, mint, system_program, token_program, ..] = accounts else {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    };
+
+    if *system_program.key != solana_system_interface::program::ID {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    if *token_program.key != spl_token_interface::ID {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+
+    let (expected_ata, bump_seed) = Pubkey::find_program_address(
+        &[
+            wallet.key.as_ref(),
+            token_program.key.as_ref(),
+            mint.key.as_ref(),
+        ],
+        &ASSOCIATED_TOKEN_PROGRAM_ID,
+    );
+    if expected_ata != *ata.key {
+        return Err(ProgramError::InvalidSeeds);
+    }
+
+    // Idempotent path: account already exists as a token account.
+    if *ata.owner == *token_program.key && ata.data_len() == SplAccount::LEN {
+        let ata_data = ata.try_borrow_data()?;
+        let ata_state = SplAccount::unpack(&ata_data)?;
+        if ata_state.mint != *mint.key || ata_state.owner != *wallet.key {
+            return Err(ProgramError::InvalidAccountData);
+        }
+        return Ok(());
+    }
+
+    let lamports = Rent::get()?.minimum_balance(SplAccount::LEN);
+    let bump = [bump_seed];
+    let ata_signer_seeds: &[&[u8]] = &[
+        wallet.key.as_ref(),
+        token_program.key.as_ref(),
+        mint.key.as_ref(),
+        &bump,
+    ];
+
+    invoke_signed(
+        &create_account(
+            funding.key,
+            ata.key,
+            lamports,
+            SplAccount::LEN as u64,
+            token_program.key,
+        ),
+        &[funding.clone(), ata.clone()],
+        &[ata_signer_seeds],
+    )?;
+
+    let mut init_ix = initialize_account3(token_program.key, ata.key, mint.key, wallet.key)?;
+    init_ix.program_id = *token_program.key;
+    invoke(&init_ix, &[ata.clone(), mint.clone()])?;
+
+    Ok(())
+}
+
+pub fn add_associated_token_program(pt: &mut ProgramTest) {
+    pt.prefer_bpf(false);
+    pt.add_program(
+        "spl_associated_token_account",
+        ASSOCIATED_TOKEN_PROGRAM_ID,
+        processor!(process_associated_token_program_mock),
+    );
+    pt.prefer_bpf(true);
 }
 
 pub fn derive_pdas(program: Pubkey, owner: Pubkey, mint: Pubkey) -> Pdas {
@@ -35,17 +129,27 @@ pub fn derive_pdas(program: Pubkey, owner: Pubkey, mint: Pubkey) -> Pdas {
     }
 }
 
+pub fn derive_associated_token_address(wallet: Pubkey, mint: Pubkey) -> Pubkey {
+    Pubkey::find_program_address(
+        &[
+            wallet.as_ref(),
+            spl_token_interface::ID.as_ref(),
+            mint.as_ref(),
+        ],
+        &ASSOCIATED_TOKEN_PROGRAM_ID,
+    )
+    .0
+}
+
 // Creates and initializes:
 // - Mint (with mint authority = payer, freeze authority = payer)
 // - `user_accounts` token accounts owned by `payer`
-// - one vault token account owned by `vault_owner`
 // - mints `starting_balance` to the first user token account
 // Submits a single transaction for all instructions.
 pub async fn setup_mint_and_token_accounts(
     context: &mut ProgramTestContext,
     payer: Pubkey,
     mint_kp: &Keypair,
-    vault_owner: Pubkey,
     decimals: u8,
     starting_balance: u64,
     user_accounts: usize,
@@ -117,22 +221,6 @@ pub async fn setup_mint_and_token_accounts(
         signers.push(kp);
     }
 
-    // Create vault ata
-    let vault_token_kp = Keypair::new();
-    let vault_token = vault_token_kp.pubkey();
-    instructions.push(create_account(
-        &payer,
-        &vault_token,
-        token_acc_lamports,
-        token_acc_space as u64,
-        &spl_token_interface::ID,
-    ));
-    let mut init_vault_ix =
-        initialize_account(&spl_token_interface::ID, &vault_token, &mint, &vault_owner).unwrap();
-    init_vault_ix.program_id = spl_token_interface::ID;
-    instructions.push(init_vault_ix);
-    signers.push(&vault_token_kp);
-
     // Mint starting balance to first user token
     let first_user = user_tokens[0];
     let mut mint_to_ix = spl_token_interface::instruction::mint_to(
@@ -157,8 +245,5 @@ pub async fn setup_mint_and_token_accounts(
 
     context.banks_client.process_transaction(tx).await.unwrap();
 
-    TokenSetup {
-        user_tokens,
-        vault_token,
-    }
+    TokenSetup { user_tokens }
 }

@@ -29,12 +29,12 @@ async fn undelegate_ephemeral_ata_permission_callback() {
         Pubkey::find_program_address(&[payer_pubkey.as_ref(), mint.as_ref()], &PROGRAM);
     let (permission_pda, _perm_bump) = Pubkey::find_program_address(
         &[b"permission:", ephemeral_ata.as_ref()],
-        &PERMISSION_PROGRAM_ID.into(),
+        &PERMISSION_PROGRAM_ID,
     );
 
     let data = read_file("tests/fixtures/dlp.so");
     pt.add_account(
-        ephemeral_rollups_pinocchio::ID.into(),
+        ephemeral_rollups_pinocchio::ID,
         Account {
             lamports: Rent::default().minimum_balance(data.len()).max(1),
             data,
@@ -60,7 +60,7 @@ async fn undelegate_ephemeral_ata_permission_callback() {
         Account {
             lamports: LAMPORTS_PER_SOL,
             data: vec![],
-            owner: ephemeral_rollups_pinocchio::ID.into(),
+            owner: ephemeral_rollups_pinocchio::ID,
             executable: false,
             rent_epoch: 0,
         },
@@ -83,13 +83,13 @@ async fn undelegate_ephemeral_ata_permission_callback() {
     pt.add_account(
         Pubkey::find_program_address(
             &[b"delegation", permission_pda.to_bytes().as_slice()],
-            &DELEGATION_PROGRAM_ID.into(),
+            &DELEGATION_PROGRAM_ID,
         )
         .0,
         Account {
             lamports: Rent::default().minimum_balance(delegation_record_data.len()),
             data: delegation_record_data,
-            owner: DELEGATION_PROGRAM_ID.into(),
+            owner: DELEGATION_PROGRAM_ID,
             executable: false,
             rent_epoch: 0,
         },
@@ -108,13 +108,13 @@ async fn undelegate_ephemeral_ata_permission_callback() {
     pt.add_account(
         Pubkey::find_program_address(
             &[b"delegation-metadata", permission_pda.to_bytes().as_slice()],
-            &DELEGATION_PROGRAM_ID.into(),
+            &DELEGATION_PROGRAM_ID,
         )
         .0,
         Account {
             lamports: Rent::default().minimum_balance(delegation_metadata_data.len()),
             data: delegation_metadata_data,
-            owner: DELEGATION_PROGRAM_ID.into(),
+            owner: DELEGATION_PROGRAM_ID,
             executable: false,
             rent_epoch: 0,
         },
@@ -125,7 +125,7 @@ async fn undelegate_ephemeral_ata_permission_callback() {
         Account {
             lamports: Rent::default().minimum_balance(0),
             data: vec![],
-            owner: DELEGATION_PROGRAM_ID.into(),
+            owner: DELEGATION_PROGRAM_ID,
             executable: false,
             rent_epoch: 0,
         },
@@ -138,7 +138,7 @@ async fn undelegate_ephemeral_ata_permission_callback() {
         Account {
             lamports: LAMPORTS_PER_SOL,
             data: vec![],
-            owner: DELEGATION_PROGRAM_ID.into(),
+            owner: DELEGATION_PROGRAM_ID,
             executable: false,
             rent_epoch: 0,
         },
@@ -178,12 +178,12 @@ async fn undelegate_ephemeral_ata_permission_callback() {
 
     let delegation_pda = Pubkey::find_program_address(
         &[b"delegation", permission_pda.to_bytes().as_slice()],
-        &DELEGATION_PROGRAM_ID.into(),
+        &DELEGATION_PROGRAM_ID,
     )
     .0;
     let delegation_metadata_pda = Pubkey::find_program_address(
         &[b"delegation-metadata", permission_pda.to_bytes().as_slice()],
-        &DELEGATION_PROGRAM_ID.into(),
+        &DELEGATION_PROGRAM_ID,
     )
     .0;
 
@@ -206,8 +206,7 @@ async fn undelegate_ephemeral_ata_permission_callback() {
 
     assert_eq!(permission_account.owner, PROGRAM);
     assert!(
-        delegation_account.is_none()
-            || delegation_account.unwrap().owner != DELEGATION_PROGRAM_ID.into()
+        delegation_account.is_none() || delegation_account.unwrap().owner != DELEGATION_PROGRAM_ID
     );
 
     if let Some(account) = delegation_metadata_account {
