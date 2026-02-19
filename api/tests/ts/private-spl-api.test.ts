@@ -87,6 +87,8 @@ describe("Ephemeral SPL Token Transactions", async () => {
       skipPreflight: true,
     });
 
+    console.log("✓ Transaction Signature:", signature);
+
     const confirmation = await conn.confirmTransaction(signature);
     const isConfirmed = confirmation.value.err === null;
     
@@ -152,6 +154,7 @@ describe("Ephemeral SPL Token Transactions", async () => {
 
       // Add token as query parameter to endpoint URL
       const teeEndpointWithToken = `${EPHEMERAL_ENDPOINT_RPC}?token=${authToken.token}`;
+      console.log("TEE Endpoint with Token:", teeEndpointWithToken);
 
       const prepareWithdrawalPayload = {
         user: keypair.publicKey.toString(),
