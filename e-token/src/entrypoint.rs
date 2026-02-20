@@ -114,6 +114,12 @@ pub(crate) fn inner_process_instruction(
 
             process_reset_ephemeral_ata_permission(accounts, instruction_data)
         }
+        10 => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: CloseEphemeralAta");
+
+            process_close_ephemeral_ata(accounts, instruction_data)
+        }
         196 => {
             #[cfg(feature = "logging")]
             pinocchio_log::log!("Instruction: UndelegationCallback");

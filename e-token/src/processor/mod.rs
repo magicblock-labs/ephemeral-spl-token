@@ -1,3 +1,4 @@
+pub mod close_ephemeral_ata;
 pub mod create_ephemeral_ata_permission;
 pub mod delegate_ephemeral_ata;
 pub mod delegate_ephemeral_ata_permission;
@@ -10,6 +11,7 @@ pub mod undelegate_ephemeral_ata_permission;
 pub mod undelegation_callback;
 pub mod withdraw_spl_tokens;
 
+pub use close_ephemeral_ata::process_close_ephemeral_ata;
 pub use create_ephemeral_ata_permission::process_create_ephemeral_ata_permission;
 pub use delegate_ephemeral_ata::process_delegate_ephemeral_ata;
 pub use delegate_ephemeral_ata_permission::process_delegate_ephemeral_ata_permission;
