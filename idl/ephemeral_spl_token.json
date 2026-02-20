@@ -512,6 +512,32 @@
       ]
     },
     {
+      "name": "closeEphemeralAta",
+      "discriminator": [10],
+      "docs": [
+        "Closes an empty ephemeral ATA and refunds its rent to a recipient account.",
+        "Only the owner of the ephemeral ATA can close it."
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true,
+          "docs": ["The owner of the ephemeral ATA (must sign)"]
+        },
+        {
+          "name": "ephemeralAta",
+          "writable": true,
+          "docs": ["The ephemeral ATA to close (must have amount = 0)"]
+        },
+        {
+          "name": "recipient",
+          "writable": true,
+          "docs": ["The recipient account for the reclaimed rent lamports"]
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "undelegationCallback",
       "discriminator": [196],
       "docs": [
