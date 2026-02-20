@@ -49,4 +49,6 @@ pub mod instruction {
     ///     [0] bump
     ///     [1] MemberFlags bitfield encoded via MemberFlags::to_acl_flag_byte.
     pub const RESET_EPHEMERAL_ATA_PERMISSION: u8 = 9;
+    /// 10 - CloseEphemeralAta: close an empty ephemeral ATA and refund rent to recipient
+    pub const CLOSE_EPHEMERAL_ATA: u8 = 10;
 }
