@@ -28,6 +28,7 @@ pub mod instruction {
     /// 1 - InitializeGlobalVault: initialize the global vault account derived from [mint]
     pub const INITIALIZE_GLOBAL_VAULT: u8 = 1;
     /// 2 - DepositSplTokens: transfer tokens to global vault and increase EphemeralAta amount
+    ///     Works for both standard EATA and shuttle EATA, as long as the data account is program-owned.
     pub const DEPOSIT_SPL_TOKENS: u8 = 2;
     /// 3 - WithdrawSplTokens: transfer tokens from global vault back to user and decrease EphemeralAta amount
     pub const WITHDRAW_SPL_TOKENS: u8 = 3;
@@ -51,4 +52,15 @@ pub mod instruction {
     pub const RESET_EPHEMERAL_ATA_PERMISSION: u8 = 9;
     /// 10 - CloseEphemeralAta: close an empty ephemeral ATA and refund rent to recipient
     pub const CLOSE_EPHEMERAL_ATA: u8 = 10;
+    /// 11 - InitializeShuttleEphemeralAta: initialize shuttle account derived from [owner, mint, shuttle_id]
+    ///      Instruction data:
+    ///      [0..4] shuttle_id (u32 LE)
+    ///      [4]    bump
+    pub const INITIALIZE_SHUTTLE_EPHEMERAL_ATA: u8 = 11;
+    /// 13 - DelegateShuttleEphemeralAta: delegate shuttle account to a DLP program using PDA seeds
+    pub const DELEGATE_SHUTTLE_EPHEMERAL_ATA: u8 = 13;
+    /// 14 - UndelegateShuttleEphemeralAta: commit state and undelegate a shuttle account
+    pub const UNDELEGATE_SHUTTLE_EPHEMERAL_ATA: u8 = 14;
+    /// 15 - MergeShuttleIntoEphemeralAta: transfer shuttle ATA funds into owner ATA and keep shuttle account open
+    pub const MERGE_SHUTTLE_INTO_EPHEMERAL_ATA: u8 = 15;
 }

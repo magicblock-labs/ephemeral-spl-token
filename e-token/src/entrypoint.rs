@@ -120,6 +120,30 @@ pub(crate) fn inner_process_instruction(
 
             process_close_ephemeral_ata(accounts, instruction_data)
         }
+        11 => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: InitializeShuttleEphemeralAta");
+
+            process_initialize_shuttle_ephemeral_ata(accounts, instruction_data)
+        }
+        13 => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: DelegateShuttleEphemeralAta");
+
+            process_delegate_shuttle_ephemeral_ata(accounts, instruction_data)
+        }
+        14 => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: UndelegateShuttleEphemeralAta");
+
+            process_undelegate_shuttle_ephemeral_ata(accounts, instruction_data)
+        }
+        15 => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: MergeShuttleIntoEphemeralAta");
+
+            process_merge_shuttle_into_ephemeral_ata(accounts, instruction_data)
+        }
         196 => {
             #[cfg(feature = "logging")]
             pinocchio_log::log!("Instruction: UndelegationCallback");

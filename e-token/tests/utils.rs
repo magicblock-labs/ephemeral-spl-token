@@ -115,6 +115,19 @@ pub fn add_associated_token_program(pt: &mut ProgramTest) {
     pt.prefer_bpf(true);
 }
 
+pub fn derive_associated_token_address(wallet: Pubkey, mint: Pubkey) -> Pubkey {
+    Pubkey::find_program_address(
+        &[
+            wallet.as_ref(),
+            spl_token_interface::ID.as_ref(),
+            mint.as_ref(),
+        ],
+        &ASSOCIATED_TOKEN_PROGRAM_ID,
+    )
+    .0
+}
+
+#[allow(dead_code)]
 pub fn derive_pdas(program: Pubkey, owner: Pubkey, mint: Pubkey) -> Pdas {
     let (ephemeral_ata, bump_ata) = Pubkey::find_program_address(
         &[owner.to_bytes().as_slice(), mint.to_bytes().as_slice()],
@@ -129,16 +142,23 @@ pub fn derive_pdas(program: Pubkey, owner: Pubkey, mint: Pubkey) -> Pdas {
     }
 }
 
-pub fn derive_associated_token_address(wallet: Pubkey, mint: Pubkey) -> Pubkey {
+#[allow(dead_code)]
+pub fn derive_shuttle_ephemeral_ata(
+    program: Pubkey,
+    owner: Pubkey,
+    mint: Pubkey,
+    shuttle_id: u32,
+) -> (Pubkey, u8) {
+    let shuttle_id_seed = shuttle_id.to_le_bytes();
     Pubkey::find_program_address(
-        &[
-            wallet.as_ref(),
-            spl_token_interface::ID.as_ref(),
-            mint.as_ref(),
-        ],
-        &ASSOCIATED_TOKEN_PROGRAM_ID,
+        &[owner.as_ref(), mint.as_ref(), shuttle_id_seed.as_ref()],
+        &program,
     )
-    .0
+}
+
+#[allow(dead_code)]
+pub fn derive_shuttle_eata(program: Pubkey, shuttle: Pubkey, mint: Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[shuttle.as_ref(), mint.as_ref()], &program)
 }
 
 // Creates and initializes:
