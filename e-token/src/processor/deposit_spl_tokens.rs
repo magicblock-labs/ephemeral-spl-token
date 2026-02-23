@@ -129,7 +129,7 @@ pub struct DepositArgs<'a> {
 
 impl DepositArgs<'_> {
     #[inline]
-    pub fn try_from_bytes(bytes: &[u8]) -> Result<DepositArgs, ProgramError> {
+    pub fn try_from_bytes(bytes: &[u8]) -> Result<DepositArgs<'_>, ProgramError> {
         if bytes.len() < 8 {
             return Err(ProgramError::InvalidInstructionData);
         }

@@ -29,6 +29,52 @@ fn parse_escrow_index(instruction_data: &[u8]) -> Result<u8, ProgramError> {
     Ok(instruction_data[0])
 }
 
+#[inline(never)]
+fn undelegate_and_close_shuttle_ephemeral_ata(
+    payer: &AccountView,
+    ata_info: &AccountView,
+    shuttle_info: &AccountView,
+    shuttle_wallet_ata_info: &AccountView,
+    token_program_info: &AccountView,
+    magic_context: &AccountView,
+    magic_program: &AccountView,
+    escrow_index: u8,
+) -> ProgramResult {
+    let close_handler_data = [CLOSE_SHUTTLE_ATA_INTENT_V2, escrow_index];
+    let close_handler_accounts = [
+        ShortAccountMeta {
+            pubkey: payer.address().clone(),
+            is_writable: payer.is_writable(),
+        },
+        ShortAccountMeta {
+            pubkey: shuttle_info.address().clone(),
+            is_writable: shuttle_info.is_writable(),
+        },
+        ShortAccountMeta {
+            pubkey: shuttle_wallet_ata_info.address().clone(),
+            is_writable: shuttle_wallet_ata_info.is_writable(),
+        },
+        ShortAccountMeta {
+            pubkey: token_program_info.address().clone(),
+            is_writable: token_program_info.is_writable(),
+        },
+    ];
+    let close_handler = [CallHandler {
+        destination_program: Address::new_from_array(crate::ID),
+        escrow_authority: payer.clone(),
+        args: ActionArgs::new(&close_handler_data).with_escrow_index(escrow_index),
+        compute_units: CLOSE_SHUTTLE_ATA_COMPUTE_UNITS,
+        accounts: &close_handler_accounts,
+    }];
+    let committed_accounts = [ata_info.clone()];
+    let mut intent_bundle_data = [0u8; INTENT_BUNDLE_DATA_BUF_SIZE];
+
+    MagicIntentBundleBuilder::new(payer.clone(), magic_context.clone(), magic_program.clone())
+        .commit_and_undelegate(&committed_accounts)
+        .add_post_undelegate_actions(&close_handler)
+        .build_and_invoke(&mut intent_bundle_data)
+}
+
 /// Undelegate a Shuttle Ephemeral ATA by calling into the delegation program
 /// helper that schedules a commit and performs undelegation.
 ///
@@ -41,7 +87,7 @@ fn parse_escrow_index(instruction_data: &[u8]) -> Result<u8, ProgramError> {
 /// 5. []         Token program account
 /// 6. [writable] Magic context account (as required by the delegation program)
 /// 7. []         Delegation program ID (aka magic program)
-pub fn process_undelegate_shuttle_ephemeral_ata(
+pub fn process_undelegate_and_close_shuttle_ephemeral_ata(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
@@ -127,39 +173,16 @@ pub fn process_undelegate_shuttle_ephemeral_ata(
         }
     }
 
-    let close_handler_data = [CLOSE_SHUTTLE_ATA_INTENT_V2, escrow_index];
-    let close_handler_accounts = [
-        ShortAccountMeta {
-            pubkey: payer.address().clone(),
-            is_writable: payer.is_writable(),
-        },
-        ShortAccountMeta {
-            pubkey: shuttle_info.address().clone(),
-            is_writable: shuttle_info.is_writable(),
-        },
-        ShortAccountMeta {
-            pubkey: shuttle_wallet_ata_info.address().clone(),
-            is_writable: shuttle_wallet_ata_info.is_writable(),
-        },
-        ShortAccountMeta {
-            pubkey: token_program_info.address().clone(),
-            is_writable: token_program_info.is_writable(),
-        },
-    ];
-
-    let close_handler = [CallHandler {
-        destination_program: Address::new_from_array(crate::ID),
-        escrow_authority: payer.clone(),
-        args: ActionArgs::new(&close_handler_data).with_escrow_index(escrow_index),
-        compute_units: CLOSE_SHUTTLE_ATA_COMPUTE_UNITS,
-        accounts: &close_handler_accounts,
-    }];
-
-    let mut data_buf = [0u8; INTENT_BUNDLE_DATA_BUF_SIZE];
-    MagicIntentBundleBuilder::new(payer.clone(), magic_context.clone(), magic_program.clone())
-        .commit_and_undelegate(&[ata_info.clone()])
-        .add_post_undelegate_actions(&close_handler)
-        .build_and_invoke(&mut data_buf)
+    undelegate_and_close_shuttle_ephemeral_ata(
+        payer,
+        ata_info,
+        shuttle_info,
+        shuttle_wallet_ata_info,
+        token_program_info,
+        magic_context,
+        magic_program,
+        escrow_index,
+    )
 }
 
 /// v2 intent action handler that closes the shuttle wallet ATA after undelegation.

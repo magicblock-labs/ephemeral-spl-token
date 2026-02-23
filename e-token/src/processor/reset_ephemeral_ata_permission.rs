@@ -88,7 +88,7 @@ pub struct ResetEphemeralAtaPermission<'a> {
 
 impl ResetEphemeralAtaPermission<'_> {
     #[inline]
-    pub fn try_from_bytes(bytes: &[u8]) -> Result<ResetEphemeralAtaPermission, ProgramError> {
+    pub fn try_from_bytes(bytes: &[u8]) -> Result<ResetEphemeralAtaPermission<'_>, ProgramError> {
         if bytes.len() < 2 {
             return Err(ProgramError::InvalidInstructionData);
         }

@@ -3,8 +3,8 @@ use {
     crate::processor::*,
     core::{mem::MaybeUninit, slice::from_raw_parts},
     pinocchio::{
-        entrypoint::deserialize, error::ProgramError, no_allocator, nostd_panic_handler,
-        AccountView, ProgramResult, MAX_TX_ACCOUNTS, SUCCESS,
+        cpi::MAX_STATIC_CPI_ACCOUNTS, entrypoint::deserialize, error::ProgramError, no_allocator,
+        nostd_panic_handler, AccountView, ProgramResult, SUCCESS,
     },
 };
 
@@ -16,10 +16,11 @@ nostd_panic_handler!();
 #[no_mangle]
 #[allow(clippy::arithmetic_side_effects)]
 pub unsafe extern "C" fn entrypoint(input: *mut u8) -> u64 {
+    const MAX_PROGRAM_ACCOUNTS: usize = MAX_STATIC_CPI_ACCOUNTS;
     const UNINIT: MaybeUninit<AccountView> = MaybeUninit::<AccountView>::uninit();
-    let mut accounts = [UNINIT; { MAX_TX_ACCOUNTS }];
+    let mut accounts = [UNINIT; { MAX_PROGRAM_ACCOUNTS }];
 
-    let (_, count, instruction_data) = deserialize::<MAX_TX_ACCOUNTS>(input, &mut accounts);
+    let (_, count, instruction_data) = deserialize::<MAX_PROGRAM_ACCOUNTS>(input, &mut accounts);
 
     match process_instruction(
         from_raw_parts(accounts.as_ptr() as _, count),
@@ -136,7 +137,7 @@ pub(crate) fn inner_process_instruction(
             #[cfg(feature = "logging")]
             pinocchio_log::log!("Instruction: UndelegateShuttleEphemeralAta");
 
-            process_undelegate_shuttle_ephemeral_ata(accounts, instruction_data)
+            process_undelegate_and_close_shuttle_ephemeral_ata(accounts, instruction_data)
         }
         15 => {
             #[cfg(feature = "logging")]

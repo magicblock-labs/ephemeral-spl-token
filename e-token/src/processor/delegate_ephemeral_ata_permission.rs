@@ -89,7 +89,7 @@ pub struct DelegatePermissionArgs<'a> {
 
 impl DelegatePermissionArgs<'_> {
     #[inline]
-    pub fn try_from_bytes(bytes: &[u8]) -> Result<DelegatePermissionArgs, ProgramError> {
+    pub fn try_from_bytes(bytes: &[u8]) -> Result<DelegatePermissionArgs<'_>, ProgramError> {
         if bytes.is_empty() {
             return Err(ProgramError::InvalidInstructionData);
         }

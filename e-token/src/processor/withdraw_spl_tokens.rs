@@ -115,7 +115,7 @@ pub struct WithdrawArgs<'a> {
 
 impl WithdrawArgs<'_> {
     #[inline]
-    pub fn try_from_bytes(bytes: &[u8]) -> Result<WithdrawArgs, ProgramError> {
+    pub fn try_from_bytes(bytes: &[u8]) -> Result<WithdrawArgs<'_>, ProgramError> {
         if bytes.len() < 9 {
             return Err(ProgramError::InvalidInstructionData);
         }

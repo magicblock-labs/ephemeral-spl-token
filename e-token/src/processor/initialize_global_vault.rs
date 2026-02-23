@@ -118,7 +118,7 @@ pub struct InitializeGlobalVault<'a> {
 
 impl InitializeGlobalVault<'_> {
     #[inline]
-    pub fn try_from_bytes(bytes: &[u8]) -> Result<InitializeGlobalVault, ProgramError> {
+    pub fn try_from_bytes(bytes: &[u8]) -> Result<InitializeGlobalVault<'_>, ProgramError> {
         if bytes.is_empty() {
             return Err(ProgramError::InvalidInstructionData);
         }
