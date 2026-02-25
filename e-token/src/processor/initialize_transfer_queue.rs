@@ -1,15 +1,17 @@
 use core::marker::PhantomData;
 use ephemeral_rollups_pinocchio::acl::{create_permission, MembersArgs};
+use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleEphemeralAta;
 use ephemeral_spl_api::state::transfer_queue::TransferQueue;
 use ephemeral_spl_api::state::{load_mut_unchecked, RawType};
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
+use pinocchio::Address;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_associated_token_account::instructions::CreateIdempotent;
 use pinocchio_system::instructions::CreateAccount;
 
-use crate::processor::common;
+use crate::processor::common::{self, initialize_shuttle};
 
 #[inline(always)]
 pub fn process_initialize_transfer_queue(
@@ -24,10 +26,13 @@ pub fn process_initialize_transfer_queue(
     // 4. [writable] Queue ATA account (ATA for [queue, mint])
     // 5. [writable] Queue EATA account (EATA for [queue, mint])
     // 6. [writable] Queue EATA Permission PDA (derived from ["permission:", queue_eata])
-    // 7. []         System program
-    // 8. []         Token program
-    // 9. []         Associated token program
-    // 10. []        Permission program (ACL)
+    // 7. [writable] Shuttle account (PDA derived from [owner, mint, shuttle_id])
+    // 8. [writable] Shuttle ATA account (ATA for [shuttle, mint])
+    // 9. [writable] Shuttle EATA account (EATA for [shuttle, mint])
+    // 10. []         System program
+    // 11. []         Token program
+    // 12. []         Associated token program
+    // 13. []         Permission program (ACL)
 
     let args = InitializeTransferQueue::try_from_bytes(instruction_data)?;
 
@@ -39,6 +44,9 @@ pub fn process_initialize_transfer_queue(
         queue_ata_info,
         queue_eata_info,
         queue_eata_permission_info,
+        shuttle_info,
+        shuttle_ata_info,
+        shuttle_eata_info,
         system_program_info,
         token_program_info,
         _associated_token_program_info,
@@ -116,6 +124,51 @@ pub fn process_initialize_transfer_queue(
         Some(queue_eata_signer),
     )?;
 
+    // Create the shuttle and its ATA for the queue
+    let (shuttle_pda, shuttle_bump) =
+        ShuttleEphemeralAta::find_pda(queue_info.address(), mint_info.address(), args.shuttle_id());
+    if shuttle_info.address() != &shuttle_pda {
+        return Err(ProgramError::InvalidSeeds);
+    }
+
+    let bump = [shuttle_bump];
+    initialize_shuttle(
+        payer_info,
+        queue_info,
+        mint_info,
+        shuttle_info,
+        args.shuttle_id(),
+        &bump,
+    )?;
+
+    let (shuttle_eata_pda, shuttle_eata_bump) = Address::find_program_address(
+        &[
+            shuttle_info.address().as_ref(),
+            mint_info.address().as_ref(),
+        ],
+        &ephemeral_spl_api::program::id_address(),
+    );
+    if &shuttle_eata_pda != shuttle_eata_info.address() {
+        return Err(ProgramError::InvalidSeeds);
+    }
+
+    common::initialize_ephemeral_ata(
+        payer_info,
+        shuttle_info,
+        mint_info,
+        shuttle_eata_info,
+        shuttle_eata_bump,
+    )?;
+    CreateIdempotent {
+        funding_account: payer_info,
+        account: shuttle_ata_info,
+        wallet: shuttle_info,
+        mint: mint_info,
+        system_program: system_program_info,
+        token_program: token_program_info,
+    }
+    .invoke()?;
+
     // Initialize the queue
     let queue = unsafe { load_mut_unchecked::<TransferQueue>(queue_info.borrow_unchecked_mut())? };
     queue.mint = mint_info.address().clone();
@@ -146,5 +199,14 @@ impl InitializeTransferQueue<'_> {
     #[inline]
     pub fn queue_eata_bump(&self) -> u8 {
         unsafe { *self.raw }
+    }
+
+    #[inline]
+    pub fn shuttle_id(&self) -> u32 {
+        let mut buf = [0u8; 4];
+        unsafe {
+            core::ptr::copy_nonoverlapping(self.raw.add(1), buf.as_mut_ptr(), 4);
+        }
+        u32::from_le_bytes(buf)
     }
 }

@@ -1,10 +1,7 @@
+use crate::processor::common::initialize_shuttle;
 use crate::processor::initialize_ephemeral_ata::process_initialize_ephemeral_ata;
 use core::marker::PhantomData;
-use ephemeral_spl_api::state::{load_mut_unchecked, load_unchecked, Initializable, RawType};
-use pinocchio::cpi::{Seed, Signer};
-use pinocchio::sysvars::rent::Rent;
-use pinocchio::sysvars::Sysvar;
-use pinocchio_system::instructions::CreateAccount;
+use ephemeral_spl_api::state::{load_unchecked, Initializable};
 use {
     ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleEphemeralAta,
     pinocchio::{error::ProgramError, AccountView, ProgramResult},
@@ -60,30 +57,15 @@ pub fn process_initialize_shuttle_ephemeral_ata(
     };
 
     if !shuttle_is_owned_by_program {
-        let seed = [
-            Seed::from(owner_info.address().as_ref()),
-            Seed::from(mint_info.address().as_ref()),
-            Seed::from(shuttle_id_seed.as_ref()),
-            Seed::from(&bump),
-        ];
-        let signer_seeds = Signer::from(&seed);
-
-        CreateAccount {
-            from: payer_info,
-            to: shuttle_info,
-            space: ShuttleEphemeralAta::LEN as u64,
-            lamports: Rent::get()?.try_minimum_balance(ShuttleEphemeralAta::LEN)?,
-            owner: &ephemeral_spl_api::program::id_address(),
-        }
-        .invoke_signed(&[signer_seeds])?;
-
-        let shuttle = unsafe {
-            load_mut_unchecked::<ShuttleEphemeralAta>(shuttle_info.borrow_unchecked_mut())?
-        };
-
-        shuttle.owner = owner_info.address().clone();
-        shuttle.payer = payer_info.address().clone();
-        shuttle.id = args.shuttle_id();
+        let bump = [args.bump()];
+        initialize_shuttle(
+            payer_info,
+            owner_info,
+            mint_info,
+            shuttle_info,
+            args.shuttle_id(),
+            &bump,
+        )?;
     } else {
         let shuttle =
             unsafe { load_unchecked::<ShuttleEphemeralAta>(shuttle_info.borrow_unchecked())? };

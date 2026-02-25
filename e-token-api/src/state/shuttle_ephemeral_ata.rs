@@ -23,3 +23,17 @@ impl Initializable for ShuttleEphemeralAta {
         self.owner != Address::default()
     }
 }
+
+impl ShuttleEphemeralAta {
+    #[inline(always)]
+    pub fn find_pda(owner: &Address, mint: &Address, shuttle_id: u32) -> (Address, u8) {
+        Address::find_program_address(
+            &[
+                owner.as_ref(),
+                mint.as_ref(),
+                shuttle_id.to_le_bytes().as_ref(),
+            ],
+            &crate::program::id_address(),
+        )
+    }
+}

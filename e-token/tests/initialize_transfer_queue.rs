@@ -6,6 +6,7 @@ use ephemeral_rollups_pinocchio::acl::{
 };
 use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
+use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleEphemeralAta;
 use ephemeral_spl_api::state::transfer_queue::QueuedTransfer;
 use ephemeral_spl_api::state::{load_unchecked, RawType};
 use ephemeral_spl_api::{program::ID, state::transfer_queue::TransferQueue};
@@ -57,6 +58,11 @@ async fn initialize_transfer_queue() {
     let queue_permission_pda = permission_pda_from_permissioned_account(&queue_pda);
     let queue_ata_pda = derive_associated_token_address(&queue_pda, &mint);
     let queue_eata_permission_pda = permission_pda_from_permissioned_account(&queue_eata_pda);
+    let shuttle_id = 0;
+    let (shuttle_pda, _shuttle_bump) = ShuttleEphemeralAta::find_pda(&queue_pda, &mint, shuttle_id);
+    let shuttle_ata_pda = derive_associated_token_address(&shuttle_pda, &mint);
+    let (shuttle_eata_pda, _shuttle_eata_bump) =
+        Pubkey::find_program_address(&[shuttle_pda.as_ref(), mint.as_ref()], &PROGRAM);
 
     // Setup mint/accounts via utils
     let _setup = utils::setup_mint_and_token_accounts(
@@ -71,7 +77,11 @@ async fn initialize_transfer_queue() {
 
     let ix_initialize_transfer_queue = Instruction::new_with_bytes(
         PROGRAM,
-        &vec![instruction::INITIALIZE_TRANSFER_QUEUE, queue_eata_bump],
+        &vec![
+            vec![instruction::INITIALIZE_TRANSFER_QUEUE, queue_eata_bump],
+            shuttle_id.to_le_bytes().to_vec(),
+        ]
+        .concat(),
         vec![
             AccountMeta::new(payer_pubkey, true),
             AccountMeta::new(queue_pda, false),
@@ -80,21 +90,14 @@ async fn initialize_transfer_queue() {
             AccountMeta::new(queue_ata_pda, false),
             AccountMeta::new(queue_eata_pda, false),
             AccountMeta::new(queue_eata_permission_pda, false),
+            AccountMeta::new(shuttle_pda, false),
+            AccountMeta::new(shuttle_ata_pda, false),
+            AccountMeta::new(shuttle_eata_pda, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
             AccountMeta::new_readonly(spl_token_interface::ID, false),
             AccountMeta::new_readonly(associated_token_program_id(), false),
             AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
         ],
-    );
-
-    eprintln!(
-        "{}",
-        ix_initialize_transfer_queue
-            .accounts
-            .iter()
-            .map(|a| a.pubkey.to_string())
-            .collect::<Vec<String>>()
-            .join("\n")
     );
 
     let tx = Transaction::new_signed_with_payer(
@@ -188,4 +191,31 @@ async fn initialize_transfer_queue() {
         queue_eata_permission.members,
         Some(expected_members.as_ref())
     );
+
+    let shuttle_account = context
+        .banks_client
+        .get_account(shuttle_pda)
+        .await
+        .unwrap()
+        .expect("shuttle account must exist");
+    assert_eq!(shuttle_account.owner, PROGRAM);
+    assert_eq!(shuttle_account.data.len(), ShuttleEphemeralAta::LEN);
+    let shuttle =
+        unsafe { load_unchecked::<ShuttleEphemeralAta>(shuttle_account.data.as_slice()).unwrap() };
+    assert_eq!(shuttle.owner, queue_pda);
+    assert_eq!(shuttle.payer, payer_pubkey);
+    assert_eq!(shuttle.id, 0);
+
+    let shuttle_ata_account = context
+        .banks_client
+        .get_account(shuttle_ata_pda)
+        .await
+        .unwrap()
+        .expect("shuttle ata account must exist");
+    assert_eq!(shuttle_ata_account.owner, spl_token_interface::ID);
+    let shuttle_ata =
+        unsafe { TokenAccount::from_bytes_unchecked(shuttle_ata_account.data.as_slice()) };
+    assert_eq!(shuttle_ata.mint(), &mint);
+    assert_eq!(shuttle_ata.amount(), 0);
+    assert_eq!(shuttle_ata.owner(), &shuttle_pda);
 }
