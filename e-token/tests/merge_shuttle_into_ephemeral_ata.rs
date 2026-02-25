@@ -37,7 +37,7 @@ async fn merge_shuttle_into_ephemeral_ata_transfers_to_owner_ata_and_keeps_shutt
         utils::derive_shuttle_ephemeral_ata(PROGRAM, owner, mint, shuttle_id);
     let (shuttle_eata, _shuttle_eata_bump) =
         utils::derive_shuttle_eata(PROGRAM, shuttle_ephemeral_ata, mint);
-    let shuttle_wallet_ata = utils::derive_associated_token_address(shuttle_ephemeral_ata, mint);
+    let shuttle_wallet_ata = utils::derive_associated_token_address(&shuttle_ephemeral_ata, &mint);
 
     let setup = utils::setup_mint_and_token_accounts(
         &mut context,

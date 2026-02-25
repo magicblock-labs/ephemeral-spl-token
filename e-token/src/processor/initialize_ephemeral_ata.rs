@@ -1,14 +1,7 @@
+use crate::processor::common;
 use core::marker::PhantomData;
-use ephemeral_spl_api::state::RawType;
-use pinocchio::cpi::{Seed, Signer};
-use pinocchio::sysvars::rent::Rent;
-use pinocchio::sysvars::Sysvar;
-use pinocchio_system::instructions::CreateAccount;
-use {
-    ephemeral_spl_api::state::ephemeral_ata::EphemeralAta,
-    ephemeral_spl_api::state::load_mut_unchecked,
-    pinocchio::{error::ProgramError, AccountView, ProgramResult},
-};
+
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
 #[inline(always)]
 pub fn process_initialize_ephemeral_ata(
@@ -37,32 +30,13 @@ pub fn process_initialize_ephemeral_ata(
         }
     }
 
-    let bump = [args.bump()];
-    let seed = [
-        Seed::from(user_info.address().as_ref()),
-        Seed::from(mint_info.address().as_ref()),
-        Seed::from(&bump),
-    ];
-    let signer_seeds = Signer::from(&seed);
-
-    CreateAccount {
-        from: payer_info,
-        to: ephemeral_ata_info,
-        space: EphemeralAta::LEN as u64,
-        lamports: Rent::get()?.try_minimum_balance(EphemeralAta::LEN)?,
-        owner: &ephemeral_spl_api::program::id_address(),
-    }
-    .invoke_signed(&[signer_seeds])?;
-
-    // Ensure account data has the expected size
-    let ephemeral_ata =
-        unsafe { load_mut_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked_mut())? };
-
-    // Initialize the ephemeral ATA
-    // Set the owner to the provided user; payer only funds account creation
-    ephemeral_ata.owner = user_info.address().clone();
-    ephemeral_ata.mint = mint_info.address().clone();
-    ephemeral_ata.amount = 0;
+    common::initialize_ephemeral_ata(
+        payer_info,
+        user_info,
+        mint_info,
+        ephemeral_ata_info,
+        args.bump(),
+    )?;
 
     Ok(())
 }

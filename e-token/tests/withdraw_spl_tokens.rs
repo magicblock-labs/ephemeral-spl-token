@@ -50,7 +50,7 @@ async fn withdraw_spl_tokens_decrements_ephemeral_amount() {
     let bump_vault = pdas.bump_vault;
     let user_source = setup.user_tokens[0];
     let user_dest = setup.user_tokens[1];
-    let vault_token = utils::derive_associated_token_address(vault, mint);
+    let vault_token = utils::derive_associated_token_address(&vault, &mint);
 
     // Initialize Ephemeral ATA
     let ix_init_ata = Instruction {

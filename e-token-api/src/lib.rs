@@ -3,6 +3,7 @@
 // Single source of truth for the e-ephemeral-token program ID.
 // Keep this in a separate rlib crate so tests and clients can link it while
 // the on-chain program crate stays cdylib-only.
+pub mod constants;
 pub mod error;
 pub mod state;
 pub mod program {
@@ -63,4 +64,6 @@ pub mod instruction {
     pub const UNDELEGATE_SHUTTLE_EPHEMERAL_ATA: u8 = 14;
     /// 15 - MergeShuttleIntoEphemeralAta: transfer shuttle ATA funds into owner ATA and keep shuttle account open
     pub const MERGE_SHUTTLE_INTO_EPHEMERAL_ATA: u8 = 15;
+    /// 16 - InitializeTransferQueue: initialize a transfer queue for a mint
+    pub const INITIALIZE_TRANSFER_QUEUE: u8 = 16;
 }

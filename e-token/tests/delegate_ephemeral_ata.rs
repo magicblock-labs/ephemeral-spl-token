@@ -60,7 +60,7 @@ async fn delegate_ephemeral_ata_succeeds() {
         data: vec![instruction::INITIALIZE_EPHEMERAL_ATA, pdas.bump_ata],
     };
 
-    let vault_token_acc = utils::derive_associated_token_address(pdas.vault, mint);
+    let vault_token_acc = utils::derive_associated_token_address(&pdas.vault, &mint);
 
     let ix_init_vault = Instruction {
         program_id: PROGRAM,
@@ -195,7 +195,7 @@ async fn delegate_ephemeral_ata_non_owner_succeeds() {
         data: vec![instruction::INITIALIZE_EPHEMERAL_ATA, pdas.bump_ata],
     };
 
-    let vault_token_acc = utils::derive_associated_token_address(pdas.vault, mint);
+    let vault_token_acc = utils::derive_associated_token_address(&pdas.vault, &mint);
 
     let ix_init_vault = Instruction {
         program_id: PROGRAM,

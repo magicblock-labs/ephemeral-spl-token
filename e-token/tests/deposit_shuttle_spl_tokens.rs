@@ -39,7 +39,7 @@ async fn deposit_spl_tokens_increments_shuttle_amount() {
         utils::derive_shuttle_ephemeral_ata(PROGRAM, owner, mint, shuttle_id);
     let (shuttle_eata, _shuttle_eata_bump) =
         utils::derive_shuttle_eata(PROGRAM, shuttle_ephemeral_ata, mint);
-    let shuttle_wallet_ata = utils::derive_associated_token_address(shuttle_ephemeral_ata, mint);
+    let shuttle_wallet_ata = utils::derive_associated_token_address(&shuttle_ephemeral_ata, &mint);
 
     let setup = utils::setup_mint_and_token_accounts(
         &mut context,
@@ -54,7 +54,7 @@ async fn deposit_spl_tokens_increments_shuttle_amount() {
     let vault = pdas.vault;
     let vault_bump = pdas.bump_vault;
     let user_ata = setup.user_tokens[0];
-    let vault_ata = utils::derive_associated_token_address(vault, mint);
+    let vault_ata = utils::derive_associated_token_address(&vault, &mint);
 
     let mut shuttle_init_data = vec![instruction::INITIALIZE_SHUTTLE_EPHEMERAL_ATA];
     shuttle_init_data.extend_from_slice(&shuttle_id.to_le_bytes());

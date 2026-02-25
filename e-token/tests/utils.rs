@@ -115,7 +115,7 @@ pub fn add_associated_token_program(pt: &mut ProgramTest) {
     pt.prefer_bpf(true);
 }
 
-pub fn derive_associated_token_address(wallet: Pubkey, mint: Pubkey) -> Pubkey {
+pub fn derive_associated_token_address(wallet: &Pubkey, mint: &Pubkey) -> Pubkey {
     Pubkey::find_program_address(
         &[
             wallet.as_ref(),

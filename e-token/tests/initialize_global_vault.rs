@@ -41,7 +41,7 @@ async fn initialize_global_vault() {
     )
     .await;
 
-    let vault_token_acc = utils::derive_associated_token_address(pdas.vault, mint);
+    let vault_token_acc = utils::derive_associated_token_address(&pdas.vault, &mint);
 
     // Build instruction
     let ix = Instruction {
@@ -124,7 +124,7 @@ async fn initialize_global_vault_migrates_legacy_layout() {
     )
     .await;
 
-    let vault_token_acc = utils::derive_associated_token_address(pdas.vault, mint);
+    let vault_token_acc = utils::derive_associated_token_address(&pdas.vault, &mint);
 
     let ix = Instruction {
         program_id: PROGRAM,

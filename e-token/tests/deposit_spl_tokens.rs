@@ -49,7 +49,7 @@ async fn deposit_spl_tokens_increments_ephemeral_amount() {
     let vault = pdas.vault;
     let bump_vault = pdas.bump_vault;
     let user_ata = setup.user_tokens[0];
-    let vault_ata = utils::derive_associated_token_address(vault, mint);
+    let vault_ata = utils::derive_associated_token_address(&vault, &mint);
 
     // Assert initial SPL token balances
     let user_token_acc_before = context

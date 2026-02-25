@@ -3,6 +3,7 @@ use pinocchio::error::ProgramError;
 pub mod ephemeral_ata;
 pub mod global_vault;
 pub mod shuttle_ephemeral_ata;
+pub mod transfer_queue;
 
 /// Trait to represent a type that can be initialized.
 pub trait Initializable {

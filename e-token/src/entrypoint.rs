@@ -144,6 +144,12 @@ pub(crate) fn inner_process_instruction(
 
             process_merge_shuttle_into_ephemeral_ata(accounts, instruction_data)
         }
+        16 => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: InitializeTransferQueue");
+
+            process_initialize_transfer_queue(accounts, instruction_data)
+        }
         196 => {
             #[cfg(feature = "logging")]
             pinocchio_log::log!("Instruction: UndelegationCallback");
