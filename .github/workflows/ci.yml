@@ -22,9 +22,6 @@ jobs:
           toolchain: stable
           components: rustfmt, clippy
 
-      - name: Ensure rustfmt and clippy are installed
-        run: rustup component add rustfmt clippy --toolchain stable
-
       - name: Cache cargo registry
         uses: actions/cache@v4
         with:
