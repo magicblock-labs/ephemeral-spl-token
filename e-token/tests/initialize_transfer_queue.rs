@@ -20,7 +20,9 @@ use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use solana_transaction::Transaction;
 
-use crate::utils::{associated_token_program_id, derive_associated_token_address};
+use crate::utils::{
+    allocate_transfer_queue, associated_token_program_id, derive_associated_token_address,
+};
 
 pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 const DECIMALS: u8 = 6;
@@ -74,6 +76,8 @@ async fn initialize_transfer_queue() {
         1,
     )
     .await;
+
+    allocate_transfer_queue(&mut context, mint, queue_pda).await;
 
     let ix_initialize_transfer_queue = Instruction::new_with_bytes(
         PROGRAM,

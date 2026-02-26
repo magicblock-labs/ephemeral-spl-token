@@ -1,3 +1,4 @@
+pub mod allocate_queue;
 pub mod close_ephemeral_ata;
 pub mod common;
 pub mod create_ephemeral_ata_permission;
@@ -18,6 +19,7 @@ pub mod undelegate_shuttle_ephemeral_ata;
 pub mod undelegation_callback;
 pub mod withdraw_spl_tokens;
 
+pub use allocate_queue::process_allocate_queue;
 pub use close_ephemeral_ata::process_close_ephemeral_ata;
 pub use create_ephemeral_ata_permission::process_create_ephemeral_ata_permission;
 pub use delegate_ephemeral_ata::process_delegate_ephemeral_ata;

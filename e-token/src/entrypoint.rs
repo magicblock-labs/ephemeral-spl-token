@@ -146,11 +146,17 @@ pub(crate) fn inner_process_instruction(
         }
         16 => {
             #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: AllocateQueue");
+
+            process_allocate_queue(accounts, instruction_data)
+        }
+        17 => {
+            #[cfg(feature = "logging")]
             pinocchio_log::log!("Instruction: InitializeTransferQueue");
 
             process_initialize_transfer_queue(accounts, instruction_data)
         }
-        17 => {
+        18 => {
             #[cfg(feature = "logging")]
             pinocchio_log::log!("Instruction: QueueTransfer");
 

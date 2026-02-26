@@ -2,7 +2,7 @@ use core::marker::PhantomData;
 use ephemeral_rollups_pinocchio::acl::{create_permission, MembersArgs};
 use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleEphemeralAta;
 use ephemeral_spl_api::state::transfer_queue::TransferQueue;
-use ephemeral_spl_api::state::{load_mut_unchecked, RawType};
+use ephemeral_spl_api::state::{load_mut_unchecked, load_unchecked, Initializable, RawType};
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
@@ -10,7 +10,7 @@ use pinocchio::Address;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_associated_token_account::instructions::CreateIdempotent;
 
-use crate::processor::common::{self, create_pda, initialize_shuttle};
+use crate::processor::common::{self, initialize_shuttle};
 
 #[inline(always)]
 pub fn process_initialize_transfer_queue(
@@ -54,25 +54,27 @@ pub fn process_initialize_transfer_queue(
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
-    let (queue_pda, queue_bump) = TransferQueue::find_pda(mint_info.address());
-    if queue_info.address() != &queue_pda {
-        return Err(ProgramError::InvalidSeeds);
+    if !queue_info.owned_by(&ephemeral_spl_api::program::id_address())
+        && queue_info.data_len() != TransferQueue::LEN
+    {
+        return Err(ProgramError::UninitializedAccount);
     }
+
+    let queue_bump = {
+        let queue = unsafe { load_unchecked::<TransferQueue>(queue_info.borrow_unchecked())? };
+
+        if queue.is_initialized() {
+            return Err(ProgramError::AccountAlreadyInitialized);
+        }
+
+        queue.bump
+    };
 
     let bump = [queue_bump];
     let seeds = TransferQueue::signer_seeds(&mint_info.address(), &bump);
     let queue_signer = Signer::from(&seeds);
 
     let rent = Rent::get()?;
-
-    create_pda(
-        &rent,
-        TransferQueue::LEN,
-        payer_info,
-        queue_info,
-        &ephemeral_spl_api::program::id_address(),
-        &[queue_signer.clone()],
-    )?;
 
     // Makes the queue private
     create_permission(
@@ -176,7 +178,6 @@ pub fn process_initialize_transfer_queue(
     // Initialize the queue
     let queue = unsafe { load_mut_unchecked::<TransferQueue>(queue_info.borrow_unchecked_mut())? };
     queue.mint = mint_info.address().clone();
-    queue.bump = queue_bump;
 
     Ok(())
 }

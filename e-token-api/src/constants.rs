@@ -1,8 +1,8 @@
 pub const QUEUE_SEED: &[u8] = b"queue";
 
 /// The max size of the transfer queue.
-/// 127 transfers per queue fits in 10kb, preventing reallocs.
-pub const MAX_QUEUE_SIZE: usize = 115;
+/// 1000 -> 88kb -> 0.66 SOL
+pub const MAX_QUEUE_SIZE: usize = 1000;
 
 /// The minimum chunk size in basis points.
 pub const MIN_CHUNK_SIZE_BPS: u16 = 100;

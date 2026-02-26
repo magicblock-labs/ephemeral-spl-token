@@ -12,7 +12,7 @@ pub mod program {
 
     /// Returns the program ID as an Address
     #[inline(always)]
-    pub fn id_address() -> pinocchio::Address {
+    pub const fn id_address() -> pinocchio::Address {
         pinocchio::Address::new_from_array(ID)
     }
 }
@@ -65,11 +65,13 @@ pub mod instruction {
     /// 15 - MergeShuttleIntoEphemeralAta: transfer shuttle ATA funds into owner ATA and keep shuttle account open
     pub const MERGE_SHUTTLE_INTO_EPHEMERAL_ATA: u8 = 15;
     /// 16 - InitializeTransferQueue: initialize a transfer queue for a mint
-    pub const INITIALIZE_TRANSFER_QUEUE: u8 = 16;
-    /// 17 - QueueTransfer: queue a transfer to the transfer queue
+    pub const ALLOCATE_QUEUE: u8 = 16;
+    /// 17 - InitializeTransferQueue: initialize a transfer queue for a mint
+    pub const INITIALIZE_TRANSFER_QUEUE: u8 = 17;
+    /// 18 - QueueTransfer: queue a transfer to the transfer queue
     ///     Instruction data:
     ///     [0..8] amount (u64 LE)
     ///     [8..16] chunk_size (u64 LE)
     ///     [16..18] interval_seconds (u16 LE)
-    pub const QUEUE_TRANSFER: u8 = 17;
+    pub const QUEUE_TRANSFER: u8 = 18;
 }

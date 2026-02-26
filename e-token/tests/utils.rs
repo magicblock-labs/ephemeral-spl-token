@@ -1,3 +1,8 @@
+use ephemeral_spl_api::{
+    instruction,
+    state::{transfer_queue::TransferQueue, RawType},
+};
+use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
 use solana_program::{
     account_info::AccountInfo,
@@ -266,4 +271,34 @@ pub async fn setup_mint_and_token_accounts(
     context.banks_client.process_transaction(tx).await.unwrap();
 
     TokenSetup { user_tokens }
+}
+
+pub async fn allocate_transfer_queue(
+    context: &mut ProgramTestContext,
+    mint: Pubkey,
+    queue_pda: Pubkey,
+) {
+    let ixs = (0..(TransferQueue::LEN.div_ceil(10240)))
+        .map(|_| {
+            Instruction::new_with_bytes(
+                ephemeral_spl_api::program::id_address(),
+                &vec![instruction::ALLOCATE_QUEUE],
+                vec![
+                    AccountMeta::new(context.payer.pubkey(), true),
+                    AccountMeta::new(queue_pda, false),
+                    AccountMeta::new_readonly(mint, false),
+                    AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+                ],
+            )
+        })
+        .collect::<Vec<_>>();
+
+    let tx = Transaction::new_signed_with_payer(
+        &ixs,
+        Some(&context.payer.pubkey()),
+        &[&context.payer],
+        context.last_blockhash,
+    );
+
+    context.banks_client.process_transaction(tx).await.unwrap();
 }

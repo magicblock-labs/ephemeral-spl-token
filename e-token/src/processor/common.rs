@@ -12,12 +12,13 @@ use pinocchio_system::instructions::{Assign, CreateAccount, Transfer};
 pub fn create_pda(
     rent_sysvar: &Rent,
     space: usize,
+    final_space: usize,
     payer: &AccountView,
     account: &AccountView,
     owner: &Address,
     signers: &[Signer],
 ) -> ProgramResult {
-    let lamports = rent_sysvar.try_minimum_balance(space)?;
+    let lamports = rent_sysvar.try_minimum_balance(final_space)?;
 
     if account.lamports() == 0 {
         // Create the account if it does not exist.
@@ -72,6 +73,7 @@ pub fn initialize_ephemeral_ata(
     create_pda(
         rent_sysvar,
         EphemeralAta::LEN,
+        EphemeralAta::LEN,
         payer_info,
         ephemeral_ata_info,
         &ephemeral_spl_api::program::id_address(),
@@ -111,6 +113,7 @@ pub fn initialize_shuttle(
 
     create_pda(
         rent_sysvar,
+        ShuttleEphemeralAta::LEN,
         ShuttleEphemeralAta::LEN,
         payer_info,
         shuttle_info,
