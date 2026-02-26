@@ -63,7 +63,7 @@ pub fn process_undelegate_ephemeral_ata(
     // Commit and undelegate with the user's ATA and the ephemeral ATA as the account set
     ephemeral_rollups_pinocchio::instruction::commit_and_undelegate_accounts(
         payer,
-        &[ata_info.clone()],
+        core::slice::from_ref(ata_info),
         magic_context,
         magic_program,
     )
