@@ -38,7 +38,6 @@ pub mod instruction {
     pub const UNDELEGATE_EPHEMERAL_ATA: u8 = 5;
     /// 6 - CreateEphemeralAtaPermission: create a permission account for the ephemeral ATA
     ///     Instruction data:
-    ///     [0] bump
     ///     [1] MemberFlags bitfield encoded via MemberFlags::to_acl_flag_byte.
     pub const CREATE_EPHEMERAL_ATA_PERMISSION: u8 = 6;
     /// 7 - DelegateEphemeralAtaPermission: delegate the permission PDA for an ephemeral ATA
@@ -47,15 +46,13 @@ pub mod instruction {
     pub const UNDELEGATE_EPHEMERAL_ATA_PERMISSION: u8 = 8;
     /// 9 - ResetEphemeralAtaPermission: reset permission members to creation-time defaults
     ///     Instruction data:
-    ///     [0] bump
-    ///     [1] MemberFlags bitfield encoded via MemberFlags::to_acl_flag_byte.
+    ///     [0] MemberFlags bitfield encoded via MemberFlags::to_acl_flag_byte.
     pub const RESET_EPHEMERAL_ATA_PERMISSION: u8 = 9;
     /// 10 - CloseEphemeralAta: close an empty ephemeral ATA and refund rent to recipient
     pub const CLOSE_EPHEMERAL_ATA: u8 = 10;
     /// 11 - InitializeShuttleEphemeralAta: initialize shuttle account derived from [owner, mint, shuttle_id]
     ///      Instruction data:
     ///      [0..4] shuttle_id (u32 LE)
-    ///      [4]    bump
     pub const INITIALIZE_SHUTTLE_EPHEMERAL_ATA: u8 = 11;
     /// 13 - DelegateShuttleEphemeralAta: delegate shuttle account to a DLP program using PDA seeds
     pub const DELEGATE_SHUTTLE_EPHEMERAL_ATA: u8 = 13;
