@@ -34,13 +34,13 @@ pub fn process_initialize_ephemeral_ata(
         }
     }
 
-    let (ephemeral_ata, bump) = EphemeralAta::find_pda(&user_info.address(), &mint_info.address());
+    let (ephemeral_ata, bump) = EphemeralAta::find_pda(user_info.address(), mint_info.address());
     if &ephemeral_ata != ephemeral_ata_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
 
     let bump_seed = [bump];
-    let seed = EphemeralAta::signer_seeds(&user_info.address(), &mint_info.address(), &bump_seed);
+    let seed = EphemeralAta::signer_seeds(user_info.address(), mint_info.address(), &bump_seed);
     let signer_seeds = Signer::from(&seed);
 
     CreateAccount {

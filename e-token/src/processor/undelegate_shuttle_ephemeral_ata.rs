@@ -59,7 +59,7 @@ pub fn process_undelegate_shuttle_ephemeral_ata(
     };
 
     let derived_shuttle_eata =
-        EphemeralAta::create_address(&shuttle_info.address(), &mint, &[bump])?;
+        EphemeralAta::create_address(shuttle_info.address(), &mint, &[bump])?;
     if derived_shuttle_eata != *shuttle_eata_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }

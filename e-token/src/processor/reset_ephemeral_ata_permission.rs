@@ -81,7 +81,7 @@ pub struct ResetEphemeralAtaPermission<'a> {
 impl ResetEphemeralAtaPermission<'_> {
     #[inline]
     pub fn try_from_bytes(bytes: &[u8]) -> Result<ResetEphemeralAtaPermission, ProgramError> {
-        if bytes.len() < 1 {
+        if bytes.is_empty() {
             return Err(ProgramError::InvalidInstructionData);
         }
 

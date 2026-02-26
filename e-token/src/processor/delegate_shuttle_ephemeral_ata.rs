@@ -65,12 +65,12 @@ pub fn process_delegate_shuttle_ephemeral_ata(
 
     let bump_seed = [bump];
     let derived_ephemeral_ata =
-        EphemeralAta::create_address(&shuttle_info.address(), &mint, &bump_seed)?;
+        EphemeralAta::create_address(shuttle_info.address(), &mint, &bump_seed)?;
     if derived_ephemeral_ata != *ephemeral_ata_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
 
-    let seeds = EphemeralAta::seeds(&shuttle_info.address(), &mint);
+    let seeds = EphemeralAta::seeds(shuttle_info.address(), &mint);
 
     let config = DelegateConfig {
         validator: args.validator().map(Address::new_from_array),

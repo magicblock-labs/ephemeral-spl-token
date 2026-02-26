@@ -54,7 +54,7 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
     let shuttle_id_seed = shuttle_id.to_le_bytes();
     let derived_shuttle = ShuttleEphemeralAta::create_address(
         &shuttle_owner,
-        &mint_info.address(),
+        mint_info.address(),
         shuttle_id,
         &[shuttle_bump],
     )?;
@@ -108,7 +108,7 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
         let bump = [shuttle_bump];
         let seeds = ShuttleEphemeralAta::signer_seeds(
             &shuttle_owner,
-            &mint_info.address(),
+            mint_info.address(),
             &shuttle_id_seed,
             &bump,
         );

@@ -44,13 +44,13 @@ pub fn process_initialize_global_vault(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    let (vault, bump) = GlobalVault::find_pda(&mint_info.address());
+    let (vault, bump) = GlobalVault::find_pda(mint_info.address());
     if &vault != vault_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
 
     let bump_seed = [bump];
-    let seed = GlobalVault::signer_seeds(&mint_info.address(), &bump_seed);
+    let seed = GlobalVault::signer_seeds(mint_info.address(), &bump_seed);
     let signer_seeds = Signer::from(&seed);
     let required_lamports = Rent::get()?.try_minimum_balance(GlobalVault::LEN)?;
 

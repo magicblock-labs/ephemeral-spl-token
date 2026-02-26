@@ -84,7 +84,7 @@ pub fn process_withdraw_spl_tokens(
 
     // Perform transfer from vault token account to user destination, signed by vault PDA
     let bump = [vault.bump];
-    let seeds = GlobalVault::signer_seeds(&mint_info.address(), &bump);
+    let seeds = GlobalVault::signer_seeds(mint_info.address(), &bump);
     let signer = Signer::from(&seeds);
 
     pinocchio_token_2022::instructions::TransferChecked {

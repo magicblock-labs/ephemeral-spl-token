@@ -27,11 +27,8 @@ impl Initializable for GlobalVault {
 impl GlobalVault {
     #[inline(always)]
     pub fn create_address(mint: &Address, bump: &[u8]) -> Result<Address, ProgramError> {
-        Address::create_program_address(
-            &[mint.as_ref(), bump.as_ref()],
-            &crate::program::id_address(),
-        )
-        .map_err(|_| ProgramError::InvalidSeeds)
+        Address::create_program_address(&[mint.as_ref(), bump], &crate::program::id_address())
+            .map_err(|_| ProgramError::InvalidSeeds)
     }
 
     #[inline(always)]
@@ -40,17 +37,17 @@ impl GlobalVault {
     }
 
     #[inline(always)]
-    pub fn seeds<'a>(mint: &'a Address) -> [&'a [u8]; 1] {
+    pub fn seeds(mint: &Address) -> [&[u8]; 1] {
         [mint.as_ref()]
     }
 
     #[inline(always)]
     pub fn seeds_with_bump<'a>(mint: &'a Address, bump: &'a [u8]) -> [&'a [u8]; 2] {
-        [mint.as_ref(), bump.as_ref()]
+        [mint.as_ref(), bump]
     }
 
     #[inline(always)]
     pub fn signer_seeds<'a>(mint: &'a Address, bump: &'a [u8]) -> [Seed<'a>; 2] {
-        [Seed::from(mint.as_ref()), Seed::from(bump.as_ref())]
+        [Seed::from(mint.as_ref()), Seed::from(bump)]
     }
 }

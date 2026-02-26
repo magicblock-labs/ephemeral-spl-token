@@ -48,7 +48,7 @@ pub fn process_close_ephemeral_ata(
         (mint, ephemeral_ata_info.lamports(), ephemeral_ata.bump)
     };
 
-    let derived_pda = EphemeralAta::create_address(&owner_info.address(), &mint, &[bump])?;
+    let derived_pda = EphemeralAta::create_address(owner_info.address(), &mint, &[bump])?;
     if &derived_pda != ephemeral_ata_info.address() {
         return Err(ProgramError::InvalidSeeds);
     };

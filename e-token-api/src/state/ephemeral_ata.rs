@@ -34,7 +34,7 @@ impl EphemeralAta {
         bump: &[u8],
     ) -> Result<Address, ProgramError> {
         Address::create_program_address(
-            &[owner.as_ref(), mint.as_ref(), bump.as_ref()],
+            &[owner.as_ref(), mint.as_ref(), bump],
             &crate::program::id_address(),
         )
         .map_err(|_| ProgramError::InvalidSeeds)
@@ -59,7 +59,7 @@ impl EphemeralAta {
         mint: &'a Address,
         bump: &'a [u8],
     ) -> [&'a [u8]; 3] {
-        [owner.as_ref(), mint.as_ref(), bump.as_ref()]
+        [owner.as_ref(), mint.as_ref(), bump]
     }
 
     #[inline(always)]
@@ -71,7 +71,7 @@ impl EphemeralAta {
         [
             Seed::from(owner.as_ref()),
             Seed::from(mint.as_ref()),
-            Seed::from(bump.as_ref()),
+            Seed::from(bump),
         ]
     }
 }

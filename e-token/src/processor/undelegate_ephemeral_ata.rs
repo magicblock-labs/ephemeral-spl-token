@@ -35,7 +35,7 @@ pub fn process_undelegate_ephemeral_ata(
     };
 
     // Derive PDA: seeds = [payer, mint], program id     = e-token program id (ephemeral_spl_api::program::ID)
-    let derived_pda = EphemeralAta::create_address(&payer.address(), &mint, &[bump])?;
+    let derived_pda = EphemeralAta::create_address(payer.address(), &mint, &[bump])?;
     if derived_pda != *ephemeral_ata_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }

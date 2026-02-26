@@ -51,7 +51,7 @@ impl ShuttleEphemeralAta {
 
     #[inline(always)]
     pub fn seeds<'a>(owner: &'a Address, mint: &'a Address, id: &'a [u8; 4]) -> [&'a [u8]; 3] {
-        [owner.as_ref(), mint.as_ref(), id.as_ref()]
+        [owner.as_ref(), mint.as_ref(), id]
     }
 
     #[inline(always)]
@@ -61,7 +61,7 @@ impl ShuttleEphemeralAta {
         id: &'a [u8; 4],
         bump: &'a [u8],
     ) -> [&'a [u8]; 4] {
-        [owner.as_ref(), mint.as_ref(), id.as_ref(), bump.as_ref()]
+        [owner.as_ref(), mint.as_ref(), id, bump]
     }
 
     #[inline(always)]
@@ -74,8 +74,8 @@ impl ShuttleEphemeralAta {
         [
             Seed::from(owner.as_ref()),
             Seed::from(mint.as_ref()),
-            Seed::from(id.as_ref()),
-            Seed::from(bump.as_ref()),
+            Seed::from(id),
+            Seed::from(bump),
         ]
     }
 }

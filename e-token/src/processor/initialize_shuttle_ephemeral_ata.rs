@@ -45,8 +45,8 @@ pub fn process_initialize_shuttle_ephemeral_ata(
 
     if !shuttle_is_owned_by_program {
         let (shuttle, bump) = ShuttleEphemeralAta::find_pda(
-            &owner_info.address(),
-            &mint_info.address(),
+            owner_info.address(),
+            mint_info.address(),
             args.shuttle_id(),
         );
         if &shuttle != shuttle_info.address() {
@@ -56,8 +56,8 @@ pub fn process_initialize_shuttle_ephemeral_ata(
         let bump_seed = [bump];
         let shuttle_id_seed = args.shuttle_id().to_le_bytes();
         let seed = ShuttleEphemeralAta::signer_seeds(
-            &owner_info.address(),
-            &mint_info.address(),
+            owner_info.address(),
+            mint_info.address(),
             &shuttle_id_seed,
             &bump_seed,
         );
@@ -85,8 +85,8 @@ pub fn process_initialize_shuttle_ephemeral_ata(
             unsafe { load_unchecked::<ShuttleEphemeralAta>(shuttle_info.borrow_unchecked())? };
 
         let shuttle_pda = ShuttleEphemeralAta::create_address(
-            &owner_info.address(),
-            &mint_info.address(),
+            owner_info.address(),
+            mint_info.address(),
             args.shuttle_id(),
             &[shuttle.bump],
         )?;
