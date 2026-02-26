@@ -61,7 +61,7 @@ pub fn process_initialize_transfer_queue(
     }
 
     let bump = [queue_bump];
-    let seeds = TransferQueue::seeds_with_bump(&mint_info.address(), &bump);
+    let seeds = TransferQueue::signer_seeds(&mint_info.address(), &bump);
     let queue_signer = Signer::from(&seeds);
 
     CreateAccount {

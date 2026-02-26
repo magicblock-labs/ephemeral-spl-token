@@ -8,6 +8,8 @@ pub enum EphemeralSplError {
     AlreadyInUse,
     // Ephemeral ATA, Vault, Mint or Owner mismatch
     EphemeralAtaMismatch,
+    // Queue is full
+    QueueFull,
 }
 
 impl From<EphemeralSplError> for ProgramError {
@@ -24,6 +26,7 @@ impl ToStr for EphemeralSplError {
             EphemeralSplError::EphemeralAtaMismatch => {
                 "Error: Ephemeral ATA/Vault/Mint/Owner mismatch"
             }
+            EphemeralSplError::QueueFull => "Error: Queue is full",
         }
     }
 }
@@ -35,6 +38,7 @@ impl core::convert::TryFrom<u32> for EphemeralSplError {
             0 => Ok(EphemeralSplError::InvalidInstruction),
             1 => Ok(EphemeralSplError::AlreadyInUse),
             2 => Ok(EphemeralSplError::EphemeralAtaMismatch),
+            3 => Ok(EphemeralSplError::QueueFull),
             _ => Err(ProgramError::InvalidArgument),
         }
     }

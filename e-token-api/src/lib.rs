@@ -66,4 +66,10 @@ pub mod instruction {
     pub const MERGE_SHUTTLE_INTO_EPHEMERAL_ATA: u8 = 15;
     /// 16 - InitializeTransferQueue: initialize a transfer queue for a mint
     pub const INITIALIZE_TRANSFER_QUEUE: u8 = 16;
+    /// 17 - QueueTransfer: queue a transfer to the transfer queue
+    ///     Instruction data:
+    ///     [0..8] amount (u64 LE)
+    ///     [8..16] chunk_size (u64 LE)
+    ///     [16..18] interval_seconds (u16 LE)
+    pub const QUEUE_TRANSFER: u8 = 17;
 }

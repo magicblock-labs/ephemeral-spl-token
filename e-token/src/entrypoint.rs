@@ -150,6 +150,12 @@ pub(crate) fn inner_process_instruction(
 
             process_initialize_transfer_queue(accounts, instruction_data)
         }
+        17 => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: QueueTransfer");
+
+            process_queue_transfer(accounts, instruction_data)
+        }
         196 => {
             #[cfg(feature = "logging")]
             pinocchio_log::log!("Instruction: UndelegationCallback");
