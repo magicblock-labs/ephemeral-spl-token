@@ -131,7 +131,7 @@ pub struct InitializeShuttleEphemeralAta<'a> {
 impl InitializeShuttleEphemeralAta<'_> {
     #[inline]
     pub fn try_from_bytes(bytes: &[u8]) -> Result<InitializeShuttleEphemeralAta, ProgramError> {
-        if bytes.len() < 4 {
+        if bytes.len() != 4 {
             return Err(ProgramError::InvalidInstructionData);
         }
 
