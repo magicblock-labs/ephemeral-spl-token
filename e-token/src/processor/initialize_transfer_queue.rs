@@ -9,9 +9,8 @@ use pinocchio::sysvars::Sysvar;
 use pinocchio::Address;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_associated_token_account::instructions::CreateIdempotent;
-use pinocchio_system::instructions::CreateAccount;
 
-use crate::processor::common::{self, initialize_shuttle};
+use crate::processor::common::{self, create_pda, initialize_shuttle};
 
 #[inline(always)]
 pub fn process_initialize_transfer_queue(
@@ -64,14 +63,16 @@ pub fn process_initialize_transfer_queue(
     let seeds = TransferQueue::signer_seeds(&mint_info.address(), &bump);
     let queue_signer = Signer::from(&seeds);
 
-    CreateAccount {
-        from: payer_info,
-        to: queue_info,
-        lamports: Rent::get()?.try_minimum_balance(TransferQueue::LEN)?,
-        space: TransferQueue::LEN as u64,
-        owner: &ephemeral_spl_api::program::id_address(),
-    }
-    .invoke_signed(&[queue_signer.clone()])?;
+    let rent = Rent::get()?;
+
+    create_pda(
+        &rent,
+        TransferQueue::LEN,
+        payer_info,
+        queue_info,
+        &ephemeral_spl_api::program::id_address(),
+        &[queue_signer.clone()],
+    )?;
 
     // Makes the queue private
     create_permission(
@@ -83,7 +84,7 @@ pub fn process_initialize_transfer_queue(
         ],
         &permission_program_info.address(),
         MembersArgs { members: Some(&[]) },
-        Some(queue_signer.clone()),
+        Some(queue_signer),
     )?;
 
     CreateIdempotent {
@@ -94,9 +95,10 @@ pub fn process_initialize_transfer_queue(
         system_program: system_program_info,
         token_program: token_program_info,
     }
-    .invoke_signed(&[queue_signer])?;
+    .invoke()?;
 
     common::initialize_ephemeral_ata(
+        &rent,
         payer_info,
         queue_info,
         mint_info,
@@ -133,6 +135,7 @@ pub fn process_initialize_transfer_queue(
 
     let bump = [shuttle_bump];
     initialize_shuttle(
+        &rent,
         payer_info,
         queue_info,
         mint_info,
@@ -153,6 +156,7 @@ pub fn process_initialize_transfer_queue(
     }
 
     common::initialize_ephemeral_ata(
+        &rent,
         payer_info,
         shuttle_info,
         mint_info,

@@ -1,7 +1,11 @@
 use crate::processor::common;
 use core::marker::PhantomData;
 
-use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use pinocchio::{
+    error::ProgramError,
+    sysvars::{rent::Rent, Sysvar},
+    AccountView, ProgramResult,
+};
 
 #[inline(always)]
 pub fn process_initialize_ephemeral_ata(
@@ -31,6 +35,7 @@ pub fn process_initialize_ephemeral_ata(
     }
 
     common::initialize_ephemeral_ata(
+        &Rent::get()?,
         payer_info,
         user_info,
         mint_info,

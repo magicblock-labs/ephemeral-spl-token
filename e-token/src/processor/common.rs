@@ -4,12 +4,57 @@ use ephemeral_spl_api::state::{
 };
 use pinocchio::{
     cpi::{Seed, Signer},
-    sysvars::{rent::Rent, Sysvar},
-    AccountView, ProgramResult,
+    sysvars::rent::Rent,
+    AccountView, Address, ProgramResult,
 };
-use pinocchio_system::instructions::CreateAccount;
+use pinocchio_system::instructions::{Assign, CreateAccount, Transfer};
+
+pub fn create_pda(
+    rent_sysvar: &Rent,
+    space: usize,
+    payer: &AccountView,
+    account: &AccountView,
+    owner: &Address,
+    signers: &[Signer],
+) -> ProgramResult {
+    let lamports = rent_sysvar.try_minimum_balance(space)?;
+
+    if account.lamports() == 0 {
+        // Create the account if it does not exist.
+        CreateAccount {
+            from: payer,
+            to: account,
+            lamports,
+            space: space as u64,
+            owner,
+        }
+        .invoke_signed(signers)
+    } else {
+        let required_lamports = lamports.saturating_sub(account.lamports());
+
+        // Transfer lamports from `payer` to `account` if needed.
+        if required_lamports > 0 {
+            Transfer {
+                from: payer,
+                to: account,
+                lamports: required_lamports,
+            }
+            .invoke_signed(signers)?;
+        }
+
+        // Assign the account to the specified owner.
+        Assign { account, owner }.invoke_signed(signers)?;
+
+        // Allocate the required space for the account.
+        //
+        // SAFETY: There are no active borrows of the `account`.
+        // This was checked by the `Assign` CPI above.
+        unsafe { account.resize_unchecked(space) }
+    }
+}
 
 pub fn initialize_ephemeral_ata(
+    rent_sysvar: &Rent,
     payer_info: &AccountView,
     user_info: &AccountView,
     mint_info: &AccountView,
@@ -24,14 +69,14 @@ pub fn initialize_ephemeral_ata(
     ];
     let signer_seeds = Signer::from(&seed);
 
-    CreateAccount {
-        from: payer_info,
-        to: ephemeral_ata_info,
-        space: EphemeralAta::LEN as u64,
-        lamports: Rent::get()?.try_minimum_balance(EphemeralAta::LEN)?,
-        owner: &ephemeral_spl_api::program::id_address(),
-    }
-    .invoke_signed(&[signer_seeds])?;
+    create_pda(
+        rent_sysvar,
+        EphemeralAta::LEN,
+        payer_info,
+        ephemeral_ata_info,
+        &ephemeral_spl_api::program::id_address(),
+        &[signer_seeds],
+    )?;
 
     // Ensure account data has the expected size
     let ephemeral_ata =
@@ -47,6 +92,7 @@ pub fn initialize_ephemeral_ata(
 }
 
 pub fn initialize_shuttle(
+    rent_sysvar: &Rent,
     payer_info: &AccountView,
     owner_info: &AccountView,
     mint_info: &AccountView,
@@ -63,14 +109,14 @@ pub fn initialize_shuttle(
     ];
     let signer_seeds = Signer::from(&seed);
 
-    CreateAccount {
-        from: payer_info,
-        to: shuttle_info,
-        space: ShuttleEphemeralAta::LEN as u64,
-        lamports: Rent::get()?.try_minimum_balance(ShuttleEphemeralAta::LEN)?,
-        owner: &ephemeral_spl_api::program::id_address(),
-    }
-    .invoke_signed(&[signer_seeds])?;
+    create_pda(
+        rent_sysvar,
+        ShuttleEphemeralAta::LEN,
+        payer_info,
+        shuttle_info,
+        &ephemeral_spl_api::program::id_address(),
+        &[signer_seeds],
+    )?;
 
     let shuttle =
         unsafe { load_mut_unchecked::<ShuttleEphemeralAta>(shuttle_info.borrow_unchecked_mut())? };

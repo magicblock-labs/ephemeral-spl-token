@@ -2,6 +2,7 @@ use crate::processor::common::initialize_shuttle;
 use crate::processor::initialize_ephemeral_ata::process_initialize_ephemeral_ata;
 use core::marker::PhantomData;
 use ephemeral_spl_api::state::{load_unchecked, Initializable};
+use pinocchio::sysvars::{rent::Rent, Sysvar};
 use {
     ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleEphemeralAta,
     pinocchio::{error::ProgramError, AccountView, ProgramResult},
@@ -59,6 +60,7 @@ pub fn process_initialize_shuttle_ephemeral_ata(
     if !shuttle_is_owned_by_program {
         let bump = [args.bump()];
         initialize_shuttle(
+            &Rent::get()?,
             payer_info,
             owner_info,
             mint_info,
