@@ -35,7 +35,7 @@ async fn deposit_spl_tokens_increments_shuttle_amount() {
     let mint = mint_kp.pubkey();
 
     let pdas = utils::derive_pdas(PROGRAM, owner, mint);
-    let (shuttle_ephemeral_ata, shuttle_bump) =
+    let (shuttle_ephemeral_ata, _shuttle_bump) =
         utils::derive_shuttle_ephemeral_ata(PROGRAM, owner, mint, shuttle_id);
     let (shuttle_eata, _shuttle_eata_bump) =
         utils::derive_shuttle_eata(PROGRAM, shuttle_ephemeral_ata, mint);
@@ -52,13 +52,11 @@ async fn deposit_spl_tokens_increments_shuttle_amount() {
     .await;
 
     let vault = pdas.vault;
-    let vault_bump = pdas.bump_vault;
     let user_ata = setup.user_tokens[0];
     let vault_ata = utils::derive_associated_token_address(vault, mint);
 
     let mut shuttle_init_data = vec![instruction::INITIALIZE_SHUTTLE_EPHEMERAL_ATA];
     shuttle_init_data.extend_from_slice(&shuttle_id.to_le_bytes());
-    shuttle_init_data.push(shuttle_bump);
     let ix_init_shuttle = Instruction {
         program_id: PROGRAM,
         accounts: vec![
@@ -86,7 +84,7 @@ async fn deposit_spl_tokens_increments_shuttle_amount() {
             AccountMeta::new_readonly(utils::associated_token_program_id(), false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_GLOBAL_VAULT, vault_bump],
+        data: vec![instruction::INITIALIZE_GLOBAL_VAULT],
     };
 
     let tx_init = Transaction::new_signed_with_payer(

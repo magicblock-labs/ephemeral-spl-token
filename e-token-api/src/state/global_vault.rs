@@ -1,10 +1,12 @@
-use pinocchio::Address;
+use pinocchio::{cpi::Seed, Address};
 
 use super::{Initializable, RawType};
 
 /// Internal representation of a global vault for a specific mint.
 #[repr(C)]
 pub struct GlobalVault {
+    /// The canonical bump of the global vault
+    pub bump: u8,
     /// The mint associated with this vault
     pub mint: Address,
     /// The token account that holds this vault's tokens.
@@ -19,5 +21,22 @@ impl Initializable for GlobalVault {
     #[inline(always)]
     fn is_initialized(&self) -> bool {
         self.mint != Address::default()
+    }
+}
+
+impl GlobalVault {
+    #[inline(always)]
+    pub fn find_pda(mint: &Address) -> (Address, u8) {
+        Address::find_program_address(&[mint.as_ref()], &crate::program::id_address())
+    }
+
+    #[inline(always)]
+    pub fn seeds<'a>(mint: &'a Address) -> [&'a [u8]; 1] {
+        [mint.as_ref()]
+    }
+
+    #[inline(always)]
+    pub fn signer_seeds<'a>(mint: &'a Address, bump: &'a [u8]) -> [Seed<'a>; 2] {
+        [Seed::from(mint.as_ref()), Seed::from(bump.as_ref())]
     }
 }

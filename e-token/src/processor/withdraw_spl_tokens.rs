@@ -1,6 +1,6 @@
 use core::marker::PhantomData;
 use ephemeral_spl_api::error::EphemeralSplError;
-use pinocchio::cpi::{Seed, Signer};
+use pinocchio::cpi::Signer;
 use {
     ephemeral_spl_api::state::{
         ephemeral_ata::EphemeralAta, global_vault::GlobalVault, load_mut_unchecked, load_unchecked,
@@ -83,8 +83,8 @@ pub fn process_withdraw_spl_tokens(
     };
 
     // Perform transfer from vault token account to user destination, signed by vault PDA
-    let bump = [args.bump()];
-    let seeds = [Seed::from(mint_info.address().as_ref()), Seed::from(&bump)];
+    let bump = [vault.bump];
+    let seeds = GlobalVault::signer_seeds(&mint_info.address(), &bump);
     let signer = Signer::from(&seeds);
 
     pinocchio_token_2022::instructions::TransferChecked {
@@ -116,7 +116,7 @@ pub struct WithdrawArgs<'a> {
 impl WithdrawArgs<'_> {
     #[inline]
     pub fn try_from_bytes(bytes: &[u8]) -> Result<WithdrawArgs, ProgramError> {
-        if bytes.len() < 9 {
+        if bytes.len() < 8 {
             return Err(ProgramError::InvalidInstructionData);
         }
         Ok(WithdrawArgs {
@@ -133,10 +133,5 @@ impl WithdrawArgs<'_> {
             core::ptr::copy_nonoverlapping(self.raw, buf.as_mut_ptr(), 8);
         }
         u64::from_le_bytes(buf)
-    }
-
-    #[inline]
-    pub fn bump(&self) -> u8 {
-        unsafe { *self.raw.add(8) }
     }
 }

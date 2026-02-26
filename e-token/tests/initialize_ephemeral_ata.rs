@@ -25,7 +25,7 @@ async fn initialize_ephemeral_ata() {
     let mint = Pubkey::new_unique();
 
     // Create the ephemeral ATA account owned by our program with proper space
-    let (ephemeral_ata, bump) = Pubkey::find_program_address(
+    let (ephemeral_ata, _bump) = Pubkey::find_program_address(
         &[user.to_bytes().as_slice(), mint.to_bytes().as_slice()],
         &PROGRAM,
     );
@@ -40,7 +40,7 @@ async fn initialize_ephemeral_ata() {
             AccountMeta::new_readonly(mint, false),  // mint seed  (readonly)
             AccountMeta::new_readonly(solana_system_interface::program::ID, false), // system program (readonly)
         ],
-        data: vec![instruction::INITIALIZE_EPHEMERAL_ATA, bump], // instruction data: discriminator + bump
+        data: vec![instruction::INITIALIZE_EPHEMERAL_ATA], // instruction data: discriminator
     };
 
     let tx = Transaction::new_signed_with_payer(

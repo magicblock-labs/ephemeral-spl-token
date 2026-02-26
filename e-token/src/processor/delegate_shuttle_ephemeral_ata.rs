@@ -52,7 +52,7 @@ pub fn process_delegate_shuttle_ephemeral_ata(
         }
     }
 
-    let mint = {
+    let (mint, bump) = {
         let ephemeral_ata =
             unsafe { load_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked())? };
         if ephemeral_ata.owner != *shuttle_info.address() {
@@ -60,24 +60,17 @@ pub fn process_delegate_shuttle_ephemeral_ata(
         }
         #[allow(clippy::clone_on_copy)]
         let mint = ephemeral_ata.mint.clone();
-        mint
+        (mint, ephemeral_ata.bump)
     };
 
-    let bump = [args.bump()];
-    let derived_ephemeral_ata = ephemeral_spl_api::Address::create_program_address(
-        &[
-            shuttle_info.address().as_ref(),
-            mint.as_ref(),
-            bump.as_ref(),
-        ],
-        &ephemeral_spl_api::program::id_address(),
-    )
-    .map_err(|_| ProgramError::InvalidSeeds)?;
+    let bump_seed = [bump];
+    let derived_ephemeral_ata =
+        EphemeralAta::create_address(&shuttle_info.address(), &mint, &bump_seed)?;
     if derived_ephemeral_ata != *ephemeral_ata_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
 
-    let seeds: &[&[u8]] = &[shuttle_info.address().as_ref(), mint.as_ref()];
+    let seeds = EphemeralAta::seeds(&shuttle_info.address(), &mint);
 
     let config = DelegateConfig {
         validator: args.validator().map(Address::new_from_array),
@@ -98,44 +91,33 @@ pub fn process_delegate_shuttle_ephemeral_ata(
         delegation_metadata,
         system_program,
     )
-    .seeds(seeds)
-    .bump(args.bump())
+    .seeds(&seeds)
+    .bump(bump)
     .config(config)
     .invoke()
 }
 
 pub struct DelegateShuttleArgs {
-    bump: u8,
     validator: Option<[u8; 32]>,
 }
 
 impl DelegateShuttleArgs {
     #[inline]
     pub fn try_from_bytes(bytes: &[u8]) -> Result<DelegateShuttleArgs, ProgramError> {
-        if bytes.is_empty() {
-            return Err(ProgramError::InvalidInstructionData);
-        }
-        let bump = bytes[0];
-        let rest = &bytes[1..];
-        let validator = if rest.is_empty() {
+        let validator = if bytes.is_empty() {
             None
-        } else if rest.len() >= 32 {
+        } else if bytes.len() >= 32 {
             let mut arr = [0u8; 32];
-            arr.copy_from_slice(&rest[..32]);
+            arr.copy_from_slice(&bytes[..32]);
             Some(arr)
         } else {
             return Err(ProgramError::InvalidInstructionData);
         };
-        Ok(DelegateShuttleArgs { bump, validator })
+        Ok(DelegateShuttleArgs { validator })
     }
 
     #[inline]
     pub fn validator(&self) -> Option<[u8; 32]> {
         self.validator
-    }
-
-    #[inline]
-    pub fn bump(&self) -> u8 {
-        self.bump
     }
 }

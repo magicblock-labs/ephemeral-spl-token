@@ -1,6 +1,5 @@
-use core::marker::PhantomData;
 use ephemeral_spl_api::state::RawType;
-use pinocchio::cpi::{Seed, Signer};
+use pinocchio::cpi::Signer;
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
 use pinocchio_system::instructions::CreateAccount;
@@ -13,15 +12,13 @@ use {
 #[inline(always)]
 pub fn process_initialize_ephemeral_ata(
     accounts: &[AccountView],
-    instruction_data: &[u8],
+    _instruction_data: &[u8],
 ) -> ProgramResult {
     // Expected accounts:
     // 0. [writable] Ephemeral ATA account (PDA derived from [user, mint])
     // 1. []         Payer (funding account)
     // 2. []         User  (seed)
     // 3. []         Mint  (seed)
-
-    let args = InitializeEphemeralAta::try_from_bytes(instruction_data)?;
 
     let [ephemeral_ata_info, payer_info, user_info, mint_info, ..] = accounts else {
         return Err(ProgramError::NotEnoughAccountKeys);
@@ -37,12 +34,13 @@ pub fn process_initialize_ephemeral_ata(
         }
     }
 
-    let bump = [args.bump()];
-    let seed = [
-        Seed::from(user_info.address().as_ref()),
-        Seed::from(mint_info.address().as_ref()),
-        Seed::from(&bump),
-    ];
+    let (ephemeral_ata, bump) = EphemeralAta::find_pda(&user_info.address(), &mint_info.address());
+    if &ephemeral_ata != ephemeral_ata_info.address() {
+        return Err(ProgramError::InvalidSeeds);
+    }
+
+    let bump_seed = [bump];
+    let seed = EphemeralAta::signer_seeds(&user_info.address(), &mint_info.address(), &bump_seed);
     let signer_seeds = Signer::from(&seed);
 
     CreateAccount {
@@ -60,34 +58,10 @@ pub fn process_initialize_ephemeral_ata(
 
     // Initialize the ephemeral ATA
     // Set the owner to the provided user; payer only funds account creation
+    ephemeral_ata.bump = bump;
     ephemeral_ata.owner = user_info.address().clone();
     ephemeral_ata.mint = mint_info.address().clone();
     ephemeral_ata.amount = 0;
 
     Ok(())
-}
-
-/// Instruction data for the `InitializeMint` instruction.
-pub struct InitializeEphemeralAta<'a> {
-    raw: *const u8,
-    _data: PhantomData<&'a [u8]>,
-}
-
-impl InitializeEphemeralAta<'_> {
-    #[inline]
-    pub fn try_from_bytes(bytes: &[u8]) -> Result<InitializeEphemeralAta, ProgramError> {
-        if bytes.is_empty() {
-            return Err(ProgramError::InvalidInstructionData);
-        }
-
-        Ok(InitializeEphemeralAta {
-            raw: bytes.as_ptr(),
-            _data: PhantomData,
-        })
-    }
-
-    #[inline]
-    pub fn bump(&self) -> u8 {
-        unsafe { *self.raw }
-    }
 }

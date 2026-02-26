@@ -1,7 +1,7 @@
 use ephemeral_spl_api::state::{
     load_unchecked, shuttle_ephemeral_ata::ShuttleEphemeralAta, Initializable,
 };
-use pinocchio::cpi::{Seed, Signer};
+use pinocchio::cpi::Signer;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_token_2022::state::{Mint, TokenAccount};
 
@@ -36,7 +36,7 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
         }
     }
 
-    let (shuttle_owner, shuttle_id) = {
+    let (shuttle_owner, shuttle_id, shuttle_bump) = {
         let shuttle =
             unsafe { load_unchecked::<ShuttleEphemeralAta>(shuttle_info.borrow_unchecked())? };
         if !shuttle.is_initialized() {
@@ -44,7 +44,7 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
         }
         #[allow(clippy::clone_on_copy)]
         let owner = shuttle.owner.clone();
-        (owner, shuttle.id)
+        (owner, shuttle.id, shuttle.bump)
     };
 
     if shuttle_owner != *owner_info.address() {
@@ -52,14 +52,12 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
     }
 
     let shuttle_id_seed = shuttle_id.to_le_bytes();
-    let (derived_shuttle, shuttle_bump) = ephemeral_spl_api::Address::find_program_address(
-        &[
-            shuttle_owner.as_ref(),
-            mint_info.address().as_ref(),
-            shuttle_id_seed.as_ref(),
-        ],
-        &ephemeral_spl_api::program::id_address(),
-    );
+    let derived_shuttle = ShuttleEphemeralAta::create_address(
+        &shuttle_owner,
+        &mint_info.address(),
+        shuttle_id,
+        &[shuttle_bump],
+    )?;
     if derived_shuttle != *shuttle_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
@@ -108,12 +106,12 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
 
     if shuttle_amount > 0 {
         let bump = [shuttle_bump];
-        let seeds = [
-            Seed::from(shuttle_owner.as_ref()),
-            Seed::from(mint_info.address().as_ref()),
-            Seed::from(shuttle_id_seed.as_ref()),
-            Seed::from(&bump),
-        ];
+        let seeds = ShuttleEphemeralAta::signer_seeds(
+            &shuttle_owner,
+            &mint_info.address(),
+            &shuttle_id_seed,
+            &bump,
+        );
         let signer = Signer::from(&seeds);
 
         pinocchio_token_2022::instructions::TransferChecked {

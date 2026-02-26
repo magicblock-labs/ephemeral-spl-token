@@ -2,7 +2,6 @@ use core::marker::PhantomData;
 use ephemeral_rollups_pinocchio::acl::{
     consts::PERMISSION_PROGRAM_ID,
     instruction::CreatePermissionCpiBuilder,
-    pda::permission_pda_from_permissioned_account,
     types::{Member, MemberFlags, MembersArgs},
 };
 use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_unchecked, Initializable};
@@ -54,11 +53,7 @@ pub fn process_create_ephemeral_ata_permission(
         return Err(ProgramError::IncorrectAuthority);
     }
 
-    let expected_permission =
-        permission_pda_from_permissioned_account(ephemeral_ata_info.address());
-    if expected_permission != *permission_info.address() {
-        return Err(ProgramError::InvalidSeeds);
-    }
+    // Not checking permission seeds because the permission program will
 
     // Idempotent create: if the permission account already exists, return Ok(())
     // for safe transaction batching rather than treating it as an error.
@@ -85,8 +80,11 @@ pub fn process_create_ephemeral_ata_permission(
         &PERMISSION_PROGRAM_ID,
     );
     builder
-        .seeds(&[ephemeral_ata.owner.as_ref(), ephemeral_ata.mint.as_ref()])
-        .bump(args.bump())
+        .seeds(&EphemeralAta::seeds(
+            &ephemeral_ata.owner,
+            &ephemeral_ata.mint,
+        ))
+        .bump(ephemeral_ata.bump)
         .members(members_args)
         .invoke()
 }
@@ -99,7 +97,7 @@ pub struct CreateEphemeralAtaPermission<'a> {
 impl CreateEphemeralAtaPermission<'_> {
     #[inline]
     pub fn try_from_bytes(bytes: &[u8]) -> Result<CreateEphemeralAtaPermission, ProgramError> {
-        if bytes.len() < 2 {
+        if bytes.len() < 1 {
             return Err(ProgramError::InvalidInstructionData);
         }
 
@@ -110,12 +108,7 @@ impl CreateEphemeralAtaPermission<'_> {
     }
 
     #[inline]
-    pub fn bump(&self) -> u8 {
-        unsafe { *self.raw }
-    }
-
-    #[inline]
     pub fn flag_byte(&self) -> u8 {
-        unsafe { *self.raw.add(1) }
+        unsafe { *self.raw }
     }
 }

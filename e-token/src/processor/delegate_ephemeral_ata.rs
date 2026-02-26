@@ -56,43 +56,32 @@ pub fn process_delegate_ephemeral_ata(
         system_program,
     )
     .seeds(seeds)
-    .bump(args.bump())
+    .bump(ephemeral_ata.bump)
     .config(config)
     .invoke()
 }
 
 pub struct DelegateArgs {
-    bump: u8,
     validator: Option<[u8; 32]>,
 }
 
 impl DelegateArgs {
     #[inline]
     pub fn try_from_bytes(bytes: &[u8]) -> Result<DelegateArgs, ProgramError> {
-        if bytes.is_empty() {
-            return Err(ProgramError::InvalidInstructionData);
-        }
-        let bump = bytes[0];
-        let rest = &bytes[1..];
-        let validator = if rest.is_empty() {
-            None
-        } else if rest.len() >= 32 {
+        let validator = if bytes.len() >= 32 {
             let mut arr = [0u8; 32];
-            arr.copy_from_slice(&rest[..32]);
+            arr.copy_from_slice(&bytes[..32]);
             Some(arr)
+        } else if bytes.is_empty() {
+            None
         } else {
             return Err(ProgramError::InvalidInstructionData);
         };
-        Ok(DelegateArgs { bump, validator })
+        Ok(DelegateArgs { validator })
     }
 
     #[inline]
     pub fn validator(&self) -> Option<[u8; 32]> {
         self.validator
-    }
-
-    #[inline]
-    pub fn bump(&self) -> u8 {
-        self.bump
     }
 }

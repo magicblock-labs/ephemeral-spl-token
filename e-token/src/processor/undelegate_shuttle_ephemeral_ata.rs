@@ -47,7 +47,7 @@ pub fn process_undelegate_shuttle_ephemeral_ata(
         return Err(ProgramError::IncorrectAuthority);
     }
 
-    let mint = {
+    let (mint, bump) = {
         let shuttle_eata =
             unsafe { load_unchecked::<EphemeralAta>(shuttle_eata_info.borrow_unchecked())? };
         if shuttle_eata.owner != *shuttle_info.address() {
@@ -55,13 +55,11 @@ pub fn process_undelegate_shuttle_ephemeral_ata(
         }
         #[allow(clippy::clone_on_copy)]
         let mint = shuttle_eata.mint.clone();
-        mint
+        (mint, shuttle_eata.bump)
     };
 
-    let (derived_shuttle_eata, _) = ephemeral_spl_api::Address::find_program_address(
-        &[shuttle_info.address().as_ref(), mint.as_ref()],
-        &ephemeral_spl_api::program::id_address(),
-    );
+    let derived_shuttle_eata =
+        EphemeralAta::create_address(&shuttle_info.address(), &mint, &[bump])?;
     if derived_shuttle_eata != *shuttle_eata_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }

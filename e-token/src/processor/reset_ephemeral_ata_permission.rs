@@ -2,7 +2,6 @@ use core::marker::PhantomData;
 use ephemeral_rollups_pinocchio::acl::{
     consts::PERMISSION_PROGRAM_ID,
     instruction::UpdatePermissionCpiBuilder,
-    pda::permission_pda_from_permissioned_account,
     types::{Member, MemberFlags, MembersArgs},
 };
 use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_unchecked, Initializable};
@@ -47,13 +46,6 @@ pub fn process_reset_ephemeral_ata_permission(
         return Err(ProgramError::IncorrectAuthority);
     }
 
-    // TODO(GabrielePicco): pass bump once supported in the SDK
-    let expected_permission =
-        permission_pda_from_permissioned_account(ephemeral_ata_info.address());
-    if expected_permission != *permission_info.address() {
-        return Err(ProgramError::InvalidSeeds);
-    }
-
     if permission_info.lamports() == 0 {
         return Err(ProgramError::InvalidAccountData);
     }
@@ -76,7 +68,7 @@ pub fn process_reset_ephemeral_ata_permission(
         &PERMISSION_PROGRAM_ID,
     )
     .seeds(&[ephemeral_ata.owner.as_ref(), ephemeral_ata.mint.as_ref()])
-    .bump(args.bump())
+    .bump(ephemeral_ata.bump)
     .members(members_args)
     .invoke()
 }
@@ -89,7 +81,7 @@ pub struct ResetEphemeralAtaPermission<'a> {
 impl ResetEphemeralAtaPermission<'_> {
     #[inline]
     pub fn try_from_bytes(bytes: &[u8]) -> Result<ResetEphemeralAtaPermission, ProgramError> {
-        if bytes.len() < 2 {
+        if bytes.len() < 1 {
             return Err(ProgramError::InvalidInstructionData);
         }
 
@@ -100,12 +92,7 @@ impl ResetEphemeralAtaPermission<'_> {
     }
 
     #[inline]
-    pub fn bump(&self) -> u8 {
-        unsafe { *self.raw }
-    }
-
-    #[inline]
     pub fn flag_byte(&self) -> u8 {
-        unsafe { *self.raw.add(1) }
+        unsafe { *self.raw }
     }
 }

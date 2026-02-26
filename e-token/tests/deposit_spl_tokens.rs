@@ -45,9 +45,7 @@ async fn deposit_spl_tokens_increments_ephemeral_amount() {
     .await;
 
     let ephemeral_ata = pdas.ephemeral_ata;
-    let bump_ata = pdas.bump_ata;
     let vault = pdas.vault;
-    let bump_vault = pdas.bump_vault;
     let user_ata = setup.user_tokens[0];
     let vault_ata = utils::derive_associated_token_address(vault, mint);
 
@@ -71,7 +69,7 @@ async fn deposit_spl_tokens_increments_ephemeral_amount() {
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_EPHEMERAL_ATA, bump_ata],
+        data: vec![instruction::INITIALIZE_EPHEMERAL_ATA],
     };
 
     // 2) Initialize Global Vault
@@ -86,7 +84,7 @@ async fn deposit_spl_tokens_increments_ephemeral_amount() {
             AccountMeta::new_readonly(utils::associated_token_program_id(), false), // associated token program
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_GLOBAL_VAULT, bump_vault],
+        data: vec![instruction::INITIALIZE_GLOBAL_VAULT],
     };
 
     // Send both initializations in one tx

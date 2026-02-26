@@ -1,6 +1,5 @@
-use core::marker::PhantomData;
 use ephemeral_spl_api::state::RawType;
-use pinocchio::cpi::{Seed, Signer};
+use pinocchio::cpi::Signer;
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
 use pinocchio_system::instructions::{CreateAccount, Transfer};
@@ -15,7 +14,7 @@ const LEGACY_GLOBAL_VAULT_LEN: usize = core::mem::size_of::<pinocchio::Address>(
 #[inline(always)]
 pub fn process_initialize_global_vault(
     accounts: &[AccountView],
-    instruction_data: &[u8],
+    _instruction_data: &[u8],
 ) -> ProgramResult {
     // Expected accounts:
     // 0. [writable] Global Vault account (PDA derived from [mint])
@@ -26,9 +25,7 @@ pub fn process_initialize_global_vault(
     // 5. []         Associated token program
     // 6. []         System program
 
-    let args = InitializeGlobalVault::try_from_bytes(instruction_data)?;
-
-    let [vault_info, payer_info, mint_info, ..] = accounts else {
+    let [vault_info, payer_info, mint_info, other_accounts @ ..] = accounts else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
@@ -37,8 +34,8 @@ pub fn process_initialize_global_vault(
         return Ok(());
     }
 
-    let [_, _, _, vault_token_acc_info, token_program_info, associated_token_program_info, system_program_info, ..] =
-        accounts
+    let [vault_token_acc_info, token_program_info, associated_token_program_info, system_program_info, ..] =
+        other_accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
@@ -47,8 +44,13 @@ pub fn process_initialize_global_vault(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    let bump = [args.bump()];
-    let seed = [Seed::from(mint_info.address().as_ref()), Seed::from(&bump)];
+    let (vault, bump) = GlobalVault::find_pda(&mint_info.address());
+    if &vault != vault_info.address() {
+        return Err(ProgramError::InvalidSeeds);
+    }
+
+    let bump_seed = [bump];
+    let seed = GlobalVault::signer_seeds(&mint_info.address(), &bump_seed);
     let signer_seeds = Signer::from(&seed);
     let required_lamports = Rent::get()?.try_minimum_balance(GlobalVault::LEN)?;
 
@@ -104,33 +106,9 @@ pub fn process_initialize_global_vault(
     let vault = unsafe { load_mut_unchecked::<GlobalVault>(vault_info.borrow_unchecked_mut())? };
 
     // Initialize the vault
+    vault.bump = bump;
     vault.mint = mint_info.address().clone();
     vault.token_account = vault_token_acc_info.address().clone();
 
     Ok(())
-}
-
-/// Instruction data for the `InitializeGlobalVault` instruction.
-pub struct InitializeGlobalVault<'a> {
-    raw: *const u8,
-    _data: PhantomData<&'a [u8]>,
-}
-
-impl InitializeGlobalVault<'_> {
-    #[inline]
-    pub fn try_from_bytes(bytes: &[u8]) -> Result<InitializeGlobalVault, ProgramError> {
-        if bytes.is_empty() {
-            return Err(ProgramError::InvalidInstructionData);
-        }
-
-        Ok(InitializeGlobalVault {
-            raw: bytes.as_ptr(),
-            _data: PhantomData,
-        })
-    }
-
-    #[inline]
-    pub fn bump(&self) -> u8 {
-        unsafe { *self.raw }
-    }
 }

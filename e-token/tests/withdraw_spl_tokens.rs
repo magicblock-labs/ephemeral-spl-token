@@ -45,9 +45,7 @@ async fn withdraw_spl_tokens_decrements_ephemeral_amount() {
     .await;
 
     let ephemeral_ata = pdas.ephemeral_ata;
-    let bump_ata = pdas.bump_ata;
     let vault = pdas.vault;
-    let bump_vault = pdas.bump_vault;
     let user_source = setup.user_tokens[0];
     let user_dest = setup.user_tokens[1];
     let vault_token = utils::derive_associated_token_address(vault, mint);
@@ -62,7 +60,7 @@ async fn withdraw_spl_tokens_decrements_ephemeral_amount() {
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_EPHEMERAL_ATA, bump_ata],
+        data: vec![instruction::INITIALIZE_EPHEMERAL_ATA],
     };
 
     // Initialize Global Vault
@@ -77,7 +75,7 @@ async fn withdraw_spl_tokens_decrements_ephemeral_amount() {
             AccountMeta::new_readonly(utils::associated_token_program_id(), false), // associated token program
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_GLOBAL_VAULT, bump_vault],
+        data: vec![instruction::INITIALIZE_GLOBAL_VAULT],
     };
 
     let tx_init = Transaction::new_signed_with_payer(
@@ -125,7 +123,6 @@ async fn withdraw_spl_tokens_decrements_ephemeral_amount() {
     let withdraw_amount: u64 = 400 * 10u64.pow(DECIMALS as u32);
     let mut withdraw_data = vec![instruction::WITHDRAW_SPL_TOKENS];
     withdraw_data.extend_from_slice(&withdraw_amount.to_le_bytes());
-    withdraw_data.push(bump_vault); // provide vault bump for PDA signing
 
     let ix_withdraw = Instruction {
         program_id: PROGRAM,

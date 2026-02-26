@@ -34,7 +34,7 @@ async fn initialize_shuttle_ephemeral_ata() {
     let _setup =
         utils::setup_mint_and_token_accounts(&mut context, payer, &mint_kp, 6, 1_000, 1).await;
 
-    let (shuttle_ephemeral_ata, bump) =
+    let (shuttle_ephemeral_ata, _bump) =
         utils::derive_shuttle_ephemeral_ata(PROGRAM, owner, mint, shuttle_id);
     let (shuttle_eata, _shuttle_eata_bump) =
         utils::derive_shuttle_eata(PROGRAM, shuttle_ephemeral_ata, mint);
@@ -42,7 +42,6 @@ async fn initialize_shuttle_ephemeral_ata() {
 
     let mut data = vec![instruction::INITIALIZE_SHUTTLE_EPHEMERAL_ATA];
     data.extend_from_slice(&shuttle_id.to_le_bytes());
-    data.push(bump);
 
     let ix = Instruction {
         program_id: PROGRAM,
