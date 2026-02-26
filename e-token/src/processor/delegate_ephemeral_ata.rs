@@ -39,7 +39,7 @@ pub fn process_delegate_ephemeral_ata(
     let mint = ephemeral_ata.mint.clone();
     #[allow(clippy::clone_on_copy)]
     let owner = ephemeral_ata.owner.clone();
-    let seeds: &[&[u8]] = &[owner.as_ref(), mint.as_ref()];
+    let seeds = EphemeralAta::seeds(&owner, &mint);
 
     #[cfg(feature = "logging")]
     {
@@ -55,7 +55,7 @@ pub fn process_delegate_ephemeral_ata(
         delegation_metadata,
         system_program,
     )
-    .seeds(seeds)
+    .seeds(&seeds)
     .bump(ephemeral_ata.bump)
     .config(config)
     .invoke()

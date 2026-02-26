@@ -54,6 +54,15 @@ impl EphemeralAta {
     }
 
     #[inline(always)]
+    pub fn seeds_with_bump<'a>(
+        owner: &'a Address,
+        mint: &'a Address,
+        bump: &'a [u8],
+    ) -> [&'a [u8]; 3] {
+        [owner.as_ref(), mint.as_ref(), bump.as_ref()]
+    }
+
+    #[inline(always)]
     pub fn signer_seeds<'a>(
         owner: &'a Address,
         mint: &'a Address,
