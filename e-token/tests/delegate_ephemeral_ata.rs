@@ -1,3 +1,7 @@
+use ephemeral_rollups_pinocchio::pda::{
+    delegate_buffer_pda_from_delegated_account_and_owner_program,
+    delegation_metadata_pda_from_delegated_account, delegation_record_pda_from_delegated_account,
+};
 use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::RawType;
@@ -101,18 +105,11 @@ async fn delegate_ephemeral_ata_succeeds() {
     );
 
     // Derive required PDAs
-    let (buffer_pda, _) = Pubkey::find_program_address(
-        &[b"buffer", pdas.ephemeral_ata.as_ref()],
-        &ephemeral_spl_api::program::id().into(),
-    );
-    let (delegation_record_pda, _) = Pubkey::find_program_address(
-        &[b"delegation", pdas.ephemeral_ata.as_ref()],
-        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,
-    );
-    let (delegation_metadata_pda, _) = Pubkey::find_program_address(
-        &[b"delegation-metadata", pdas.ephemeral_ata.as_ref()],
-        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,
-    );
+    let buffer_pda =
+        delegate_buffer_pda_from_delegated_account_and_owner_program(&pdas.ephemeral_ata, &PROGRAM);
+    let delegation_record_pda = delegation_record_pda_from_delegated_account(&pdas.ephemeral_ata);
+    let delegation_metadata_pda =
+        delegation_metadata_pda_from_delegated_account(&pdas.ephemeral_ata);
 
     let ix_delegate = Instruction {
         program_id: PROGRAM,
@@ -223,18 +220,11 @@ async fn delegate_ephemeral_ata_non_owner_succeeds() {
         .await
         .unwrap();
 
-    let (buffer_pda, _) = Pubkey::find_program_address(
-        &[b"buffer", pdas.ephemeral_ata.as_ref()],
-        &ephemeral_spl_api::program::id().into(),
-    );
-    let (delegation_record_pda, _) = Pubkey::find_program_address(
-        &[b"delegation", pdas.ephemeral_ata.as_ref()],
-        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,
-    );
-    let (delegation_metadata_pda, _) = Pubkey::find_program_address(
-        &[b"delegation-metadata", pdas.ephemeral_ata.as_ref()],
-        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,
-    );
+    let buffer_pda =
+        delegate_buffer_pda_from_delegated_account_and_owner_program(&pdas.ephemeral_ata, &PROGRAM);
+    let delegation_record_pda = delegation_record_pda_from_delegated_account(&pdas.ephemeral_ata);
+    let delegation_metadata_pda =
+        delegation_metadata_pda_from_delegated_account(&pdas.ephemeral_ata);
 
     let ix_delegate = Instruction {
         program_id: PROGRAM,

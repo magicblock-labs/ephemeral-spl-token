@@ -1,7 +1,12 @@
 use dlp::pda::{fees_vault_pda, validator_fees_vault_pda_from_validator};
-use ephemeral_rollups_pinocchio::acl::consts::PERMISSION_PROGRAM_ID;
 use ephemeral_rollups_pinocchio::consts::DELEGATION_PROGRAM_ID;
+use ephemeral_rollups_pinocchio::pda::delegation_metadata_pda_from_delegated_account;
+use ephemeral_rollups_pinocchio::{
+    acl::permission_pda_from_permissioned_account,
+    pda::delegation_record_pda_from_delegated_account,
+};
 use ephemeral_spl_api::program::ID;
+use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
@@ -25,12 +30,8 @@ async fn undelegate_ephemeral_ata_permission_callback() {
     let payer_pubkey = payer.pubkey();
     let mint = Keypair::new().pubkey();
 
-    let (ephemeral_ata, _bump) =
-        Pubkey::find_program_address(&[payer_pubkey.as_ref(), mint.as_ref()], &PROGRAM);
-    let (permission_pda, _perm_bump) = Pubkey::find_program_address(
-        &[b"permission:", ephemeral_ata.as_ref()],
-        &PERMISSION_PROGRAM_ID,
-    );
+    let (ephemeral_ata, _bump) = EphemeralAta::find_pda(&payer_pubkey, &mint);
+    let permission_pda = permission_pda_from_permissioned_account(&ephemeral_ata);
 
     let data = read_file("tests/fixtures/dlp.so");
     pt.add_account(
@@ -176,16 +177,8 @@ async fn undelegate_ephemeral_ata_permission_callback() {
 
     context.banks_client.process_transaction(tx).await.unwrap();
 
-    let delegation_pda = Pubkey::find_program_address(
-        &[b"delegation", permission_pda.to_bytes().as_slice()],
-        &DELEGATION_PROGRAM_ID,
-    )
-    .0;
-    let delegation_metadata_pda = Pubkey::find_program_address(
-        &[b"delegation-metadata", permission_pda.to_bytes().as_slice()],
-        &DELEGATION_PROGRAM_ID,
-    )
-    .0;
+    let delegation_pda = delegation_record_pda_from_delegated_account(&permission_pda);
+    let delegation_metadata_pda = delegation_metadata_pda_from_delegated_account(&permission_pda);
 
     let permission_account = context
         .banks_client

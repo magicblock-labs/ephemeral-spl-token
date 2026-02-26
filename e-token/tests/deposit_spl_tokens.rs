@@ -169,4 +169,7 @@ async fn deposit_spl_tokens_increments_ephemeral_amount() {
     let mut mut_acc = account.data.clone();
     let ata_data = unsafe { load_mut_unchecked::<EphemeralAta>(mut_acc.as_mut_slice()).unwrap() };
     assert_eq!(ata_data.amount, amount);
+    assert_eq!(ata_data.owner.as_array(), &user.to_bytes());
+    assert_eq!(ata_data.mint.as_array(), &mint.to_bytes());
+    assert_eq!(ata_data.bump, pdas.bump_ata);
 }

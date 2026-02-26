@@ -25,10 +25,7 @@ async fn initialize_ephemeral_ata() {
     let mint = Pubkey::new_unique();
 
     // Create the ephemeral ATA account owned by our program with proper space
-    let (ephemeral_ata, _bump) = Pubkey::find_program_address(
-        &[user.to_bytes().as_slice(), mint.to_bytes().as_slice()],
-        &PROGRAM,
-    );
+    let (ephemeral_ata, bump) = EphemeralAta::find_pda(&user, &mint);
 
     // Build our program instruction: discriminator 1 = InitializeEphemeralAta
     let ix = Instruction {
@@ -68,4 +65,6 @@ async fn initialize_ephemeral_ata() {
     assert!(ephemeral_ata.is_initialized());
     assert_eq!(ephemeral_ata.amount, 0);
     assert_eq!(ephemeral_ata.owner.as_array(), &user.to_bytes());
+    assert_eq!(ephemeral_ata.mint.as_array(), &mint.to_bytes());
+    assert_eq!(ephemeral_ata.bump, bump);
 }

@@ -1,5 +1,6 @@
 use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::program::ID;
+use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleEphemeralAta;
 use ephemeral_spl_api::state::{load_mut_unchecked, RawType};
 use solana_instruction::{AccountMeta, Instruction};
@@ -33,10 +34,9 @@ async fn merge_shuttle_into_ephemeral_ata_transfers_to_owner_ata_and_keeps_shutt
     let mint_kp = Keypair::new();
     let mint = mint_kp.pubkey();
 
-    let (shuttle_ephemeral_ata, _shuttle_bump) =
-        utils::derive_shuttle_ephemeral_ata(PROGRAM, owner, mint, shuttle_id);
-    let (shuttle_eata, _shuttle_eata_bump) =
-        utils::derive_shuttle_eata(PROGRAM, shuttle_ephemeral_ata, mint);
+    let (shuttle_ephemeral_ata, shuttle_bump) =
+        ShuttleEphemeralAta::find_pda(&owner, &mint, shuttle_id);
+    let (shuttle_eata, _shuttle_eata_bump) = EphemeralAta::find_pda(&shuttle_ephemeral_ata, &mint);
     let shuttle_wallet_ata = utils::derive_associated_token_address(shuttle_ephemeral_ata, mint);
 
     let setup = utils::setup_mint_and_token_accounts(
@@ -81,7 +81,7 @@ async fn merge_shuttle_into_ephemeral_ata_transfers_to_owner_ata_and_keeps_shutt
         .unwrap();
 
     let amount: u64 = 700 * 10u64.pow(DECIMALS as u32);
-    let mut ix_fund_shuttle_wallet = spl_token_interface::instruction::transfer_checked(
+    let ix_fund_shuttle_wallet = spl_token_interface::instruction::transfer_checked(
         &spl_token_interface::ID,
         &user_ata,
         &mint,
@@ -92,7 +92,6 @@ async fn merge_shuttle_into_ephemeral_ata_transfers_to_owner_ata_and_keeps_shutt
         DECIMALS,
     )
     .unwrap();
-    ix_fund_shuttle_wallet.program_id = spl_token_interface::ID;
 
     let tx_fund_shuttle_wallet = Transaction::new_signed_with_payer(
         &[ix_fund_shuttle_wallet],
@@ -184,4 +183,5 @@ async fn merge_shuttle_into_ephemeral_ata_transfers_to_owner_ata_and_keeps_shutt
     assert_eq!(shuttle.id, shuttle_id);
     assert_eq!(shuttle.owner.as_array(), &owner.to_bytes());
     assert_eq!(shuttle.payer.as_array(), &payer.to_bytes());
+    assert_eq!(shuttle.bump, shuttle_bump);
 }

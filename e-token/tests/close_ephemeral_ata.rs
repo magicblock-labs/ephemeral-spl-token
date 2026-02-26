@@ -1,5 +1,5 @@
-use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::program::ID;
+use ephemeral_spl_api::{instruction, state::ephemeral_ata::EphemeralAta};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
 use {
@@ -22,8 +22,7 @@ async fn close_ephemeral_ata_refunds_rent_and_closes_account() {
     let user = payer;
     let mint = Pubkey::new_unique();
 
-    let (ephemeral_ata, _bump) =
-        Pubkey::find_program_address(&[user.as_ref(), mint.as_ref()], &PROGRAM);
+    let (ephemeral_ata, _bump) = EphemeralAta::find_pda(&user, &mint);
 
     let recipient_kp = Keypair::new();
     let recipient = recipient_kp.pubkey();

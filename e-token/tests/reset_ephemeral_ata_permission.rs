@@ -1,5 +1,9 @@
+use ephemeral_rollups_pinocchio::acl::{
+    permission_pda_from_permissioned_account, PERMISSION_PROGRAM_ID,
+};
 use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::program::ID;
+use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::bpf_loader;
 use solana_program::pubkey::Pubkey;
@@ -56,12 +60,8 @@ async fn reset_ephemeral_ata_permission() {
     let user = payer;
     let mint = Pubkey::new_unique();
 
-    let (ephemeral_ata, _bump) =
-        Pubkey::find_program_address(&[user.as_ref(), mint.as_ref()], &PROGRAM);
-    let (permission_pda, _) = Pubkey::find_program_address(
-        &[b"permission:", ephemeral_ata.as_ref()],
-        &permission_program_id,
-    );
+    let (ephemeral_ata, _bump) = EphemeralAta::find_pda(&user, &mint);
+    let permission_pda = permission_pda_from_permissioned_account(&ephemeral_ata);
 
     let ix_init = Instruction {
         program_id: PROGRAM,

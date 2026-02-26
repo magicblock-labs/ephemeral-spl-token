@@ -35,10 +35,9 @@ async fn deposit_spl_tokens_increments_shuttle_amount() {
     let mint = mint_kp.pubkey();
 
     let pdas = utils::derive_pdas(PROGRAM, owner, mint);
-    let (shuttle_ephemeral_ata, _shuttle_bump) =
-        utils::derive_shuttle_ephemeral_ata(PROGRAM, owner, mint, shuttle_id);
-    let (shuttle_eata, _shuttle_eata_bump) =
-        utils::derive_shuttle_eata(PROGRAM, shuttle_ephemeral_ata, mint);
+    let (shuttle_ephemeral_ata, shuttle_bump) =
+        ShuttleEphemeralAta::find_pda(&owner, &mint, shuttle_id);
+    let (shuttle_eata, shuttle_eata_bump) = EphemeralAta::find_pda(&shuttle_ephemeral_ata, &mint);
     let shuttle_wallet_ata = utils::derive_associated_token_address(shuttle_ephemeral_ata, mint);
 
     let setup = utils::setup_mint_and_token_accounts(
@@ -159,6 +158,7 @@ async fn deposit_spl_tokens_increments_shuttle_amount() {
     assert_eq!(shuttle.id, shuttle_id);
     assert_eq!(shuttle.owner.as_array(), &owner.to_bytes());
     assert_eq!(shuttle.payer.as_array(), &payer.to_bytes());
+    assert_eq!(shuttle.bump, shuttle_bump);
 
     let shuttle_eata_account = context
         .banks_client
@@ -175,4 +175,5 @@ async fn deposit_spl_tokens_increments_shuttle_amount() {
         shuttle_eata_data.owner.as_array(),
         &shuttle_ephemeral_ata.to_bytes()
     );
+    assert_eq!(shuttle_eata_data.bump, shuttle_eata_bump);
 }

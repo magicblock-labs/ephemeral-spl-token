@@ -26,11 +26,10 @@ async fn initialize_global_vault() {
     let mut context = pt.start_with_context().await;
 
     let payer = context.payer.pubkey();
-    let user = payer;
     let mint_kp = Keypair::new();
     let mint = mint_kp.pubkey();
 
-    let pdas = utils::derive_pdas(PROGRAM, user, mint);
+    let (vault, bump) = GlobalVault::find_pda(&mint);
     let _setup = utils::setup_mint_and_token_accounts(
         &mut context,
         payer,
@@ -41,15 +40,15 @@ async fn initialize_global_vault() {
     )
     .await;
 
-    let vault_token_acc = utils::derive_associated_token_address(pdas.vault, mint);
+    let vault_token_acc = utils::derive_associated_token_address(vault, mint);
 
     // Build instruction
     let ix = Instruction {
         program_id: PROGRAM,
         accounts: vec![
-            AccountMeta::new(pdas.vault, false),    // writable vault account
-            AccountMeta::new(payer, true),          // payer (funds, signer)
-            AccountMeta::new_readonly(mint, false), // mint (seed)
+            AccountMeta::new(vault, false),           // writable vault account
+            AccountMeta::new(payer, true),            // payer (funds, signer)
+            AccountMeta::new_readonly(mint, false),   // mint (seed)
             AccountMeta::new(vault_token_acc, false), // vault token account
             AccountMeta::new_readonly(spl_token_interface::ID, false), // token program
             AccountMeta::new_readonly(utils::associated_token_program_id(), false), // associated token program
@@ -69,7 +68,7 @@ async fn initialize_global_vault() {
     // Verify account
     let account = context
         .banks_client
-        .get_account(pdas.vault)
+        .get_account(vault)
         .await
         .unwrap()
         .expect("global vault must exist");
@@ -88,20 +87,20 @@ async fn initialize_global_vault() {
         .unwrap()
         .expect("vault token account must exist");
     assert_eq!(vault_token_acc_state.owner, spl_token_interface::ID);
+    assert_eq!(vault_data.bump, bump);
 }
 
 #[tokio::test]
 async fn initialize_global_vault_migrates_legacy_layout() {
-    let user = Pubkey::new_unique();
     let mint_kp = Keypair::new();
     let mint = mint_kp.pubkey();
-    let pdas = utils::derive_pdas(PROGRAM, user, mint);
+    let (vault, bump) = GlobalVault::find_pda(&mint);
 
     let legacy_lamports = Rent::default().minimum_balance(32);
     let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
     utils::add_associated_token_program(&mut pt);
     pt.add_account(
-        pdas.vault,
+        vault,
         SolanaAccount {
             lamports: legacy_lamports,
             data: mint.to_bytes().to_vec(),
@@ -124,12 +123,12 @@ async fn initialize_global_vault_migrates_legacy_layout() {
     )
     .await;
 
-    let vault_token_acc = utils::derive_associated_token_address(pdas.vault, mint);
+    let vault_token_acc = utils::derive_associated_token_address(vault, mint);
 
     let ix = Instruction {
         program_id: PROGRAM,
         accounts: vec![
-            AccountMeta::new(pdas.vault, false),
+            AccountMeta::new(vault, false),
             AccountMeta::new(payer, true),
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new(vault_token_acc, false),
@@ -150,7 +149,7 @@ async fn initialize_global_vault_migrates_legacy_layout() {
 
     let account = context
         .banks_client
-        .get_account(pdas.vault)
+        .get_account(vault)
         .await
         .unwrap()
         .expect("migrated vault must exist");
@@ -169,4 +168,5 @@ async fn initialize_global_vault_migrates_legacy_layout() {
         vault_data.token_account,
         ephemeral_spl_api::Address::new_from_array(vault_token_acc.to_bytes())
     );
+    assert_eq!(vault_data.bump, bump);
 }

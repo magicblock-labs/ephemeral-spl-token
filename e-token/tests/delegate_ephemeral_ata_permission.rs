@@ -1,6 +1,11 @@
 use ephemeral_rollups_pinocchio::acl::consts::PERMISSION_PROGRAM_ID;
-use ephemeral_spl_api::instruction;
+use ephemeral_rollups_pinocchio::acl::permission_pda_from_permissioned_account;
+use ephemeral_rollups_pinocchio::pda::{
+    delegate_buffer_pda_from_delegated_account_and_owner_program,
+    delegation_metadata_pda_from_delegated_account, delegation_record_pda_from_delegated_account,
+};
 use ephemeral_spl_api::program::ID;
+use ephemeral_spl_api::{instruction, state::ephemeral_ata::EphemeralAta};
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::bpf_loader;
@@ -59,14 +64,8 @@ async fn delegate_ephemeral_ata_permission_succeeds() {
     let user = payer;
     let mint = Pubkey::new_unique();
 
-    let (ephemeral_ata, _bump) = Pubkey::find_program_address(
-        &[user.to_bytes().as_slice(), mint.to_bytes().as_slice()],
-        &PROGRAM,
-    );
-    let (permission_pda, _) = Pubkey::find_program_address(
-        &[b"permission:", ephemeral_ata.as_ref()],
-        &PERMISSION_PROGRAM_ID,
-    );
+    let (ephemeral_ata, _bump) = EphemeralAta::find_pda(&user, &mint);
+    let permission_pda = permission_pda_from_permissioned_account(&ephemeral_ata);
 
     let ix_init_ata = Instruction {
         program_id: PROGRAM,
@@ -108,18 +107,12 @@ async fn delegate_ephemeral_ata_permission_succeeds() {
         .await
         .unwrap();
 
-    let (buffer_pda, _) = Pubkey::find_program_address(
-        &[b"buffer", permission_pda.as_ref()],
+    let buffer_pda = delegate_buffer_pda_from_delegated_account_and_owner_program(
+        &permission_pda,
         &PERMISSION_PROGRAM_ID,
     );
-    let (delegation_record_pda, _) = Pubkey::find_program_address(
-        &[b"delegation", permission_pda.as_ref()],
-        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,
-    );
-    let (delegation_metadata_pda, _) = Pubkey::find_program_address(
-        &[b"delegation-metadata", permission_pda.as_ref()],
-        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,
-    );
+    let delegation_record_pda = delegation_record_pda_from_delegated_account(&permission_pda);
+    let delegation_metadata_pda = delegation_metadata_pda_from_delegated_account(&permission_pda);
 
     let ix_delegate_permission = Instruction {
         program_id: PROGRAM,
