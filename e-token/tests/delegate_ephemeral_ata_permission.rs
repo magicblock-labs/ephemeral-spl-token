@@ -1,45 +1,20 @@
 use ephemeral_rollups_pinocchio::acl::consts::PERMISSION_PROGRAM_ID;
 use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::program::ID;
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
-use solana_program::bpf_loader;
 use solana_program::rent::Rent;
-use solana_program_test::{read_file, tokio, ProgramTest};
+use solana_program_test::tokio;
 use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use solana_transaction::Transaction;
 
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
+mod utils;
+
+use crate::utils::setup_program_test;
 
 #[tokio::test]
 async fn delegate_ephemeral_ata_permission_succeeds() {
-    let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-    pt.prefer_bpf(true);
-
-    let acl_data = read_file("tests/fixtures/acl.so");
-    pt.add_account(
-        PERMISSION_PROGRAM_ID,
-        Account {
-            lamports: Rent::default().minimum_balance(acl_data.len()).max(1),
-            data: acl_data,
-            owner: bpf_loader::id(),
-            executable: true,
-            rent_epoch: 0,
-        },
-    );
-
-    let dlp_data = read_file("tests/fixtures/dlp.so");
-    pt.add_account(
-        ephemeral_rollups_pinocchio::ID,
-        Account {
-            lamports: Rent::default().minimum_balance(dlp_data.len()).max(1),
-            data: dlp_data,
-            owner: bpf_loader::id(),
-            executable: true,
-            rent_epoch: 0,
-        },
-    );
+    let mut pt = setup_program_test();
 
     let validator = Pubkey::new_unique();
     pt.add_account(
@@ -61,7 +36,7 @@ async fn delegate_ephemeral_ata_permission_succeeds() {
 
     let (ephemeral_ata, bump) = Pubkey::find_program_address(
         &[user.to_bytes().as_slice(), mint.to_bytes().as_slice()],
-        &PROGRAM,
+        &ephemeral_spl_api::program::ID,
     );
     let (permission_pda, _) = Pubkey::find_program_address(
         &[b"permission:", ephemeral_ata.as_ref()],
@@ -69,7 +44,7 @@ async fn delegate_ephemeral_ata_permission_succeeds() {
     );
 
     let ix_init_ata = Instruction {
-        program_id: PROGRAM,
+        program_id: ephemeral_spl_api::program::ID,
         accounts: vec![
             AccountMeta::new(ephemeral_ata, false),
             AccountMeta::new_readonly(payer, false),
@@ -81,7 +56,7 @@ async fn delegate_ephemeral_ata_permission_succeeds() {
     };
 
     let ix_create_permission = Instruction {
-        program_id: PROGRAM,
+        program_id: ephemeral_spl_api::program::ID,
         accounts: vec![
             AccountMeta::new(ephemeral_ata, false),
             AccountMeta::new(permission_pda, false),
@@ -122,7 +97,7 @@ async fn delegate_ephemeral_ata_permission_succeeds() {
     );
 
     let ix_delegate_permission = Instruction {
-        program_id: PROGRAM,
+        program_id: ephemeral_spl_api::program::ID,
         accounts: vec![
             AccountMeta::new(payer, true),
             AccountMeta::new(ephemeral_ata, false),
@@ -164,32 +139,7 @@ async fn delegate_ephemeral_ata_permission_succeeds() {
 
 #[tokio::test]
 async fn delegate_ephemeral_ata_permission_non_owner_succeeds() {
-    let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-    pt.prefer_bpf(true);
-
-    let acl_data = read_file("tests/fixtures/acl.so");
-    pt.add_account(
-        PERMISSION_PROGRAM_ID,
-        Account {
-            lamports: Rent::default().minimum_balance(acl_data.len()).max(1),
-            data: acl_data,
-            owner: bpf_loader::id(),
-            executable: true,
-            rent_epoch: 0,
-        },
-    );
-
-    let dlp_data = read_file("tests/fixtures/dlp.so");
-    pt.add_account(
-        ephemeral_rollups_pinocchio::ID,
-        Account {
-            lamports: Rent::default().minimum_balance(dlp_data.len()).max(1),
-            data: dlp_data,
-            owner: bpf_loader::id(),
-            executable: true,
-            rent_epoch: 0,
-        },
-    );
+    let mut pt = setup_program_test();
 
     let validator = Pubkey::new_unique();
     pt.add_account(
@@ -211,7 +161,7 @@ async fn delegate_ephemeral_ata_permission_non_owner_succeeds() {
 
     let (ephemeral_ata, bump) = Pubkey::find_program_address(
         &[user.to_bytes().as_slice(), mint.to_bytes().as_slice()],
-        &PROGRAM,
+        &ephemeral_spl_api::program::ID,
     );
     let (permission_pda, _) = Pubkey::find_program_address(
         &[b"permission:", ephemeral_ata.as_ref()],
@@ -219,7 +169,7 @@ async fn delegate_ephemeral_ata_permission_non_owner_succeeds() {
     );
 
     let ix_init_ata = Instruction {
-        program_id: PROGRAM,
+        program_id: ephemeral_spl_api::program::ID,
         accounts: vec![
             AccountMeta::new(ephemeral_ata, false),
             AccountMeta::new_readonly(payer, false),
@@ -231,7 +181,7 @@ async fn delegate_ephemeral_ata_permission_non_owner_succeeds() {
     };
 
     let ix_create_permission = Instruction {
-        program_id: PROGRAM,
+        program_id: ephemeral_spl_api::program::ID,
         accounts: vec![
             AccountMeta::new(ephemeral_ata, false),
             AccountMeta::new(permission_pda, false),
@@ -272,7 +222,7 @@ async fn delegate_ephemeral_ata_permission_non_owner_succeeds() {
     );
 
     let ix_delegate_permission = Instruction {
-        program_id: PROGRAM,
+        program_id: ephemeral_spl_api::program::ID,
         accounts: vec![
             AccountMeta::new(payer, true),
             AccountMeta::new(ephemeral_ata, false),

@@ -29,10 +29,7 @@ pub fn process_delegate_shuttle_ephemeral_ata(
     };
 
     unsafe {
-        if shuttle_info
-            .owner()
-            .ne(&ephemeral_spl_api::program::id_address())
-        {
+        if shuttle_info.owner().ne(&ephemeral_spl_api::program::ID) {
             return Err(ProgramError::IllegalOwner);
         }
     }
@@ -46,7 +43,7 @@ pub fn process_delegate_shuttle_ephemeral_ata(
     unsafe {
         if ephemeral_ata_info
             .owner()
-            .ne(&ephemeral_spl_api::program::id_address())
+            .ne(&ephemeral_spl_api::program::ID)
         {
             return Err(ProgramError::IllegalOwner);
         }
@@ -70,7 +67,7 @@ pub fn process_delegate_shuttle_ephemeral_ata(
             mint.as_ref(),
             bump.as_ref(),
         ],
-        &ephemeral_spl_api::program::id_address(),
+        &ephemeral_spl_api::program::ID,
     )
     .map_err(|_| ProgramError::InvalidSeeds)?;
     if derived_ephemeral_ata != *ephemeral_ata_info.address() {

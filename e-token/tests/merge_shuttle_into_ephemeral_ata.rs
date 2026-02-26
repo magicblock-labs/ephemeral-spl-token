@@ -1,29 +1,22 @@
 use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleEphemeralAta;
 use ephemeral_spl_api::state::{load_mut_unchecked, RawType};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
 use solana_program_pack::Pack;
 use spl_token_interface::state::Account;
-use {
-    solana_program_test::{tokio, ProgramTest},
-    solana_pubkey::Pubkey,
-    solana_signer::Signer,
-    solana_transaction::Transaction,
-};
+use {solana_program_test::tokio, solana_signer::Signer, solana_transaction::Transaction};
 
 mod utils;
 
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
+use crate::utils::setup_program_test;
 
 const DECIMALS: u8 = 6;
 const STARTING_BALANCE: u64 = 10_000 * 10u64.pow(DECIMALS as u32);
 
 #[tokio::test]
 async fn merge_shuttle_into_ephemeral_ata_transfers_to_owner_ata_and_keeps_shuttle_open() {
-    let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-    utils::add_associated_token_program(&mut pt);
+    let pt = setup_program_test();
     let mut context = pt.start_with_context().await;
 
     let payer = context.payer.pubkey();
@@ -33,10 +26,14 @@ async fn merge_shuttle_into_ephemeral_ata_transfers_to_owner_ata_and_keeps_shutt
     let mint_kp = Keypair::new();
     let mint = mint_kp.pubkey();
 
-    let (shuttle_ephemeral_ata, shuttle_bump) =
-        utils::derive_shuttle_ephemeral_ata(PROGRAM, owner, mint, shuttle_id);
+    let (shuttle_ephemeral_ata, shuttle_bump) = utils::derive_shuttle_ephemeral_ata(
+        ephemeral_spl_api::program::ID,
+        owner,
+        mint,
+        shuttle_id,
+    );
     let (shuttle_eata, _shuttle_eata_bump) =
-        utils::derive_shuttle_eata(PROGRAM, shuttle_ephemeral_ata, mint);
+        utils::derive_shuttle_eata(ephemeral_spl_api::program::ID, shuttle_ephemeral_ata, mint);
     let shuttle_wallet_ata = utils::derive_associated_token_address(&shuttle_ephemeral_ata, &mint);
 
     let setup = utils::setup_mint_and_token_accounts(
@@ -54,7 +51,7 @@ async fn merge_shuttle_into_ephemeral_ata_transfers_to_owner_ata_and_keeps_shutt
     shuttle_init_data.extend_from_slice(&shuttle_id.to_le_bytes());
     shuttle_init_data.push(shuttle_bump);
     let ix_init_shuttle = Instruction {
-        program_id: PROGRAM,
+        program_id: ephemeral_spl_api::program::ID,
         accounts: vec![
             AccountMeta::new_readonly(payer, true),
             AccountMeta::new(shuttle_ephemeral_ata, false),
@@ -126,7 +123,7 @@ async fn merge_shuttle_into_ephemeral_ata_transfers_to_owner_ata_and_keeps_shutt
     assert_eq!(shuttle_wallet_ata_before_merge_state.amount, amount);
 
     let ix_merge = Instruction {
-        program_id: PROGRAM,
+        program_id: ephemeral_spl_api::program::ID,
         accounts: vec![
             AccountMeta::new_readonly(payer, true),
             AccountMeta::new(user_ata, false),
@@ -177,7 +174,7 @@ async fn merge_shuttle_into_ephemeral_ata_transfers_to_owner_ata_and_keeps_shutt
         .await
         .unwrap()
         .expect("shuttle account must still exist");
-    assert_eq!(shuttle_account.owner, PROGRAM);
+    assert_eq!(shuttle_account.owner, ephemeral_spl_api::program::ID);
     assert_eq!(shuttle_account.data.len(), ShuttleEphemeralAta::LEN);
     let mut shuttle_data = shuttle_account.data.clone();
     let shuttle =

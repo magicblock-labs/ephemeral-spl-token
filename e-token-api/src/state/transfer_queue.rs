@@ -1,6 +1,11 @@
-use pinocchio::{cpi::Seed, error::ProgramError, Address};
+use pinocchio::{
+    cpi::Seed,
+    error::ProgramError,
+    sysvars::{clock::Clock, Sysvar},
+    Address,
+};
 
-use crate::constants::{MAX_QUEUE_SIZE, QUEUE_SEED};
+use crate::constants::{MAX_PROCESSED_TRANSFERS, MAX_QUEUE_SIZE, QUEUE_SEED};
 
 use super::{Initializable, RawType};
 
@@ -19,6 +24,8 @@ pub struct QueuedTransfer {
     pub chunk_size: u64,
     /// The interval in seconds between transfers.
     pub interval_seconds: u16,
+    /// The timestamp of the last transfer.
+    pub last_transfer: i64,
 }
 
 /// Internal representation of a transfer queue.
@@ -51,14 +58,14 @@ impl TransferQueue {
     pub fn create_address(mint: &Address, bump: &[u8]) -> Result<Address, ProgramError> {
         Address::create_program_address(
             &TransferQueue::seeds_with_bump(mint, bump),
-            &crate::program::id_address(),
+            &crate::program::ID,
         )
         .map_err(|_| ProgramError::InvalidSeeds)
     }
 
     #[inline(always)]
     pub fn find_pda(mint: &Address) -> (Address, u8) {
-        Address::find_program_address(&TransferQueue::seeds(&mint), &crate::program::id_address())
+        Address::find_program_address(&TransferQueue::seeds(&mint), &crate::program::ID)
     }
 
     pub fn seeds(mint: &Address) -> [&[u8]; 2] {
@@ -75,5 +82,64 @@ impl TransferQueue {
             Seed::from(mint.as_ref()),
             Seed::from(bump),
         ]
+    }
+
+    pub fn processed_transfers(
+        &mut self,
+    ) -> Result<(usize, [(u64, Address); MAX_PROCESSED_TRANSFERS]), ProgramError> {
+        let mut result = [const { (0, Address::new_from_array([0; 32])) }; MAX_PROCESSED_TRANSFERS];
+        // Using the clock as a pseudo-random number generator.
+        let now = Clock::get()?.unix_timestamp;
+
+        fn get_next_index(i: usize, length: usize, now: i64) -> usize {
+            i.wrapping_mul(now as usize) as usize % length
+        }
+
+        let mut transfers_to_consider = self.length as usize;
+        let mut i = get_next_index(1, transfers_to_consider, now);
+        let mut processed_transfers = 0;
+        loop {
+            if self.queue[i].last_transfer + (self.queue[i].interval_seconds as i64) < now {
+                // Transfer is not ready yet.
+                // We put it at the end of the queue and pick a new one.
+                self.queue.swap(i, self.length as usize - 1);
+                transfers_to_consider -= 1;
+            } else {
+                // Transfer is ready.
+                let initial_amount = self.queue[i].amount;
+                let amount_to_transfer = initial_amount.min(self.queue[i].chunk_size);
+                let destination = self.queue[i].destination.clone();
+                self.queue[i].amount -= self.queue[i].chunk_size;
+                self.queue[i].last_transfer = now;
+
+                if amount_to_transfer == initial_amount {
+                    // Transfer is complete
+                    // Remove it by putting it after the last element
+                    self.queue.swap(i, self.length as usize - 1);
+                    self.length -= 1;
+                } else {
+                    // Put it at the end of the queue to stop considering it
+                    self.queue.swap(i, transfers_to_consider - 1);
+                };
+
+                result[processed_transfers] = (amount_to_transfer, destination);
+
+                transfers_to_consider -= 1;
+                processed_transfers += 1;
+                if processed_transfers >= MAX_PROCESSED_TRANSFERS {
+                    break;
+                }
+            }
+
+            if transfers_to_consider == 0 {
+                // Not enough transfers are ready yet.
+                break;
+            }
+
+            i = get_next_index(i, transfers_to_consider, now);
+        }
+
+        // The last N elements
+        Ok((processed_transfers, result))
     }
 }

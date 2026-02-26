@@ -1,23 +1,19 @@
-use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::{load_mut_unchecked, Initializable, RawType};
 use solana_instruction::Instruction;
 use {
-    ephemeral_spl_api::instruction,
-    solana_instruction::AccountMeta,
-    solana_program_test::{tokio, ProgramTest},
-    solana_pubkey::Pubkey,
-    solana_signer::Signer,
-    solana_transaction::Transaction,
+    ephemeral_spl_api::instruction, solana_instruction::AccountMeta, solana_program_test::tokio,
+    solana_pubkey::Pubkey, solana_signer::Signer, solana_transaction::Transaction,
 };
 
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
+mod utils;
+
+use crate::utils::setup_program_test;
 
 #[tokio::test]
 async fn initialize_ephemeral_ata() {
-    let context = ProgramTest::new("ephemeral_token_program", PROGRAM, None)
-        .start_with_context()
-        .await;
+    let pt = setup_program_test();
+    let context = pt.start_with_context().await;
 
     // Derive arbitrary keys
     let payer = context.payer.pubkey();
@@ -27,12 +23,12 @@ async fn initialize_ephemeral_ata() {
     // Create the ephemeral ATA account owned by our program with proper space
     let (ephemeral_ata, bump) = Pubkey::find_program_address(
         &[user.to_bytes().as_slice(), mint.to_bytes().as_slice()],
-        &PROGRAM,
+        &ephemeral_spl_api::program::ID,
     );
 
     // Build our program instruction: discriminator 1 = InitializeEphemeralAta
     let ix = Instruction {
-        program_id: PROGRAM,
+        program_id: ephemeral_spl_api::program::ID,
         accounts: vec![
             AccountMeta::new(ephemeral_ata, false),  // writable account
             AccountMeta::new_readonly(payer, false), // payer (funding)
@@ -59,7 +55,7 @@ async fn initialize_ephemeral_ata() {
         .unwrap()
         .expect("ephemeral ata account must exist");
 
-    assert_eq!(account.owner, PROGRAM); // owned by the program
+    assert_eq!(account.owner, ephemeral_spl_api::program::ID); // owned by the program
     assert_eq!(account.data.len(), EphemeralAta::LEN);
 
     let mut mut_acc = account.data.clone();

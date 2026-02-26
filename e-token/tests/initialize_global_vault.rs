@@ -1,4 +1,3 @@
-use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::global_vault::GlobalVault;
 use ephemeral_spl_api::state::{load_mut_unchecked, Initializable, RawType};
 use solana_account::Account as SolanaAccount;
@@ -6,23 +5,19 @@ use solana_instruction::Instruction;
 use solana_keypair::Keypair;
 use solana_program::rent::Rent;
 use {
-    ephemeral_spl_api::instruction,
-    solana_instruction::AccountMeta,
-    solana_program_test::{tokio, ProgramTest},
-    solana_pubkey::Pubkey,
-    solana_signer::Signer,
-    solana_transaction::Transaction,
+    ephemeral_spl_api::instruction, solana_instruction::AccountMeta, solana_program_test::tokio,
+    solana_pubkey::Pubkey, solana_signer::Signer, solana_transaction::Transaction,
 };
 mod utils;
 
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
+use crate::utils::setup_program_test;
+
 const DECIMALS: u8 = 6;
 const STARTING_BALANCE: u64 = 1;
 
 #[tokio::test]
 async fn initialize_global_vault() {
-    let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-    utils::add_associated_token_program(&mut pt);
+    let pt = setup_program_test();
     let mut context = pt.start_with_context().await;
 
     let payer = context.payer.pubkey();
@@ -30,7 +25,7 @@ async fn initialize_global_vault() {
     let mint_kp = Keypair::new();
     let mint = mint_kp.pubkey();
 
-    let pdas = utils::derive_pdas(PROGRAM, user, mint);
+    let pdas = utils::derive_pdas(ephemeral_spl_api::program::ID, user, mint);
     let _setup = utils::setup_mint_and_token_accounts(
         &mut context,
         payer,
@@ -45,7 +40,7 @@ async fn initialize_global_vault() {
 
     // Build instruction
     let ix = Instruction {
-        program_id: PROGRAM,
+        program_id: ephemeral_spl_api::program::ID,
         accounts: vec![
             AccountMeta::new(pdas.vault, false),    // writable vault account
             AccountMeta::new(payer, true),          // payer (funds, signer)
@@ -74,7 +69,7 @@ async fn initialize_global_vault() {
         .unwrap()
         .expect("global vault must exist");
 
-    assert_eq!(account.owner, PROGRAM);
+    assert_eq!(account.owner, ephemeral_spl_api::program::ID);
     assert_eq!(account.data.len(), GlobalVault::LEN);
 
     let mut mut_acc = account.data.clone();
@@ -95,17 +90,16 @@ async fn initialize_global_vault_migrates_legacy_layout() {
     let user = Pubkey::new_unique();
     let mint_kp = Keypair::new();
     let mint = mint_kp.pubkey();
-    let pdas = utils::derive_pdas(PROGRAM, user, mint);
+    let pdas = utils::derive_pdas(ephemeral_spl_api::program::ID, user, mint);
 
     let legacy_lamports = Rent::default().minimum_balance(32);
-    let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-    utils::add_associated_token_program(&mut pt);
+    let mut pt = setup_program_test();
     pt.add_account(
         pdas.vault,
         SolanaAccount {
             lamports: legacy_lamports,
             data: mint.to_bytes().to_vec(),
-            owner: PROGRAM,
+            owner: ephemeral_spl_api::program::ID,
             executable: false,
             rent_epoch: 0,
         },
@@ -127,7 +121,7 @@ async fn initialize_global_vault_migrates_legacy_layout() {
     let vault_token_acc = utils::derive_associated_token_address(&pdas.vault, &mint);
 
     let ix = Instruction {
-        program_id: PROGRAM,
+        program_id: ephemeral_spl_api::program::ID,
         accounts: vec![
             AccountMeta::new(pdas.vault, false),
             AccountMeta::new(payer, true),

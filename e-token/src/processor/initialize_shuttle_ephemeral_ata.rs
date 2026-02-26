@@ -44,18 +44,15 @@ pub fn process_initialize_shuttle_ephemeral_ata(
             shuttle_id_seed.as_ref(),
             bump.as_ref(),
         ],
-        &ephemeral_spl_api::program::id_address(),
+        &ephemeral_spl_api::program::ID,
     )
     .map_err(|_| ProgramError::InvalidSeeds)?;
     if derived_shuttle_pda != *shuttle_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
 
-    let shuttle_is_owned_by_program = unsafe {
-        shuttle_info
-            .owner()
-            .eq(&ephemeral_spl_api::program::id_address())
-    };
+    let shuttle_is_owned_by_program =
+        unsafe { shuttle_info.owner().eq(&ephemeral_spl_api::program::ID) };
 
     if !shuttle_is_owned_by_program {
         let bump = [args.bump()];
@@ -85,7 +82,7 @@ pub fn process_initialize_shuttle_ephemeral_ata(
                 shuttle_info.address().as_ref(),
                 mint_info.address().as_ref(),
             ],
-            &ephemeral_spl_api::program::id_address(),
+            &ephemeral_spl_api::program::ID,
         );
     if derived_shuttle_eata != *shuttle_eata_info.address() {
         return Err(ProgramError::InvalidSeeds);

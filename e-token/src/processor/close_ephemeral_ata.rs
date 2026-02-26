@@ -21,7 +21,7 @@ pub fn process_close_ephemeral_ata(
     unsafe {
         if ephemeral_ata_info
             .owner()
-            .ne(&ephemeral_spl_api::program::id_address())
+            .ne(&ephemeral_spl_api::program::ID)
         {
             return Err(ProgramError::IllegalOwner);
         }
@@ -50,7 +50,7 @@ pub fn process_close_ephemeral_ata(
 
     let (derived_pda, _) = ephemeral_spl_api::Address::find_program_address(
         &[owner_info.address().as_ref(), mint.as_ref()],
-        &ephemeral_spl_api::program::id_address(),
+        &ephemeral_spl_api::program::ID,
     );
     if derived_pda != *ephemeral_ata_info.address() {
         return Err(ProgramError::InvalidSeeds);

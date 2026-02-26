@@ -1,14 +1,13 @@
 use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::program::ID;
 use solana_instruction::{AccountMeta, Instruction};
-use solana_program::bpf_loader;
 use solana_program::pubkey::Pubkey;
-use solana_program::rent::Rent;
-use solana_program_test::{read_file, tokio, ProgramTest};
+use solana_program_test::tokio;
 use solana_signer::Signer;
 use solana_transaction::Transaction;
 
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
+mod utils;
+
+use crate::utils::setup_program_test;
 
 fn find_member_flag(data: &[u8], member_pubkey: &Pubkey, expected: u8) -> Option<u8> {
     let key_bytes = member_pubkey.as_ref();
@@ -37,34 +36,24 @@ async fn reset_ephemeral_ata_permission() {
             .unwrap();
     let permission_program_id = Pubkey::new_from_array(permission_program_bytes);
 
-    let mut program_test = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-    program_test.prefer_bpf(true);
-    let data = read_file("tests/fixtures/acl.so");
-    program_test.add_account(
-        permission_program_id,
-        solana_account::Account {
-            lamports: Rent::default().minimum_balance(data.len()).max(1),
-            data,
-            owner: bpf_loader::id(),
-            executable: true,
-            rent_epoch: 0,
-        },
-    );
-    let context = program_test.start_with_context().await;
+    let pt = setup_program_test();
+    let context = pt.start_with_context().await;
 
     let payer = context.payer.pubkey();
     let user = payer;
     let mint = Pubkey::new_unique();
 
-    let (ephemeral_ata, bump) =
-        Pubkey::find_program_address(&[user.as_ref(), mint.as_ref()], &PROGRAM);
+    let (ephemeral_ata, bump) = Pubkey::find_program_address(
+        &[user.as_ref(), mint.as_ref()],
+        &ephemeral_spl_api::program::ID,
+    );
     let (permission_pda, _) = Pubkey::find_program_address(
         &[b"permission:", ephemeral_ata.as_ref()],
         &permission_program_id,
     );
 
     let ix_init = Instruction {
-        program_id: PROGRAM,
+        program_id: ephemeral_spl_api::program::ID,
         accounts: vec![
             AccountMeta::new(ephemeral_ata, false),
             AccountMeta::new_readonly(payer, false),
@@ -76,7 +65,7 @@ async fn reset_ephemeral_ata_permission() {
     };
 
     let ix_create_permission = Instruction {
-        program_id: PROGRAM,
+        program_id: ephemeral_spl_api::program::ID,
         accounts: vec![
             AccountMeta::new(ephemeral_ata, false),
             AccountMeta::new(permission_pda, false),
@@ -93,7 +82,7 @@ async fn reset_ephemeral_ata_permission() {
 
     let reset_flag = 0;
     let ix_reset_permission = Instruction {
-        program_id: PROGRAM,
+        program_id: ephemeral_spl_api::program::ID,
         accounts: vec![
             AccountMeta::new(ephemeral_ata, false),
             AccountMeta::new(permission_pda, false),

@@ -1,47 +1,36 @@
 use dlp::pda::{fees_vault_pda, validator_fees_vault_pda_from_validator};
 use ephemeral_rollups_pinocchio::acl::consts::PERMISSION_PROGRAM_ID;
 use ephemeral_rollups_pinocchio::consts::DELEGATION_PROGRAM_ID;
-use ephemeral_spl_api::program::ID;
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
-use solana_program::bpf_loader;
 use solana_program::example_mocks::solana_sdk::system_program;
 use solana_program::native_token::LAMPORTS_PER_SOL;
 use solana_program::rent::Rent;
-use solana_program_test::{read_file, tokio, ProgramTest};
+use solana_program_test::tokio;
 use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use solana_transaction::Transaction;
 
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
+mod utils;
+
+use crate::utils::setup_program_test;
 
 #[tokio::test]
 async fn undelegate_ephemeral_ata_permission_callback() {
-    let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-    pt.prefer_bpf(true);
+    let mut pt = setup_program_test();
 
     let payer = Keypair::new();
     let payer_pubkey = payer.pubkey();
     let mint = Keypair::new().pubkey();
 
-    let (ephemeral_ata, _bump) =
-        Pubkey::find_program_address(&[payer_pubkey.as_ref(), mint.as_ref()], &PROGRAM);
+    let (ephemeral_ata, _bump) = Pubkey::find_program_address(
+        &[payer_pubkey.as_ref(), mint.as_ref()],
+        &ephemeral_spl_api::program::ID,
+    );
     let (permission_pda, _perm_bump) = Pubkey::find_program_address(
         &[b"permission:", ephemeral_ata.as_ref()],
         &PERMISSION_PROGRAM_ID,
-    );
-
-    let data = read_file("tests/fixtures/dlp.so");
-    pt.add_account(
-        ephemeral_rollups_pinocchio::ID,
-        Account {
-            lamports: Rent::default().minimum_balance(data.len()).max(1),
-            data,
-            owner: bpf_loader::id(),
-            executable: true,
-            rent_epoch: 0,
-        },
     );
 
     pt.add_account(
@@ -72,7 +61,7 @@ async fn undelegate_ephemeral_ata_permission_callback() {
         vec![0u8; dlp::state::DelegationRecord::size_with_discriminator()];
     let delegation_record = dlp::state::DelegationRecord {
         authority: payer_pubkey.to_bytes().into(),
-        owner: PROGRAM.to_bytes().into(),
+        owner: ephemeral_spl_api::program::ID.to_bytes().into(),
         delegation_slot: 0,
         commit_frequency_ms: 0,
         lamports: Rent::default().minimum_balance(delegation_record_data.len()),
@@ -149,7 +138,7 @@ async fn undelegate_ephemeral_ata_permission_callback() {
     let ix_undelegate = dlp::instruction_builder::undelegate(
         payer_pubkey.to_bytes().into(),
         permission_pda.to_bytes().into(),
-        PROGRAM.to_bytes().into(),
+        ephemeral_spl_api::program::ID.to_bytes().into(),
         payer_pubkey.to_bytes().into(),
     );
 
@@ -204,7 +193,7 @@ async fn undelegate_ephemeral_ata_permission_callback() {
         .await
         .unwrap();
 
-    assert_eq!(permission_account.owner, PROGRAM);
+    assert_eq!(permission_account.owner, ephemeral_spl_api::program::ID);
     assert!(
         delegation_account.is_none() || delegation_account.unwrap().owner != DELEGATION_PROGRAM_ID
     );

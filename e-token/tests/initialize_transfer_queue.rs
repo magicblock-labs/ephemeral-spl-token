@@ -8,45 +8,27 @@ use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleEphemeralAta;
 use ephemeral_spl_api::state::transfer_queue::QueuedTransfer;
+use ephemeral_spl_api::state::transfer_queue::TransferQueue;
 use ephemeral_spl_api::state::{load_unchecked, RawType};
-use ephemeral_spl_api::{program::ID, state::transfer_queue::TransferQueue};
 use pinocchio_token_2022::state::TokenAccount;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
-use solana_program::bpf_loader;
-use solana_program::rent::Rent;
-use solana_program_test::{read_file, tokio, ProgramTest};
+use solana_program_test::tokio;
 use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use solana_transaction::Transaction;
 
 use crate::utils::{
     allocate_transfer_queue, associated_token_program_id, derive_associated_token_address,
+    setup_program_test,
 };
 
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 const DECIMALS: u8 = 6;
 const STARTING_BALANCE: u64 = 1_000;
 
 #[tokio::test]
 async fn initialize_transfer_queue() {
-    let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-
-    utils::add_associated_token_program(&mut pt);
-    let data = read_file("tests/fixtures/acl.so");
-    pt.add_account(
-        PERMISSION_PROGRAM_ID,
-        solana_account::Account {
-            lamports: Rent::default().minimum_balance(data.len()).max(1),
-            data,
-            owner: bpf_loader::id(),
-            executable: true,
-            rent_epoch: 0,
-        },
-    );
-
-    pt.prefer_bpf(true);
-
+    let pt = setup_program_test();
     let mut context = pt.start_with_context().await;
 
     let payer = context.payer.insecure_clone();
@@ -55,16 +37,20 @@ async fn initialize_transfer_queue() {
     let mint = mint_kp.pubkey();
 
     let (queue_pda, queue_bump) = TransferQueue::find_pda(&mint);
-    let (queue_eata_pda, queue_eata_bump) =
-        Pubkey::find_program_address(&[queue_pda.as_ref(), mint.as_ref()], &PROGRAM);
+    let (queue_eata_pda, queue_eata_bump) = Pubkey::find_program_address(
+        &[queue_pda.as_ref(), mint.as_ref()],
+        &ephemeral_spl_api::program::ID,
+    );
     let queue_permission_pda = permission_pda_from_permissioned_account(&queue_pda);
     let queue_ata_pda = derive_associated_token_address(&queue_pda, &mint);
     let queue_eata_permission_pda = permission_pda_from_permissioned_account(&queue_eata_pda);
     let shuttle_id = 0;
     let (shuttle_pda, _shuttle_bump) = ShuttleEphemeralAta::find_pda(&queue_pda, &mint, shuttle_id);
     let shuttle_ata_pda = derive_associated_token_address(&shuttle_pda, &mint);
-    let (shuttle_eata_pda, _shuttle_eata_bump) =
-        Pubkey::find_program_address(&[shuttle_pda.as_ref(), mint.as_ref()], &PROGRAM);
+    let (shuttle_eata_pda, _shuttle_eata_bump) = Pubkey::find_program_address(
+        &[shuttle_pda.as_ref(), mint.as_ref()],
+        &ephemeral_spl_api::program::ID,
+    );
 
     // Setup mint/accounts via utils
     let _setup = utils::setup_mint_and_token_accounts(
@@ -80,7 +66,7 @@ async fn initialize_transfer_queue() {
     allocate_transfer_queue(&mut context, mint, queue_pda).await;
 
     let ix_initialize_transfer_queue = Instruction::new_with_bytes(
-        PROGRAM,
+        ephemeral_spl_api::program::ID,
         &vec![
             vec![instruction::INITIALIZE_TRANSFER_QUEUE, queue_eata_bump],
             shuttle_id.to_le_bytes().to_vec(),
@@ -120,7 +106,7 @@ async fn initialize_transfer_queue() {
         .unwrap()
         .expect("queue account must exist");
 
-    assert_eq!(queue_account.owner, PROGRAM);
+    assert_eq!(queue_account.owner, ephemeral_spl_api::program::ID);
     assert_eq!(queue_account.data.len(), TransferQueue::LEN);
     let queue = unsafe { load_unchecked::<TransferQueue>(queue_account.data.as_slice()).unwrap() };
     assert_eq!(queue.mint, mint);
@@ -143,7 +129,7 @@ async fn initialize_transfer_queue() {
     assert_eq!(permission.permissioned_account, queue_pda);
     let expected_members = [Member {
         flags: MemberFlags::default(),
-        pubkey: PROGRAM,
+        pubkey: ephemeral_spl_api::program::ID,
     }];
     assert_eq!(permission.members, Some(expected_members.as_ref()));
 
@@ -168,7 +154,7 @@ async fn initialize_transfer_queue() {
         .unwrap()
         .expect("queue eata account must exist");
 
-    assert_eq!(queue_eata_account.owner, PROGRAM);
+    assert_eq!(queue_eata_account.owner, ephemeral_spl_api::program::ID);
     assert_eq!(queue_eata_account.data.len(), EphemeralAta::LEN);
     let queue_eata =
         unsafe { load_unchecked::<EphemeralAta>(queue_eata_account.data.as_slice()).unwrap() };
@@ -189,7 +175,7 @@ async fn initialize_transfer_queue() {
     assert_eq!(queue_eata_permission.permissioned_account, queue_eata_pda);
     let expected_members = [Member {
         flags: MemberFlags::default(),
-        pubkey: PROGRAM,
+        pubkey: ephemeral_spl_api::program::ID,
     }];
     assert_eq!(
         queue_eata_permission.members,
@@ -202,7 +188,7 @@ async fn initialize_transfer_queue() {
         .await
         .unwrap()
         .expect("shuttle account must exist");
-    assert_eq!(shuttle_account.owner, PROGRAM);
+    assert_eq!(shuttle_account.owner, ephemeral_spl_api::program::ID);
     assert_eq!(shuttle_account.data.len(), ShuttleEphemeralAta::LEN);
     let shuttle =
         unsafe { load_unchecked::<ShuttleEphemeralAta>(shuttle_account.data.as_slice()).unwrap() };

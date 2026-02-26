@@ -54,7 +54,7 @@ pub fn process_initialize_transfer_queue(
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
-    if !queue_info.owned_by(&ephemeral_spl_api::program::id_address())
+    if !queue_info.owned_by(&ephemeral_spl_api::program::ID)
         && queue_info.data_len() != TransferQueue::LEN
     {
         return Err(ProgramError::UninitializedAccount);
@@ -151,7 +151,7 @@ pub fn process_initialize_transfer_queue(
             shuttle_info.address().as_ref(),
             mint_info.address().as_ref(),
         ],
-        &ephemeral_spl_api::program::id_address(),
+        &ephemeral_spl_api::program::ID,
     );
     if &shuttle_eata_pda != shuttle_eata_info.address() {
         return Err(ProgramError::InvalidSeeds);

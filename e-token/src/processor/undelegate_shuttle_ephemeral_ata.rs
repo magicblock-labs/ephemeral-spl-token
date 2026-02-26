@@ -30,10 +30,7 @@ pub fn process_undelegate_shuttle_ephemeral_ata(
     }
 
     unsafe {
-        if shuttle_info
-            .owner()
-            .ne(&ephemeral_spl_api::program::id_address())
-        {
+        if shuttle_info.owner().ne(&ephemeral_spl_api::program::ID) {
             return Err(ProgramError::IllegalOwner);
         }
     }
@@ -60,7 +57,7 @@ pub fn process_undelegate_shuttle_ephemeral_ata(
 
     let (derived_shuttle_eata, _) = ephemeral_spl_api::Address::find_program_address(
         &[shuttle_info.address().as_ref(), mint.as_ref()],
-        &ephemeral_spl_api::program::id_address(),
+        &ephemeral_spl_api::program::ID,
     );
     if derived_shuttle_eata != *shuttle_eata_info.address() {
         return Err(ProgramError::InvalidSeeds);

@@ -32,7 +32,7 @@ pub fn process_initialize_global_vault(
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
-    let program_id = ephemeral_spl_api::program::id_address();
+    let program_id = ephemeral_spl_api::program::ID;
     if vault_info.owned_by(&program_id) && vault_info.data_len() == GlobalVault::LEN {
         return Ok(());
     }

@@ -1,27 +1,26 @@
 use dlp::pda::{fees_vault_pda, validator_fees_vault_pda_from_validator};
 use ephemeral_rollups_pinocchio::consts::DELEGATION_PROGRAM_ID;
-use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::{load_mut_unchecked, RawType};
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
-use solana_program::bpf_loader;
 use solana_program::example_mocks::solana_sdk::system_program;
 use solana_program::native_token::LAMPORTS_PER_SOL;
 use solana_program::rent::Rent;
-use solana_program_test::{read_file, tokio, ProgramTest};
+use solana_program_test::tokio;
 use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use solana_transaction::Transaction;
 
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
+mod utils;
+
+use crate::utils::setup_program_test;
 
 #[tokio::test]
 async fn undelegation_callback_restores_ephemeral_ata() {
     // Start the program test with our program loaded
-    let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-    pt.prefer_bpf(true);
+    let mut pt = setup_program_test();
 
     // Use a deterministic mint for stable PDA derivations
     let mint_kp = Keypair::new();
@@ -31,22 +30,10 @@ async fn undelegation_callback_restores_ephemeral_ata() {
     let payer = Keypair::new();
     let payer_pubkey = payer.pubkey();
     let seeds: [&[u8]; 2] = [payer_pubkey.as_ref(), mint.as_ref()];
-    let (delegated_ata, _bump) = Pubkey::find_program_address(&seeds, &PROGRAM);
+    let (delegated_ata, _bump) =
+        Pubkey::find_program_address(&seeds, &ephemeral_spl_api::program::ID);
 
     println!("Delegated ata: {:?}", delegated_ata);
-
-    // Setup the delegation program
-    let data = read_file("tests/fixtures/dlp.so");
-    pt.add_account(
-        ephemeral_rollups_pinocchio::ID,
-        Account {
-            lamports: Rent::default().minimum_balance(data.len()).max(1),
-            data,
-            owner: bpf_loader::id(),
-            executable: true,
-            rent_epoch: 0,
-        },
-    );
 
     // Setup the payer
     pt.add_account(
@@ -81,7 +68,7 @@ async fn undelegation_callback_restores_ephemeral_ata() {
         vec![0u8; dlp::state::DelegationRecord::size_with_discriminator()];
     let delegation_record = dlp::state::DelegationRecord {
         authority: payer_pubkey.to_bytes().into(),
-        owner: PROGRAM.to_bytes().into(),
+        owner: ephemeral_spl_api::program::ID.to_bytes().into(),
         delegation_slot: 0,
         commit_frequency_ms: 0,
         lamports: Rent::default().minimum_balance(delegation_record_data.len()),
@@ -162,7 +149,7 @@ async fn undelegation_callback_restores_ephemeral_ata() {
     let ix_undelegate = dlp::instruction_builder::undelegate(
         payer_pubkey.to_bytes().into(),
         delegated_ata.to_bytes().into(),
-        PROGRAM.to_bytes().into(),
+        ephemeral_spl_api::program::ID.to_bytes().into(),
         payer_pubkey.to_bytes().into(),
     );
 

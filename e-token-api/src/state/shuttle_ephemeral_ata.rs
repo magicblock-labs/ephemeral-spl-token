@@ -33,7 +33,7 @@ impl ShuttleEphemeralAta {
                 mint.as_ref(),
                 shuttle_id.to_le_bytes().as_ref(),
             ],
-            &crate::program::id_address(),
+            &crate::program::ID,
         )
     }
 }

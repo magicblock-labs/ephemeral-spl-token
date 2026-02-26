@@ -28,10 +28,7 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
     }
 
     unsafe {
-        if shuttle_info
-            .owner()
-            .ne(&ephemeral_spl_api::program::id_address())
-        {
+        if shuttle_info.owner().ne(&ephemeral_spl_api::program::ID) {
             return Err(ProgramError::IllegalOwner);
         }
     }
@@ -58,7 +55,7 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
             mint_info.address().as_ref(),
             shuttle_id_seed.as_ref(),
         ],
-        &ephemeral_spl_api::program::id_address(),
+        &ephemeral_spl_api::program::ID,
     );
     if derived_shuttle != *shuttle_info.address() {
         return Err(ProgramError::InvalidSeeds);

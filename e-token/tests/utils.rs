@@ -1,11 +1,14 @@
+use ephemeral_rollups_pinocchio::acl::PERMISSION_PROGRAM_ID;
 use ephemeral_spl_api::{
     instruction,
     state::{transfer_queue::TransferQueue, RawType},
 };
+use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
 use solana_program::{
     account_info::AccountInfo,
+    bpf_loader,
     entrypoint::ProgramResult,
     program::{invoke, invoke_signed},
     program_error::ProgramError,
@@ -13,7 +16,7 @@ use solana_program::{
     sysvar::Sysvar,
 };
 use solana_program_pack::Pack;
-use solana_program_test::{processor, ProgramTest, ProgramTestContext};
+use solana_program_test::{processor, read_file, ProgramTest, ProgramTestContext};
 use solana_pubkey::{pubkey, Pubkey};
 use solana_signer::Signer;
 use solana_system_interface::instruction::create_account;
@@ -32,12 +35,53 @@ pub struct Pdas {
 #[allow(dead_code)]
 pub struct TokenSetup {
     pub user_tokens: Vec<Pubkey>,
+    pub recipient_tokens: Vec<Pubkey>,
 }
 
 const ASSOCIATED_TOKEN_PROGRAM_ID: Pubkey = pubkey!("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
 
 pub fn associated_token_program_id() -> Pubkey {
     ASSOCIATED_TOKEN_PROGRAM_ID
+}
+
+pub fn setup_program_test() -> ProgramTest {
+    let mut pt = ProgramTest::new(
+        "ephemeral_token_program",
+        ephemeral_spl_api::program::ID,
+        None,
+    );
+
+    // Add the associated token program
+    add_associated_token_program(&mut pt);
+
+    // Add the permission program
+    let data = read_file("tests/fixtures/acl.so");
+    pt.add_account(
+        PERMISSION_PROGRAM_ID,
+        Account {
+            lamports: Rent::default().minimum_balance(data.len()).max(1),
+            data,
+            owner: bpf_loader::id(),
+            executable: true,
+            rent_epoch: 0,
+        },
+    );
+
+    // Setup the delegation program
+    let data = read_file("tests/fixtures/dlp.so");
+    pt.add_account(
+        ephemeral_rollups_pinocchio::ID,
+        Account {
+            lamports: Rent::default().minimum_balance(data.len()).max(1),
+            data,
+            owner: bpf_loader::id(),
+            executable: true,
+            rent_epoch: 0,
+        },
+    );
+
+    pt.prefer_bpf(true);
+    pt
 }
 
 fn process_associated_token_program_mock(
@@ -241,8 +285,31 @@ pub async fn setup_mint_and_token_accounts(
         instructions.push(init_user_ix);
     }
 
+    // Create recipient accounts
+    let mut recipient_tokens: Vec<Pubkey> = vec![];
+    let mut recipient_token_kps: Vec<Keypair> = vec![];
+    for _ in 0..user_accounts {
+        let kp = Keypair::new();
+        let pk = kp.pubkey();
+        recipient_token_kps.push(kp);
+        recipient_tokens.push(pk);
+
+        instructions.push(create_account(
+            &payer,
+            &pk,
+            token_acc_lamports,
+            token_acc_space as u64,
+            &spl_token_interface::ID,
+        ));
+
+        let mut init_user_ix =
+            initialize_account(&spl_token_interface::ID, &pk, &mint, &payer).unwrap();
+        init_user_ix.program_id = spl_token_interface::ID;
+        instructions.push(init_user_ix);
+    }
+
     // Add user token signers
-    for kp in &user_token_kps {
+    for kp in user_token_kps.iter().chain(recipient_token_kps.iter()) {
         signers.push(kp);
     }
 
@@ -270,7 +337,10 @@ pub async fn setup_mint_and_token_accounts(
 
     context.banks_client.process_transaction(tx).await.unwrap();
 
-    TokenSetup { user_tokens }
+    TokenSetup {
+        user_tokens,
+        recipient_tokens,
+    }
 }
 
 pub async fn allocate_transfer_queue(
@@ -281,7 +351,7 @@ pub async fn allocate_transfer_queue(
     let ixs = (0..(TransferQueue::LEN.div_ceil(10240)))
         .map(|_| {
             Instruction::new_with_bytes(
-                ephemeral_spl_api::program::id_address(),
+                ephemeral_spl_api::program::ID,
                 &vec![instruction::ALLOCATE_QUEUE],
                 vec![
                     AccountMeta::new(context.payer.pubkey(), true),

@@ -1,39 +1,19 @@
 use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::RawType;
-use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
-use solana_program::bpf_loader;
-use solana_program::rent::Rent;
-use solana_program_test::{read_file, tokio, ProgramTest};
+use solana_program_test::tokio;
 use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use solana_transaction::Transaction;
 
 mod utils;
 
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
+use crate::utils::setup_program_test;
 
 #[tokio::test]
 async fn delegate_ephemeral_ata_succeeds() {
-    let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-    pt.prefer_bpf(true);
-    utils::add_associated_token_program(&mut pt);
-
-    // Setup the delegation program
-    let data = read_file("tests/fixtures/dlp.so");
-    pt.add_account(
-        ephemeral_rollups_pinocchio::ID,
-        Account {
-            lamports: Rent::default().minimum_balance(data.len()).max(1),
-            data,
-            owner: bpf_loader::id(),
-            executable: true,
-            rent_epoch: 0,
-        },
-    );
-
+    let pt = setup_program_test();
     let mut context = pt.start_with_context().await;
 
     let payer = context.payer.pubkey();
@@ -43,13 +23,13 @@ async fn delegate_ephemeral_ata_succeeds() {
     let mint = mint_kp.pubkey();
 
     // Derive the PDAs for our program and setup token accounts
-    let pdas = utils::derive_pdas(PROGRAM, user, mint);
+    let pdas = utils::derive_pdas(ephemeral_spl_api::program::ID, user, mint);
     let setup =
         utils::setup_mint_and_token_accounts(&mut context, payer, &mint_kp, 6, 1_000, 1).await;
 
     // Initialize the Ephemeral ATA and Global Vault (required by the program state)
     let ix_init_ata = Instruction {
-        program_id: PROGRAM,
+        program_id: ephemeral_spl_api::program::ID,
         accounts: vec![
             AccountMeta::new(pdas.ephemeral_ata, false),
             AccountMeta::new_readonly(payer, false),
@@ -63,7 +43,7 @@ async fn delegate_ephemeral_ata_succeeds() {
     let vault_token_acc = utils::derive_associated_token_address(&pdas.vault, &mint);
 
     let ix_init_vault = Instruction {
-        program_id: PROGRAM,
+        program_id: ephemeral_spl_api::program::ID,
         accounts: vec![
             AccountMeta::new(pdas.vault, false),
             AccountMeta::new(payer, true),
@@ -115,12 +95,12 @@ async fn delegate_ephemeral_ata_succeeds() {
     );
 
     let ix_delegate = Instruction {
-        program_id: PROGRAM,
+        program_id: ephemeral_spl_api::program::ID,
         accounts: vec![
             AccountMeta::new_readonly(payer, true),      // payer (signer)
             AccountMeta::new(pdas.ephemeral_ata, false), // ephemeral_ata (PDA)
-            AccountMeta::new_readonly(PROGRAM, false),   // owner_program (this program)
-            AccountMeta::new(buffer_pda, false),         // buffer PDA (created in CPI)
+            AccountMeta::new_readonly(ephemeral_spl_api::program::ID, false), // owner_program (this program)
+            AccountMeta::new(buffer_pda, false), // buffer PDA (created in CPI)
             AccountMeta::new(delegation_record_pda, false), // delegation record PDA
             AccountMeta::new(delegation_metadata_pda, false), // delegation metadata PDA
             AccountMeta::new_readonly(ephemeral_rollups_pinocchio::ID, false), // delegation program
@@ -155,22 +135,7 @@ async fn delegate_ephemeral_ata_succeeds() {
 
 #[tokio::test]
 async fn delegate_ephemeral_ata_non_owner_succeeds() {
-    let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-    pt.prefer_bpf(true);
-    utils::add_associated_token_program(&mut pt);
-
-    let data = read_file("tests/fixtures/dlp.so");
-    pt.add_account(
-        ephemeral_rollups_pinocchio::ID,
-        Account {
-            lamports: Rent::default().minimum_balance(data.len()).max(1),
-            data,
-            owner: bpf_loader::id(),
-            executable: true,
-            rent_epoch: 0,
-        },
-    );
-
+    let pt = setup_program_test();
     let mut context = pt.start_with_context().await;
 
     let payer = context.payer.pubkey();
@@ -179,12 +144,12 @@ async fn delegate_ephemeral_ata_non_owner_succeeds() {
     let mint_kp = Keypair::new();
     let mint = mint_kp.pubkey();
 
-    let pdas = utils::derive_pdas(PROGRAM, user, mint);
+    let pdas = utils::derive_pdas(ephemeral_spl_api::program::ID, user, mint);
     let setup =
         utils::setup_mint_and_token_accounts(&mut context, payer, &mint_kp, 6, 1_000, 1).await;
 
     let ix_init_ata = Instruction {
-        program_id: PROGRAM,
+        program_id: ephemeral_spl_api::program::ID,
         accounts: vec![
             AccountMeta::new(pdas.ephemeral_ata, false),
             AccountMeta::new_readonly(payer, false),
@@ -198,7 +163,7 @@ async fn delegate_ephemeral_ata_non_owner_succeeds() {
     let vault_token_acc = utils::derive_associated_token_address(&pdas.vault, &mint);
 
     let ix_init_vault = Instruction {
-        program_id: PROGRAM,
+        program_id: ephemeral_spl_api::program::ID,
         accounts: vec![
             AccountMeta::new(pdas.vault, false),
             AccountMeta::new(payer, true),
@@ -237,11 +202,11 @@ async fn delegate_ephemeral_ata_non_owner_succeeds() {
     );
 
     let ix_delegate = Instruction {
-        program_id: PROGRAM,
+        program_id: ephemeral_spl_api::program::ID,
         accounts: vec![
             AccountMeta::new_readonly(payer, true),
             AccountMeta::new(pdas.ephemeral_ata, false),
-            AccountMeta::new_readonly(PROGRAM, false),
+            AccountMeta::new_readonly(ephemeral_spl_api::program::ID, false),
             AccountMeta::new(buffer_pda, false),
             AccountMeta::new(delegation_record_pda, false),
             AccountMeta::new(delegation_metadata_pda, false),

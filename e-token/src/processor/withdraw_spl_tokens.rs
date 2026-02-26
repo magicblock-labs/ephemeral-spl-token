@@ -39,7 +39,7 @@ pub fn process_withdraw_spl_tokens(
     unsafe {
         if ephemeral_ata_info
             .owner()
-            .ne(&ephemeral_spl_api::program::id_address())
+            .ne(&ephemeral_spl_api::program::ID)
         {
             return Err(ProgramError::IllegalOwner);
         }
@@ -49,10 +49,7 @@ pub fn process_withdraw_spl_tokens(
 
     // Validate vault ownership before reading raw data.
     unsafe {
-        if vault_info
-            .owner()
-            .ne(&ephemeral_spl_api::program::id_address())
-        {
+        if vault_info.owner().ne(&ephemeral_spl_api::program::ID) {
             return Err(ProgramError::IllegalOwner);
         }
     }

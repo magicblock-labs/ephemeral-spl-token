@@ -28,7 +28,7 @@ pub fn process_initialize_ephemeral_ata(
         // Make init idempotent
         if ephemeral_ata_info
             .owner()
-            .eq(&ephemeral_spl_api::program::id_address())
+            .eq(&ephemeral_spl_api::program::ID)
         {
             return Ok(());
         }

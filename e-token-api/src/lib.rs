@@ -7,14 +7,8 @@ pub mod constants;
 pub mod error;
 pub mod state;
 pub mod program {
-    pinocchio_pubkey::declare_id!("SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2");
+    pinocchio::address::declare_id!("SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2");
     pub use ephemeral_rollups_pinocchio::consts::DELEGATION_PROGRAM_ID;
-
-    /// Returns the program ID as an Address
-    #[inline(always)]
-    pub const fn id_address() -> pinocchio::Address {
-        pinocchio::Address::new_from_array(ID)
-    }
 }
 
 /// Re-exported `Address` type from solana-address for convenience.
@@ -74,4 +68,6 @@ pub mod instruction {
     ///     [8..16] chunk_size (u64 LE)
     ///     [16..18] interval_seconds (u16 LE)
     pub const QUEUE_TRANSFER: u8 = 18;
+    /// 19 - ProcessTransfers: process transfers from the transfer queue
+    pub const PROCESS_TRANSFERS: u8 = 19;
 }

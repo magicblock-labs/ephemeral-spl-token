@@ -1,39 +1,20 @@
 use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::RawType;
-use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
-use solana_program::bpf_loader;
-use solana_program::rent::Rent;
-use solana_program_test::{read_file, tokio, ProgramTest};
+use solana_program_test::tokio;
 use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use solana_transaction::Transaction;
 
 mod utils;
 
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
+use crate::utils::setup_program_test;
 
 #[tokio::test]
 async fn delegate_shuttle_ephemeral_ata_succeeds() {
-    let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-    pt.prefer_bpf(true);
-    utils::add_associated_token_program(&mut pt);
-
-    let data = read_file("tests/fixtures/dlp.so");
-    pt.add_account(
-        ephemeral_rollups_pinocchio::ID,
-        Account {
-            lamports: Rent::default().minimum_balance(data.len()).max(1),
-            data,
-            owner: bpf_loader::id(),
-            executable: true,
-            rent_epoch: 0,
-        },
-    );
-
+    let pt = setup_program_test();
     let mut context = pt.start_with_context().await;
 
     let payer = context.payer.pubkey();
@@ -45,10 +26,14 @@ async fn delegate_shuttle_ephemeral_ata_succeeds() {
     let _setup =
         utils::setup_mint_and_token_accounts(&mut context, payer, &mint_kp, 6, 1_000, 1).await;
 
-    let (shuttle_ephemeral_ata, shuttle_bump) =
-        utils::derive_shuttle_ephemeral_ata(PROGRAM, owner, mint, shuttle_id);
+    let (shuttle_ephemeral_ata, shuttle_bump) = utils::derive_shuttle_ephemeral_ata(
+        ephemeral_spl_api::program::ID,
+        owner,
+        mint,
+        shuttle_id,
+    );
     let (shuttle_eata, shuttle_eata_bump) =
-        utils::derive_shuttle_eata(PROGRAM, shuttle_ephemeral_ata, mint);
+        utils::derive_shuttle_eata(ephemeral_spl_api::program::ID, shuttle_ephemeral_ata, mint);
     let shuttle_wallet_ata = utils::derive_associated_token_address(&shuttle_ephemeral_ata, &mint);
 
     let mut init_data = vec![instruction::INITIALIZE_SHUTTLE_EPHEMERAL_ATA];
@@ -56,7 +41,7 @@ async fn delegate_shuttle_ephemeral_ata_succeeds() {
     init_data.push(shuttle_bump);
 
     let ix_init_shuttle = Instruction {
-        program_id: PROGRAM,
+        program_id: ephemeral_spl_api::program::ID,
         accounts: vec![
             AccountMeta::new_readonly(payer, true),
             AccountMeta::new(shuttle_ephemeral_ata, false),
@@ -115,12 +100,12 @@ async fn delegate_shuttle_ephemeral_ata_succeeds() {
     );
 
     let ix_delegate = Instruction {
-        program_id: PROGRAM,
+        program_id: ephemeral_spl_api::program::ID,
         accounts: vec![
             AccountMeta::new_readonly(payer, true),
             AccountMeta::new_readonly(shuttle_ephemeral_ata, false),
             AccountMeta::new(shuttle_eata, false),
-            AccountMeta::new_readonly(PROGRAM, false),
+            AccountMeta::new_readonly(ephemeral_spl_api::program::ID, false),
             AccountMeta::new(buffer_pda, false),
             AccountMeta::new(delegation_record_pda, false),
             AccountMeta::new(delegation_metadata_pda, false),
@@ -147,7 +132,7 @@ async fn delegate_shuttle_ephemeral_ata_succeeds() {
         .await
         .unwrap()
         .expect("shuttle account must exist");
-    assert_eq!(shuttle_meta_account.owner, PROGRAM);
+    assert_eq!(shuttle_meta_account.owner, ephemeral_spl_api::program::ID);
 
     let shuttle_eata_account = context
         .banks_client

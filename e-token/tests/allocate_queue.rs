@@ -1,42 +1,22 @@
-mod utils;
-
-use ephemeral_rollups_pinocchio::acl::consts::PERMISSION_PROGRAM_ID;
 use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::state::{load_unchecked, RawType};
-use ephemeral_spl_api::{program::ID, state::transfer_queue::TransferQueue};
+use ephemeral_spl_api::state::{load_unchecked, transfer_queue::TransferQueue, RawType};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
-use solana_program::bpf_loader;
-use solana_program::rent::Rent;
-use solana_program_test::{read_file, tokio, ProgramTest};
+use solana_program_test::tokio;
 use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use solana_transaction::Transaction;
 
-use crate::utils::allocate_transfer_queue;
+mod utils;
 
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
+use crate::utils::{allocate_transfer_queue, setup_program_test};
+
 const DECIMALS: u8 = 6;
 const STARTING_BALANCE: u64 = 1_000;
 
 #[tokio::test]
 async fn test_allocate_transfer_queue() {
-    let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-
-    utils::add_associated_token_program(&mut pt);
-    let data = read_file("tests/fixtures/acl.so");
-    pt.add_account(
-        PERMISSION_PROGRAM_ID,
-        solana_account::Account {
-            lamports: Rent::default().minimum_balance(data.len()).max(1),
-            data,
-            owner: bpf_loader::id(),
-            executable: true,
-            rent_epoch: 0,
-        },
-    );
-
-    pt.prefer_bpf(true);
+    let pt = setup_program_test();
 
     let mut context = pt.start_with_context().await;
 
@@ -58,7 +38,7 @@ async fn test_allocate_transfer_queue() {
     .await;
 
     let ix_allocate_queue = Instruction::new_with_bytes(
-        PROGRAM,
+        ephemeral_spl_api::program::ID,
         &vec![instruction::ALLOCATE_QUEUE],
         vec![
             AccountMeta::new(payer_pubkey, true),
@@ -84,33 +64,15 @@ async fn test_allocate_transfer_queue() {
         .unwrap()
         .expect("queue account must exist");
 
-    assert_eq!(queue_account.owner, PROGRAM);
+    assert_eq!(queue_account.owner, ephemeral_spl_api::program::ID);
     assert_eq!(queue_account.data.len(), 10240);
-    let queue = unsafe { load_unchecked::<TransferQueue>(queue_account.data.as_slice()).unwrap() };
-    assert_eq!(queue.mint, Pubkey::default());
-    assert_eq!(queue.bump, queue_bump);
-    assert_eq!(queue.length, 0);
+    assert_eq!(queue_account.data[1..33], Pubkey::default().to_bytes());
+    assert_eq!(queue_account.data[0], queue_bump);
 }
 
 #[tokio::test]
 async fn test_allocate_full_transfer_queue() {
-    let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-
-    utils::add_associated_token_program(&mut pt);
-    let data = read_file("tests/fixtures/acl.so");
-    pt.add_account(
-        PERMISSION_PROGRAM_ID,
-        solana_account::Account {
-            lamports: Rent::default().minimum_balance(data.len()).max(1),
-            data,
-            owner: bpf_loader::id(),
-            executable: true,
-            rent_epoch: 0,
-        },
-    );
-
-    pt.prefer_bpf(true);
-
+    let pt = setup_program_test();
     let mut context = pt.start_with_context().await;
 
     let mint_kp = Keypair::new();
@@ -127,7 +89,7 @@ async fn test_allocate_full_transfer_queue() {
         .unwrap()
         .expect("queue account must exist");
 
-    assert_eq!(queue_account.owner, PROGRAM);
+    assert_eq!(queue_account.owner, ephemeral_spl_api::program::ID);
     assert_eq!(queue_account.data.len(), TransferQueue::LEN);
     let queue = unsafe { load_unchecked::<TransferQueue>(queue_account.data.as_slice()).unwrap() };
     assert_eq!(queue.mint, Pubkey::default());

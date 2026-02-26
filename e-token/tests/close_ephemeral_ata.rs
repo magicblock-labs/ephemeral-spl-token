@@ -1,29 +1,28 @@
 use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::program::ID;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
 use {
-    solana_program_test::{tokio, ProgramTest},
-    solana_pubkey::Pubkey,
-    solana_signer::Signer,
-    solana_system_interface::instruction::create_account,
-    solana_transaction::Transaction,
+    solana_program_test::tokio, solana_pubkey::Pubkey, solana_signer::Signer,
+    solana_system_interface::instruction::create_account, solana_transaction::Transaction,
 };
 
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
+mod utils;
+
+use crate::utils::setup_program_test;
 
 #[tokio::test]
 async fn close_ephemeral_ata_refunds_rent_and_closes_account() {
-    let context = ProgramTest::new("ephemeral_token_program", PROGRAM, None)
-        .start_with_context()
-        .await;
+    let pt = setup_program_test();
+    let context = pt.start_with_context().await;
 
     let payer = context.payer.pubkey();
     let user = payer;
     let mint = Pubkey::new_unique();
 
-    let (ephemeral_ata, bump) =
-        Pubkey::find_program_address(&[user.as_ref(), mint.as_ref()], &PROGRAM);
+    let (ephemeral_ata, bump) = Pubkey::find_program_address(
+        &[user.as_ref(), mint.as_ref()],
+        &ephemeral_spl_api::program::ID,
+    );
 
     let recipient_kp = Keypair::new();
     let recipient = recipient_kp.pubkey();
@@ -38,7 +37,7 @@ async fn close_ephemeral_ata_refunds_rent_and_closes_account() {
     );
 
     let ix_init = Instruction {
-        program_id: PROGRAM,
+        program_id: ephemeral_spl_api::program::ID,
         accounts: vec![
             AccountMeta::new(ephemeral_ata, false),
             AccountMeta::new_readonly(payer, false),
@@ -79,7 +78,7 @@ async fn close_ephemeral_ata_refunds_rent_and_closes_account() {
     assert!(ephemeral_ata_lamports > 0);
 
     let ix_close = Instruction {
-        program_id: PROGRAM,
+        program_id: ephemeral_spl_api::program::ID,
         accounts: vec![
             AccountMeta::new_readonly(payer, true),
             AccountMeta::new(ephemeral_ata, false),

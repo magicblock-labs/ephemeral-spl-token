@@ -76,7 +76,7 @@ pub fn initialize_ephemeral_ata(
         EphemeralAta::LEN,
         payer_info,
         ephemeral_ata_info,
-        &ephemeral_spl_api::program::id_address(),
+        &ephemeral_spl_api::program::ID,
         &[signer_seeds],
     )?;
 
@@ -117,7 +117,7 @@ pub fn initialize_shuttle(
         ShuttleEphemeralAta::LEN,
         payer_info,
         shuttle_info,
-        &ephemeral_spl_api::program::id_address(),
+        &ephemeral_spl_api::program::ID,
         &[signer_seeds],
     )?;
 

@@ -33,7 +33,7 @@ pub fn process_deposit_spl_tokens(
     unsafe {
         if ephemeral_ata_info
             .owner()
-            .ne(&ephemeral_spl_api::program::id_address())
+            .ne(&ephemeral_spl_api::program::ID)
         {
             return Err(ProgramError::IllegalOwner);
         }
@@ -81,10 +81,7 @@ fn transfer_to_vault_for_mint(
     amount: u64,
 ) -> ProgramResult {
     unsafe {
-        if vault_info
-            .owner()
-            .ne(&ephemeral_spl_api::program::id_address())
-        {
+        if vault_info.owner().ne(&ephemeral_spl_api::program::ID) {
             return Err(ProgramError::IllegalOwner);
         }
     }

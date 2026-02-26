@@ -26,7 +26,7 @@ pub fn process_allocate_queue(accounts: &[AccountView], _instruction_data: &[u8]
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
-    let remaining_space = if !queue_info.owned_by(&ephemeral_spl_api::program::id_address()) {
+    let remaining_space = if !queue_info.owned_by(&ephemeral_spl_api::program::ID) {
         // First call, create the account
         let (queue_pda, queue_bump) = TransferQueue::find_pda(mint_info.address());
         if queue_info.address() != &queue_pda {
@@ -43,7 +43,7 @@ pub fn process_allocate_queue(accounts: &[AccountView], _instruction_data: &[u8]
             TransferQueue::LEN,
             payer_info,
             queue_info,
-            &ephemeral_spl_api::program::id_address(),
+            &ephemeral_spl_api::program::ID,
             &[queue_signer.clone()],
         )?;
 

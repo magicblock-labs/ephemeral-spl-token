@@ -1,10 +1,11 @@
 use core::marker::PhantomData;
 use ephemeral_spl_api::{
-    constants::{MAX_TRANSFER_DURATION_SECONDS, MIN_CHUNK_SIZE_BPS},
+    constants::{MAX_CHUNKS_PER_TRANSFER, MAX_TRANSFER_DURATION_SECONDS},
     error::EphemeralSplError,
     state::transfer_queue::{QueuedTransfer, TransferQueue},
 };
-use pinocchio_token_2022::instructions::TransferChecked;
+use pinocchio::sysvars::{clock::Clock, Sysvar};
+use pinocchio_token_2022::{instructions::TransferChecked, state::TokenAccount};
 
 use {
     ephemeral_spl_api::state::load_mut_unchecked,
@@ -22,6 +23,7 @@ pub fn process_queue_transfer(accounts: &[AccountView], instruction_data: &[u8])
         depositor_ata_info, // writable
         queue_info, // writable, PDA [mint]
         queue_ata_info, // writable, ATA for [depositor, mint]
+        recipient_ata_info, // readonly, ATA for [recipient, mint]
         token_program_info, // []
     ] = accounts else {
         return Err(ProgramError::NotEnoughAccountKeys);
@@ -29,10 +31,7 @@ pub fn process_queue_transfer(accounts: &[AccountView], instruction_data: &[u8])
 
     // Validate Queue ownership first, before reading raw data.
     unsafe {
-        if queue_info
-            .owner()
-            .ne(&ephemeral_spl_api::program::id_address())
-        {
+        if queue_info.owner().ne(&ephemeral_spl_api::program::ID) {
             return Err(ProgramError::IllegalOwner);
         }
     }
@@ -52,8 +51,8 @@ pub fn process_queue_transfer(accounts: &[AccountView], instruction_data: &[u8])
         return Err(ProgramError::InvalidInstructionData);
     }
 
-    let chunks = args.amount() / args.chunk_size();
-    if chunks < MIN_CHUNK_SIZE_BPS as u64 {
+    let chunks = args.amount().div_ceil(*args.chunk_size());
+    if chunks > MAX_CHUNKS_PER_TRANSFER as u64 {
         return Err(ProgramError::InvalidInstructionData);
     }
 
@@ -61,12 +60,21 @@ pub fn process_queue_transfer(accounts: &[AccountView], instruction_data: &[u8])
         return Err(ProgramError::InvalidInstructionData);
     }
 
+    // Making sure the recipient ATA is valid before queueing the transfer
+    if !recipient_ata_info.owned_by(token_program_info.address()) {
+        return Err(ProgramError::InvalidAccountOwner);
+    }
+    if recipient_ata_info.data_len() != TokenAccount::BASE_LEN {
+        return Err(ProgramError::AccountDataTooSmall);
+    }
+
     queue.queue[queue.length as usize] = QueuedTransfer {
         source: depositor_ata_info.address().clone(),
-        destination: depositor_info.address().clone(),
+        destination: recipient_ata_info.address().clone(),
         amount: *args.amount(),
         chunk_size: *args.chunk_size(),
         interval_seconds: *args.interval_seconds(),
+        last_transfer: Clock::get()?.unix_timestamp,
     };
     queue.length += 1;
 
@@ -102,7 +110,7 @@ pub struct QueueTransferArgs<'a> {
 impl QueueTransferArgs<'_> {
     #[inline]
     pub fn try_from_bytes(bytes: &[u8]) -> Result<QueueTransferArgs, ProgramError> {
-        if bytes.len() < 8 {
+        if bytes.len() != 18 {
             return Err(ProgramError::InvalidInstructionData);
         }
         Ok(QueueTransferArgs {
