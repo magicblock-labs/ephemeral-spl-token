@@ -6,7 +6,7 @@ use {
         ephemeral_ata::EphemeralAta, global_vault::GlobalVault, load_mut_unchecked, load_unchecked,
     },
     pinocchio::{error::ProgramError, AccountView, ProgramResult},
-    pinocchio_token_2022::state::Mint,
+    pinocchio_token::state::Mint,
 };
 
 #[inline(always)]
@@ -30,6 +30,10 @@ pub fn process_withdraw_spl_tokens(
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
+
+    if token_program_info.address() != &pinocchio_token::ID {
+        return Err(ProgramError::IncorrectProgramId);
+    }
 
     if !owner.is_signer() {
         return Err(ProgramError::MissingRequiredSignature);
@@ -72,7 +76,7 @@ pub fn process_withdraw_spl_tokens(
     // Parse the base mint layout shared by both legacy SPL Token and Token-2022.
     let decimals = {
         let mint_data = unsafe { mint_info.borrow_unchecked() };
-        if mint_data.len() < Mint::BASE_LEN {
+        if mint_data.len() < Mint::LEN {
             return Err(ProgramError::InvalidAccountData);
         }
         let mint = unsafe { Mint::from_bytes_unchecked(mint_data) };
@@ -87,12 +91,11 @@ pub fn process_withdraw_spl_tokens(
     let seeds = GlobalVault::signer_seeds(mint_info.address(), &bump);
     let signer = Signer::from(&seeds);
 
-    pinocchio_token_2022::instructions::TransferChecked {
+    pinocchio_token::instructions::TransferChecked {
         mint: mint_info,
         from: vault_source_token_acc,
         to: user_dest_token_acc,
         authority: vault_info, // PDA authority over the vault token account
-        token_program: token_program_info.address(),
         amount: args.amount(),
         decimals,
     }

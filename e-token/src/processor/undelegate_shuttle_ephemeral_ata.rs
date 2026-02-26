@@ -3,7 +3,7 @@ use ephemeral_spl_api::state::{
     Initializable,
 };
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
-use pinocchio_token_2022::state::TokenAccount;
+use pinocchio_token::state::TokenAccount;
 
 /// Undelegate a Shuttle Ephemeral ATA by calling into the delegation program
 /// helper that schedules a commit and performs undelegation.
@@ -66,7 +66,7 @@ pub fn process_undelegate_shuttle_ephemeral_ata(
 
     {
         let token_data = unsafe { ata_info.borrow_unchecked() };
-        if token_data.len() < TokenAccount::BASE_LEN {
+        if token_data.len() < TokenAccount::LEN {
             return Err(ProgramError::InvalidAccountData);
         }
         let token_acc = unsafe { TokenAccount::from_bytes_unchecked(token_data) };

@@ -3,7 +3,7 @@ use ephemeral_spl_api::state::{
 };
 use pinocchio::cpi::Signer;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
-use pinocchio_token_2022::state::{Mint, TokenAccount};
+use pinocchio_token::state::{Mint, TokenAccount};
 
 #[inline(always)]
 pub fn process_merge_shuttle_into_ephemeral_ata(
@@ -17,7 +17,7 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
     // 3. [writable] Shuttle wallet ATA account (source SPL token account owned by shuttle PDA)
     // 4. []         Mint account
     // 5. []         Token program
-    let [owner_info, owner_token_ata_info, shuttle_info, shuttle_wallet_ata_info, mint_info, token_program_info, ..] =
+    let [owner_info, owner_token_ata_info, shuttle_info, shuttle_wallet_ata_info, mint_info, _token_program_info, ..] =
         accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
@@ -64,7 +64,7 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
 
     let decimals = {
         let mint_data = unsafe { mint_info.borrow_unchecked() };
-        if mint_data.len() < Mint::BASE_LEN {
+        if mint_data.len() < Mint::LEN {
             return Err(ProgramError::InvalidAccountData);
         }
         let mint = unsafe { Mint::from_bytes_unchecked(mint_data) };
@@ -76,7 +76,7 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
 
     let shuttle_amount = {
         let source_data = unsafe { shuttle_wallet_ata_info.borrow_unchecked() };
-        if source_data.len() < TokenAccount::BASE_LEN {
+        if source_data.len() < TokenAccount::LEN {
             return Err(ProgramError::InvalidAccountData);
         }
         let source = unsafe { TokenAccount::from_bytes_unchecked(source_data) };
@@ -91,7 +91,7 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
 
     {
         let destination_data = unsafe { owner_token_ata_info.borrow_unchecked() };
-        if destination_data.len() < TokenAccount::BASE_LEN {
+        if destination_data.len() < TokenAccount::LEN {
             return Err(ProgramError::InvalidAccountData);
         }
         let destination = unsafe { TokenAccount::from_bytes_unchecked(destination_data) };
@@ -114,12 +114,11 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
         );
         let signer = Signer::from(&seeds);
 
-        pinocchio_token_2022::instructions::TransferChecked {
+        pinocchio_token::instructions::TransferChecked {
             mint: mint_info,
             from: shuttle_wallet_ata_info,
             to: owner_token_ata_info,
             authority: shuttle_info,
-            token_program: token_program_info.address(),
             amount: shuttle_amount,
             decimals,
         }

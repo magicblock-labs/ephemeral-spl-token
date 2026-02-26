@@ -30,14 +30,14 @@ tag-message = "Publish {{crate_name}} v{{version}}"
 consolidate-commits = false
 
 [workspace.dependencies]
-ephemeral-rollups-pinocchio = { version = "0.8.5"}
+ephemeral-rollups-pinocchio = { version = "0.8.5" }
 
 pinocchio = { version = "0.10.1", features = ["cpi"] }
 solana-address = { version = "2.0", features = ["curve25519"] }
 pinocchio-log = "0.5.1"
 pinocchio-pubkey = "0.3"
 pinocchio-system = "0.5"
-pinocchio-token-2022 = "0.2.0"
+pinocchio-token = "0.5.0"
 pinocchio-associated-token-account = "0.3"
 
 solana-instruction = "3.0.0"
@@ -51,6 +51,6 @@ solana-program-test = "=3.0.2"
 solana-signer = "3.0.0"
 solana-keypair = "3.0.1"
 solana-transaction = "3.0.1"
-solana-system-interface = { version="2.0.0", features=["bincode"] }
+solana-system-interface = { version = "2.0.0", features = ["bincode"] }
 spl-token-interface = "2.0.0"
 magicblock-delegation-program = "=1.1.2"

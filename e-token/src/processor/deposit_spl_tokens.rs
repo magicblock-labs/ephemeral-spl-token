@@ -4,7 +4,7 @@ use {
         ephemeral_ata::EphemeralAta, global_vault::GlobalVault, load_mut_unchecked, load_unchecked,
     },
     pinocchio::{error::ProgramError, AccountView, Address, ProgramResult},
-    pinocchio_token_2022::state::Mint,
+    pinocchio_token::state::Mint,
 };
 
 #[inline(always)]
@@ -28,6 +28,10 @@ pub fn process_deposit_spl_tokens(
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
+
+    if token_program_info.address() != &pinocchio_token::ID {
+        return Err(ProgramError::InvalidAccountData);
+    }
 
     // Validate EphemeralAta ownership first, before reading raw data.
     unsafe {
@@ -53,7 +57,6 @@ pub fn process_deposit_spl_tokens(
         user_source_token_acc,
         vault_token_acc,
         user_authority,
-        token_program_info,
         &ephemeral_ata_mint,
         args.amount(),
     )?;
@@ -76,7 +79,6 @@ fn transfer_to_vault_for_mint(
     user_source_token_acc: &AccountView,
     vault_token_acc: &AccountView,
     user_authority: &AccountView,
-    token_program_info: &AccountView,
     expected_mint: &Address,
     amount: u64,
 ) -> ProgramResult {
@@ -99,7 +101,7 @@ fn transfer_to_vault_for_mint(
 
     let decimals = {
         let mint_data = unsafe { mint_info.borrow_unchecked() };
-        if mint_data.len() < Mint::BASE_LEN {
+        if mint_data.len() < Mint::LEN {
             return Err(ProgramError::InvalidAccountData);
         }
         let mint = unsafe { Mint::from_bytes_unchecked(mint_data) };
@@ -109,12 +111,11 @@ fn transfer_to_vault_for_mint(
         mint.decimals()
     };
 
-    pinocchio_token_2022::instructions::TransferChecked {
+    pinocchio_token::instructions::TransferChecked {
         mint: mint_info,
         from: user_source_token_acc,
         to: vault_token_acc,
         authority: user_authority,
-        token_program: token_program_info.address(),
         amount,
         decimals,
     }
