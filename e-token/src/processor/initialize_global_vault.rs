@@ -62,7 +62,7 @@ pub fn process_initialize_global_vault(
         // TODO: Remove this migration path once all deployed vaults are upgraded.
         let legacy_mint = {
             let legacy_data = unsafe { vault_info.borrow_unchecked() };
-            unsafe { *(legacy_data.as_ptr() as *const pinocchio::Address) }
+            unsafe { (*(legacy_data.as_ptr() as *const pinocchio::Address)).clone() }
         };
         if legacy_mint.ne(mint_info.address()) {
             return Err(ProgramError::InvalidAccountData);
@@ -104,8 +104,8 @@ pub fn process_initialize_global_vault(
     let vault = unsafe { load_mut_unchecked::<GlobalVault>(vault_info.borrow_unchecked_mut())? };
 
     // Initialize the vault
-    vault.mint = *mint_info.address();
-    vault.token_account = *vault_token_acc_info.address();
+    vault.mint = mint_info.address().clone();
+    vault.token_account = vault_token_acc_info.address().clone();
 
     Ok(())
 }

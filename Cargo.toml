@@ -18,12 +18,6 @@ check-cfg = [
 [workspace.metadata.cli]
 solana = "2.3.4"
 
-# Specify Rust toolchains for rustfmt, clippy, and build.
-# Any unprovided toolchains default to stable.
-[workspace.metadata.toolchains]
-format = "nightly-2025-02-16"
-lint = "nightly-2025-02-16"
-
 [workspace.metadata.release]
 pre-release-commit-message = "Publish {{crate_name}} v{{version}}"
 tag-message = "Publish {{crate_name}} v{{version}}"
@@ -32,7 +26,7 @@ consolidate-commits = false
 [workspace.dependencies]
 ephemeral-rollups-pinocchio = { version = "0.8.5" }
 
-pinocchio = { version = "0.10.1", features = ["cpi", "copy"] }
+pinocchio = { version = "0.10.1", features = ["cpi"] }
 solana-address = { version = "2.0", features = ["curve25519"] }
 pinocchio-log = "0.5.1"
 pinocchio-pubkey = "0.3"

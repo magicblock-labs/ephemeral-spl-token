@@ -60,8 +60,8 @@ pub fn process_initialize_ephemeral_ata(
 
     // Initialize the ephemeral ATA
     // Set the owner to the provided user; payer only funds account creation
-    ephemeral_ata.owner = *user_info.address();
-    ephemeral_ata.mint = *mint_info.address();
+    ephemeral_ata.owner = user_info.address().clone();
+    ephemeral_ata.mint = mint_info.address().clone();
     ephemeral_ata.amount = 0;
 
     Ok(())
