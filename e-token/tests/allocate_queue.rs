@@ -65,7 +65,7 @@ async fn test_allocate_transfer_queue() {
         .expect("queue account must exist");
 
     assert_eq!(queue_account.owner, ephemeral_spl_api::program::ID);
-    assert_eq!(queue_account.data.len(), 10240);
+    assert_eq!(queue_account.data.len(), TransferQueue::LEN.min(10240));
     assert_eq!(queue_account.data[1..33], Pubkey::default().to_bytes());
     assert_eq!(queue_account.data[0], queue_bump);
 }

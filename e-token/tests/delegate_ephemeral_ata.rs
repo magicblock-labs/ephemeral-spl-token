@@ -23,7 +23,7 @@ async fn delegate_ephemeral_ata_succeeds() {
     let mint = mint_kp.pubkey();
 
     // Derive the PDAs for our program and setup token accounts
-    let pdas = utils::derive_pdas(ephemeral_spl_api::program::ID, user, mint);
+    let pdas = utils::derive_pdas(ephemeral_spl_api::program::ID, user, mint, 0);
     let setup =
         utils::setup_mint_and_token_accounts(&mut context, payer, &mint_kp, 6, 1_000, 1).await;
 
@@ -144,7 +144,7 @@ async fn delegate_ephemeral_ata_non_owner_succeeds() {
     let mint_kp = Keypair::new();
     let mint = mint_kp.pubkey();
 
-    let pdas = utils::derive_pdas(ephemeral_spl_api::program::ID, user, mint);
+    let pdas = utils::derive_pdas(ephemeral_spl_api::program::ID, user, mint, 0);
     let setup =
         utils::setup_mint_and_token_accounts(&mut context, payer, &mint_kp, 6, 1_000, 1).await;
 

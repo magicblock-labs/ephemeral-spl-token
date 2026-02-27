@@ -25,7 +25,7 @@ async fn initialize_global_vault() {
     let mint_kp = Keypair::new();
     let mint = mint_kp.pubkey();
 
-    let pdas = utils::derive_pdas(ephemeral_spl_api::program::ID, user, mint);
+    let pdas = utils::derive_pdas(ephemeral_spl_api::program::ID, user, mint, 0);
     let _setup = utils::setup_mint_and_token_accounts(
         &mut context,
         payer,
@@ -90,7 +90,7 @@ async fn initialize_global_vault_migrates_legacy_layout() {
     let user = Pubkey::new_unique();
     let mint_kp = Keypair::new();
     let mint = mint_kp.pubkey();
-    let pdas = utils::derive_pdas(ephemeral_spl_api::program::ID, user, mint);
+    let pdas = utils::derive_pdas(ephemeral_spl_api::program::ID, user, mint, 0);
 
     let legacy_lamports = Rent::default().minimum_balance(32);
     let mut pt = setup_program_test();

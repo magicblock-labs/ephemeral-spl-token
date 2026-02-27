@@ -1,4 +1,4 @@
-use ephemeral_spl_api::error::EphemeralSplError;
+use ephemeral_spl_api::{error::EphemeralSplError, instruction};
 use {
     crate::processor::*,
     core::{mem::MaybeUninit, slice::from_raw_parts},
@@ -144,29 +144,35 @@ pub(crate) fn inner_process_instruction(
 
             process_merge_shuttle_into_ephemeral_ata(accounts, instruction_data)
         }
-        16 => {
+        instruction::ALLOCATE_QUEUE => {
             #[cfg(feature = "logging")]
             pinocchio_log::log!("Instruction: AllocateQueue");
 
             process_allocate_queue(accounts, instruction_data)
         }
-        17 => {
+        instruction::INITIALIZE_TRANSFER_QUEUE => {
             #[cfg(feature = "logging")]
             pinocchio_log::log!("Instruction: InitializeTransferQueue");
 
             process_initialize_transfer_queue(accounts, instruction_data)
         }
-        18 => {
+        instruction::QUEUE_TRANSFER => {
             #[cfg(feature = "logging")]
             pinocchio_log::log!("Instruction: QueueTransfer");
 
             process_queue_transfer(accounts, instruction_data)
         }
-        19 => {
+        instruction::PROCESS_TRANSFERS => {
             #[cfg(feature = "logging")]
             pinocchio_log::log!("Instruction: ProcessTransfers");
 
             process_transfers(accounts, instruction_data)
+        }
+        instruction::DELEGATE_TRANSFER_QUEUE => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: DelegateTransferQueue");
+
+            process_delegate_transfer_queue(accounts, instruction_data)
         }
         196 => {
             #[cfg(feature = "logging")]

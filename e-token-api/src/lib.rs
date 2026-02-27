@@ -70,4 +70,8 @@ pub mod instruction {
     pub const QUEUE_TRANSFER: u8 = 18;
     /// 19 - ProcessTransfers: process transfers from the transfer queue
     pub const PROCESS_TRANSFERS: u8 = 19;
+    /// 20 - DelegateTransferQueue: delegate the queue and its EATA
+    ///     Instruction data:
+    ///     [0] eata_bump
+    pub const DELEGATE_TRANSFER_QUEUE: u8 = 20;
 }

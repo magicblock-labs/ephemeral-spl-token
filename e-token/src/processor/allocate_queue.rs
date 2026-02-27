@@ -26,7 +26,7 @@ pub fn process_allocate_queue(accounts: &[AccountView], _instruction_data: &[u8]
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
-    let remaining_space = if !queue_info.owned_by(&ephemeral_spl_api::program::ID) {
+    if !queue_info.owned_by(&ephemeral_spl_api::program::ID) {
         // First call, create the account
         let (queue_pda, queue_bump) = TransferQueue::find_pda(mint_info.address());
         if queue_info.address() != &queue_pda {
@@ -51,8 +51,6 @@ pub fn process_allocate_queue(accounts: &[AccountView], _instruction_data: &[u8]
         unsafe {
             queue_info.borrow_unchecked_mut()[0] = queue_bump;
         };
-
-        MAX_ALLOCATION_SPACE - 41
     } else {
         let is_initialized = unsafe {
             let data = queue_info.borrow_unchecked();
@@ -65,11 +63,12 @@ pub fn process_allocate_queue(accounts: &[AccountView], _instruction_data: &[u8]
             // Already allocated and initialized the queue
             return Ok(());
         }
+    }
 
-        (TransferQueue::LEN - queue_info.data_len()).min(MAX_ALLOCATION_SPACE)
-    };
-
-    queue_info.resize(queue_info.data_len() + remaining_space)?;
+    queue_info.resize(
+        queue_info.data_len()
+            + (TransferQueue::LEN - queue_info.data_len()).min(MAX_ALLOCATION_SPACE),
+    )?;
 
     Ok(())
 }

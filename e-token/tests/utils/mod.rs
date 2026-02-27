@@ -1,167 +1,50 @@
-use ephemeral_rollups_pinocchio::acl::PERMISSION_PROGRAM_ID;
-use ephemeral_spl_api::{
-    instruction,
-    state::{transfer_queue::TransferQueue, RawType},
+use ephemeral_rollups_pinocchio::acl::permission_pda_from_permissioned_account;
+use ephemeral_spl_api::state::{
+    shuttle_ephemeral_ata::ShuttleEphemeralAta, transfer_queue::TransferQueue,
 };
-use solana_account::Account;
-use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
-use solana_program::{
-    account_info::AccountInfo,
-    bpf_loader,
-    entrypoint::ProgramResult,
-    program::{invoke, invoke_signed},
-    program_error::ProgramError,
-    rent::Rent,
-    sysvar::Sysvar,
-};
 use solana_program_pack::Pack;
-use solana_program_test::{processor, read_file, ProgramTest, ProgramTestContext};
-use solana_pubkey::{pubkey, Pubkey};
+use solana_program_test::ProgramTestContext;
+use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use solana_system_interface::instruction::create_account;
 use solana_transaction::Transaction;
-use spl_token_interface::instruction::{initialize_account, initialize_account3, initialize_mint};
+use spl_token_interface::instruction::{initialize_account, initialize_mint};
 use spl_token_interface::state::{Account as SplAccount, Mint};
 
+mod associated_token;
+mod instructions;
+mod setup;
+
+pub use associated_token::*;
+pub use instructions::*;
+pub use setup::*;
+
 #[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Pdas {
     pub ephemeral_ata: Pubkey,
     pub bump_ata: u8,
     pub vault: Pubkey,
     pub bump_vault: u8,
+    pub queue: Pubkey,
+    pub queue_bump: u8,
+    pub queue_permission_pda: Pubkey,
+    pub queue_ata: Pubkey,
+    pub queue_eata: Pubkey,
+    pub queue_eata_bump: u8,
+    pub queue_eata_permission_pda: Pubkey,
+    pub queue_shuttle: Pubkey,
+    pub queue_shuttle_bump: u8,
+    pub queue_shuttle_ata: Pubkey,
+    pub queue_shuttle_eata: Pubkey,
+    pub queue_shuttle_eata_bump: u8,
 }
 
 #[allow(dead_code)]
 pub struct TokenSetup {
     pub user_tokens: Vec<Pubkey>,
     pub recipient_tokens: Vec<Pubkey>,
-}
-
-const ASSOCIATED_TOKEN_PROGRAM_ID: Pubkey = pubkey!("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
-
-pub fn associated_token_program_id() -> Pubkey {
-    ASSOCIATED_TOKEN_PROGRAM_ID
-}
-
-pub fn setup_program_test() -> ProgramTest {
-    let mut pt = ProgramTest::new(
-        "ephemeral_token_program",
-        ephemeral_spl_api::program::ID,
-        None,
-    );
-
-    // Add the associated token program
-    add_associated_token_program(&mut pt);
-
-    // Add the permission program
-    let data = read_file("tests/fixtures/acl.so");
-    pt.add_account(
-        PERMISSION_PROGRAM_ID,
-        Account {
-            lamports: Rent::default().minimum_balance(data.len()).max(1),
-            data,
-            owner: bpf_loader::id(),
-            executable: true,
-            rent_epoch: 0,
-        },
-    );
-
-    // Setup the delegation program
-    let data = read_file("tests/fixtures/dlp.so");
-    pt.add_account(
-        ephemeral_rollups_pinocchio::ID,
-        Account {
-            lamports: Rent::default().minimum_balance(data.len()).max(1),
-            data,
-            owner: bpf_loader::id(),
-            executable: true,
-            rent_epoch: 0,
-        },
-    );
-
-    pt.prefer_bpf(true);
-    pt
-}
-
-fn process_associated_token_program_mock(
-    _program_id: &Pubkey,
-    accounts: &[AccountInfo],
-    instruction_data: &[u8],
-) -> ProgramResult {
-    if instruction_data.is_empty() || instruction_data[0] > 1 {
-        return Err(ProgramError::InvalidInstructionData);
-    }
-
-    let [funding, ata, wallet, mint, system_program, token_program, ..] = accounts else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
-
-    if *system_program.key != solana_system_interface::program::ID {
-        return Err(ProgramError::IncorrectProgramId);
-    }
-    if *token_program.key != spl_token_interface::ID {
-        return Err(ProgramError::IncorrectProgramId);
-    }
-
-    let (expected_ata, bump_seed) = Pubkey::find_program_address(
-        &[
-            wallet.key.as_ref(),
-            token_program.key.as_ref(),
-            mint.key.as_ref(),
-        ],
-        &ASSOCIATED_TOKEN_PROGRAM_ID,
-    );
-    if expected_ata != *ata.key {
-        return Err(ProgramError::InvalidSeeds);
-    }
-
-    // Idempotent path: account already exists as a token account.
-    if *ata.owner == *token_program.key && ata.data_len() == SplAccount::LEN {
-        let ata_data = ata.try_borrow_data()?;
-        let ata_state = SplAccount::unpack(&ata_data)?;
-        if ata_state.mint != *mint.key || ata_state.owner != *wallet.key {
-            return Err(ProgramError::InvalidAccountData);
-        }
-        return Ok(());
-    }
-
-    let lamports = Rent::get()?.minimum_balance(SplAccount::LEN);
-    let bump = [bump_seed];
-    let ata_signer_seeds: &[&[u8]] = &[
-        wallet.key.as_ref(),
-        token_program.key.as_ref(),
-        mint.key.as_ref(),
-        &bump,
-    ];
-
-    invoke_signed(
-        &create_account(
-            funding.key,
-            ata.key,
-            lamports,
-            SplAccount::LEN as u64,
-            token_program.key,
-        ),
-        &[funding.clone(), ata.clone()],
-        &[ata_signer_seeds],
-    )?;
-
-    let mut init_ix = initialize_account3(token_program.key, ata.key, mint.key, wallet.key)?;
-    init_ix.program_id = *token_program.key;
-    invoke(&init_ix, &[ata.clone(), mint.clone()])?;
-
-    Ok(())
-}
-
-pub fn add_associated_token_program(pt: &mut ProgramTest) {
-    pt.prefer_bpf(false);
-    pt.add_program(
-        "spl_associated_token_account",
-        ASSOCIATED_TOKEN_PROGRAM_ID,
-        processor!(process_associated_token_program_mock),
-    );
-    pt.prefer_bpf(true);
 }
 
 pub fn derive_associated_token_address(wallet: &Pubkey, mint: &Pubkey) -> Pubkey {
@@ -171,23 +54,50 @@ pub fn derive_associated_token_address(wallet: &Pubkey, mint: &Pubkey) -> Pubkey
             spl_token_interface::ID.as_ref(),
             mint.as_ref(),
         ],
-        &ASSOCIATED_TOKEN_PROGRAM_ID,
+        &associated_token_program_id(),
     )
     .0
 }
 
 #[allow(dead_code)]
-pub fn derive_pdas(program: Pubkey, owner: Pubkey, mint: Pubkey) -> Pdas {
+pub fn derive_pdas(program: Pubkey, owner: Pubkey, mint: Pubkey, queue_shuttle_id: u32) -> Pdas {
     let (ephemeral_ata, bump_ata) = Pubkey::find_program_address(
         &[owner.to_bytes().as_slice(), mint.to_bytes().as_slice()],
         &program,
     );
     let (vault, bump_vault) = Pubkey::find_program_address(&[mint.to_bytes().as_slice()], &program);
+    let (queue, queue_bump) = TransferQueue::find_pda(&mint);
+    let queue_permission_pda = permission_pda_from_permissioned_account(&queue);
+    let queue_ata = derive_associated_token_address(&queue, &mint);
+    let (queue_eata, queue_eata_bump) = Pubkey::find_program_address(
+        &[queue.as_ref(), mint.as_ref()],
+        &ephemeral_spl_api::program::ID,
+    );
+    let queue_eata_permission_pda = permission_pda_from_permissioned_account(&queue_eata);
+    let (queue_shuttle, queue_shuttle_bump) =
+        ShuttleEphemeralAta::find_pda(&queue, &mint, queue_shuttle_id);
+    let queue_shuttle_ata = derive_associated_token_address(&queue_shuttle, &mint);
+    let (queue_shuttle_eata, queue_shuttle_eata_bump) = Pubkey::find_program_address(
+        &[queue_shuttle.as_ref(), mint.as_ref()],
+        &ephemeral_spl_api::program::ID,
+    );
     Pdas {
         ephemeral_ata,
         bump_ata,
         vault,
         bump_vault,
+        queue,
+        queue_bump,
+        queue_permission_pda,
+        queue_ata,
+        queue_eata,
+        queue_eata_bump,
+        queue_eata_permission_pda,
+        queue_shuttle,
+        queue_shuttle_bump,
+        queue_shuttle_ata,
+        queue_shuttle_eata,
+        queue_shuttle_eata_bump,
     }
 }
 
@@ -341,34 +251,4 @@ pub async fn setup_mint_and_token_accounts(
         user_tokens,
         recipient_tokens,
     }
-}
-
-pub async fn allocate_transfer_queue(
-    context: &mut ProgramTestContext,
-    mint: Pubkey,
-    queue_pda: Pubkey,
-) {
-    let ixs = (0..(TransferQueue::LEN.div_ceil(10240)))
-        .map(|_| {
-            Instruction::new_with_bytes(
-                ephemeral_spl_api::program::ID,
-                &vec![instruction::ALLOCATE_QUEUE],
-                vec![
-                    AccountMeta::new(context.payer.pubkey(), true),
-                    AccountMeta::new(queue_pda, false),
-                    AccountMeta::new_readonly(mint, false),
-                    AccountMeta::new_readonly(solana_system_interface::program::ID, false),
-                ],
-            )
-        })
-        .collect::<Vec<_>>();
-
-    let tx = Transaction::new_signed_with_payer(
-        &ixs,
-        Some(&context.payer.pubkey()),
-        &[&context.payer],
-        context.last_blockhash,
-    );
-
-    context.banks_client.process_transaction(tx).await.unwrap();
 }

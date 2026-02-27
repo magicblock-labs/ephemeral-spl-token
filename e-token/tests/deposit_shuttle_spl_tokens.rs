@@ -27,7 +27,7 @@ async fn deposit_spl_tokens_increments_shuttle_amount() {
     let mint_kp = Keypair::new();
     let mint = mint_kp.pubkey();
 
-    let pdas = utils::derive_pdas(ephemeral_spl_api::program::ID, owner, mint);
+    let pdas = utils::derive_pdas(ephemeral_spl_api::program::ID, owner, mint, 0);
     let (shuttle_ephemeral_ata, shuttle_bump) = utils::derive_shuttle_ephemeral_ata(
         ephemeral_spl_api::program::ID,
         owner,

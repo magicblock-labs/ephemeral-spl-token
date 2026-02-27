@@ -26,7 +26,7 @@ async fn deposit_spl_tokens_increments_ephemeral_amount() {
     let mint = mint_kp.pubkey();
 
     // Derive PDAs and setup mint/accounts via utils
-    let pdas = utils::derive_pdas(ephemeral_spl_api::program::ID, user, mint);
+    let pdas = utils::derive_pdas(ephemeral_spl_api::program::ID, user, mint, 0);
     let setup = utils::setup_mint_and_token_accounts(
         &mut context,
         payer,
