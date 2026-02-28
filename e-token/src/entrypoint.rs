@@ -174,6 +174,12 @@ pub(crate) fn inner_process_instruction(
 
             process_delegate_transfer_queue(accounts, instruction_data)
         }
+        instruction::START_SHUTTLE_CRANK => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: StartShuttleCrank");
+
+            process_start_shuttle_crank(accounts, instruction_data)
+        }
         196 => {
             #[cfg(feature = "logging")]
             pinocchio_log::log!("Instruction: UndelegationCallback");

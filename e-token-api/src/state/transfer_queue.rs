@@ -1,9 +1,4 @@
-use pinocchio::{
-    cpi::Seed,
-    error::ProgramError,
-    sysvars::{clock::Clock, Sysvar},
-    Address,
-};
+use pinocchio::{cpi::Seed, error::ProgramError, Address};
 
 use crate::constants::{MAX_PROCESSED_TRANSFERS, MAX_QUEUE_SIZE, QUEUE_SEED};
 
@@ -38,6 +33,8 @@ pub struct TransferQueue {
     pub mint: Address,
     /// The queue length.
     pub length: u32,
+    /// Shuttle crank ID.
+    pub shuttle_crank_id: Option<i64>,
     /// The queue of transfers.
     pub queue: [QueuedTransfer; MAX_QUEUE_SIZE],
 }
@@ -84,22 +81,27 @@ impl TransferQueue {
         ]
     }
 
+    /// Returns the number of transfers that are ready to be processed and the transfers themselves.
+    /// `now` is the current time in seconds, used as a pseudo-random number generator.
     pub fn processed_transfers(
         &mut self,
-    ) -> Result<(usize, [(u64, Address); MAX_PROCESSED_TRANSFERS]), ProgramError> {
+        now: i64,
+    ) -> (usize, [(u64, Address); MAX_PROCESSED_TRANSFERS]) {
         let mut result = [const { (0, Address::new_from_array([0; 32])) }; MAX_PROCESSED_TRANSFERS];
-        // Using the clock as a pseudo-random number generator.
-        let now = Clock::get()?.unix_timestamp;
+
+        if self.length == 0 {
+            return (0, result);
+        }
 
         fn get_next_index(i: usize, length: usize, now: i64) -> usize {
-            i.wrapping_mul(now as usize) as usize % length
+            i.wrapping_mul(length).wrapping_mul(now as usize) as usize % length
         }
 
         let mut transfers_to_consider = self.length as usize;
         let mut i = get_next_index(1, transfers_to_consider, now);
         let mut processed_transfers = 0;
         loop {
-            if self.queue[i].last_transfer + (self.queue[i].interval_seconds as i64) < now {
+            if self.queue[i].last_transfer + (self.queue[i].interval_seconds as i64) > now {
                 // Transfer is not ready yet.
                 // We put it at the end of the queue and pick a new one.
                 self.queue.swap(i, self.length as usize - 1);
@@ -140,6 +142,139 @@ impl TransferQueue {
         }
 
         // The last N elements
-        Ok((processed_transfers, result))
+        (processed_transfers, result)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SOURCE: Address = Address::new_from_array([0; 32]);
+    const DESTINATION: Address = Address::new_from_array([1; 32]);
+    const AMOUNT: u64 = 1000;
+    const CHUNK_SIZE: u64 = 100;
+    const INTERVAL: u16 = 10;
+
+    fn ready_transfer(now: i64) -> QueuedTransfer {
+        QueuedTransfer {
+            source: SOURCE,
+            destination: DESTINATION,
+            amount: AMOUNT,
+            chunk_size: CHUNK_SIZE,
+            interval_seconds: INTERVAL,
+            last_transfer: now - INTERVAL as i64,
+        }
+    }
+
+    fn not_ready_transfer(now: i64) -> QueuedTransfer {
+        QueuedTransfer {
+            source: SOURCE,
+            destination: DESTINATION,
+            amount: AMOUNT,
+            chunk_size: CHUNK_SIZE,
+            interval_seconds: INTERVAL,
+            last_transfer: now,
+        }
+    }
+
+    #[test]
+    fn test_processed_transfers_one_ready() {
+        let mut queue = TransferQueue {
+            bump: 0,
+            mint: Address::new_from_array([0; 32]),
+            length: 0,
+            shuttle_crank_id: None,
+            queue: core::array::from_fn(|_| QueuedTransfer::default()),
+        };
+        queue.length = 1;
+        let now = 10;
+        queue.queue[0] = ready_transfer(now);
+        let (processed_transfers, transfers) = queue.processed_transfers(now);
+        assert_eq!(processed_transfers, 1);
+        assert_eq!(transfers[0].0, 100);
+        assert_eq!(transfers[0].1, DESTINATION);
+    }
+
+    #[test]
+    fn test_processed_transfers_queue_full() {
+        let mut now = 10;
+        let mut queue = TransferQueue {
+            bump: 0,
+            mint: Address::new_from_array([0; 32]),
+            length: MAX_QUEUE_SIZE as u32,
+            shuttle_crank_id: None,
+            queue: core::array::from_fn(|_| ready_transfer(now)),
+        };
+
+        for _ in 0..(AMOUNT.div_ceil(CHUNK_SIZE) * MAX_QUEUE_SIZE as u64) {
+            let length = queue.length as usize;
+            let (processed_transfers, transfers) = queue.processed_transfers(now);
+            assert_eq!(processed_transfers, MAX_PROCESSED_TRANSFERS.min(length));
+            assert_eq!(
+                transfers.iter().map(|(amount, _)| amount).sum::<u64>(),
+                MAX_PROCESSED_TRANSFERS.min(length) as u64 * CHUNK_SIZE
+            );
+            now += INTERVAL as i64;
+        }
+        let (processed_transfers, _transfers) = queue.processed_transfers(now);
+        assert_eq!(processed_transfers, 0);
+    }
+
+    #[test]
+    fn test_processed_transfers_queue_full_not_ready() {
+        let mut now = 10;
+        let mut queue = TransferQueue {
+            bump: 0,
+            mint: Address::new_from_array([0; 32]),
+            length: MAX_QUEUE_SIZE as u32,
+            shuttle_crank_id: None,
+            queue: core::array::from_fn(|_| not_ready_transfer(now)),
+        };
+
+        // No transfers are ready yet
+        let (processed_transfers, _transfers) = queue.processed_transfers(now);
+        assert_eq!(processed_transfers, 0);
+        now += INTERVAL as i64;
+
+        // All transfers are ready now
+        for _ in 0..(AMOUNT.div_ceil(CHUNK_SIZE) * MAX_QUEUE_SIZE as u64) {
+            let length = queue.length as usize;
+            let (processed_transfers, _transfers) = queue.processed_transfers(now);
+            assert_eq!(processed_transfers, MAX_PROCESSED_TRANSFERS.min(length));
+            now += INTERVAL as i64;
+        }
+    }
+
+    #[test]
+    fn test_finished_processing_transfers_different_amounts() {
+        let mut now = 10;
+        let mut queue = TransferQueue {
+            bump: 0,
+            mint: Address::new_from_array([0; 32]),
+            length: MAX_PROCESSED_TRANSFERS as u32,
+            shuttle_crank_id: None,
+            queue: core::array::from_fn(|i| {
+                if i == 0 {
+                    let mut tranfer = ready_transfer(now);
+                    tranfer.amount += CHUNK_SIZE;
+                    tranfer
+                } else if i < MAX_PROCESSED_TRANSFERS {
+                    ready_transfer(now)
+                } else {
+                    QueuedTransfer::default()
+                }
+            }),
+        };
+
+        for _ in 0..(AMOUNT.div_ceil(CHUNK_SIZE)) {
+            let (processed_transfers, _transfers) = queue.processed_transfers(now);
+            assert_eq!(processed_transfers, MAX_PROCESSED_TRANSFERS);
+            now += INTERVAL as i64;
+        }
+
+        // The last transfer will complete
+        let (processed_transfers, _transfers) = queue.processed_transfers(now);
+        assert_eq!(processed_transfers, 1);
     }
 }

@@ -74,4 +74,6 @@ pub mod instruction {
     ///     Instruction data:
     ///     [0] eata_bump
     pub const DELEGATE_TRANSFER_QUEUE: u8 = 20;
+    /// 21 - StartShuttleCrank: start a shuttle crank
+    pub const START_SHUTTLE_CRANK: u8 = 21;
 }

@@ -1,4 +1,3 @@
-use core::marker::PhantomData;
 use ephemeral_spl_api::{
     constants::{MAX_CHUNKS_PER_TRANSFER, MAX_TRANSFER_DURATION_SECONDS},
     error::EphemeralSplError,
@@ -47,16 +46,16 @@ pub fn process_queue_transfer(accounts: &[AccountView], instruction_data: &[u8])
         return Err(EphemeralSplError::QueueFull.into());
     }
 
-    if args.amount() == &0 {
+    if args.amount == 0 {
         return Err(ProgramError::InvalidInstructionData);
     }
 
-    let chunks = args.amount().div_ceil(*args.chunk_size());
+    let chunks = args.amount.div_ceil(args.chunk_size);
     if chunks > MAX_CHUNKS_PER_TRANSFER as u64 {
         return Err(ProgramError::InvalidInstructionData);
     }
 
-    if chunks * (*args.interval_seconds() as u64) > MAX_TRANSFER_DURATION_SECONDS as u64 {
+    if chunks * (args.interval_seconds as u64) > MAX_TRANSFER_DURATION_SECONDS as u64 {
         return Err(ProgramError::InvalidInstructionData);
     }
 
@@ -71,9 +70,9 @@ pub fn process_queue_transfer(accounts: &[AccountView], instruction_data: &[u8])
     queue.queue[queue.length as usize] = QueuedTransfer {
         source: depositor_ata_info.address().clone(),
         destination: recipient_ata_info.address().clone(),
-        amount: *args.amount(),
-        chunk_size: *args.chunk_size(),
-        interval_seconds: *args.interval_seconds(),
+        amount: args.amount,
+        chunk_size: args.chunk_size,
+        interval_seconds: args.interval_seconds,
         last_transfer: Clock::get()?.unix_timestamp,
     };
     queue.length += 1;
@@ -92,7 +91,7 @@ pub fn process_queue_transfer(accounts: &[AccountView], instruction_data: &[u8])
         from: depositor_ata_info,
         to: queue_ata_info,
         authority: depositor_info,
-        amount: *args.amount(),
+        amount: args.amount,
         decimals,
         token_program: token_program_info.address(),
     }
@@ -102,42 +101,19 @@ pub fn process_queue_transfer(accounts: &[AccountView], instruction_data: &[u8])
 }
 
 /// Instruction data for the `QueueTransfer` instruction.
-pub struct QueueTransferArgs<'a> {
-    raw: *const u8,
-    _data: PhantomData<&'a [u8]>,
+#[repr(C)]
+pub struct QueueTransferArgs {
+    amount: u64,
+    chunk_size: u64,
+    interval_seconds: u16,
 }
 
-impl QueueTransferArgs<'_> {
+impl QueueTransferArgs {
     #[inline]
-    pub fn try_from_bytes(bytes: &[u8]) -> Result<QueueTransferArgs, ProgramError> {
+    pub fn try_from_bytes(bytes: &[u8]) -> Result<&QueueTransferArgs, ProgramError> {
         if bytes.len() != 18 {
             return Err(ProgramError::InvalidInstructionData);
         }
-        Ok(QueueTransferArgs {
-            raw: bytes.as_ptr(),
-            _data: PhantomData,
-        })
-    }
-
-    #[inline]
-    pub fn amount(&self) -> &u64 {
-        // read LE u64 from bytes[0..8]
-        let mut buf = [0u8; 8];
-        unsafe {
-            core::ptr::copy_nonoverlapping(self.raw, buf.as_mut_ptr(), 8);
-        }
-        unsafe { &*(self.raw as *const u64) }
-    }
-
-    #[inline]
-    pub fn chunk_size(&self) -> &u64 {
-        // read LE u64 from bytes[8..16]
-        unsafe { &*(self.raw.add(8) as *const u64) }
-    }
-
-    #[inline]
-    pub fn interval_seconds(&self) -> &u16 {
-        // read LE u16 from bytes[16..18]
-        unsafe { &*(self.raw.add(16) as *const u16) }
+        Ok(unsafe { &*(bytes.as_ptr() as *const QueueTransferArgs) })
     }
 }

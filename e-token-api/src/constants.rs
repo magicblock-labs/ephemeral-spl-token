@@ -12,3 +12,6 @@ pub const MAX_TRANSFER_DURATION_SECONDS: u16 = 60 * 60 * 12; // 12 hours
 
 /// The maximum number of transfers processed
 pub const MAX_PROCESSED_TRANSFERS: usize = 5;
+
+/// The interval in milliseconds between shuttle crank executions.
+pub const SHUTTLE_CRANK_INTERVAL_MILLIS: i64 = 1000;

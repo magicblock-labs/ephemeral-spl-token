@@ -66,5 +66,6 @@ pub fn process_undelegate_ephemeral_ata(
         &[ata_info.clone()],
         magic_context,
         magic_program,
+        None,
     )
 }

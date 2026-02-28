@@ -15,6 +15,7 @@ pub mod merge_shuttle_into_ephemeral_ata;
 pub mod process_transfers;
 pub mod queue_transfer;
 pub mod reset_ephemeral_ata_permission;
+pub mod start_shuttle_crank;
 pub mod undelegate_ephemeral_ata;
 pub mod undelegate_ephemeral_ata_permission;
 pub mod undelegate_shuttle_ephemeral_ata;
@@ -37,6 +38,7 @@ pub use merge_shuttle_into_ephemeral_ata::process_merge_shuttle_into_ephemeral_a
 pub use process_transfers::process_transfers;
 pub use queue_transfer::process_queue_transfer;
 pub use reset_ephemeral_ata_permission::process_reset_ephemeral_ata_permission;
+pub use start_shuttle_crank::process_start_shuttle_crank;
 pub use undelegate_ephemeral_ata::process_undelegate_ephemeral_ata;
 pub use undelegate_ephemeral_ata_permission::process_undelegate_ephemeral_ata_permission;
 pub use undelegate_shuttle_ephemeral_ata::process_undelegate_shuttle_ephemeral_ata;

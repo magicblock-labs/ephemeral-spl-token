@@ -1,4 +1,5 @@
 use crate::utils::initialize_transfer_queue;
+use ephemeral_rollups_pinocchio::consts::{MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID};
 use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::state::load_unchecked;
 use ephemeral_spl_api::state::transfer_queue::{QueuedTransfer, TransferQueue};
@@ -152,19 +153,16 @@ async fn test_process_transfers() {
         });
         let ix_process_transfers = Instruction::new_with_bytes(
             ephemeral_spl_api::program::ID,
-            &vec![
-                vec![instruction::PROCESS_TRANSFERS],
-                queue_shuttle_id.to_le_bytes().to_vec(),
-            ]
-            .concat(),
+            &vec![instruction::PROCESS_TRANSFERS, pdas.queue_shuttle_eata_bump],
             vec![
-                AccountMeta::new(payer, true),
                 AccountMeta::new_readonly(mint, false),
                 AccountMeta::new(pdas.queue, false),
                 AccountMeta::new(pdas.queue_ata, false),
                 AccountMeta::new(pdas.queue_shuttle, false),
                 AccountMeta::new(pdas.queue_shuttle_ata, false),
                 AccountMeta::new(pdas.queue_shuttle_eata, false),
+                AccountMeta::new(MAGIC_CONTEXT_ID, false),
+                AccountMeta::new_readonly(MAGIC_PROGRAM_ID, false),
                 AccountMeta::new_readonly(spl_token_interface::ID, false),
             ],
         );
