@@ -71,7 +71,7 @@ fn undelegate_and_close_shuttle_ephemeral_ata(
 
     MagicIntentBundleBuilder::new(payer.clone(), magic_context.clone(), magic_program.clone())
         .commit_and_undelegate(&committed_accounts)
-        .add_post_undelegate_actions(&close_handler)
+        // .add_post_undelegate_actions(&close_handler)
         .build_and_invoke(&mut intent_bundle_data)
 }
 
@@ -94,7 +94,8 @@ pub fn process_undelegate_and_close_shuttle_ephemeral_ata(
     let escrow_index = parse_escrow_index(instruction_data)?;
 
     let [payer, ata_info, shuttle_info, shuttle_eata_info, shuttle_wallet_ata_info, token_program_info, magic_context, magic_program, ..] =
-        accounts else {
+        accounts
+    else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
@@ -154,7 +155,10 @@ pub fn process_undelegate_and_close_shuttle_ephemeral_ata(
     }
 
     unsafe {
-        if shuttle_wallet_ata_info.owner().ne(token_program_info.address()) {
+        if shuttle_wallet_ata_info
+            .owner()
+            .ne(token_program_info.address())
+        {
             return Err(ProgramError::IllegalOwner);
         }
     }
@@ -245,7 +249,10 @@ pub fn process_close_shuttle_ata_intent_v2(
         {
             return Err(ProgramError::IllegalOwner);
         }
-        if shuttle_wallet_ata_info.owner().ne(token_program_info.address()) {
+        if shuttle_wallet_ata_info
+            .owner()
+            .ne(token_program_info.address())
+        {
             return Err(ProgramError::IllegalOwner);
         }
     }

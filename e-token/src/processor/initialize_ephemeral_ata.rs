@@ -1,12 +1,12 @@
 use core::marker::PhantomData;
-use ephemeral_spl_api::state::RawType;
+use ephemeral_spl_api::state::{Initializable, RawType};
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
 use pinocchio_system::instructions::CreateAccount;
 use {
     ephemeral_spl_api::state::ephemeral_ata::EphemeralAta,
-    ephemeral_spl_api::state::load_mut_unchecked,
+    ephemeral_spl_api::state::{load_mut_unchecked, load_unchecked},
     pinocchio::{error::ProgramError, AccountView, ProgramResult},
 };
 
@@ -27,14 +27,35 @@ pub fn process_initialize_ephemeral_ata(
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
-    unsafe {
-        // Make init idempotent
-        if ephemeral_ata_info
-            .owner()
-            .eq(&ephemeral_spl_api::program::id_address())
+    // Validate PDA derivation up front, even for idempotent re-initialization.
+    let (derived_pda, _) = ephemeral_spl_api::Address::find_program_address(
+        &[user_info.address().as_ref(), mint_info.address().as_ref()],
+        &ephemeral_spl_api::program::id_address(),
+    );
+    if derived_pda != *ephemeral_ata_info.address() {
+        return Err(ProgramError::InvalidSeeds);
+    }
+
+    // Make init idempotent even if the account is currently delegated (owner changed).
+    if ephemeral_ata_info.data_len() == EphemeralAta::LEN {
+        let ephemeral_ata =
+            unsafe { load_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked())? };
+        if ephemeral_ata.is_initialized()
+            && ephemeral_ata.owner == *user_info.address()
+            && ephemeral_ata.mint == *mint_info.address()
         {
             return Ok(());
         }
+
+        // Existing account with EATA-sized data but mismatched content.
+        if ephemeral_ata_info.lamports() > 0 {
+            return Err(ProgramError::InvalidAccountData);
+        }
+    }
+
+    // Any other pre-existing account at this PDA is invalid for initialization.
+    if ephemeral_ata_info.lamports() > 0 {
+        return Err(ProgramError::InvalidAccountData);
     }
 
     let bump = [args.bump()];

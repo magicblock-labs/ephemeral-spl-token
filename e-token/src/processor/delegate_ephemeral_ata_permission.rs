@@ -43,6 +43,11 @@ pub fn process_delegate_ephemeral_ata_permission(
         return Err(ProgramError::InvalidAccountData);
     }
 
+    let dlp_program = ephemeral_spl_api::program::DELEGATION_PROGRAM_ID;
+    if permission_info.owned_by(&dlp_program) {
+        return Ok(());
+    }
+
     let ephemeral_ata =
         unsafe { load_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked())? };
 

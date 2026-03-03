@@ -61,6 +61,6 @@ pub mod instruction {
     pub const DELEGATE_SHUTTLE_EPHEMERAL_ATA: u8 = 13;
     /// 14 - UndelegateShuttleEphemeralAta: commit state and undelegate a shuttle account
     pub const UNDELEGATE_SHUTTLE_EPHEMERAL_ATA: u8 = 14;
-    /// 15 - MergeShuttleIntoEphemeralAta: transfer shuttle ATA funds into owner ATA and keep shuttle account open
+    /// 15 - MergeShuttleIntoEphemeralAta: transfer all shuttle ATA funds into destination ATA and keep shuttle account open
     pub const MERGE_SHUTTLE_INTO_EPHEMERAL_ATA: u8 = 15;
 }

@@ -3,8 +3,8 @@ use {
     crate::processor::*,
     core::{mem::MaybeUninit, slice::from_raw_parts},
     pinocchio::{
-        cpi::MAX_STATIC_CPI_ACCOUNTS, entrypoint::deserialize, error::ProgramError, no_allocator,
-        nostd_panic_handler, AccountView, ProgramResult, SUCCESS,
+        entrypoint::deserialize, error::ProgramError, no_allocator, nostd_panic_handler,
+        AccountView, ProgramResult, MAX_TX_ACCOUNTS, SUCCESS,
     },
 };
 
@@ -16,7 +16,7 @@ nostd_panic_handler!();
 #[no_mangle]
 #[allow(clippy::arithmetic_side_effects)]
 pub unsafe extern "C" fn entrypoint(input: *mut u8) -> u64 {
-    const MAX_PROGRAM_ACCOUNTS: usize = MAX_STATIC_CPI_ACCOUNTS;
+    const MAX_PROGRAM_ACCOUNTS: usize = MAX_TX_ACCOUNTS;
     const UNINIT: MaybeUninit<AccountView> = MaybeUninit::<AccountView>::uninit();
     let mut accounts = [UNINIT; { MAX_PROGRAM_ACCOUNTS }];
 

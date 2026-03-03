@@ -130,13 +130,26 @@ async fn delegate_ephemeral_ata_succeeds() {
     };
 
     let tx = Transaction::new_signed_with_payer(
-        &[ix_delegate],
+        &[ix_delegate.clone()],
         Some(&payer),
         &[&context.payer],
         context.last_blockhash,
     );
 
     context.banks_client.process_transaction(tx).await.unwrap();
+
+    let tx_redelegate = Transaction::new_signed_with_payer(
+        &[ix_delegate],
+        Some(&payer),
+        &[&context.payer],
+        context.last_blockhash,
+    );
+
+    context
+        .banks_client
+        .process_transaction(tx_redelegate)
+        .await
+        .unwrap();
 
     // Assert ATA is owned by delegation program after delegation
     let ata_account = context
@@ -147,6 +160,42 @@ async fn delegate_ephemeral_ata_succeeds() {
     assert!(ata_account.is_some());
     assert_eq!(
         ata_account.unwrap().owner,
+        ephemeral_spl_api::program::DELEGATION_PROGRAM_ID
+    );
+
+    // Re-running InitializeEphemeralAta must be idempotent even when delegated.
+    let ix_reinit = Instruction {
+        program_id: PROGRAM,
+        accounts: vec![
+            AccountMeta::new(pdas.ephemeral_ata, false),
+            AccountMeta::new_readonly(payer, false),
+            AccountMeta::new_readonly(user, false),
+            AccountMeta::new_readonly(mint, false),
+            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+        ],
+        data: vec![instruction::INITIALIZE_EPHEMERAL_ATA, pdas.bump_ata],
+    };
+
+    let tx_reinit = Transaction::new_signed_with_payer(
+        &[ix_reinit],
+        Some(&payer),
+        &[&context.payer],
+        context.last_blockhash,
+    );
+    context
+        .banks_client
+        .process_transaction(tx_reinit)
+        .await
+        .unwrap();
+
+    let ata_account_after_reinit = context
+        .banks_client
+        .get_account(pdas.ephemeral_ata)
+        .await
+        .unwrap()
+        .expect("ephemeral ata should still exist");
+    assert_eq!(
+        ata_account_after_reinit.owner,
         ephemeral_spl_api::program::DELEGATION_PROGRAM_ID
     );
 

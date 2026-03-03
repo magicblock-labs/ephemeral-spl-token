@@ -134,12 +134,24 @@ async fn delegate_shuttle_ephemeral_ata_succeeds() {
     };
 
     let tx = Transaction::new_signed_with_payer(
-        &[ix_delegate],
+        &[ix_delegate.clone()],
         Some(&payer),
         &[&context.payer],
         context.last_blockhash,
     );
     context.banks_client.process_transaction(tx).await.unwrap();
+
+    let tx_redelegate = Transaction::new_signed_with_payer(
+        &[ix_delegate],
+        Some(&payer),
+        &[&context.payer],
+        context.last_blockhash,
+    );
+    context
+        .banks_client
+        .process_transaction(tx_redelegate)
+        .await
+        .unwrap();
 
     let shuttle_meta_account = context
         .banks_client

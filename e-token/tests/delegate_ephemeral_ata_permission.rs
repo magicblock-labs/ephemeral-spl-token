@@ -139,7 +139,7 @@ async fn delegate_ephemeral_ata_permission_succeeds() {
     };
 
     let tx_delegate = Transaction::new_signed_with_payer(
-        &[ix_delegate_permission],
+        &[ix_delegate_permission.clone()],
         Some(&payer),
         &[&context.payer],
         context.last_blockhash,
@@ -147,6 +147,18 @@ async fn delegate_ephemeral_ata_permission_succeeds() {
     context
         .banks_client
         .process_transaction(tx_delegate)
+        .await
+        .unwrap();
+
+    let tx_redelegate = Transaction::new_signed_with_payer(
+        &[ix_delegate_permission],
+        Some(&payer),
+        &[&context.payer],
+        context.last_blockhash,
+    );
+    context
+        .banks_client
+        .process_transaction(tx_redelegate)
         .await
         .unwrap();
 
