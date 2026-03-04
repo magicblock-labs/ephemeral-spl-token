@@ -1679,6 +1679,8 @@ dependencies = [
 [[package]]
 name = "ephemeral-rollups-pinocchio"
 version = "0.8.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "91a77d484a4661b1dd2c4003e605acdb3942a50bc910b45c288df60e1f6dead3"
 dependencies = [
  "bincode 2.0.1",
  "pinocchio 0.10.1",

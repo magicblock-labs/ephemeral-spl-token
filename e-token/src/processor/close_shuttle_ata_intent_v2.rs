@@ -85,7 +85,6 @@ pub fn process_close_shuttle_ata_intent_v2(
             return Err(ProgramError::IncorrectAuthority);
         }
         shuttle_id = shuttle.id;
-        #[allow(clippy::clone_on_copy)]
         let shuttle_owner = shuttle.owner.clone();
         shuttle_owner_opt = Some(shuttle_owner);
     }
@@ -113,8 +112,7 @@ pub fn process_close_shuttle_ata_intent_v2(
             if shuttle_wallet.owner() != shuttle_info.address() {
                 return Err(ProgramError::InvalidAccountData);
             }
-            #[allow(clippy::clone_on_copy)]
-            let mint = shuttle_wallet.mint().clone();
+            let mint = shuttle_wallet.mint();
             (mint, shuttle_wallet.amount())
         };
 

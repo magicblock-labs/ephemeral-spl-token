@@ -178,11 +178,13 @@ async fn delegate_ephemeral_ata_succeeds() {
         data: vec![instruction::INITIALIZE_EPHEMERAL_ATA, pdas.bump_ata],
     };
 
+    let reinit_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
+
     let tx_reinit = Transaction::new_signed_with_payer(
         &[ix_reinit],
         Some(&payer),
         &[&context.payer],
-        context.last_blockhash,
+        reinit_blockhash,
     );
     context
         .banks_client

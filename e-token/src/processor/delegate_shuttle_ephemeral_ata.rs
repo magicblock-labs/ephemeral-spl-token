@@ -60,6 +60,9 @@ pub fn process_delegate_shuttle_ephemeral_ata(
     let mint = {
         let ephemeral_ata =
             unsafe { load_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked())? };
+        if !ephemeral_ata.is_initialized() {
+            return Err(ProgramError::UninitializedAccount);
+        }
         if ephemeral_ata.owner != *shuttle_info.address() {
             return Err(ProgramError::InvalidAccountData);
         }

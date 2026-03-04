@@ -82,6 +82,12 @@ pub fn process_undelegate_and_close_shuttle_ephemeral_ata(
         return Err(ProgramError::InvalidSeeds);
     }
 
+    let expected_shuttle_wallet_ata =
+        get_associated_token_address(shuttle_info.address(), &mint, token_program_info.address());
+    if expected_shuttle_wallet_ata != *shuttle_wallet_ata_info.address() {
+        return Err(ProgramError::InvalidAccountData);
+    }
+
     {
         let shuttle_wallet_data = unsafe { shuttle_wallet_ata_info.borrow_unchecked() };
         if shuttle_wallet_data.len() < TokenAccount::BASE_LEN {
@@ -126,6 +132,19 @@ fn parse_escrow_index(instruction_data: &[u8]) -> Result<u8, ProgramError> {
         return Err(ProgramError::InvalidInstructionData);
     }
     Ok(instruction_data[0])
+}
+
+#[inline(always)]
+fn get_associated_token_address(
+    wallet: &Address,
+    mint: &Address,
+    token_program: &Address,
+) -> Address {
+    ephemeral_spl_api::Address::find_program_address(
+        &[wallet.as_ref(), token_program.as_ref(), mint.as_ref()],
+        &pinocchio_associated_token_account::id(),
+    )
+    .0
 }
 
 #[inline(never)]

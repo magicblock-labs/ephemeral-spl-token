@@ -1,4 +1,3 @@
-use core::marker::PhantomData;
 use ephemeral_spl_api::state::{Initializable, RawType};
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::rent::Rent;
@@ -84,26 +83,22 @@ pub fn process_initialize_ephemeral_ata(
 }
 
 /// Instruction data for the `InitializeMint` instruction.
-pub struct InitializeEphemeralAta<'a> {
-    raw: *const u8,
-    _data: PhantomData<&'a [u8]>,
+pub struct InitializeEphemeralAta {
+    bump: u8,
 }
 
-impl InitializeEphemeralAta<'_> {
+impl InitializeEphemeralAta {
     #[inline]
-    pub fn try_from_bytes(bytes: &[u8]) -> Result<InitializeEphemeralAta<'_>, ProgramError> {
-        if bytes.is_empty() {
+    pub fn try_from_bytes(bytes: &[u8]) -> Result<InitializeEphemeralAta, ProgramError> {
+        if bytes.len() != 1 {
             return Err(ProgramError::InvalidInstructionData);
         }
 
-        Ok(InitializeEphemeralAta {
-            raw: bytes.as_ptr(),
-            _data: PhantomData,
-        })
+        Ok(InitializeEphemeralAta { bump: bytes[0] })
     }
 
     #[inline]
     pub fn bump(&self) -> u8 {
-        unsafe { *self.raw }
+        self.bump
     }
 }
