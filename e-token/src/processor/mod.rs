@@ -1,4 +1,5 @@
 pub mod close_ephemeral_ata;
+pub mod close_shuttle_ata_intent_v2;
 pub mod create_ephemeral_ata_permission;
 pub mod delegate_ephemeral_ata;
 pub mod delegate_ephemeral_ata_permission;
@@ -16,6 +17,7 @@ pub mod undelegation_callback;
 pub mod withdraw_spl_tokens;
 
 pub use close_ephemeral_ata::process_close_ephemeral_ata;
+pub use close_shuttle_ata_intent_v2::process_close_shuttle_ata_intent_v2;
 pub use create_ephemeral_ata_permission::process_create_ephemeral_ata_permission;
 pub use delegate_ephemeral_ata::process_delegate_ephemeral_ata;
 pub use delegate_ephemeral_ata_permission::process_delegate_ephemeral_ata_permission;
@@ -26,9 +28,7 @@ pub use initialize_global_vault::process_initialize_global_vault;
 pub use initialize_shuttle_ephemeral_ata::process_initialize_shuttle_ephemeral_ata;
 pub use merge_shuttle_into_ephemeral_ata::process_merge_shuttle_into_ephemeral_ata;
 pub use reset_ephemeral_ata_permission::process_reset_ephemeral_ata_permission;
-pub use undelegate_and_close_shuttle_ephemeral_ata::{
-    process_close_shuttle_ata_intent_v2, process_undelegate_and_close_shuttle_ephemeral_ata,
-};
+pub use undelegate_and_close_shuttle_ephemeral_ata::process_undelegate_and_close_shuttle_ephemeral_ata;
 pub use undelegate_ephemeral_ata::process_undelegate_ephemeral_ata;
 pub use undelegate_ephemeral_ata_permission::process_undelegate_ephemeral_ata_permission;
 pub use undelegation_callback::process_undelegation_callback;
