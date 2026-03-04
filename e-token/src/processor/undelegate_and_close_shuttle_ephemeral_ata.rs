@@ -14,8 +14,8 @@ const INTENT_BUNDLE_DATA_BUF_SIZE: usize = 1280;
 const CLOSE_SHUTTLE_ATA_COMPUTE_UNITS: u32 = 70_000;
 
 /// Commit and undelegate shuttle wallet ATA, then schedule a post-undelegate
-/// action that closes shuttle wallet ATA if amount == 0, then closes shuttle
-/// metadata account and sends rent to payer.
+/// action that closes shuttle wallet ATA and shuttle EATA if amount == 0, then
+/// closes shuttle metadata account and sends rent to payer.
 ///
 /// Expected accounts (in order used below):
 /// 0. [signer]   Payer (must match shuttle.payer)
@@ -108,6 +108,7 @@ pub fn process_undelegate_and_close_shuttle_ephemeral_ata(
     undelegate_and_close_shuttle_ephemeral_ata(
         payer,
         shuttle_info,
+        shuttle_ephemeral_ata_info,
         shuttle_wallet_ata_info,
         token_program_info,
         magic_context,
@@ -128,9 +129,11 @@ fn parse_escrow_index(instruction_data: &[u8]) -> Result<u8, ProgramError> {
 }
 
 #[inline(never)]
+#[allow(clippy::too_many_arguments)]
 fn undelegate_and_close_shuttle_ephemeral_ata(
     payer: &AccountView,
     shuttle_info: &AccountView,
+    shuttle_ephemeral_ata_info: &AccountView,
     shuttle_wallet_ata_info: &AccountView,
     token_program_info: &AccountView,
     magic_context: &AccountView,
@@ -145,6 +148,10 @@ fn undelegate_and_close_shuttle_ephemeral_ata(
         },
         ShortAccountMeta {
             pubkey: shuttle_info.address().clone(),
+            is_writable: true,
+        },
+        ShortAccountMeta {
+            pubkey: shuttle_ephemeral_ata_info.address().clone(),
             is_writable: true,
         },
         ShortAccountMeta {
