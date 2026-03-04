@@ -12,7 +12,7 @@ const DLP_EPHEMERAL_BALANCE_TAG: &[u8] = b"balance";
 /// Post-undelegate handler that closes shuttle wallet ATA when amount == 0.
 ///
 /// Expected leading accounts:
-/// 0. [writable] Payer (rent recipient)
+/// 0. [writable] Shuttle payer account (must equal `ShuttleEphemeralAta.payer`)
 /// 1. [writable] Shuttle metadata account
 /// 2. [writable] Shuttle wallet ATA account
 /// 3. []         Token program account
@@ -32,18 +32,21 @@ pub fn process_close_shuttle_ata_intent_v2(
         return Err(ProgramError::NotEnoughAccountKeys);
     }
 
-    let payer = &accounts[0];
+    let shuttle_payer_info = &accounts[0];
     let shuttle_info = &accounts[1];
     let shuttle_wallet_ata_info = &accounts[2];
     let token_program_info = &accounts[3];
     let escrow_authority = &accounts[accounts.len() - 2];
     let escrow_signer = &accounts[accounts.len() - 1];
 
-    if escrow_authority.address() != payer.address() {
+    if escrow_authority.address() != shuttle_payer_info.address() {
         return Err(ProgramError::IncorrectAuthority);
     }
     if !escrow_signer.is_signer() {
         return Err(ProgramError::MissingRequiredSignature);
+    }
+    if !shuttle_payer_info.is_writable() {
+        return Err(ProgramError::InvalidArgument);
     }
     if !shuttle_info.is_writable() {
         return Err(ProgramError::InvalidArgument);
@@ -82,7 +85,7 @@ pub fn process_close_shuttle_ata_intent_v2(
     if !shuttle.is_initialized() {
         return Err(ProgramError::InvalidAccountData);
     }
-    if shuttle.payer != *payer.address() {
+    if shuttle.payer != *shuttle_payer_info.address() {
         return Err(ProgramError::IncorrectAuthority);
     }
 
@@ -131,22 +134,22 @@ pub fn process_close_shuttle_ata_intent_v2(
 
     CloseAccount {
         account: shuttle_wallet_ata_info,
-        destination: payer,
+        destination: shuttle_payer_info,
         authority: shuttle_info,
         token_program: token_program_info.address(),
     }
     .invoke_signed(&[signer])?;
 
-    if *payer.address() == *shuttle_info.address() {
+    if *shuttle_payer_info.address() == *shuttle_info.address() {
         return Err(ProgramError::InvalidArgument);
     }
 
     let shuttle_lamports = shuttle_info.lamports();
-    let updated_payer_lamports = payer
+    let updated_payer_lamports = shuttle_payer_info
         .lamports()
         .checked_add(shuttle_lamports)
         .ok_or(ProgramError::InvalidArgument)?;
-    payer.set_lamports(updated_payer_lamports);
+    shuttle_payer_info.set_lamports(updated_payer_lamports);
     shuttle_info.set_lamports(0);
     shuttle_info.close()?;
 
