@@ -151,12 +151,6 @@ pub(crate) fn inner_process_instruction(
 
             process_undelegation_callback(accounts, instruction_data)
         }
-        197 => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: CloseShuttleAtaIntentV2");
-
-            process_close_shuttle_ata_intent_v2(accounts, instruction_data)
-        }
         _ => Err(EphemeralSplError::InvalidInstruction.into()),
     }
 }

@@ -59,7 +59,7 @@ pub mod instruction {
     pub const INITIALIZE_SHUTTLE_EPHEMERAL_ATA: u8 = 11;
     /// 13 - DelegateShuttleEphemeralAta: delegate shuttle account to a DLP program using PDA seeds
     pub const DELEGATE_SHUTTLE_EPHEMERAL_ATA: u8 = 13;
-    /// 14 - UndelegateShuttleEphemeralAta: commit state and undelegate a shuttle account
+    /// 14 - UndelegateShuttleEphemeralAta: revoke delegation on shuttle ATA and close it when empty
     pub const UNDELEGATE_SHUTTLE_EPHEMERAL_ATA: u8 = 14;
     /// 15 - MergeShuttleIntoEphemeralAta: transfer all shuttle ATA funds into destination ATA and keep shuttle account open
     pub const MERGE_SHUTTLE_INTO_EPHEMERAL_ATA: u8 = 15;
