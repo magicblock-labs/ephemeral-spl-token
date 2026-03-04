@@ -37,19 +37,14 @@ pub fn process_initialize_ephemeral_ata(
     }
 
     // Make init idempotent even if the account is currently delegated (owner changed).
-    if ephemeral_ata_info.data_len() == EphemeralAta::LEN {
-        let ephemeral_ata =
-            unsafe { load_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked())? };
+    if let Ok(ephemeral_ata) =
+        unsafe { load_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked()) }
+    {
         if ephemeral_ata.is_initialized()
             && ephemeral_ata.owner == *user_info.address()
             && ephemeral_ata.mint == *mint_info.address()
         {
             return Ok(());
-        }
-
-        // Existing account with EATA-sized data but mismatched content.
-        if ephemeral_ata_info.lamports() > 0 {
-            return Err(ProgramError::InvalidAccountData);
         }
     }
 

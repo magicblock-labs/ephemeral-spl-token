@@ -141,7 +141,7 @@ fn undelegate_and_close_shuttle_ephemeral_ata(
     let close_handler_accounts = [
         ShortAccountMeta {
             pubkey: payer.address().clone(),
-            is_writable: payer.is_writable(),
+            is_writable: true,
         },
         ShortAccountMeta {
             pubkey: shuttle_info.address().clone(),

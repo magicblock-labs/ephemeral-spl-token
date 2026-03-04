@@ -141,11 +141,13 @@ async fn delegate_shuttle_ephemeral_ata_succeeds() {
     );
     context.banks_client.process_transaction(tx).await.unwrap();
 
+    let redelegate_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
+
     let tx_redelegate = Transaction::new_signed_with_payer(
         &[ix_delegate],
         Some(&payer),
         &[&context.payer],
-        context.last_blockhash,
+        redelegate_blockhash,
     );
     context
         .banks_client

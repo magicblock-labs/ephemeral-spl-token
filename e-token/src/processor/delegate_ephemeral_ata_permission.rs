@@ -44,6 +44,7 @@ pub fn process_delegate_ephemeral_ata_permission(
     }
 
     let dlp_program = ephemeral_spl_api::program::DELEGATION_PROGRAM_ID;
+
     if permission_info.owned_by(&dlp_program) {
         return Ok(());
     }

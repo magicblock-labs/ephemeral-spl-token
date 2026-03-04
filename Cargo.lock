@@ -1678,7 +1678,7 @@ dependencies = [
 
 [[package]]
 name = "ephemeral-rollups-pinocchio"
-version = "0.8.5"
+version = "0.8.6"
 dependencies = [
  "bincode 2.0.1",
  "pinocchio 0.10.1",

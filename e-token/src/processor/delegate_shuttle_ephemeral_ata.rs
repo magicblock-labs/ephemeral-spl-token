@@ -124,9 +124,9 @@ impl DelegateShuttleArgs {
         let rest = &bytes[1..];
         let validator = if rest.is_empty() {
             None
-        } else if rest.len() >= 32 {
+        } else if rest.len() == 32 {
             let mut arr = [0u8; 32];
-            arr.copy_from_slice(&rest[..32]);
+            arr.copy_from_slice(rest);
             Some(arr)
         } else {
             return Err(ProgramError::InvalidInstructionData);
