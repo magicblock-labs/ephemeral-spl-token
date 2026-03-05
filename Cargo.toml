@@ -33,6 +33,7 @@ consolidate-commits = false
 ephemeral-rollups-pinocchio = { git = "https://github.com/magicblock-labs/ephemeral-rollups-sdk.git", rev = "62f66e37" }
 magicblock-delegation-program-api = { git = "https://github.com/magicblock-labs/delegation-program.git", rev = "93553ba" }
 
+borsh = "1.3"
 pinocchio = "0.10.1"
 solana-address = "2.0"
 pinocchio-log = "0.5.1"

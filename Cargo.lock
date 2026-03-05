@@ -1798,6 +1798,7 @@ dependencies = [
 name = "ephemeral-spl-api"
 version = "0.0.0"
 dependencies = [
+ "borsh 1.6.0",
  "ephemeral-rollups-pinocchio",
  "pinocchio 0.10.1",
  "pinocchio-pubkey",
@@ -1808,6 +1809,7 @@ dependencies = [
 name = "ephemeral-token-program"
 version = "0.0.0"
 dependencies = [
+ "borsh 1.6.0",
  "ephemeral-rollups-pinocchio",
  "ephemeral-spl-api",
  "magicblock-delegation-program-api",

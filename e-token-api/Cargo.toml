@@ -2,12 +2,13 @@
 name = "ephemeral-spl-api"
 version = "0.0.0"
 description = "Shared crate with the Ephemeral SPL program ID"
-authors = { workspace = true}
-repository = { workspace = true}
-license = { workspace = true}
-edition = { workspace = true}
+authors = { workspace = true }
+repository = { workspace = true }
+license = { workspace = true }
+edition = { workspace = true }
 
 [dependencies]
+borsh = { workspace = true }
 pinocchio = { workspace = true }
 pinocchio-pubkey = { workspace = true }
 solana-address = { workspace = true }

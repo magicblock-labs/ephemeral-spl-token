@@ -15,6 +15,7 @@ crate-type = ["cdylib"]
 logging = []
 
 [dependencies]
+borsh = { workspace = true }
 ephemeral-rollups-pinocchio = { workspace = true, features = [
     "delegation-actions",
     "intent-bundle",

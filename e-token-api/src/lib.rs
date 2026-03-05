@@ -1,8 +1,10 @@
 #![no_std]
+extern crate alloc;
 
 // Single source of truth for the e-ephemeral-token program ID.
 // Keep this in a separate rlib crate so tests and clients can link it while
 // the on-chain program crate stays cdylib-only.
+pub mod args;
 pub mod error;
 pub mod state;
 pub mod program {
@@ -65,4 +67,6 @@ pub mod instruction {
     pub const MERGE_SHUTTLE_INTO_EPHEMERAL_ATA: u8 = 15;
     /// 16 - DelegateAndMergeShuttleEphemeralAta: delegate shuttle account to a DLP program using PDA seeds and merge the shuttle ATA into the destination ATA
     pub const DELEGATE_AND_MERGE_SHUTTLE_EPHEMERAL_ATA: u8 = 16;
+    /// 17 - DelegateAndMergeShuttleWithAction: delegate shuttle account to a DLP program using PDA seeds and merge the shuttle ATA into the destination ATA with an additional action
+    pub const DELEGATE_AND_MERGE_SHUTTLE_WITH_ACTION: u8 = 17;
 }

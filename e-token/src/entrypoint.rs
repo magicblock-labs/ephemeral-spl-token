@@ -146,6 +146,12 @@ pub(crate) fn inner_process_instruction(
 
             process_delegate_and_merge_shuttle_ephemeral_ata(accounts, instruction_data)
         }
+        instruction::DELEGATE_AND_MERGE_SHUTTLE_WITH_ACTION => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: DelegateAndMergeShuttleWithAction");
+
+            process_delegate_and_merge_shuttle_with_action(accounts, instruction_data)
+        }
         196 => {
             #[cfg(feature = "logging")]
             pinocchio_log::log!("Instruction: UndelegationCallback");
