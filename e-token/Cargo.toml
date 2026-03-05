@@ -26,6 +26,7 @@ pinocchio-system = { workspace = true }
 pinocchio-token-2022 = { workspace = true }
 pinocchio-associated-token-account = { workspace = true }
 ephemeral-spl-api = { path = "../e-token-api" }
+solana-instruction = { workspace = true }
 
 [dev-dependencies]
 solana-program-pack = { workspace = true }

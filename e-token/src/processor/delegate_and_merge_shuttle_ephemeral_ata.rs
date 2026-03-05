@@ -2,9 +2,9 @@ use alloc::vec;
 use ephemeral_rollups_pinocchio::{
     consts::{MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID},
     instruction::{
-        AccountMeta as CompactAccountMeta, DelegateAccountWithActionsCpiBuilder,
-        MaybeEncryptedAccountMeta, MaybeEncryptedInstruction, MaybeEncryptedIxData,
-        PostDelegationActions,
+        AccountMeta as CompactAccountMeta, ClearText, DelegateAccountWithActionsCpiBuilder,
+        Instruction as CompactInstruction, MaybeEncryptedAccountMeta, MaybeEncryptedInstruction,
+        MaybeEncryptedIxData, PostDelegationActions,
     },
     types::DelegateConfig,
 };
@@ -16,6 +16,7 @@ use ephemeral_spl_api::{
     },
 };
 use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
+use solana_instruction::{AccountMeta, Instruction};
 
 use crate::utils::read_token_account;
 
@@ -123,54 +124,34 @@ pub fn process_delegate_and_merge_shuttle_ephemeral_ata(
         ..DelegateConfig::default()
     };
 
-    let actions = PostDelegationActions {
-        signers: vec![owner_info.address().to_bytes()],
-        non_signers: vec![
-            owner_info.address().to_bytes().into(),
-            owner_ata_info.address().to_bytes().into(),
-            shuttle_info.address().to_bytes().into(),
-            shuttle_eata_info.address().to_bytes().into(),
-            shuttle_ata_info.address().to_bytes().into(),
-            mint.to_bytes().into(),
-            token_program_info.address().to_bytes().into(),
-            MAGIC_CONTEXT_ID.to_bytes().into(),
-            MAGIC_PROGRAM_ID.to_bytes().into(),
-            crate::ID.into(),
-        ],
-        instructions: vec![
-            MaybeEncryptedInstruction {
-                program_id: 9,
-                accounts: vec![
-                    CompactAccountMeta::new(0, true).into(),
-                    CompactAccountMeta::new(1, false).into(),
-                    CompactAccountMeta::new(2, false).into(),
-                    CompactAccountMeta::new(4, false).into(),
-                    CompactAccountMeta::new_readonly(5, false).into(),
-                    CompactAccountMeta::new_readonly(6, false).into(),
-                ],
-                data: MaybeEncryptedIxData {
-                    prefix: vec![instruction::MERGE_SHUTTLE_INTO_EPHEMERAL_ATA],
-                    suffix: vec![].into(),
-                },
-            },
-            MaybeEncryptedInstruction {
-                program_id: 9,
-                accounts: vec![
-                    CompactAccountMeta::new(0, true).into(),
-                    CompactAccountMeta::new_readonly(2, false).into(),
-                    CompactAccountMeta::new(3, false).into(),
-                    MaybeEncryptedAccountMeta::ClearText(CompactAccountMeta::new(4, false)),
-                    CompactAccountMeta::new_readonly(6, false).into(),
-                    CompactAccountMeta::new(7, false).into(),
-                    CompactAccountMeta::new_readonly(8, false).into(),
-                ],
-                data: MaybeEncryptedIxData {
-                    prefix: vec![instruction::UNDELEGATE_AND_CLOSE_SHUTTLE_EPHEMERAL_ATA],
-                    suffix: vec![].into(),
-                },
-            },
-        ],
-    };
+    let actions = vec![
+        Instruction {
+            program_id: MAGIC_PROGRAM_ID,
+            accounts: vec![
+                AccountMeta::new(*owner_info.address(), true),
+                AccountMeta::new(*owner_ata_info.address(), false),
+                AccountMeta::new(*shuttle_info.address(), false),
+                AccountMeta::new(*shuttle_ata_info.address(), false),
+                AccountMeta::new_readonly(mint, false),
+                AccountMeta::new_readonly(*token_program_info.address(), false),
+            ],
+            data: vec![instruction::MERGE_SHUTTLE_INTO_EPHEMERAL_ATA],
+        },
+        Instruction {
+            program_id: MAGIC_PROGRAM_ID,
+            accounts: vec![
+                AccountMeta::new(*owner_info.address(), true),
+                AccountMeta::new_readonly(*shuttle_info.address(), false),
+                AccountMeta::new(*shuttle_eata_info.address(), false),
+                AccountMeta::new(*shuttle_ata_info.address(), false),
+                AccountMeta::new(*token_program_info.address(), false),
+                AccountMeta::new_readonly(MAGIC_CONTEXT_ID, false),
+                AccountMeta::new_readonly(MAGIC_PROGRAM_ID, false),
+            ],
+            data: vec![instruction::UNDELEGATE_AND_CLOSE_SHUTTLE_EPHEMERAL_ATA],
+        },
+    ]
+    .cleartext();
 
     #[cfg(feature = "logging")]
     {
