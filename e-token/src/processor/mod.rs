@@ -1,6 +1,7 @@
 pub mod close_ephemeral_ata;
 pub mod close_shuttle_ata_intent_v2;
 pub mod create_ephemeral_ata_permission;
+pub mod delegate_and_merge_shuttle_ephemeral_ata;
 pub mod delegate_ephemeral_ata;
 pub mod delegate_ephemeral_ata_permission;
 pub mod delegate_shuttle_ephemeral_ata;
@@ -19,6 +20,7 @@ pub mod withdraw_spl_tokens;
 pub use close_ephemeral_ata::process_close_ephemeral_ata;
 pub use close_shuttle_ata_intent_v2::process_close_shuttle_ata_intent_v2;
 pub use create_ephemeral_ata_permission::process_create_ephemeral_ata_permission;
+pub use delegate_and_merge_shuttle_ephemeral_ata::process_delegate_and_merge_shuttle_ephemeral_ata;
 pub use delegate_ephemeral_ata::process_delegate_ephemeral_ata;
 pub use delegate_ephemeral_ata_permission::process_delegate_ephemeral_ata_permission;
 pub use delegate_shuttle_ephemeral_ata::process_delegate_shuttle_ephemeral_ata;

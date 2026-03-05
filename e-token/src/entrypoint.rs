@@ -1,4 +1,4 @@
-use ephemeral_spl_api::error::EphemeralSplError;
+use ephemeral_spl_api::{error::EphemeralSplError, instruction};
 use {
     crate::processor::*,
     core::{mem::MaybeUninit, slice::from_raw_parts},
@@ -133,7 +133,7 @@ pub(crate) fn inner_process_instruction(
 
             process_delegate_shuttle_ephemeral_ata(accounts, instruction_data)
         }
-        14 => {
+        instruction::UNDELEGATE_AND_CLOSE_SHUTTLE_EPHEMERAL_ATA => {
             #[cfg(feature = "logging")]
             pinocchio_log::log!("Instruction: UndelegateShuttleEphemeralAta");
 
@@ -144,6 +144,12 @@ pub(crate) fn inner_process_instruction(
             pinocchio_log::log!("Instruction: MergeShuttleIntoEphemeralAta");
 
             process_merge_shuttle_into_ephemeral_ata(accounts, instruction_data)
+        }
+        instruction::DELEGATE_AND_MERGE_SHUTTLE_EPHEMERAL_ATA => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: DelegateAndMergeShuttleEphemeralAta");
+
+            process_delegate_and_merge_shuttle_ephemeral_ata(accounts, instruction_data)
         }
         196 => {
             #[cfg(feature = "logging")]

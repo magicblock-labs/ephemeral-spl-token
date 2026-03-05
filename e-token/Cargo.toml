@@ -2,10 +2,10 @@
 name = "ephemeral-token-program"
 version = "0.0.0"
 description = "Ephemeral SPL Token program"
-authors = { workspace = true}
-repository = { workspace = true}
-license = { workspace = true}
-edition = { workspace = true}
+authors = { workspace = true }
+repository = { workspace = true }
+license = { workspace = true }
+edition = { workspace = true }
 readme = "./README.md"
 
 [lib]
@@ -15,7 +15,9 @@ crate-type = ["cdylib"]
 logging = []
 
 [dependencies]
-ephemeral-rollups-pinocchio = { workspace = true }
+ephemeral-rollups-pinocchio = { workspace = true, features = [
+    "delegation-actions",
+] }
 pinocchio = { workspace = true }
 pinocchio-log = { workspace = true }
 pinocchio-system = { workspace = true }
@@ -35,7 +37,7 @@ solana-signer = { workspace = true }
 solana-transaction = { workspace = true }
 solana-system-interface = { workspace = true }
 solana-account = { workspace = true }
-solana-account-view  = { workspace = true }
+solana-account-view = { workspace = true }
 spl-token-interface = { workspace = true }
 magicblock-delegation-program = { workspace = true }
 
