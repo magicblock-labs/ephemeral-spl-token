@@ -16,7 +16,7 @@ check-cfg = [
 ]
 
 [workspace.metadata.cli]
-solana = "2.3.4"
+solana = "3.1.5"
 
 # Specify Rust toolchains for rustfmt, clippy, and build.
 # Any unprovided toolchains default to stable.
@@ -30,10 +30,11 @@ tag-message = "Publish {{crate_name}} v{{version}}"
 consolidate-commits = false
 
 [workspace.dependencies]
-ephemeral-rollups-pinocchio = { git = "https://github.com/magicblock-labs/ephemeral-rollups-sdk.git", rev = "b0ba6a733" }
+ephemeral-rollups-pinocchio = { git = "https://github.com/magicblock-labs/ephemeral-rollups-sdk.git", rev = "62f66e37" }
+magicblock-delegation-program-api = { git = "https://github.com/magicblock-labs/delegation-program.git", rev = "93553ba" }
 
-pinocchio = { version = "0.10.1", features = ["cpi"] }
-solana-address = { version = "2.0", features = ["curve25519"] }
+pinocchio = "0.10.1"
+solana-address = "2.0"
 pinocchio-log = "0.5.1"
 pinocchio-pubkey = "0.3"
 pinocchio-system = "0.5"
@@ -53,4 +54,3 @@ solana-keypair = "3.0.1"
 solana-transaction = "3.0.1"
 solana-system-interface = { version = "2.0.0", features = ["bincode"] }
 spl-token-interface = "2.0.0"
-magicblock-delegation-program = "=1.1.2"

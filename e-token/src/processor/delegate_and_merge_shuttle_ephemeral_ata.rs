@@ -1,18 +1,23 @@
 use alloc::vec;
-use ephemeral_rollups_pinocchio::consts::{MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID};
-use ephemeral_rollups_pinocchio::instruction::{
-    AccountMeta as CompactAccountMeta, DelegateAccountWithActionsCpiBuilder,
-    MaybeEncryptedAccountMeta, MaybeEncryptedInstruction, MaybeEncryptedIxData,
-    PostDelegationActions,
+use ephemeral_rollups_pinocchio::{
+    consts::{MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID},
+    instruction::{
+        AccountMeta as CompactAccountMeta, DelegateAccountWithActionsCpiBuilder,
+        MaybeEncryptedAccountMeta, MaybeEncryptedInstruction, MaybeEncryptedIxData,
+        PostDelegationActions,
+    },
+    types::DelegateConfig,
 };
-use ephemeral_rollups_pinocchio::types::DelegateConfig;
-use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::state::{
-    ephemeral_ata::EphemeralAta, load_unchecked, shuttle_ephemeral_ata::ShuttleEphemeralAta,
-    Initializable,
+use ephemeral_spl_api::{
+    instruction,
+    state::{
+        ephemeral_ata::EphemeralAta, load_unchecked, shuttle_ephemeral_ata::ShuttleEphemeralAta,
+        Initializable,
+    },
 };
 use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
-use pinocchio_token_2022::state::TokenAccount;
+
+use crate::utils::read_token_account;
 
 pub fn process_delegate_and_merge_shuttle_ephemeral_ata(
     accounts: &[AccountView],
@@ -80,25 +85,20 @@ pub fn process_delegate_and_merge_shuttle_ephemeral_ata(
         mint
     };
 
-    let owner_ata = TokenAccount::from_account_view(owner_ata_info)?;
-    if !owner_ata.is_initialized() {
-        return Err(ProgramError::UninitializedAccount);
+    let (owner_ata_mint, owner_ata_owner, _owner_ata_amount) = read_token_account(owner_ata_info)?;
+    if owner_ata_owner != *owner_info.address() {
+        return Err(ProgramError::InvalidAccountOwner);
     }
-    if owner_ata.owner() != owner_info.address() {
-        return Err(ProgramError::InvalidAccountData);
-    }
-    if owner_ata.mint() != &mint {
+    if owner_ata_mint != mint {
         return Err(ProgramError::InvalidAccountData);
     }
 
-    let shuttle_wallet_ata = TokenAccount::from_account_view(shuttle_ata_info)?;
-    if !shuttle_wallet_ata.is_initialized() {
-        return Err(ProgramError::UninitializedAccount);
-    }
-    if shuttle_wallet_ata.owner() != shuttle_info.address() {
+    let (shuttle_wallet_mint, shuttle_wallet_owner, _shuttle_wallet_amount) =
+        read_token_account(shuttle_ata_info)?;
+    if shuttle_wallet_owner != *shuttle_info.address() {
         return Err(ProgramError::InvalidAccountData);
     }
-    if shuttle_wallet_ata.mint() != &mint {
+    if shuttle_wallet_mint != mint {
         return Err(ProgramError::InvalidAccountData);
     }
 
@@ -190,6 +190,7 @@ pub fn process_delegate_and_merge_shuttle_ephemeral_ata(
     .bump(args.bump())
     .config(config)
     .actions(actions)
+    .action_signer_accounts(&[owner_info])
     .invoke()
 }
 

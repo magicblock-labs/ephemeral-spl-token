@@ -1,4 +1,7 @@
-use dlp::pda::{fees_vault_pda, validator_fees_vault_pda_from_validator};
+use dlp_api::dlp::{
+    pda::{fees_vault_pda, validator_fees_vault_pda_from_validator},
+    state::{DelegationMetadata, DelegationRecord},
+};
 use ephemeral_rollups_pinocchio::acl::consts::PERMISSION_PROGRAM_ID;
 use ephemeral_rollups_pinocchio::consts::DELEGATION_PROGRAM_ID;
 use ephemeral_spl_api::program::ID;
@@ -68,9 +71,8 @@ async fn undelegate_ephemeral_ata_permission_callback() {
 
     let seeds: [&[u8]; 2] = [b"permission:", ephemeral_ata.as_ref()];
 
-    let mut delegation_record_data =
-        vec![0u8; dlp::state::DelegationRecord::size_with_discriminator()];
-    let delegation_record = dlp::state::DelegationRecord {
+    let mut delegation_record_data = vec![0u8; DelegationRecord::size_with_discriminator()];
+    let delegation_record = DelegationRecord {
         authority: payer_pubkey.to_bytes().into(),
         owner: PROGRAM.to_bytes().into(),
         delegation_slot: 0,
@@ -95,7 +97,7 @@ async fn undelegate_ephemeral_ata_permission_callback() {
         },
     );
 
-    let delegation_metadata = dlp::state::DelegationMetadata {
+    let delegation_metadata = DelegationMetadata {
         last_update_nonce: 0,
         is_undelegatable: true,
         seeds: seeds.iter().map(|s| s.to_vec()).collect(),
@@ -146,7 +148,7 @@ async fn undelegate_ephemeral_ata_permission_callback() {
 
     let context = pt.start_with_context().await;
 
-    let ix_undelegate = dlp::instruction_builder::undelegate(
+    let ix_undelegate = dlp_api::instruction_builder::undelegate(
         payer_pubkey.to_bytes().into(),
         permission_pda.to_bytes().into(),
         PROGRAM.to_bytes().into(),
@@ -211,8 +213,7 @@ async fn undelegate_ephemeral_ata_permission_callback() {
 
     if let Some(account) = delegation_metadata_account {
         let metadata =
-            dlp::state::DelegationMetadata::try_from_bytes_with_discriminator(&account.data)
-                .unwrap();
+            DelegationMetadata::try_from_bytes_with_discriminator(&account.data).unwrap();
         assert!(!metadata.is_undelegatable);
     }
 }

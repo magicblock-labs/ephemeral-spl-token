@@ -17,6 +17,7 @@ logging = []
 [dependencies]
 ephemeral-rollups-pinocchio = { workspace = true, features = [
     "delegation-actions",
+    "intent-bundle",
 ] }
 pinocchio = { workspace = true }
 pinocchio-log = { workspace = true }
@@ -39,7 +40,7 @@ solana-system-interface = { workspace = true }
 solana-account = { workspace = true }
 solana-account-view = { workspace = true }
 spl-token-interface = { workspace = true }
-magicblock-delegation-program = { workspace = true }
+magicblock-delegation-program-api = { workspace = true }
 
 [lints]
 workspace = true

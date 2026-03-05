@@ -3,15 +3,10 @@ use {
     crate::processor::*,
     core::{mem::MaybeUninit, slice::from_raw_parts},
     pinocchio::{
-        entrypoint::deserialize, error::ProgramError, no_allocator, nostd_panic_handler,
-        AccountView, ProgramResult, MAX_TX_ACCOUNTS, SUCCESS,
+        entrypoint::deserialize, error::ProgramError, AccountView, ProgramResult, MAX_TX_ACCOUNTS,
+        SUCCESS,
     },
 };
-
-// Do not allocate memory.
-no_allocator!();
-// Use the no_std panic handler.
-nostd_panic_handler!();
 
 #[no_mangle]
 #[allow(clippy::arithmetic_side_effects)]
