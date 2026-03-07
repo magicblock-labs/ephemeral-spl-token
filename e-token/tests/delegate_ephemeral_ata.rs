@@ -61,6 +61,8 @@ async fn delegate_ephemeral_ata_succeeds() {
     };
 
     let vault_token_acc = utils::derive_associated_token_address(pdas.vault, mint);
+    let (vault_eata, _vault_eata_bump) =
+        Pubkey::find_program_address(&[pdas.vault.as_ref(), mint.as_ref()], &PROGRAM);
 
     let ix_init_vault = Instruction {
         program_id: PROGRAM,
@@ -68,6 +70,7 @@ async fn delegate_ephemeral_ata_succeeds() {
             AccountMeta::new(pdas.vault, false),
             AccountMeta::new(payer, true),
             AccountMeta::new_readonly(mint, false),
+            AccountMeta::new(vault_eata, false),
             AccountMeta::new(vault_token_acc, false), // vault token account
             AccountMeta::new_readonly(spl_token_interface::ID, false), // token program
             AccountMeta::new_readonly(utils::associated_token_program_id(), false), // associated token program
@@ -249,6 +252,8 @@ async fn delegate_ephemeral_ata_non_owner_succeeds() {
     };
 
     let vault_token_acc = utils::derive_associated_token_address(pdas.vault, mint);
+    let (vault_eata, _vault_eata_bump) =
+        Pubkey::find_program_address(&[pdas.vault.as_ref(), mint.as_ref()], &PROGRAM);
 
     let ix_init_vault = Instruction {
         program_id: PROGRAM,
@@ -256,6 +261,7 @@ async fn delegate_ephemeral_ata_non_owner_succeeds() {
             AccountMeta::new(pdas.vault, false),
             AccountMeta::new(payer, true),
             AccountMeta::new_readonly(mint, false),
+            AccountMeta::new(vault_eata, false),
             AccountMeta::new(vault_token_acc, false), // vault token account
             AccountMeta::new_readonly(spl_token_interface::ID, false), // token program
             AccountMeta::new_readonly(utils::associated_token_program_id(), false), // associated token program

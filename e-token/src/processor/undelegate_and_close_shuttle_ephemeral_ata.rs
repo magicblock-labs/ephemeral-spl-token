@@ -162,23 +162,23 @@ fn undelegate_and_close_shuttle_ephemeral_ata(
     let close_handler_data = [CLOSE_SHUTTLE_ATA_INTENT_V2, escrow_index];
     let close_handler_accounts = [
         ShortAccountMeta {
-            pubkey: payer.address().clone(),
+            pubkey: *payer.address(),
             is_writable: true,
         },
         ShortAccountMeta {
-            pubkey: shuttle_info.address().clone(),
+            pubkey: *shuttle_info.address(),
             is_writable: true,
         },
         ShortAccountMeta {
-            pubkey: shuttle_ephemeral_ata_info.address().clone(),
+            pubkey: *shuttle_ephemeral_ata_info.address(),
             is_writable: true,
         },
         ShortAccountMeta {
-            pubkey: shuttle_wallet_ata_info.address().clone(),
+            pubkey: *shuttle_wallet_ata_info.address(),
             is_writable: shuttle_wallet_ata_info.is_writable(),
         },
         ShortAccountMeta {
-            pubkey: token_program_info.address().clone(),
+            pubkey: *token_program_info.address(),
             is_writable: token_program_info.is_writable(),
         },
     ];

@@ -85,7 +85,7 @@ pub fn process_close_shuttle_ata_intent_v2(
             return Err(ProgramError::IncorrectAuthority);
         }
         shuttle_id = shuttle.id;
-        let shuttle_owner = shuttle.owner.clone();
+        let shuttle_owner = shuttle.owner;
         shuttle_owner_opt = Some(shuttle_owner);
     }
 

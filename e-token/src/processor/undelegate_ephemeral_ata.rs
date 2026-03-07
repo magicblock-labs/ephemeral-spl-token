@@ -2,6 +2,21 @@ use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_unchecked};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_token_2022::state::TokenAccount;
 
+fn commit_and_undelegate_accounts(
+    payer: &AccountView,
+    accounts: &[AccountView],
+    magic_context: &AccountView,
+    magic_program: &AccountView,
+) -> ProgramResult {
+    ephemeral_rollups_pinocchio::instruction::commit_and_undelegate_accounts(
+        payer,
+        accounts,
+        magic_context,
+        magic_program,
+        None,
+    )
+}
+
 /// Undelegate an Ephemeral ATA by calling into the delegation program helper that
 /// schedules a commit and performs undelegation.
 ///
@@ -61,10 +76,5 @@ pub fn process_undelegate_ephemeral_ata(
     }
 
     // Commit and undelegate with the user's ATA and the ephemeral ATA as the account set
-    ephemeral_rollups_pinocchio::instruction::commit_and_undelegate_accounts(
-        payer,
-        &[ata_info.clone()],
-        magic_context,
-        magic_program,
-    )
+    commit_and_undelegate_accounts(payer, &[ata_info.clone()], magic_context, magic_program)
 }

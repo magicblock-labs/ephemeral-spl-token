@@ -54,6 +54,8 @@ async fn deposit_spl_tokens_increments_shuttle_amount() {
     let vault = pdas.vault;
     let vault_bump = pdas.bump_vault;
     let user_ata = setup.user_tokens[0];
+    let (vault_eata, _vault_eata_bump) =
+        Pubkey::find_program_address(&[vault.as_ref(), mint.as_ref()], &PROGRAM);
     let vault_ata = utils::derive_associated_token_address(vault, mint);
 
     let mut shuttle_init_data = vec![instruction::INITIALIZE_SHUTTLE_EPHEMERAL_ATA];
@@ -81,6 +83,7 @@ async fn deposit_spl_tokens_increments_shuttle_amount() {
             AccountMeta::new(vault, false),
             AccountMeta::new(payer, true),
             AccountMeta::new_readonly(mint, false),
+            AccountMeta::new(vault_eata, false),
             AccountMeta::new(vault_ata, false),
             AccountMeta::new_readonly(spl_token_interface::ID, false),
             AccountMeta::new_readonly(utils::associated_token_program_id(), false),

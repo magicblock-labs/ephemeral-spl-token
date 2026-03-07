@@ -81,8 +81,8 @@ pub fn process_initialize_shuttle_ephemeral_ata(
             load_mut_unchecked::<ShuttleEphemeralAta>(shuttle_info.borrow_unchecked_mut())?
         };
 
-        shuttle.owner = owner_info.address().clone();
-        shuttle.payer = payer_info.address().clone();
+        shuttle.owner = *owner_info.address();
+        shuttle.payer = *payer_info.address();
         shuttle.id = args.shuttle_id();
     } else {
         let shuttle =

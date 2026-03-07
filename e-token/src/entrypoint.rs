@@ -127,6 +127,12 @@ pub(crate) fn inner_process_instruction(
 
             process_initialize_shuttle_ephemeral_ata(accounts, instruction_data)
         }
+        12 => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: InitializeTransferQueue");
+
+            process_initialize_transfer_queue(accounts, instruction_data)
+        }
         13 => {
             #[cfg(feature = "logging")]
             pinocchio_log::log!("Instruction: DelegateShuttleEphemeralAta");
@@ -145,6 +151,18 @@ pub(crate) fn inner_process_instruction(
 
             process_merge_shuttle_into_ephemeral_ata(accounts, instruction_data)
         }
+        16 => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: DepositAndQueueTransfer");
+
+            process_deposit_and_queue_transfer(accounts, instruction_data)
+        }
+        17 => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: EnsureTransferQueueCrank");
+
+            process_ensure_transfer_queue_crank(accounts, instruction_data)
+        }
         196 => {
             #[cfg(feature = "logging")]
             pinocchio_log::log!("Instruction: UndelegationCallback");
@@ -156,6 +174,18 @@ pub(crate) fn inner_process_instruction(
             pinocchio_log::log!("Instruction: CloseShuttleAtaIntentV2");
 
             process_close_shuttle_ata_intent_v2(accounts, instruction_data)
+        }
+        198 => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: ExecuteReadyQueuedTransfer");
+
+            process_execute_ready_queued_transfer(accounts, instruction_data)
+        }
+        199 => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: ProcessTransferQueueTick");
+
+            process_transfer_queue_tick(accounts, instruction_data)
         }
         _ => Err(EphemeralSplError::InvalidInstruction.into()),
     }

@@ -25,7 +25,7 @@ pub use solana_address::Address;
 pub mod instruction {
     /// 0 - InitializeEphemeralAta: initialize the ephemeral ATA account derived from [user, mint]
     pub const INITIALIZE_EPHEMERAL_ATA: u8 = 0;
-    /// 1 - InitializeGlobalVault: initialize the global vault account derived from [mint]
+    /// 1 - InitializeGlobalVault: initialize the global vault [mint] PDA plus vault-owned Ephemeral ATA and vault ATA
     pub const INITIALIZE_GLOBAL_VAULT: u8 = 1;
     /// 2 - DepositSplTokens: transfer tokens to global vault and increase EphemeralAta amount
     ///     Works for both standard EATA and shuttle EATA, as long as the data account is program-owned.
@@ -57,10 +57,27 @@ pub mod instruction {
     ///      [0..4] shuttle_id (u32 LE)
     ///      [4]    bump
     pub const INITIALIZE_SHUTTLE_EPHEMERAL_ATA: u8 = 11;
+    /// 12 - InitializeTransferQueue: initialize per-mint transfer queue PDA derived from [QUEUE_SEED, mint]
+    ///      Instruction data:
+    ///      []        default size (9728 bytes)
+    ///      [0..4]    optional queue size in bytes (u32 LE), 0 => default
+    pub const INITIALIZE_TRANSFER_QUEUE: u8 = 12;
     /// 13 - DelegateShuttleEphemeralAta: delegate shuttle account to a DLP program using PDA seeds
     pub const DELEGATE_SHUTTLE_EPHEMERAL_ATA: u8 = 13;
     /// 14 - UndelegateShuttleEphemeralAta: revoke delegation on shuttle ATA and close it when empty
     pub const UNDELEGATE_SHUTTLE_EPHEMERAL_ATA: u8 = 14;
     /// 15 - MergeShuttleIntoEphemeralAta: transfer all shuttle ATA funds into destination ATA and keep shuttle account open
     pub const MERGE_SHUTTLE_INTO_EPHEMERAL_ATA: u8 = 15;
+    /// 16 - DepositAndQueueTransfer: transfer tokens from signer into the vault ATA and enqueue one or more delayed transfers
+    ///      Instruction data:
+    ///      [0..8]    amount (u64 LE)
+    ///      [8..16]   delay_seconds (u64 LE), 0 => immediate
+    ///      [16..20]  split count (u32 LE), must be >= 1
+    pub const DEPOSIT_AND_QUEUE_TRANSFER: u8 = 16;
+    /// 17 - EnsureTransferQueueCrank: ensure the per-mint recurring queue crank is scheduled
+    ///      Instruction data:
+    ///      []
+    pub const ENSURE_TRANSFER_QUEUE_CRANK: u8 = 17;
+    /// Backward-compatible alias for `ENSURE_TRANSFER_QUEUE_CRANK`.
+    pub const SCHEDULE_NEXT_QUEUED_TRANSFER: u8 = ENSURE_TRANSFER_QUEUE_CRANK;
 }

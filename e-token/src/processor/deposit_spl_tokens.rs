@@ -70,7 +70,7 @@ pub fn process_deposit_spl_tokens(
 
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
-fn transfer_to_vault_for_mint(
+pub(crate) fn transfer_to_vault_for_mint(
     vault_info: &AccountView,
     mint_info: &AccountView,
     user_source_token_acc: &AccountView,

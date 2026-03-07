@@ -10,8 +10,9 @@ edition = { workspace = true}
 [dependencies]
 pinocchio = { workspace = true }
 pinocchio-pubkey = { workspace = true }
-solana-address = { workspace = true }
+solana-address = { workspace = true, features = ["copy", "bytemuck"] }
 ephemeral-rollups-pinocchio = { workspace = true }
+bytemuck = { version = "1.23.1", features = ["derive"] }
 
 [lints]
 workspace = true

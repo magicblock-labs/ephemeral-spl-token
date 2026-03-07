@@ -49,6 +49,8 @@ async fn deposit_spl_tokens_increments_ephemeral_amount() {
     let vault = pdas.vault;
     let bump_vault = pdas.bump_vault;
     let user_ata = setup.user_tokens[0];
+    let (vault_eata, _vault_eata_bump) =
+        Pubkey::find_program_address(&[vault.as_ref(), mint.as_ref()], &PROGRAM);
     let vault_ata = utils::derive_associated_token_address(vault, mint);
 
     // Assert initial SPL token balances
@@ -81,6 +83,7 @@ async fn deposit_spl_tokens_increments_ephemeral_amount() {
             AccountMeta::new(vault, false),
             AccountMeta::new(payer, true),
             AccountMeta::new_readonly(mint, false),
+            AccountMeta::new(vault_eata, false),
             AccountMeta::new(vault_ata, false), // vault token account
             AccountMeta::new_readonly(spl_token_interface::ID, false), // token program
             AccountMeta::new_readonly(utils::associated_token_program_id(), false), // associated token program
