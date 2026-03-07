@@ -30,8 +30,8 @@ tag-message = "Publish {{crate_name}} v{{version}}"
 consolidate-commits = false
 
 [workspace.dependencies]
-ephemeral-rollups-pinocchio = { git = "https://github.com/magicblock-labs/ephemeral-rollups-sdk.git", rev = "1ee39902d16fda2675d7c90c74d643cbc61ce81f" }
-magicblock-delegation-program-api = { git = "https://github.com/magicblock-labs/delegation-program.git", rev = "d588b076619ded85a144ebf9cabdcc70a2be7e7a" }
+ephemeral-rollups-pinocchio = { git = "https://github.com/magicblock-labs/ephemeral-rollups-sdk.git", rev = "d2327bca82fff59fb06c8ae87739eae1470ed8fa" }
+magicblock-delegation-program-api = { git = "https://github.com/magicblock-labs/delegation-program.git", rev = "b4979e2b9fbb16b0c8a4187dbfe442ef9f0f3357" }
 
 borsh = "1.3"
 pinocchio = "0.10.1"
