@@ -1,7 +1,7 @@
-use crate::processor::close_shuttle_ata_intent_v2::CLOSE_SHUTTLE_ATA_INTENT_V2;
 use ephemeral_rollups_pinocchio::intent_bundle::{
     ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
 };
+use ephemeral_spl_api::instruction::internal::CLOSE_SHUTTLE_ATA_INTENT_V2;
 use ephemeral_spl_api::state::{
     ephemeral_ata::EphemeralAta, load_unchecked, shuttle_ephemeral_ata::ShuttleEphemeralAta,
     Initializable,

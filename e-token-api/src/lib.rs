@@ -80,4 +80,16 @@ pub mod instruction {
     pub const ENSURE_TRANSFER_QUEUE_CRANK: u8 = 17;
     /// Backward-compatible alias for `ENSURE_TRANSFER_QUEUE_CRANK`.
     pub const SCHEDULE_NEXT_QUEUED_TRANSFER: u8 = ENSURE_TRANSFER_QUEUE_CRANK;
+
+    /// Internal-only instruction discriminators used by the on-chain program.
+    pub mod internal {
+        /// 196 - UndelegationCallback: delegation-program callback used to restore delegated state.
+        pub const UNDELEGATION_CALLBACK: u8 = 196;
+        /// 197 - CloseShuttleAtaIntentV2: Magic standalone action that closes an emptied shuttle ATA flow.
+        pub const CLOSE_SHUTTLE_ATA_INTENT_V2: u8 = 197;
+        /// 198 - ExecuteReadyQueuedTransfer: Magic standalone action that settles one queued transfer.
+        pub const EXECUTE_READY_QUEUED_TRANSFER: u8 = 198;
+        /// 199 - ProcessTransferQueueTick: recurring crank callback that checks a queue and schedules settlement.
+        pub const PROCESS_TRANSFER_QUEUE_TICK: u8 = 199;
+    }
 }

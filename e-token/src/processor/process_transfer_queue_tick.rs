@@ -2,16 +2,13 @@ use ephemeral_rollups_pinocchio::intent_bundle::{
     ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
 };
 use ephemeral_rollups_pinocchio::spl::consts::TOKEN_PROGRAM_ID;
+use ephemeral_spl_api::instruction::internal::EXECUTE_READY_QUEUED_TRANSFER;
 use ephemeral_spl_api::state::transfer_queue::{
     queue_peek_from_data, queue_pop_from_data, queue_views_checked, QUEUE_SEED,
 };
 use pinocchio::sysvars::clock::Clock;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
-
-use crate::processor::execute_ready_queued_transfer::EXECUTE_READY_QUEUED_TRANSFER;
-
-pub(crate) const PROCESS_TRANSFER_QUEUE_TICK: u8 = 199;
 pub(crate) const EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX: u8 = 0;
 
 const ASSOCIATED_TOKEN_PROGRAM_ID: ephemeral_spl_api::Address =

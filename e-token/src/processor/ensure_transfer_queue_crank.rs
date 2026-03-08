@@ -1,4 +1,5 @@
 use ephemeral_rollups_pinocchio::crank::{CrankInstruction, ScheduleCrankCpi};
+use ephemeral_spl_api::instruction::internal::PROCESS_TRANSFER_QUEUE_TICK;
 use ephemeral_spl_api::state::transfer_queue::{
     queue_crank_task_id_from_data, queue_set_crank_task_id_from_data, queue_views_checked,
     QUEUE_SEED,
@@ -6,9 +7,7 @@ use ephemeral_spl_api::state::transfer_queue::{
 use pinocchio::instruction::InstructionAccount;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
-use crate::processor::process_transfer_queue_tick::PROCESS_TRANSFER_QUEUE_TICK;
-
-pub const CRANK_EXECUTION_INTERVAL_MILLIS: i64 = 400;
+pub const CRANK_EXECUTION_INTERVAL_MILLIS: i64 = 1000;
 
 const PROCESS_QUEUE_TICK_CRANK_ACCOUNTS: usize = 4;
 const SCHEDULE_CRANK_CPI_ACCOUNTS: usize = 4;
@@ -35,6 +34,9 @@ pub fn process_ensure_transfer_queue_crank(
 
     if !payer_info.is_signer() {
         return Err(ProgramError::MissingRequiredSignature);
+    }
+    if magic_program_info.address() != &ephemeral_rollups_pinocchio::ID {
+        return Err(ProgramError::IncorrectProgramId);
     }
 
     let program_id = ephemeral_spl_api::program::id_address();

@@ -6,8 +6,6 @@ use pinocchio::cpi::{Seed, Signer};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_token_2022::instructions::CloseAccount;
 use pinocchio_token_2022::state::TokenAccount;
-
-pub const CLOSE_SHUTTLE_ATA_INTENT_V2: u8 = 197;
 const DLP_EPHEMERAL_BALANCE_TAG: &[u8] = b"balance";
 
 /// Post-undelegate handler that closes shuttle wallet ATA and shuttle EATA

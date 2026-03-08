@@ -9,8 +9,6 @@ use {
 
 use pinocchio::cpi::{Seed, Signer};
 
-pub(crate) const EXECUTE_READY_QUEUED_TRANSFER: u8 = 198;
-
 #[inline(always)]
 pub fn process_execute_ready_queued_transfer(
     accounts: &[AccountView],
