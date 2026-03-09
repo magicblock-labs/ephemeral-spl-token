@@ -19,8 +19,8 @@ const CLOSE_SHUTTLE_ATA_COMPUTE_UNITS: u32 = 70_000;
 ///
 /// Expected accounts (in order used below):
 /// 0. [signer]   Payer (must match shuttle.payer)
-/// 1. []         Shuttle metadata account (PDA [owner, mint, shuttle_id])
-/// 2. [writable] Shuttle EATA account (PDA [shuttle_metadata, mint])
+/// 1. []         Shuttle ephemeral ata account (PDA [owner, mint, shuttle_id])
+/// 2. []         Shuttle EATA account
 /// 3. [writable] Shuttle wallet ATA account (ATA for [shuttle_metadata, mint])
 /// 4. []         Token program account
 /// 5. [writable] Magic context account
@@ -39,9 +39,6 @@ pub fn process_undelegate_and_close_shuttle_ephemeral_ata(
 
     if !payer.is_signer() {
         return Err(ProgramError::MissingRequiredSignature);
-    }
-    if shuttle_info.is_writable() {
-        return Err(ProgramError::InvalidArgument);
     }
 
     unsafe {
