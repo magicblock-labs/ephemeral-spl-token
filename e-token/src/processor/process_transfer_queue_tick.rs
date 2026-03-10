@@ -36,12 +36,11 @@ pub fn process_transfer_queue_tick(
 
     let program_id = ephemeral_spl_api::program::id_address();
     let now = Clock::get()?.unix_timestamp;
-    let (mint, queued_transfer) = {
+    let (mint, queue_len, queued_transfer) = {
         let data = unsafe { queue_info.borrow_unchecked() };
-        let mint = {
-            let (header, _) = queue_views_checked(data)?;
-            header.mint
-        };
+        let (header, _) = queue_views_checked(data)?;
+        let mint = header.mint;
+        let queue_len = header.length as usize;
 
         let (derived_queue, _) = ephemeral_spl_api::Address::find_program_address(
             &[QUEUE_SEED, mint.as_ref()],
@@ -55,14 +54,29 @@ pub fn process_transfer_queue_tick(
         }
 
         let Some(next) = queue_peek_from_data(data)? else {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("ProcessTransferQueueTick queue length: {}", queue_len);
             return Ok(());
         };
         if next.ready_at > now {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!(
+                "ProcessTransferQueueTick queue length: {} (next not ready)",
+                queue_len
+            );
             return Ok(());
         }
 
-        (mint, next)
+        #[cfg(feature = "logging")]
+        pinocchio_log::log!(
+            "ProcessTransferQueueTick queue length before pop: {}",
+            queue_len
+        );
+
+        (mint, queue_len, next)
     };
+    #[cfg(not(feature = "logging"))]
+    let _ = queue_len;
 
     let (vault, _) =
         ephemeral_spl_api::Address::find_program_address(&[mint.as_ref()], &program_id);
@@ -120,6 +134,12 @@ pub fn process_transfer_queue_tick(
     if popped_transfer.task_id != queued_transfer.task_id {
         return Err(ProgramError::InvalidAccountData);
     }
+
+    #[cfg(feature = "logging")]
+    pinocchio_log::log!(
+        "ProcessTransferQueueTick queue length after pop: {}",
+        queue_len - 1
+    );
 
     Ok(())
 }
