@@ -80,6 +80,11 @@ pub mod instruction {
     pub const ENSURE_TRANSFER_QUEUE_CRANK: u8 = 17;
     /// Backward-compatible alias for `ENSURE_TRANSFER_QUEUE_CRANK`.
     pub const SCHEDULE_NEXT_QUEUED_TRANSFER: u8 = ENSURE_TRANSFER_QUEUE_CRANK;
+    /// 18 - DelegateTransferQueue: delegate the per-mint transfer queue PDA to the delegation program
+    ///      Instruction data:
+    ///      []        no validator override
+    ///      [0..32]   optional validator pubkey
+    pub const DELEGATE_TRANSFER_QUEUE: u8 = 18;
 
     /// Internal-only instruction discriminators used by the on-chain program.
     pub mod internal {

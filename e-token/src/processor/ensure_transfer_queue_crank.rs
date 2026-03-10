@@ -24,18 +24,18 @@ pub fn process_ensure_transfer_queue_crank(
     }
 
     // Expected accounts:
-    // 0. [writable] Transfer queue PDA derived from [QUEUE_SEED, mint]
-    // 1. [writable, signer] Payer for the recurring crank
+    // 0. [writable, signer] Payer for the recurring crank
+    // 1. [writable] Transfer queue PDA derived from [QUEUE_SEED, mint]
     // 2. [writable] Task context account
     // 3. []        Magic program
-    let [queue_info, payer_info, task_context_info, magic_program_info, ..] = accounts else {
+    let [payer_info, queue_info, task_context_info, magic_program_info, ..] = accounts else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
     if !payer_info.is_signer() {
         return Err(ProgramError::MissingRequiredSignature);
     }
-    if magic_program_info.address() != &ephemeral_rollups_pinocchio::ID {
+    if magic_program_info.address() != &ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID {
         return Err(ProgramError::IncorrectProgramId);
     }
 
@@ -67,12 +67,12 @@ pub fn process_ensure_transfer_queue_crank(
     let tick_data = [PROCESS_TRANSFER_QUEUE_TICK];
     let tick_accounts = [
         InstructionAccount {
-            address: queue_info.address(),
+            address: payer_info.address(),
             is_signer: false,
             is_writable: true,
         },
         InstructionAccount {
-            address: payer_info.address(),
+            address: queue_info.address(),
             is_signer: false,
             is_writable: true,
         },

@@ -16,13 +16,13 @@ pub fn process_initialize_transfer_queue(
     instruction_data: &[u8],
 ) -> ProgramResult {
     // Expected accounts:
-    // 0. [writable] Transfer queue account (PDA derived from [QUEUE_SEED, mint])
-    // 1. [signer]   Payer (funds account creation)
+    // 0. [signer]   Payer (funds account creation)
+    // 1. [writable] Transfer queue account (PDA derived from [QUEUE_SEED, mint])
     // 2. []         Mint account (seed)
     // 3. []         System program
     let args = InitializeTransferQueueArgs::try_from_bytes(instruction_data)?;
 
-    let [queue_info, payer_info, mint_info, _system_program_info, ..] = accounts else {
+    let [payer_info, queue_info, mint_info, _system_program_info, ..] = accounts else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 

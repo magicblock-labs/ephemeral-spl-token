@@ -4,6 +4,7 @@ pub mod create_ephemeral_ata_permission;
 pub mod delegate_ephemeral_ata;
 pub mod delegate_ephemeral_ata_permission;
 pub mod delegate_shuttle_ephemeral_ata;
+pub mod delegate_transfer_queue;
 pub mod deposit_and_queue_transfer;
 pub mod deposit_spl_tokens;
 pub mod ensure_transfer_queue_crank;
@@ -27,6 +28,7 @@ pub use create_ephemeral_ata_permission::process_create_ephemeral_ata_permission
 pub use delegate_ephemeral_ata::process_delegate_ephemeral_ata;
 pub use delegate_ephemeral_ata_permission::process_delegate_ephemeral_ata_permission;
 pub use delegate_shuttle_ephemeral_ata::process_delegate_shuttle_ephemeral_ata;
+pub use delegate_transfer_queue::process_delegate_transfer_queue;
 pub use deposit_and_queue_transfer::process_deposit_and_queue_transfer;
 pub use deposit_spl_tokens::process_deposit_spl_tokens;
 pub use ensure_transfer_queue_crank::process_ensure_transfer_queue_crank;

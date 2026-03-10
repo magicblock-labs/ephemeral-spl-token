@@ -44,8 +44,8 @@ async fn initialize_transfer_queue_default_size() {
     let ix = Instruction {
         program_id: PROGRAM,
         accounts: vec![
-            AccountMeta::new(queue, false),
             AccountMeta::new(payer, true),
+            AccountMeta::new(queue, false),
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
@@ -107,8 +107,8 @@ async fn initialize_transfer_queue_custom_size_is_idempotent() {
     let ix_init_custom = Instruction {
         program_id: PROGRAM,
         accounts: vec![
-            AccountMeta::new(queue, false),
             AccountMeta::new(payer, true),
+            AccountMeta::new(queue, false),
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
@@ -131,8 +131,8 @@ async fn initialize_transfer_queue_custom_size_is_idempotent() {
     let ix_noop = Instruction {
         program_id: PROGRAM,
         accounts: vec![
-            AccountMeta::new(queue, false),
             AccountMeta::new(payer, true),
+            AccountMeta::new(queue, false),
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],

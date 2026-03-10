@@ -164,6 +164,12 @@ pub(crate) fn inner_process_instruction(
 
             process_ensure_transfer_queue_crank(accounts, instruction_data)
         }
+        instruction::DELEGATE_TRANSFER_QUEUE => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: DelegateTransferQueue");
+
+            process_delegate_transfer_queue(accounts, instruction_data)
+        }
         internal::UNDELEGATION_CALLBACK => {
             #[cfg(feature = "logging")]
             pinocchio_log::log!("Instruction: UndelegationCallback");

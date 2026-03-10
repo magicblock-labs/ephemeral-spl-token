@@ -95,8 +95,8 @@ async fn setup_fixture(queue_size_bytes: Option<u32>) -> Fixture {
     let ix_init_queue = Instruction {
         program_id: PROGRAM,
         accounts: vec![
-            AccountMeta::new(queue, false),
             AccountMeta::new(payer, true),
+            AccountMeta::new(queue, false),
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],

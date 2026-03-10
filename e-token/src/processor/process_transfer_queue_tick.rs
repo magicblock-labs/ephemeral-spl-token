@@ -26,11 +26,11 @@ pub fn process_transfer_queue_tick(
     }
 
     // Expected accounts:
-    // 0. [writable] Transfer queue PDA
-    // 1. [writable] Payer / escrow authority for the standalone action
+    // 0. [writable] Payer / escrow authority for the standalone action
+    // 1. [writable] Transfer queue PDA
     // 2. [writable] Magic context account
     // 3. []         Magic program
-    let [queue_info, payer_info, magic_context_info, magic_program_info, ..] = accounts else {
+    let [payer_info, queue_info, magic_context_info, magic_program_info, ..] = accounts else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 

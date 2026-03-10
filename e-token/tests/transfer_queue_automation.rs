@@ -272,7 +272,9 @@ async fn latest_blockhash(context: &mut ProgramTestContext) -> solana_program::h
 }
 
 async fn setup_fixture() -> Fixture {
-    let magic_program = ephemeral_rollups_pinocchio::ID;
+    let magic_program = solana_pubkey::Pubkey::new_from_array(
+        ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID.to_bytes(),
+    );
     let task_context = Pubkey::new_unique();
     clear_captured_schedules(magic_program);
     clear_captured_intent_bundles(magic_program);
@@ -353,8 +355,8 @@ async fn setup_fixture() -> Fixture {
     let ix_init_queue = Instruction {
         program_id: PROGRAM,
         accounts: vec![
-            AccountMeta::new(queue, false),
             AccountMeta::new(payer, true),
+            AccountMeta::new(queue, false),
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
@@ -435,8 +437,8 @@ fn ensure_queue_crank_ix_with_magic_program(
     Instruction {
         program_id: PROGRAM,
         accounts: vec![
-            AccountMeta::new(fixture.queue, false),
             AccountMeta::new(fixture.payer, true),
+            AccountMeta::new(fixture.queue, false),
             AccountMeta::new(fixture.task_context, false),
             AccountMeta::new_readonly(magic_program, false),
         ],
@@ -448,8 +450,8 @@ fn process_queue_tick_ix(fixture: &Fixture) -> Instruction {
     Instruction {
         program_id: PROGRAM,
         accounts: vec![
-            AccountMeta::new(fixture.queue, false),
             AccountMeta::new(fixture.payer, false),
+            AccountMeta::new(fixture.queue, false),
             AccountMeta::new(fixture.task_context, false),
             AccountMeta::new_readonly(fixture.magic_program, false),
         ],
@@ -524,11 +526,11 @@ async fn ensure_transfer_queue_crank_schedules_one_recurring_queue_crank() {
     assert_eq!(captured[0].instructions[0].accounts.len(), 4);
     assert_eq!(
         captured[0].instructions[0].accounts[0].pubkey.to_bytes(),
-        fixture.queue.to_bytes()
+        fixture.payer.to_bytes()
     );
     assert_eq!(
         captured[0].instructions[0].accounts[1].pubkey.to_bytes(),
-        fixture.payer.to_bytes()
+        fixture.queue.to_bytes()
     );
     assert_eq!(
         captured[0].instructions[0].accounts[2].pubkey.to_bytes(),
@@ -565,7 +567,9 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
     let fake_magic_program = Pubkey::new_unique();
 
     let mut fixture = {
-        let magic_program = ephemeral_rollups_pinocchio::ID;
+        let magic_program = solana_pubkey::Pubkey::new_from_array(
+            ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID.to_bytes(),
+        );
         let task_context = Pubkey::new_unique();
         clear_captured_schedules(magic_program);
         clear_captured_intent_bundles(magic_program);
@@ -647,8 +651,8 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
         let ix_init_queue = Instruction {
             program_id: PROGRAM,
             accounts: vec![
-                AccountMeta::new(queue, false),
                 AccountMeta::new(payer, true),
+                AccountMeta::new(queue, false),
                 AccountMeta::new_readonly(mint, false),
                 AccountMeta::new_readonly(solana_system_interface::program::ID, false),
             ],
