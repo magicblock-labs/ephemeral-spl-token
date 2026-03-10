@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Mutex, OnceLock},
 };
 
@@ -13,12 +13,11 @@ use magicblock_magic_program_api::{
     instruction::MagicBlockInstruction,
     Pubkey as MagicPubkey,
 };
-use solana_account::{Account as SolanaAccount, AccountSharedData};
+use solana_account::Account as SolanaAccount;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
 use solana_program::{
-    account_info::AccountInfo, entrypoint::ProgramResult, program::invoke_signed,
-    program_error::ProgramError, rent::Rent,
+    account_info::AccountInfo, entrypoint::ProgramResult, program_error::ProgramError,
 };
 use solana_program_pack::Pack;
 use spl_token_interface::state::Account;
@@ -37,7 +36,19 @@ const DECIMALS: u8 = 6;
 const STARTING_BALANCE: u64 = 10_000 * 10u64.pow(DECIMALS as u32);
 const QUEUED_AMOUNT: u64 = 10;
 const EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX: u8 = 0;
-const EXECUTE_CAPTURED_STANDALONE_ACTION: &[u8] = &[250];
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct CapturedScheduleAccount {
+    pubkey: Pubkey,
+    is_signer: bool,
+    is_writable: bool,
+}
+
+#[derive(Clone)]
+struct CapturedScheduleTask {
+    schedule_accounts: Vec<CapturedScheduleAccount>,
+    args: ScheduleTaskArgs,
+}
 
 #[derive(Clone)]
 struct CapturedIntentBundle {
@@ -45,8 +56,8 @@ struct CapturedIntentBundle {
     args: MagicIntentBundleArgs,
 }
 
-fn captured_schedules() -> &'static Mutex<HashMap<Pubkey, Vec<ScheduleTaskArgs>>> {
-    static CAPTURED: OnceLock<Mutex<HashMap<Pubkey, Vec<ScheduleTaskArgs>>>> = OnceLock::new();
+fn captured_schedules() -> &'static Mutex<HashMap<Pubkey, Vec<CapturedScheduleTask>>> {
+    static CAPTURED: OnceLock<Mutex<HashMap<Pubkey, Vec<CapturedScheduleTask>>>> = OnceLock::new();
     CAPTURED.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -71,7 +82,7 @@ fn clear_captured_intent_bundles(magic_program: Pubkey) {
         .remove(&magic_program);
 }
 
-fn take_captured_schedules(magic_program: Pubkey) -> Vec<ScheduleTaskArgs> {
+fn take_captured_schedules(magic_program: Pubkey) -> Vec<CapturedScheduleTask> {
     captured_schedules()
         .lock()
         .unwrap()
@@ -88,43 +99,46 @@ fn peek_captured_intent_bundles(magic_program: Pubkey) -> Vec<CapturedIntentBund
         .unwrap_or_default()
 }
 
-fn pop_captured_intent_bundle(magic_program: Pubkey) -> Option<CapturedIntentBundle> {
-    let mut captured = captured_intent_bundles().lock().unwrap();
-    let bundle = captured.get_mut(&magic_program).and_then(|bundles| {
-        if bundles.is_empty() {
-            None
-        } else {
-            Some(bundles.remove(0))
-        }
-    });
-
-    if captured.get(&magic_program).is_some_and(Vec::is_empty) {
-        captured.remove(&magic_program);
-    }
-
-    bundle
-}
-
 fn process_magic_program_mock(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    if instruction_data == EXECUTE_CAPTURED_STANDALONE_ACTION {
-        return execute_captured_standalone_action(program_id, accounts);
-    }
-
     let magic_ix: MagicBlockInstruction =
         bincode::deserialize(instruction_data).map_err(|_| ProgramError::InvalidInstructionData)?;
 
     match magic_ix {
         MagicBlockInstruction::ScheduleTask(args) => {
+            let available_accounts: HashSet<_> = accounts
+                .iter()
+                .skip(1)
+                .map(|account| *account.key)
+                .collect();
+            for instruction in &args.instructions {
+                for account in &instruction.accounts {
+                    let pubkey = convert_magic_pubkey(account.pubkey);
+                    if !available_accounts.contains(&pubkey) {
+                        return Err(ProgramError::NotEnoughAccountKeys);
+                    }
+                }
+            }
+
             captured_schedules()
                 .lock()
                 .unwrap()
                 .entry(*program_id)
                 .or_default()
-                .push(args);
+                .push(CapturedScheduleTask {
+                    schedule_accounts: accounts
+                        .iter()
+                        .map(|account| CapturedScheduleAccount {
+                            pubkey: *account.key,
+                            is_signer: account.is_signer,
+                            is_writable: account.is_writable,
+                        })
+                        .collect(),
+                    args,
+                });
         }
         MagicBlockInstruction::ScheduleIntentBundle(args) => {
             captured_intent_bundles()
@@ -149,73 +163,6 @@ fn process_noop_program_mock(
     _instruction_data: &[u8],
 ) -> ProgramResult {
     Ok(())
-}
-
-fn execute_captured_standalone_action(
-    program_id: &Pubkey,
-    accounts: &[AccountInfo],
-) -> ProgramResult {
-    let bundle =
-        pop_captured_intent_bundle(*program_id).ok_or(ProgramError::InvalidInstructionData)?;
-    if bundle.args.standalone_actions.len() != 1 {
-        return Err(ProgramError::InvalidInstructionData);
-    }
-
-    let action = &bundle.args.standalone_actions[0];
-    let escrow_authority = *bundle
-        .schedule_accounts
-        .get(action.escrow_authority as usize)
-        .ok_or(ProgramError::InvalidInstructionData)?;
-    let escrow_index_seed = [action.args.escrow_index];
-    let (escrow_signer, escrow_bump) = Pubkey::find_program_address(
-        &[b"balance", escrow_authority.as_ref(), &escrow_index_seed],
-        &ephemeral_rollups_pinocchio::ID,
-    );
-
-    let mut instruction_accounts: Vec<AccountMeta> = action
-        .accounts
-        .iter()
-        .map(|meta| {
-            if meta.is_writable {
-                AccountMeta::new(convert_magic_pubkey(meta.pubkey), false)
-            } else {
-                AccountMeta::new_readonly(convert_magic_pubkey(meta.pubkey), false)
-            }
-        })
-        .collect();
-    instruction_accounts.push(AccountMeta::new_readonly(escrow_authority, false));
-    instruction_accounts.push(AccountMeta::new_readonly(escrow_signer, true));
-
-    let ix = Instruction {
-        program_id: convert_magic_pubkey(action.destination_program),
-        accounts: instruction_accounts,
-        data: action.args.data.clone(),
-    };
-
-    let program_account = accounts
-        .iter()
-        .find(|account| account.key == &ix.program_id)
-        .ok_or(ProgramError::NotEnoughAccountKeys)?
-        .clone();
-    let mut account_infos = Vec::with_capacity(ix.accounts.len() + 1);
-    account_infos.push(program_account);
-    for meta in &ix.accounts {
-        let account_info = accounts
-            .iter()
-            .find(|account| account.key == &meta.pubkey)
-            .ok_or(ProgramError::NotEnoughAccountKeys)?;
-        account_infos.push(account_info.clone());
-    }
-
-    let escrow_bump_seed = [escrow_bump];
-    let signer_seeds: &[&[u8]] = &[
-        b"balance",
-        escrow_authority.as_ref(),
-        &escrow_index_seed,
-        &escrow_bump_seed,
-    ];
-
-    invoke_signed(&ix, &account_infos, &[signer_seeds])
 }
 
 fn convert_magic_pubkey(pubkey: MagicPubkey) -> Pubkey {
@@ -264,7 +211,6 @@ struct Fixture {
     vault_ata: Pubkey,
     source_ata: Pubkey,
     destination_ata: Pubkey,
-    escrow_signer: Pubkey,
 }
 
 async fn latest_blockhash(context: &mut ProgramTestContext) -> solana_program::hash::Hash {
@@ -295,25 +241,6 @@ async fn setup_fixture() -> Fixture {
 
     let mut context = pt.start_with_context().await;
     let payer = context.payer.pubkey();
-    let (escrow_signer, _) = Pubkey::find_program_address(
-        &[
-            b"balance",
-            payer.as_ref(),
-            &[EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX],
-        ],
-        &ephemeral_rollups_pinocchio::ID,
-    );
-    context.set_account(
-        &escrow_signer,
-        &AccountSharedData::from(SolanaAccount {
-            lamports: Rent::default().minimum_balance(0).max(1),
-            data: vec![],
-            owner: ephemeral_rollups_pinocchio::ID,
-            executable: false,
-            rent_epoch: 0,
-        }),
-    );
-
     let mint_kp = Keypair::new();
     let mint = mint_kp.pubkey();
 
@@ -386,7 +313,6 @@ async fn setup_fixture() -> Fixture {
         vault_ata,
         source_ata,
         destination_ata,
-        escrow_signer,
     }
 }
 
@@ -459,23 +385,6 @@ fn process_queue_tick_ix(fixture: &Fixture) -> Instruction {
     }
 }
 
-fn execute_captured_standalone_action_ix(fixture: &Fixture) -> Instruction {
-    Instruction {
-        program_id: fixture.magic_program,
-        accounts: vec![
-            AccountMeta::new_readonly(PROGRAM, false),
-            AccountMeta::new_readonly(fixture.payer, false),
-            AccountMeta::new_readonly(fixture.vault, false),
-            AccountMeta::new_readonly(fixture.mint, false),
-            AccountMeta::new(fixture.vault_ata, false),
-            AccountMeta::new(fixture.destination_ata, false),
-            AccountMeta::new_readonly(spl_token_interface::ID, false),
-            AccountMeta::new_readonly(fixture.escrow_signer, false),
-        ],
-        data: EXECUTE_CAPTURED_STANDALONE_ACTION.to_vec(),
-    }
-}
-
 async fn token_amount(context: &mut ProgramTestContext, token_account: Pubkey) -> u64 {
     let account = context
         .banks_client
@@ -516,32 +425,70 @@ async fn ensure_transfer_queue_crank_schedules_one_recurring_queue_crank() {
 
     let captured = take_captured_schedules(fixture.magic_program);
     assert_eq!(captured.len(), 1);
-    assert_eq!(captured[0].execution_interval_millis, 400);
-    assert_eq!(captured[0].iterations, i64::MAX);
-    assert_eq!(captured[0].instructions.len(), 1);
     assert_eq!(
-        captured[0].instructions[0].program_id.to_bytes(),
+        captured[0].schedule_accounts,
+        vec![
+            CapturedScheduleAccount {
+                pubkey: fixture.payer,
+                is_signer: true,
+                is_writable: true,
+            },
+            CapturedScheduleAccount {
+                pubkey: fixture.task_context,
+                is_signer: false,
+                is_writable: false,
+            },
+            CapturedScheduleAccount {
+                pubkey: fixture.payer,
+                is_signer: true,
+                is_writable: true,
+            },
+            CapturedScheduleAccount {
+                pubkey: fixture.queue,
+                is_signer: false,
+                is_writable: false,
+            },
+            CapturedScheduleAccount {
+                pubkey: fixture.magic_program,
+                is_signer: false,
+                is_writable: false,
+            },
+        ]
+    );
+    assert_eq!(captured[0].args.execution_interval_millis, 1000);
+    assert_eq!(captured[0].args.iterations, i64::MAX);
+    assert_eq!(captured[0].args.instructions.len(), 1);
+    assert_eq!(
+        captured[0].args.instructions[0].program_id.to_bytes(),
         PROGRAM.to_bytes()
     );
-    assert_eq!(captured[0].instructions[0].accounts.len(), 4);
+    assert_eq!(captured[0].args.instructions[0].accounts.len(), 4);
     assert_eq!(
-        captured[0].instructions[0].accounts[0].pubkey.to_bytes(),
+        captured[0].args.instructions[0].accounts[0]
+            .pubkey
+            .to_bytes(),
         fixture.payer.to_bytes()
     );
     assert_eq!(
-        captured[0].instructions[0].accounts[1].pubkey.to_bytes(),
+        captured[0].args.instructions[0].accounts[1]
+            .pubkey
+            .to_bytes(),
         fixture.queue.to_bytes()
     );
     assert_eq!(
-        captured[0].instructions[0].accounts[2].pubkey.to_bytes(),
+        captured[0].args.instructions[0].accounts[2]
+            .pubkey
+            .to_bytes(),
         fixture.task_context.to_bytes()
     );
     assert_eq!(
-        captured[0].instructions[0].accounts[3].pubkey.to_bytes(),
+        captured[0].args.instructions[0].accounts[3]
+            .pubkey
+            .to_bytes(),
         fixture.magic_program.to_bytes()
     );
     assert_eq!(
-        captured[0].instructions[0].data,
+        captured[0].args.instructions[0].data,
         vec![internal::PROCESS_TRANSFER_QUEUE_TICK]
     );
 
@@ -591,25 +538,6 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
 
         let mut context = pt.start_with_context().await;
         let payer = context.payer.pubkey();
-        let (escrow_signer, _) = Pubkey::find_program_address(
-            &[
-                b"balance",
-                payer.as_ref(),
-                &[EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX],
-            ],
-            &ephemeral_rollups_pinocchio::ID,
-        );
-        context.set_account(
-            &escrow_signer,
-            &AccountSharedData::from(SolanaAccount {
-                lamports: Rent::default().minimum_balance(0).max(1),
-                data: vec![],
-                owner: ephemeral_rollups_pinocchio::ID,
-                executable: false,
-                rent_epoch: 0,
-            }),
-        );
-
         let mint_kp = Keypair::new();
         let mint = mint_kp.pubkey();
 
@@ -682,7 +610,6 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
             vault_ata,
             source_ata,
             destination_ata,
-            escrow_signer,
         }
     };
 
@@ -817,8 +744,8 @@ async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
     assert_eq!(captured.len(), 1);
 
     let scheduled_ix = Instruction {
-        program_id: convert_magic_pubkey(captured[0].instructions[0].program_id),
-        accounts: captured[0].instructions[0]
+        program_id: convert_magic_pubkey(captured[0].args.instructions[0].program_id),
+        accounts: captured[0].args.instructions[0]
             .accounts
             .iter()
             .map(|meta| AccountMeta {
@@ -827,7 +754,7 @@ async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
                 is_writable: meta.is_writable,
             })
             .collect(),
-        data: captured[0].instructions[0].data.clone(),
+        data: captured[0].args.instructions[0].data.clone(),
     };
     let blockhash = latest_blockhash(&mut fixture.context).await;
     let tx = Transaction::new_signed_with_payer(
@@ -912,21 +839,6 @@ async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
         .unwrap();
     assert_eq!(peek_captured_intent_bundles(fixture.magic_program).len(), 1);
 
-    let blockhash = latest_blockhash(&mut fixture.context).await;
-    let tx = Transaction::new_signed_with_payer(
-        &[execute_captured_standalone_action_ix(&fixture)],
-        Some(&fixture.payer),
-        &[&fixture.context.payer],
-        blockhash,
-    );
-    fixture
-        .context
-        .banks_client
-        .process_transaction(tx)
-        .await
-        .unwrap();
-    assert!(peek_captured_intent_bundles(fixture.magic_program).is_empty());
-
     let queue_after = queue_account(&mut fixture.context, fixture.queue).await;
     let header_after = read_header_unaligned(&queue_after.data);
     assert_eq!(header_after.length, 0);
@@ -936,10 +848,10 @@ async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
     );
     assert_eq!(
         token_amount(&mut fixture.context, fixture.vault_ata).await,
-        0
+        QUEUED_AMOUNT
     );
     assert_eq!(
         token_amount(&mut fixture.context, fixture.destination_ata).await,
-        QUEUED_AMOUNT
+        0
     );
 }

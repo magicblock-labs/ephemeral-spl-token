@@ -1,7 +1,7 @@
 use ephemeral_rollups_pinocchio::instruction::DelegateAccountCpiBuilder;
 use ephemeral_rollups_pinocchio::types::DelegateConfig;
 use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, QUEUE_SEED};
-use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
 pub fn process_delegate_transfer_queue(
     accounts: &[AccountView],
@@ -17,7 +17,9 @@ pub fn process_delegate_transfer_queue(
     // 6. [writable] Delegation metadata account
     // 7. []         Delegation program
     // 8. []         System program
-    let args = DelegateTransferQueueArgs::try_from_bytes(instruction_data)?;
+    if !instruction_data.is_empty() {
+        return Err(ProgramError::InvalidInstructionData);
+    }
 
     let [payer_info, queue_info, mint_info, owner_program, buffer_acc, delegation_record, delegation_metadata, _delegation_program, system_program, ..] =
         accounts
@@ -58,9 +60,12 @@ pub fn process_delegate_transfer_queue(
     if owner_program.address() != &program_id {
         return Err(ProgramError::IncorrectProgramId);
     }
+    if system_program.address() != &pinocchio_system::ID {
+        return Err(ProgramError::IncorrectProgramId);
+    }
 
     let config = DelegateConfig {
-        validator: args.validator().map(Address::new_from_array),
+        validator: Some(pinocchio_system::ID),
         ..DelegateConfig::default()
     };
     let seeds: &[&[u8]] = &[QUEUE_SEED, mint_info.address().as_ref()];
@@ -77,31 +82,5 @@ pub fn process_delegate_transfer_queue(
     .seeds(seeds)
     .bump(bump)
     .config(config)
-    .invoke()
-}
-
-pub struct DelegateTransferQueueArgs {
-    validator: Option<[u8; 32]>,
-}
-
-impl DelegateTransferQueueArgs {
-    #[inline]
-    pub fn try_from_bytes(bytes: &[u8]) -> Result<DelegateTransferQueueArgs, ProgramError> {
-        let validator = if bytes.is_empty() {
-            None
-        } else if bytes.len() == 32 {
-            let mut arr = [0u8; 32];
-            arr.copy_from_slice(bytes);
-            Some(arr)
-        } else {
-            return Err(ProgramError::InvalidInstructionData);
-        };
-
-        Ok(DelegateTransferQueueArgs { validator })
-    }
-
-    #[inline]
-    pub fn validator(&self) -> Option<[u8; 32]> {
-        self.validator
-    }
+    .invoke_with_any_validator()
 }
