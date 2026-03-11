@@ -11,7 +11,7 @@ use ephemeral_spl_api::state::transfer_queue::{
 use magicblock_magic_program_api::{
     args::{MagicIntentBundleArgs, ScheduleTaskArgs},
     instruction::MagicBlockInstruction,
-    Pubkey as MagicPubkey,
+    Pubkey as MagicPubkey, MAGIC_CONTEXT_PUBKEY,
 };
 use solana_account::Account as SolanaAccount;
 use solana_instruction::{AccountMeta, Instruction};
@@ -141,6 +141,23 @@ fn process_magic_program_mock(
                 });
         }
         MagicBlockInstruction::ScheduleIntentBundle(args) => {
+            let Some(payer) = accounts.first() else {
+                return Err(ProgramError::NotEnoughAccountKeys);
+            };
+            if !payer.is_signer {
+                return Err(ProgramError::MissingRequiredSignature);
+            }
+            for action in &args.standalone_actions {
+                let Some(escrow_authority) =
+                    accounts.get(action.escrow_authority as usize)
+                else {
+                    return Err(ProgramError::NotEnoughAccountKeys);
+                };
+                if !escrow_authority.is_signer {
+                    return Err(ProgramError::MissingRequiredSignature);
+                }
+            }
+
             captured_intent_bundles()
                 .lock()
                 .unwrap()
@@ -205,7 +222,7 @@ struct Fixture {
     payer: Pubkey,
     mint: Pubkey,
     magic_program: Pubkey,
-    task_context: Pubkey,
+    magic_context: Pubkey,
     queue: Pubkey,
     vault: Pubkey,
     vault_ata: Pubkey,
@@ -221,7 +238,7 @@ async fn setup_fixture() -> Fixture {
     let magic_program = solana_pubkey::Pubkey::new_from_array(
         ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID.to_bytes(),
     );
-    let task_context = Pubkey::new_unique();
+    let magic_context = convert_magic_pubkey(MAGIC_CONTEXT_PUBKEY);
     clear_captured_schedules(magic_program);
     clear_captured_intent_bundles(magic_program);
 
@@ -229,7 +246,7 @@ async fn setup_fixture() -> Fixture {
     utils::add_associated_token_program(&mut pt);
     add_magic_program_mock(&mut pt, magic_program);
     pt.add_account(
-        task_context,
+        magic_context,
         SolanaAccount {
             lamports: 1_000_000,
             data: vec![0; 8],
@@ -307,7 +324,7 @@ async fn setup_fixture() -> Fixture {
         payer,
         mint,
         magic_program,
-        task_context,
+        magic_context,
         queue,
         vault,
         vault_ata,
@@ -365,7 +382,7 @@ fn ensure_queue_crank_ix_with_magic_program(
         accounts: vec![
             AccountMeta::new(fixture.payer, true),
             AccountMeta::new(fixture.queue, false),
-            AccountMeta::new(fixture.task_context, false),
+            AccountMeta::new(fixture.magic_context, false),
             AccountMeta::new_readonly(magic_program, false),
         ],
         data: vec![instruction::ENSURE_TRANSFER_QUEUE_CRANK],
@@ -376,9 +393,8 @@ fn process_queue_tick_ix(fixture: &Fixture) -> Instruction {
     Instruction {
         program_id: PROGRAM,
         accounts: vec![
-            AccountMeta::new(fixture.payer, false),
             AccountMeta::new(fixture.queue, false),
-            AccountMeta::new(fixture.task_context, false),
+            AccountMeta::new(fixture.magic_context, false),
             AccountMeta::new_readonly(fixture.magic_program, false),
         ],
         data: vec![internal::PROCESS_TRANSFER_QUEUE_TICK],
@@ -434,17 +450,12 @@ async fn ensure_transfer_queue_crank_schedules_one_recurring_queue_crank() {
                 is_writable: true,
             },
             CapturedScheduleAccount {
-                pubkey: fixture.task_context,
+                pubkey: fixture.queue,
                 is_signer: false,
                 is_writable: false,
             },
             CapturedScheduleAccount {
-                pubkey: fixture.payer,
-                is_signer: true,
-                is_writable: true,
-            },
-            CapturedScheduleAccount {
-                pubkey: fixture.queue,
+                pubkey: fixture.magic_context,
                 is_signer: false,
                 is_writable: false,
             },
@@ -462,27 +473,21 @@ async fn ensure_transfer_queue_crank_schedules_one_recurring_queue_crank() {
         captured[0].args.instructions[0].program_id.to_bytes(),
         PROGRAM.to_bytes()
     );
-    assert_eq!(captured[0].args.instructions[0].accounts.len(), 4);
+    assert_eq!(captured[0].args.instructions[0].accounts.len(), 3);
     assert_eq!(
         captured[0].args.instructions[0].accounts[0]
-            .pubkey
-            .to_bytes(),
-        fixture.payer.to_bytes()
-    );
-    assert_eq!(
-        captured[0].args.instructions[0].accounts[1]
             .pubkey
             .to_bytes(),
         fixture.queue.to_bytes()
     );
     assert_eq!(
-        captured[0].args.instructions[0].accounts[2]
+        captured[0].args.instructions[0].accounts[1]
             .pubkey
             .to_bytes(),
-        fixture.task_context.to_bytes()
+        fixture.magic_context.to_bytes()
     );
     assert_eq!(
-        captured[0].args.instructions[0].accounts[3]
+        captured[0].args.instructions[0].accounts[2]
             .pubkey
             .to_bytes(),
         fixture.magic_program.to_bytes()
@@ -517,7 +522,7 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
         let magic_program = solana_pubkey::Pubkey::new_from_array(
             ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID.to_bytes(),
         );
-        let task_context = Pubkey::new_unique();
+        let magic_context = convert_magic_pubkey(MAGIC_CONTEXT_PUBKEY);
         clear_captured_schedules(magic_program);
         clear_captured_intent_bundles(magic_program);
 
@@ -526,7 +531,7 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
         add_magic_program_mock(&mut pt, magic_program);
         add_noop_program_mock(&mut pt, fake_magic_program);
         pt.add_account(
-            task_context,
+            magic_context,
             SolanaAccount {
                 lamports: 1_000_000,
                 data: vec![0; 8],
@@ -604,7 +609,7 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
             payer,
             mint,
             magic_program,
-            task_context,
+            magic_context,
             queue,
             vault,
             vault_ata,
@@ -786,7 +791,7 @@ async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
     assert_eq!(standalone_action.compute_units, 100_000);
     assert_eq!(
         captured_bundles[0].schedule_accounts[standalone_action.escrow_authority as usize],
-        fixture.payer
+        fixture.queue
     );
     assert_eq!(
         standalone_action.args.escrow_index,
@@ -801,7 +806,7 @@ async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
     assert_eq!(standalone_action.accounts.len(), 6);
     assert_eq!(
         standalone_action.accounts[0].pubkey.to_bytes(),
-        fixture.payer.to_bytes()
+        fixture.queue.to_bytes()
     );
     assert_eq!(
         standalone_action.accounts[1].pubkey.to_bytes(),

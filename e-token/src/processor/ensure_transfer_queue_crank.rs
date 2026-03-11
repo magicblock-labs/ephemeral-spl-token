@@ -12,8 +12,8 @@ use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
 pub const CRANK_EXECUTION_INTERVAL_MILLIS: i64 = 1000;
 
-const PROCESS_QUEUE_TICK_CRANK_ACCOUNTS: usize = 4;
-const SCHEDULE_CRANK_CPI_ACCOUNTS: usize = 5;
+const PROCESS_QUEUE_TICK_CRANK_ACCOUNTS: usize = 3;
+const SCHEDULE_CRANK_CPI_ACCOUNTS: usize = 4;
 const SCHEDULE_CRANK_DATA_LEN: usize =
     4 + 8 + 8 + 8 + 8 + 32 + 8 + (PROCESS_QUEUE_TICK_CRANK_ACCOUNTS * 34) + 8 + 1;
 
@@ -29,9 +29,9 @@ pub fn process_ensure_transfer_queue_crank(
     // Expected accounts:
     // 0. [writable, signer] Payer for the recurring crank
     // 1. [writable] Transfer queue PDA derived from [QUEUE_SEED, mint]
-    // 2. [writable] Task context account
-    // 3. []        Magic program
-    let [payer_info, queue_info, task_context_info, magic_program_info, ..] = accounts else {
+    // 2. [writable] Magic context account
+    // 3. []         Magic program
+    let [payer_info, queue_info, magic_context_info, magic_program_info, ..] = accounts else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
@@ -70,17 +70,12 @@ pub fn process_ensure_transfer_queue_crank(
     let tick_data = [PROCESS_TRANSFER_QUEUE_TICK];
     let tick_accounts = [
         InstructionAccount {
-            address: payer_info.address(),
-            is_signer: false,
-            is_writable: true,
-        },
-        InstructionAccount {
             address: queue_info.address(),
             is_signer: false,
             is_writable: true,
         },
         InstructionAccount {
-            address: task_context_info.address(),
+            address: magic_context_info.address(),
             is_signer: false,
             is_writable: true,
         },
@@ -114,15 +109,12 @@ pub fn process_ensure_transfer_queue_crank(
             .write(InstructionAccount::writable_signer(payer_info.address()));
         schedule_accounts
             .get_unchecked_mut(1)
-            .write(InstructionAccount::readonly(task_context_info.address()));
-        schedule_accounts
-            .get_unchecked_mut(2)
-            .write(InstructionAccount::readonly(payer_info.address()));
-        schedule_accounts
-            .get_unchecked_mut(3)
             .write(InstructionAccount::readonly(queue_info.address()));
         schedule_accounts
-            .get_unchecked_mut(4)
+            .get_unchecked_mut(2)
+            .write(InstructionAccount::readonly(magic_context_info.address()));
+        schedule_accounts
+            .get_unchecked_mut(3)
             .write(InstructionAccount::readonly(magic_program_info.address()));
     }
 
@@ -136,13 +128,7 @@ pub fn process_ensure_transfer_queue_crank(
             )
         },
     };
-    let schedule_account_refs = [
-        payer_info,
-        task_context_info,
-        payer_info,
-        queue_info,
-        magic_program_info,
-    ];
+    let schedule_account_refs = [payer_info, queue_info, magic_context_info, magic_program_info];
     invoke_with_bounds::<SCHEDULE_CRANK_CPI_ACCOUNTS>(
         &schedule_instruction,
         &schedule_account_refs,

@@ -6,6 +6,7 @@ use ephemeral_spl_api::instruction::internal::EXECUTE_READY_QUEUED_TRANSFER;
 use ephemeral_spl_api::state::transfer_queue::{
     queue_peek_from_data, queue_pop_from_data, queue_views_checked, QUEUE_SEED,
 };
+use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::clock::Clock;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
@@ -26,23 +27,22 @@ pub fn process_transfer_queue_tick(
     }
 
     // Expected accounts:
-    // 0. [writable] Payer / escrow authority for the standalone action
-    // 1. [writable] Transfer queue PDA
-    // 2. [writable] Magic context account
-    // 3. []         Magic program
-    let [payer_info, queue_info, magic_context_info, magic_program_info, ..] = accounts else {
+    // 0. [writable] Transfer queue PDA, used as the scheduled-action authority
+    // 1. [writable] Magic context account
+    // 2. []         Magic program
+    let [queue_info, magic_context_info, magic_program_info, ..] = accounts else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
     let program_id = ephemeral_spl_api::program::id_address();
     let now = Clock::get()?.unix_timestamp;
-    let (mint, queue_len, queued_transfer) = {
+    let (mint, queue_bump, queue_len, queued_transfer) = {
         let data = unsafe { queue_info.borrow_unchecked() };
         let (header, _) = queue_views_checked(data)?;
         let mint = header.mint;
         let queue_len = header.length as usize;
 
-        let (derived_queue, _) = ephemeral_spl_api::Address::find_program_address(
+        let (derived_queue, queue_bump) = ephemeral_spl_api::Address::find_program_address(
             &[QUEUE_SEED, mint.as_ref()],
             &program_id,
         );
@@ -73,7 +73,7 @@ pub fn process_transfer_queue_tick(
             queue_len
         );
 
-        (mint, queue_len, next)
+        (mint, queue_bump, queue_len, next)
     };
     #[cfg(not(feature = "logging"))]
     let _ = queue_len;
@@ -87,7 +87,7 @@ pub fn process_transfer_queue_tick(
     execute_data[2..].copy_from_slice(&queued_transfer.amount.to_le_bytes());
     let execute_accounts = [
         ShortAccountMeta {
-            pubkey: *payer_info.address(),
+            pubkey: *queue_info.address(),
             is_writable: false,
         },
         ShortAccountMeta {
@@ -113,21 +113,28 @@ pub fn process_transfer_queue_tick(
     ];
     let standalone_actions = [CallHandler {
         destination_program: ephemeral_spl_api::program::id_address(),
-        escrow_authority: payer_info.clone(),
+        escrow_authority: queue_info.clone(),
         args: ActionArgs::new(&execute_data)
             .with_escrow_index(EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX),
         compute_units: EXECUTE_READY_QUEUED_TRANSFER_COMPUTE_UNITS,
         accounts: &execute_accounts,
     }];
     let mut intent_bundle_data = [0_u8; MAGIC_INTENT_BUNDLE_DATA_LEN];
+    let queue_bump_seed = [queue_bump];
+    let signer_seeds = [
+        Seed::from(QUEUE_SEED),
+        Seed::from(mint.as_ref()),
+        Seed::from(&queue_bump_seed),
+    ];
+    let signer = Signer::from(&signer_seeds);
 
     MagicIntentBundleBuilder::new(
-        payer_info.clone(),
+        queue_info.clone(),
         magic_context_info.clone(),
         magic_program_info.clone(),
     )
     .set_standalone_actions(&standalone_actions)
-    .build_and_invoke(&mut intent_bundle_data)?;
+    .build_and_invoke_signed(&mut intent_bundle_data, &[signer])?;
 
     let data = unsafe { queue_info.borrow_unchecked_mut() };
     let popped_transfer = queue_pop_from_data(data)?.ok_or(ProgramError::InvalidAccountData)?;
