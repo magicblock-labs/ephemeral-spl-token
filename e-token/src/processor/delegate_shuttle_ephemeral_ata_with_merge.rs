@@ -1,4 +1,8 @@
+#[cfg(feature = "logging")]
+use alloc::string::ToString;
+
 use ephemeral_rollups_pinocchio::{
+    consts::{MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID},
     instruction::{ClearText, DelegateAccountWithActionsCpiBuilder},
     types::DelegateConfig,
 };
@@ -31,6 +35,10 @@ pub fn process_delegate_shuttle_ephemeral_ata_with_merge(
     // 11. [writable] Shuttle wallet ATA
     // 12. []         Mint account
     // 13. []         Token program
+    //
+    // Post-delegation actions:
+    // - Merge shuttle wallet ATA into destination ATA
+    // - Undelegate shuttle flow and schedule close via magic program
     let args = DelegateShuttleArgs::try_from_bytes(instruction_data)?;
 
     let [payer_info, shuttle_info, ephemeral_ata_info, owner_program, buffer_acc, delegation_record, delegation_metadata, _delegation_program, system_program, owner_info, destination_token_info, shuttle_wallet_ata_info, mint_info, token_program_info, ..] =
@@ -105,20 +113,44 @@ pub fn process_delegate_shuttle_ephemeral_ata_with_merge(
         ..DelegateConfig::default()
     };
 
-    let actions = alloc::vec![Instruction {
-        program_id: Pubkey::from(ephemeral_spl_api::program::ID),
-        accounts: alloc::vec![
-            AccountMeta::new_readonly(pubkey(owner_info.address()), true),
-            AccountMeta::new(pubkey(destination_token_info.address()), false),
-            AccountMeta::new_readonly(pubkey(shuttle_info.address()), false),
-            AccountMeta::new(pubkey(shuttle_wallet_ata_info.address()), false),
-            AccountMeta::new_readonly(pubkey(mint_info.address()), false),
-            AccountMeta::new_readonly(pubkey(token_program_info.address()), false),
-        ],
-        data: alloc::vec![ephemeral_spl_api::instruction::MERGE_SHUTTLE_INTO_EPHEMERAL_ATA],
-    }]
+    let actions = alloc::vec![
+        Instruction {
+            program_id: Pubkey::from(ephemeral_spl_api::program::ID),
+            accounts: alloc::vec![
+                AccountMeta::new_readonly(pubkey(owner_info.address()), true),
+                AccountMeta::new(pubkey(destination_token_info.address()), false),
+                AccountMeta::new_readonly(pubkey(shuttle_info.address()), false),
+                AccountMeta::new(pubkey(shuttle_wallet_ata_info.address()), false),
+                AccountMeta::new_readonly(pubkey(mint_info.address()), false),
+                AccountMeta::new_readonly(pubkey(token_program_info.address()), false),
+            ],
+            data: alloc::vec![ephemeral_spl_api::instruction::MERGE_SHUTTLE_INTO_EPHEMERAL_ATA],
+        },
+        Instruction {
+            program_id: Pubkey::from(ephemeral_spl_api::program::ID),
+            accounts: alloc::vec![
+                AccountMeta::new(pubkey(payer_info.address()), true),
+                AccountMeta::new_readonly(pubkey(shuttle_info.address()), false),
+                AccountMeta::new_readonly(pubkey(ephemeral_ata_info.address()), false),
+                AccountMeta::new(pubkey(shuttle_wallet_ata_info.address()), false),
+                AccountMeta::new_readonly(pubkey(token_program_info.address()), false),
+                AccountMeta::new(Pubkey::from(MAGIC_CONTEXT_ID.to_bytes()), false),
+                AccountMeta::new_readonly(Pubkey::from(MAGIC_PROGRAM_ID.to_bytes()), false),
+            ],
+            data: alloc::vec![ephemeral_spl_api::instruction::UNDELEGATE_SHUTTLE_EPHEMERAL_ATA],
+        },
+    ]
     .cleartext();
-    let action_signer_accounts = [owner_info];
+    let mut action_signer_accounts = alloc::vec![owner_info];
+    if owner_info.address() != payer_info.address() {
+        action_signer_accounts.push(payer_info);
+    }
+
+    #[cfg(feature = "logging")]
+    {
+        let shuttle_eata = ephemeral_ata_info.address().to_string();
+        pinocchio_log::log!("Shuttle eata: {}", shuttle_eata.as_str());
+    }
 
     DelegateAccountWithActionsCpiBuilder::new(
         payer_info,
