@@ -4,15 +4,13 @@ use {
     crate::processor::*,
     core::{mem::MaybeUninit, slice::from_raw_parts},
     pinocchio::{
-        entrypoint::deserialize, error::ProgramError, no_allocator, nostd_panic_handler,
-        AccountView, ProgramResult, MAX_TX_ACCOUNTS, SUCCESS,
+        default_allocator, default_panic_handler, entrypoint::deserialize,
+        error::ProgramError, AccountView, ProgramResult, MAX_TX_ACCOUNTS, SUCCESS,
     },
 };
 
-// Do not allocate memory.
-no_allocator!();
-// Use the no_std panic handler.
-nostd_panic_handler!();
+default_allocator!();
+default_panic_handler!();
 
 #[no_mangle]
 #[allow(clippy::arithmetic_side_effects)]
@@ -139,6 +137,12 @@ pub(crate) fn inner_process_instruction(
             pinocchio_log::log!("Instruction: DelegateShuttleEphemeralAta");
 
             process_delegate_shuttle_ephemeral_ata(accounts, instruction_data)
+        }
+        instruction::DELEGATE_SHUTTLE_EPHEMERAL_ATA_WITH_MERGE => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: DelegateShuttleEphemeralAtaWithMerge");
+
+            process_delegate_shuttle_ephemeral_ata_with_merge(accounts, instruction_data)
         }
         instruction::UNDELEGATE_SHUTTLE_EPHEMERAL_ATA => {
             #[cfg(feature = "logging")]

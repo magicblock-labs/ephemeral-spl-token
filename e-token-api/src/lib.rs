@@ -79,6 +79,8 @@ pub mod instruction {
     ///      Instruction data:
     ///      []
     pub const ENSURE_TRANSFER_QUEUE_CRANK: u8 = 17;
+    /// 18 - DelegateShuttleEphemeralAtaWithMerge: delegate shuttle EATA and schedule a post-delegation merge into a destination ATA
+    pub const DELEGATE_SHUTTLE_EPHEMERAL_ATA_WITH_MERGE: u8 = 18;
     /// 19 - DelegateTransferQueue: delegate the per-mint transfer queue PDA to the delegation program
     ///      Instruction data:
     ///      []        no instruction args
