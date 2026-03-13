@@ -170,6 +170,24 @@ pub(crate) fn inner_process_instruction(
 
             process_delegate_transfer_queue(accounts, instruction_data)
         }
+        instruction::INITIALIZE_FEES_PDA => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: InitializeFeesPda");
+
+            process_initialize_fees_pda(accounts, instruction_data)
+        }
+        instruction::DELEGATE_FEES_PDA => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: DelegateFeesPda");
+
+            process_delegate_fees_pda(accounts, instruction_data)
+        }
+        instruction::COMMIT_FEES_PDA => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: CommitFeesPda");
+
+            process_commit_fees_pda(accounts, instruction_data)
+        }
         internal::UNDELEGATION_CALLBACK => {
             #[cfg(feature = "logging")]
             pinocchio_log::log!("Instruction: UndelegationCallback");

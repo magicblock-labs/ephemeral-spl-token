@@ -1,8 +1,9 @@
 use bytemuck::{Pod, Zeroable};
 use pinocchio::{error::ProgramError, Address};
 
-/// Bump this value only when the on-chain layout changes.
-pub const TRANSFER_QUEUE_VERSION: u8 = 2;
+/// Current queue version that stores inserted/ready timestamps in milliseconds.
+/// Bump this value only when the on-chain layout changes or queue semantics require it.
+pub const TRANSFER_QUEUE_VERSION: u8 = 1;
 /// PDA seed prefix for transfer queues.
 pub const QUEUE_SEED: &[u8] = b"queue";
 
@@ -22,6 +23,8 @@ pub struct TransferQueueHeader {
 }
 
 /// One queued transfer entry.
+///
+/// `ready_at` and `inserted_at` are stored in milliseconds since unix epoch.
 #[repr(C)]
 #[derive(Copy, Clone, Pod, Zeroable)]
 pub struct QueuedTransfer {

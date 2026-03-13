@@ -71,8 +71,9 @@ pub mod instruction {
     /// 16 - DepositAndQueueTransfer: transfer tokens from signer into the vault ATA and enqueue one or more delayed transfers
     ///      Instruction data:
     ///      [0..8]    amount (u64 LE)
-    ///      [8..16]   delay_seconds (u64 LE), 0 => immediate
-    ///      [16..20]  split count (u32 LE), must be >= 1
+    ///      [8..16]   min_delay_ms (u64 LE), 0 => immediate
+    ///      [16..24]  max_delay_ms (u64 LE), must be >= min_delay_ms
+    ///      [24..28]  split count (u32 LE), must be >= 1
     pub const DEPOSIT_AND_QUEUE_TRANSFER: u8 = 16;
     /// 17 - EnsureTransferQueueCrank: ensure the per-mint recurring queue crank is scheduled
     ///      Instruction data:
@@ -82,6 +83,18 @@ pub mod instruction {
     ///      Instruction data:
     ///      []        no instruction args
     pub const DELEGATE_TRANSFER_QUEUE: u8 = 19;
+    /// 20 - InitializeFeesPda: initialize the validator-scoped FEES PDA derived from ["FEES", validator]
+    ///      Instruction data:
+    ///      []        no instruction args
+    pub const INITIALIZE_FEES_PDA: u8 = 20;
+    /// 21 - DelegateFeesPda: delegate the validator-scoped FEES PDA to the delegation program
+    ///      Instruction data:
+    ///      []        no instruction args
+    pub const DELEGATE_FEES_PDA: u8 = 21;
+    /// 22 - CommitFeesPda: schedule a commit for the validator-scoped FEES PDA through the magic program
+    ///      Instruction data:
+    ///      []        no instruction args
+    pub const COMMIT_FEES_PDA: u8 = 22;
 
     /// Internal-only instruction discriminators used by the on-chain program.
     pub mod internal {

@@ -128,7 +128,12 @@ pub fn process_ensure_transfer_queue_crank(
             )
         },
     };
-    let schedule_account_refs = [payer_info, queue_info, magic_context_info, magic_program_info];
+    let schedule_account_refs = [
+        payer_info,
+        queue_info,
+        magic_context_info,
+        magic_program_info,
+    ];
     invoke_with_bounds::<SCHEDULE_CRANK_CPI_ACCOUNTS>(
         &schedule_instruction,
         &schedule_account_refs,

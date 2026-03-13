@@ -130,12 +130,14 @@ async fn setup_fixture(queue_size_bytes: Option<u32>) -> Fixture {
 fn build_deposit_and_queue_ix(
     fixture: &Fixture,
     amount: u64,
-    delay_seconds: u64,
+    min_delay_ms: u64,
+    max_delay_ms: u64,
     split: u32,
 ) -> Instruction {
     let mut data = vec![instruction::DEPOSIT_AND_QUEUE_TRANSFER];
     data.extend_from_slice(&amount.to_le_bytes());
-    data.extend_from_slice(&delay_seconds.to_le_bytes());
+    data.extend_from_slice(&min_delay_ms.to_le_bytes());
+    data.extend_from_slice(&max_delay_ms.to_le_bytes());
     data.extend_from_slice(&split.to_le_bytes());
 
     Instruction {
@@ -152,6 +154,28 @@ fn build_deposit_and_queue_ix(
         ],
         data,
     }
+}
+
+fn expected_split_delay_ms(
+    destination: &Pubkey,
+    queue_position: usize,
+    min_delay_ms: u64,
+    max_delay_ms: u64,
+) -> u64 {
+    if min_delay_ms == max_delay_ms {
+        return min_delay_ms;
+    }
+
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    for byte in destination.to_bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x100_0000_01b3);
+    }
+    hash ^= queue_position as u64;
+    hash = hash.wrapping_mul(0x100_0000_01b3);
+    let hash = hash ^ (hash >> 32);
+    let sample_space = max_delay_ms - min_delay_ms + 1;
+    min_delay_ms + (hash % sample_space)
 }
 
 async fn assert_empty_state(fixture: &Fixture) {
@@ -197,9 +221,10 @@ async fn deposit_and_queue_transfer_transfers_once_and_enqueues_split_items() {
         .unwrap();
 
     let amount: u64 = 10;
-    let delay_seconds: u64 = 120;
+    let min_delay_ms: u64 = 120_000;
+    let max_delay_ms: u64 = 120_000;
     let split: u32 = 3;
-    let ix = build_deposit_and_queue_ix(&fixture, amount, delay_seconds, split);
+    let ix = build_deposit_and_queue_ix(&fixture, amount, min_delay_ms, max_delay_ms, split);
     let blockhash = fixture
         .context
         .banks_client
@@ -267,9 +292,9 @@ async fn deposit_and_queue_transfer_transfers_once_and_enqueues_split_items() {
             queued.destination.as_array(),
             &fixture.destination_ata.to_bytes()
         );
-        assert_eq!(queued.ready_at - queued.inserted_at, delay_seconds as i64);
-        assert!(queued.inserted_at >= clock_before.unix_timestamp);
-        assert!(queued.inserted_at <= clock_after.unix_timestamp);
+        assert_eq!(queued.ready_at - queued.inserted_at, min_delay_ms as i64);
+        assert!(queued.inserted_at >= clock_before.unix_timestamp * 1_000);
+        assert!(queued.inserted_at <= clock_after.unix_timestamp * 1_000);
     }
 
     queued_amounts.sort_unstable();
@@ -279,7 +304,7 @@ async fn deposit_and_queue_transfer_transfers_once_and_enqueues_split_items() {
 #[tokio::test]
 async fn deposit_and_queue_transfer_rejects_zero_split() {
     let fixture = setup_fixture(None).await;
-    let ix = build_deposit_and_queue_ix(&fixture, 10, 0, 0);
+    let ix = build_deposit_and_queue_ix(&fixture, 10, 0, 0, 0);
     let blockhash = fixture
         .context
         .banks_client
@@ -310,7 +335,7 @@ async fn deposit_and_queue_transfer_rejects_zero_split() {
 #[tokio::test]
 async fn deposit_and_queue_transfer_rejects_split_greater_than_amount() {
     let fixture = setup_fixture(None).await;
-    let ix = build_deposit_and_queue_ix(&fixture, 2, 0, 3);
+    let ix = build_deposit_and_queue_ix(&fixture, 2, 0, 0, 3);
     let blockhash = fixture
         .context
         .banks_client
@@ -342,7 +367,7 @@ async fn deposit_and_queue_transfer_rejects_split_greater_than_amount() {
 async fn deposit_and_queue_transfer_rejects_when_queue_is_full() {
     let queue_size_bytes = (header_len() + (item_len() * 2)) as u32;
     let fixture = setup_fixture(Some(queue_size_bytes)).await;
-    let ix = build_deposit_and_queue_ix(&fixture, 6, 0, 3);
+    let ix = build_deposit_and_queue_ix(&fixture, 6, 0, 0, 3);
     let blockhash = fixture
         .context
         .banks_client
@@ -368,4 +393,176 @@ async fn deposit_and_queue_transfer_rejects_when_queue_is_full() {
     );
 
     assert_empty_state(&fixture).await;
+}
+
+#[tokio::test]
+async fn deposit_and_queue_transfer_rejects_invalid_delay_range() {
+    let fixture = setup_fixture(None).await;
+    let ix = build_deposit_and_queue_ix(&fixture, 10, 10, 9, 1);
+    let blockhash = fixture
+        .context
+        .banks_client
+        .get_latest_blockhash()
+        .await
+        .unwrap();
+
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&fixture.payer),
+        &[&fixture.context.payer],
+        blockhash,
+    );
+    assert_eq!(
+        fixture
+            .context
+            .banks_client
+            .process_transaction(tx)
+            .await
+            .unwrap_err()
+            .unwrap(),
+        TransactionError::InstructionError(0, InstructionError::InvalidInstructionData)
+    );
+
+    assert_empty_state(&fixture).await;
+}
+
+#[tokio::test]
+async fn deposit_and_queue_transfer_uses_deterministic_split_delays_within_range() {
+    let fixture = setup_fixture(None).await;
+    let amount: u64 = 12;
+    let min_delay_ms: u64 = 100;
+    let max_delay_ms: u64 = 300;
+    let split: u32 = 4;
+    let ix = build_deposit_and_queue_ix(&fixture, amount, min_delay_ms, max_delay_ms, split);
+    let blockhash = fixture
+        .context
+        .banks_client
+        .get_latest_blockhash()
+        .await
+        .unwrap();
+
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&fixture.payer),
+        &[&fixture.context.payer],
+        blockhash,
+    );
+    fixture
+        .context
+        .banks_client
+        .process_transaction(tx)
+        .await
+        .unwrap();
+
+    let queue_account = fixture
+        .context
+        .banks_client
+        .get_account(fixture.queue)
+        .await
+        .unwrap()
+        .expect("queue account must exist");
+
+    let mut actual_delays = Vec::new();
+    for index in 0..split as usize {
+        let queued = read_item_unaligned(&queue_account.data, index);
+        let delay_ms = (queued.ready_at - queued.inserted_at) as u64;
+        assert!(delay_ms >= min_delay_ms);
+        assert!(delay_ms <= max_delay_ms);
+        actual_delays.push(delay_ms);
+    }
+
+    let mut expected_delays = (0..split as usize)
+        .map(|index| {
+            expected_split_delay_ms(&fixture.destination_ata, index, min_delay_ms, max_delay_ms)
+        })
+        .collect::<Vec<_>>();
+
+    actual_delays.sort_unstable();
+    expected_delays.sort_unstable();
+    assert_eq!(actual_delays, expected_delays);
+}
+
+#[tokio::test]
+async fn deposit_and_queue_transfer_prefers_multiples_of_five_for_four_way_split() {
+    let fixture = setup_fixture(None).await;
+    let amount: u64 = 33_500_000;
+    let split: u32 = 4;
+    let ix = build_deposit_and_queue_ix(&fixture, amount, 0, 0, split);
+    let blockhash = fixture
+        .context
+        .banks_client
+        .get_latest_blockhash()
+        .await
+        .unwrap();
+
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&fixture.payer),
+        &[&fixture.context.payer],
+        blockhash,
+    );
+    fixture
+        .context
+        .banks_client
+        .process_transaction(tx)
+        .await
+        .unwrap();
+
+    let queue_account = fixture
+        .context
+        .banks_client
+        .get_account(fixture.queue)
+        .await
+        .unwrap()
+        .expect("queue account must exist");
+
+    let mut queued_amounts = (0..split as usize)
+        .map(|index| read_item_unaligned(&queue_account.data, index).amount)
+        .collect::<Vec<_>>();
+    queued_amounts.sort_unstable();
+    assert_eq!(
+        queued_amounts,
+        vec![3_500_000, 10_000_000, 10_000_000, 10_000_000]
+    );
+}
+
+#[tokio::test]
+async fn deposit_and_queue_transfer_prefers_multiples_of_five_for_three_way_split() {
+    let fixture = setup_fixture(None).await;
+    let amount: u64 = 33_500_000;
+    let split: u32 = 3;
+    let ix = build_deposit_and_queue_ix(&fixture, amount, 0, 0, split);
+    let blockhash = fixture
+        .context
+        .banks_client
+        .get_latest_blockhash()
+        .await
+        .unwrap();
+
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&fixture.payer),
+        &[&fixture.context.payer],
+        blockhash,
+    );
+    fixture
+        .context
+        .banks_client
+        .process_transaction(tx)
+        .await
+        .unwrap();
+
+    let queue_account = fixture
+        .context
+        .banks_client
+        .get_account(fixture.queue)
+        .await
+        .unwrap()
+        .expect("queue account must exist");
+
+    let mut queued_amounts = (0..split as usize)
+        .map(|index| read_item_unaligned(&queue_account.data, index).amount)
+        .collect::<Vec<_>>();
+    queued_amounts.sort_unstable();
+    assert_eq!(queued_amounts, vec![3_500_000, 15_000_000, 15_000_000]);
 }

@@ -148,9 +148,7 @@ fn process_magic_program_mock(
                 return Err(ProgramError::MissingRequiredSignature);
             }
             for action in &args.standalone_actions {
-                let Some(escrow_authority) =
-                    accounts.get(action.escrow_authority as usize)
-                else {
+                let Some(escrow_authority) = accounts.get(action.escrow_authority as usize) else {
                     return Err(ProgramError::NotEnoughAccountKeys);
                 };
                 if !escrow_authority.is_signer {
@@ -333,10 +331,11 @@ async fn setup_fixture() -> Fixture {
     }
 }
 
-async fn enqueue_transfer(fixture: &mut Fixture, delay_seconds: u64) {
+async fn enqueue_transfer(fixture: &mut Fixture, min_delay_ms: u64) {
     let mut data = vec![instruction::DEPOSIT_AND_QUEUE_TRANSFER];
     data.extend_from_slice(&QUEUED_AMOUNT.to_le_bytes());
-    data.extend_from_slice(&delay_seconds.to_le_bytes());
+    data.extend_from_slice(&min_delay_ms.to_le_bytes());
+    data.extend_from_slice(&min_delay_ms.to_le_bytes());
     data.extend_from_slice(&1_u32.to_le_bytes());
 
     let ix = Instruction {

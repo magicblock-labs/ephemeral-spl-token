@@ -16,6 +16,7 @@ const ASSOCIATED_TOKEN_PROGRAM_ID: ephemeral_spl_api::Address =
     pinocchio_associated_token_account::ID;
 const EXECUTE_READY_QUEUED_TRANSFER_COMPUTE_UNITS: u32 = 100_000;
 const MAGIC_INTENT_BUNDLE_DATA_LEN: usize = 512;
+const MILLIS_PER_SECOND: i64 = 1_000;
 
 #[inline(always)]
 pub fn process_transfer_queue_tick(
@@ -35,12 +36,16 @@ pub fn process_transfer_queue_tick(
     };
 
     let program_id = ephemeral_spl_api::program::id_address();
-    let now = Clock::get()?.unix_timestamp;
+    let clock = Clock::get()?;
     let (mint, queue_bump, queue_len, queued_transfer) = {
         let data = unsafe { queue_info.borrow_unchecked() };
         let (header, _) = queue_views_checked(data)?;
         let mint = header.mint;
         let queue_len = header.length as usize;
+        let now = clock
+            .unix_timestamp
+            .checked_mul(MILLIS_PER_SECOND)
+            .ok_or(ProgramError::InvalidInstructionData)?;
 
         let (derived_queue, queue_bump) = ephemeral_spl_api::Address::find_program_address(
             &[QUEUE_SEED, mint.as_ref()],
