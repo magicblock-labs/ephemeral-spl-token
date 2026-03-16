@@ -465,7 +465,7 @@ async fn ensure_transfer_queue_crank_schedules_one_recurring_queue_crank() {
             },
         ]
     );
-    assert_eq!(captured[0].args.execution_interval_millis, 1000);
+    assert_eq!(captured[0].args.execution_interval_millis, 500);
     assert_eq!(captured[0].args.iterations, i64::MAX);
     assert_eq!(captured[0].args.instructions.len(), 1);
     assert_eq!(

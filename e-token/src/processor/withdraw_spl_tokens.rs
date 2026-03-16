@@ -31,7 +31,35 @@ pub fn process_withdraw_spl_tokens(
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
-    if !owner.is_signer() {
+    withdraw_ephemeral_ata_tokens(
+        owner,
+        true,
+        ephemeral_ata_info,
+        vault_info,
+        mint_info,
+        vault_source_token_acc,
+        user_dest_token_acc,
+        token_program_info,
+        args.amount(),
+        args.bump(),
+    )
+}
+
+#[inline(always)]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn withdraw_ephemeral_ata_tokens(
+    owner: &AccountView,
+    require_owner_signature: bool,
+    ephemeral_ata_info: &AccountView,
+    vault_info: &AccountView,
+    mint_info: &AccountView,
+    vault_source_token_acc: &AccountView,
+    user_dest_token_acc: &AccountView,
+    token_program_info: &AccountView,
+    amount: u64,
+    vault_bump: u8,
+) -> ProgramResult {
+    if require_owner_signature && !owner.is_signer() {
         return Err(ProgramError::MissingRequiredSignature);
     }
 
@@ -83,7 +111,7 @@ pub fn process_withdraw_spl_tokens(
     };
 
     // Perform transfer from vault token account to user destination, signed by vault PDA
-    let bump = [args.bump()];
+    let bump = [vault_bump];
     let seeds = [Seed::from(mint_info.address().as_ref()), Seed::from(&bump)];
     let signer = Signer::from(&seeds);
 
@@ -93,7 +121,7 @@ pub fn process_withdraw_spl_tokens(
         to: user_dest_token_acc,
         authority: vault_info, // PDA authority over the vault token account
         token_program: token_program_info.address(),
-        amount: args.amount(),
+        amount,
         decimals,
     }
     .invoke_signed(&[signer])?;
@@ -101,7 +129,7 @@ pub fn process_withdraw_spl_tokens(
     // Safely decrease the amount in the EphemeralAta
     ephemeral_ata.amount = ephemeral_ata
         .amount
-        .checked_sub(args.amount())
+        .checked_sub(amount)
         .ok_or(ProgramError::InvalidArgument)?;
 
     Ok(())

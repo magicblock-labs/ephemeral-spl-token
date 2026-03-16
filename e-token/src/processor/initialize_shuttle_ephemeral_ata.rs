@@ -1,4 +1,4 @@
-use crate::processor::initialize_ephemeral_ata::process_initialize_ephemeral_ata;
+use crate::processor::initialize_ephemeral_ata::initialize_ephemeral_ata_with_sponsor;
 use core::marker::PhantomData;
 use ephemeral_spl_api::state::{load_mut_unchecked, load_unchecked, Initializable, RawType};
 use pinocchio::cpi::{Seed, Signer};
@@ -37,8 +37,42 @@ pub fn process_initialize_shuttle_ephemeral_ata(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    let shuttle_id_seed = args.shuttle_id().to_le_bytes();
-    let bump = [args.bump()];
+    initialize_shuttle_ephemeral_ata_with_sponsor(
+        payer_info,
+        None,
+        shuttle_info,
+        shuttle_eata_info,
+        shuttle_wallet_ata_info,
+        payer_info,
+        owner_info,
+        mint_info,
+        token_program_info,
+        system_program_info,
+        args.shuttle_id(),
+        args.bump(),
+    )?;
+
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+#[inline(never)]
+pub(crate) fn initialize_shuttle_ephemeral_ata_with_sponsor(
+    sponsor_info: &AccountView,
+    sponsor_signer: Option<Signer<'_, '_>>,
+    shuttle_info: &AccountView,
+    shuttle_eata_info: &AccountView,
+    shuttle_wallet_ata_info: &AccountView,
+    refund_recipient_info: &AccountView,
+    owner_info: &AccountView,
+    mint_info: &AccountView,
+    token_program_info: &AccountView,
+    system_program_info: &AccountView,
+    shuttle_id: u32,
+    shuttle_bump: u8,
+) -> ProgramResult {
+    let shuttle_id_seed = shuttle_id.to_le_bytes();
+    let bump = [shuttle_bump];
     let derived_shuttle_pda = ephemeral_spl_api::Address::create_program_address(
         &[
             owner_info.address().as_ref(),
@@ -60,36 +94,43 @@ pub fn process_initialize_shuttle_ephemeral_ata(
     };
 
     if !shuttle_is_owned_by_program {
-        let seed = [
+        let shuttle_seed = [
             Seed::from(owner_info.address().as_ref()),
             Seed::from(mint_info.address().as_ref()),
             Seed::from(shuttle_id_seed.as_ref()),
             Seed::from(&bump),
         ];
-        let signer_seeds = Signer::from(&seed);
+        let shuttle_signer = Signer::from(&shuttle_seed);
 
-        CreateAccount {
-            from: payer_info,
+        let create_shuttle = CreateAccount {
+            from: sponsor_info,
             to: shuttle_info,
             space: ShuttleEphemeralAta::LEN as u64,
             lamports: Rent::get()?.try_minimum_balance(ShuttleEphemeralAta::LEN)?,
             owner: &ephemeral_spl_api::program::id_address(),
+        };
+        if let Some(sponsor_signer) = sponsor_signer.as_ref() {
+            let signers = [sponsor_signer.clone(), shuttle_signer];
+            create_shuttle.invoke_signed(&signers)?;
+        } else {
+            let signers = [shuttle_signer];
+            create_shuttle.invoke_signed(&signers)?;
         }
-        .invoke_signed(&[signer_seeds])?;
 
         let shuttle = unsafe {
             load_mut_unchecked::<ShuttleEphemeralAta>(shuttle_info.borrow_unchecked_mut())?
         };
 
         shuttle.owner = *owner_info.address();
-        shuttle.payer = *payer_info.address();
-        shuttle.id = args.shuttle_id();
+        shuttle.payer = *refund_recipient_info.address();
+        shuttle.id = shuttle_id;
     } else {
         let shuttle =
             unsafe { load_unchecked::<ShuttleEphemeralAta>(shuttle_info.borrow_unchecked())? };
         if !shuttle.is_initialized()
-            || shuttle.id != args.shuttle_id()
+            || shuttle.id != shuttle_id
             || shuttle.owner != *owner_info.address()
+            || shuttle.payer != *refund_recipient_info.address()
         {
             return Err(ProgramError::InvalidAccountData);
         }
@@ -107,24 +148,28 @@ pub fn process_initialize_shuttle_ephemeral_ata(
         return Err(ProgramError::InvalidSeeds);
     }
 
-    let eata_init_data = [shuttle_eata_bump];
-    let eata_init_accounts = [
-        shuttle_eata_info.clone(),
-        payer_info.clone(),
-        shuttle_info.clone(),
-        mint_info.clone(),
-    ];
-    process_initialize_ephemeral_ata(&eata_init_accounts, &eata_init_data)?;
+    initialize_ephemeral_ata_with_sponsor(
+        shuttle_eata_info,
+        sponsor_info,
+        sponsor_signer.clone(),
+        shuttle_info,
+        mint_info,
+        shuttle_eata_bump,
+    )?;
 
-    pinocchio_associated_token_account::instructions::CreateIdempotent {
-        funding_account: payer_info,
+    let ata_ix = pinocchio_associated_token_account::instructions::CreateIdempotent {
+        funding_account: sponsor_info,
         account: shuttle_wallet_ata_info,
         wallet: shuttle_info,
         mint: mint_info,
         system_program: system_program_info,
         token_program: token_program_info,
+    };
+    if let Some(sponsor_signer) = sponsor_signer {
+        ata_ix.invoke_signed(&[sponsor_signer])?;
+    } else {
+        ata_ix.invoke()?;
     }
-    .invoke()?;
 
     Ok(())
 }

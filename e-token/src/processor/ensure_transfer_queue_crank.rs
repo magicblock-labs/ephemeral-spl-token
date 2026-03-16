@@ -10,7 +10,7 @@ use pinocchio::cpi::invoke_with_bounds;
 use pinocchio::instruction::{InstructionAccount, InstructionView};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
-pub const CRANK_EXECUTION_INTERVAL_MILLIS: i64 = 1000;
+pub const CRANK_EXECUTION_INTERVAL_MILLIS: i64 = 500;
 
 const PROCESS_QUEUE_TICK_CRANK_ACCOUNTS: usize = 3;
 const SCHEDULE_CRANK_CPI_ACCOUNTS: usize = 4;

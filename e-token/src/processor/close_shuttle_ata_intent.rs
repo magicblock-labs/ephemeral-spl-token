@@ -1,3 +1,4 @@
+use crate::processor::withdraw_spl_tokens::withdraw_ephemeral_ata_tokens;
 use ephemeral_spl_api::state::{
     ephemeral_ata::EphemeralAta, load_unchecked, shuttle_ephemeral_ata::ShuttleEphemeralAta,
     Initializable,
@@ -8,20 +9,25 @@ use pinocchio_token_2022::instructions::CloseAccount;
 use pinocchio_token_2022::state::TokenAccount;
 const DLP_EPHEMERAL_BALANCE_TAG: &[u8] = b"balance";
 
-/// Post-undelegate handler that closes shuttle wallet ATA and shuttle EATA
-/// when amounts are 0, then closes shuttle metadata account.
+/// Post-undelegate handler that first withdraws any remaining shuttle EATA
+/// balance through the shared vault flow, then closes shuttle wallet ATA,
+/// shuttle EATA, and shuttle metadata, refunding rent to the stored payer.
 ///
 /// Expected leading accounts:
-/// 0. [writable] Shuttle payer account (must equal `ShuttleEphemeralAta.payer`)
+/// 0. [writable] Shuttle rent reimbursement account (must equal `ShuttleEphemeralAta.payer`)
 /// 1. [writable] Shuttle metadata account
 /// 2. [writable] Shuttle EATA account (PDA [shuttle_metadata, mint])
 /// 3. [writable] Shuttle wallet ATA account
-/// 4. []         Token program account
+/// 4. [writable] Destination token account
+/// 5. []         Mint account
+/// 6. []         Global Vault account
+/// 7. [writable] Vault source token account
+/// 8. []         Token program account
 ///
 /// Expected trailing accounts from tail:
 /// - second to last: escrow authority
 /// - last:          escrow signer PDA
-pub fn process_close_shuttle_ata_intent_v2(
+pub fn process_close_shuttle_ata_intent(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
@@ -29,21 +35,22 @@ pub fn process_close_shuttle_ata_intent_v2(
         return Err(ProgramError::InvalidInstructionData);
     };
 
-    if accounts.len() < 7 {
+    if accounts.len() < 11 {
         return Err(ProgramError::NotEnoughAccountKeys);
     }
 
-    let shuttle_payer_info = &accounts[0];
+    let rent_reimbursement_info = &accounts[0];
     let shuttle_info = &accounts[1];
     let shuttle_ephemeral_ata_info = &accounts[2];
     let shuttle_wallet_ata_info = &accounts[3];
-    let token_program_info = &accounts[4];
+    let destination_token_info = &accounts[4];
+    let mint_info = &accounts[5];
+    let vault_info = &accounts[6];
+    let vault_source_token_acc = &accounts[7];
+    let token_program_info = &accounts[8];
     let escrow_authority = &accounts[accounts.len() - 2];
     let escrow_signer = &accounts[accounts.len() - 1];
 
-    if escrow_authority.address() != shuttle_payer_info.address() {
-        return Err(ProgramError::IncorrectAuthority);
-    }
     if !escrow_signer.is_signer() {
         return Err(ProgramError::MissingRequiredSignature);
     }
@@ -79,7 +86,7 @@ pub fn process_close_shuttle_ata_intent_v2(
         if !shuttle.is_initialized() {
             return Err(ProgramError::InvalidAccountData);
         }
-        if shuttle.payer != *shuttle_payer_info.address() {
+        if shuttle.payer != *rent_reimbursement_info.address() {
             return Err(ProgramError::IncorrectAuthority);
         }
         shuttle_id = shuttle.id;
@@ -142,7 +149,7 @@ pub fn process_close_shuttle_ata_intent_v2(
 
         CloseAccount {
             account: shuttle_wallet_ata_info,
-            destination: shuttle_payer_info,
+            destination: rent_reimbursement_info,
             authority: shuttle_info,
             token_program: token_program_info.address(),
         }
@@ -176,7 +183,27 @@ pub fn process_close_shuttle_ata_intent_v2(
         };
 
         if shuttle_ephemeral_amount != 0 {
-            return Err(ProgramError::InvalidArgument);
+            if mint != *mint_info.address() {
+                return Err(ProgramError::InvalidAccountData);
+            }
+
+            let (_, vault_bump) = ephemeral_spl_api::Address::find_program_address(
+                &[mint_info.address().as_ref()],
+                &ephemeral_spl_api::program::id_address(),
+            );
+
+            withdraw_ephemeral_ata_tokens(
+                shuttle_info,
+                false,
+                shuttle_ephemeral_ata_info,
+                vault_info,
+                mint_info,
+                vault_source_token_acc,
+                destination_token_info,
+                token_program_info,
+                shuttle_ephemeral_amount,
+                vault_bump,
+            )?;
         }
 
         let shuttle_id_seed = shuttle_id.to_le_bytes();
@@ -200,11 +227,11 @@ pub fn process_close_shuttle_ata_intent_v2(
             return Err(ProgramError::InvalidSeeds);
         }
 
-        close_program_account_to_recipient(shuttle_ephemeral_ata_info, shuttle_payer_info)?;
+        close_program_account_to_recipient(shuttle_ephemeral_ata_info, rent_reimbursement_info)?;
     }
 
     if shuttle_present {
-        close_program_account_to_recipient(shuttle_info, shuttle_payer_info)?;
+        close_program_account_to_recipient(shuttle_info, rent_reimbursement_info)?;
     }
 
     Ok(())

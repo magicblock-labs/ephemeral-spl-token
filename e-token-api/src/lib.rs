@@ -3,6 +3,7 @@
 // Single source of truth for the e-ephemeral-token program ID.
 // Keep this in a separate rlib crate so tests and clients can link it while
 // the on-chain program crate stays cdylib-only.
+pub mod consts;
 pub mod error;
 pub mod state;
 pub mod program {
@@ -79,8 +80,6 @@ pub mod instruction {
     ///      Instruction data:
     ///      []
     pub const ENSURE_TRANSFER_QUEUE_CRANK: u8 = 17;
-    /// 18 - DelegateShuttleEphemeralAtaWithMerge: delegate shuttle EATA and schedule a post-delegation merge into a destination ATA
-    pub const DELEGATE_SHUTTLE_EPHEMERAL_ATA_WITH_MERGE: u8 = 18;
     /// 19 - DelegateTransferQueue: delegate the per-mint transfer queue PDA to the delegation program
     ///      Instruction data:
     ///      []        no instruction args
@@ -97,16 +96,54 @@ pub mod instruction {
     ///      Instruction data:
     ///      []        no instruction args
     pub const COMMIT_FEES_PDA: u8 = 22;
+    /// 23 - InitializeRentPda: initialize the global rent-sponsoring PDA derived from ["rent"]
+    ///      Instruction data:
+    ///      []        no instruction args
+    pub const INITIALIZE_RENT_PDA: u8 = 23;
+    /// 24 - SetupAndDelegateShuttleEphemeralAtaWithMerge: initialize shuttle metadata/EATA/wallet ATA,
+    ///      deposit tokens into the shuttle EATA through the global vault, sponsor delegation from
+    ///      the global rent PDA, and schedule post-delegation merge + cleanup.
+    ///      Instruction data:
+    ///      [0..4] shuttle_id (u32 LE)
+    ///      [4]    shuttle metadata bump
+    ///      [5..13] deposit amount (u64 LE)
+    ///      [13..45] optional validator pubkey
+    pub const SETUP_AND_DELEGATE_SHUTTLE_EPHEMERAL_ATA_WITH_MERGE: u8 = 24;
+    /// 25 - DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer:
+    ///      same setup/deposit/delegate flow as instruction 24, plus a third post-delegation
+    ///      action that schedules a second private transfer of the same amount to the destination token account.
+    ///      Instruction data:
+    ///      [0..4] shuttle_id (u32 LE)
+    ///      [4]    shuttle metadata bump
+    ///      [5..13] deposit amount (u64 LE)
+    ///      [13..21] min_delay_ms (u64 LE)
+    ///      [21..29] max_delay_ms (u64 LE)
+    ///      [29..33] split count (u32 LE)
+    ///      [33..65] optional validator pubkey
+    pub const DEPOSIT_AND_DELEGATE_SHUTTLE_EPHEMERAL_ATA_WITH_MERGE_AND_PRIVATE_TRANSFER: u8 = 25;
+    /// 26 - WithdrawThroughDelegatedShuttleWithMerge: initialize shuttle metadata/EATA/wallet ATA,
+    ///      sponsor delegation from the global rent PDA, then schedule a post-delegation transfer
+    ///      from the owner ATA into the shuttle wallet ATA followed by shuttle undelegate
+    ///      and close/refund.
+    ///      Instruction data:
+    ///      [0..4] shuttle_id (u32 LE)
+    ///      [4]    shuttle metadata bump
+    ///      [5..13] transfer amount (u64 LE)
+    ///      [13..45] optional validator pubkey
+    pub const WITHDRAW_THROUGH_DELEGATED_SHUTTLE_WITH_MERGE: u8 = 26;
 
     /// Internal-only instruction discriminators used by the on-chain program.
     pub mod internal {
         /// 196 - UndelegationCallback: delegation-program callback used to restore delegated state.
         pub const UNDELEGATION_CALLBACK: u8 = 196;
-        /// 197 - CloseShuttleAtaIntentV2: Magic standalone action that closes an emptied shuttle ATA flow.
-        pub const CLOSE_SHUTTLE_ATA_INTENT_V2: u8 = 197;
+        /// 197 - CloseShuttleAtaIntent: Magic standalone action that closes an emptied shuttle ATA flow.
+        pub const CLOSE_SHUTTLE_ATA_INTENT: u8 = 197;
         /// 198 - ExecuteReadyQueuedTransfer: Magic standalone action that settles one queued transfer.
         pub const EXECUTE_READY_QUEUED_TRANSFER: u8 = 198;
         /// 199 - ProcessTransferQueueTick: recurring crank callback that checks a queue and schedules settlement.
         pub const PROCESS_TRANSFER_QUEUE_TICK: u8 = 199;
+        /// 201 - UndelegateWithdrawAndCloseShuttleEphemeralAta: internal post-delegation action that
+        ///       undelegates a shuttle and schedules the close/refund post-undelegate action.
+        pub const UNDELEGATE_WITHDRAW_AND_CLOSE_SHUTTLE_EPHEMERAL_ATA: u8 = 201;
     }
 }

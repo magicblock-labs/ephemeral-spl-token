@@ -26,6 +26,25 @@ pub fn process_initialize_ephemeral_ata(
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
+    initialize_ephemeral_ata_with_sponsor(
+        ephemeral_ata_info,
+        payer_info,
+        None,
+        user_info,
+        mint_info,
+        args.bump(),
+    )
+}
+
+#[inline(never)]
+pub(crate) fn initialize_ephemeral_ata_with_sponsor(
+    ephemeral_ata_info: &AccountView,
+    sponsor_info: &AccountView,
+    sponsor_signer: Option<Signer<'_, '_>>,
+    user_info: &AccountView,
+    mint_info: &AccountView,
+    bump: u8,
+) -> ProgramResult {
     // Validate PDA derivation up front, even for idempotent re-initialization.
     let (derived_pda, _) = ephemeral_spl_api::Address::find_program_address(
         &[user_info.address().as_ref(), mint_info.address().as_ref()],
@@ -52,7 +71,7 @@ pub fn process_initialize_ephemeral_ata(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    let bump = [args.bump()];
+    let bump = [bump];
     let seed = [
         Seed::from(user_info.address().as_ref()),
         Seed::from(mint_info.address().as_ref()),
@@ -60,14 +79,20 @@ pub fn process_initialize_ephemeral_ata(
     ];
     let signer_seeds = Signer::from(&seed);
 
-    CreateAccount {
-        from: payer_info,
+    let create_ephemeral_ata = CreateAccount {
+        from: sponsor_info,
         to: ephemeral_ata_info,
         space: EphemeralAta::LEN as u64,
         lamports: Rent::get()?.try_minimum_balance(EphemeralAta::LEN)?,
         owner: &ephemeral_spl_api::program::id_address(),
+    };
+    if let Some(sponsor_signer) = sponsor_signer {
+        let signers = [sponsor_signer, signer_seeds];
+        create_ephemeral_ata.invoke_signed(&signers)?;
+    } else {
+        let signers = [signer_seeds];
+        create_ephemeral_ata.invoke_signed(&signers)?;
     }
-    .invoke_signed(&[signer_seeds])?;
 
     // Ensure account data has the expected size
     let ephemeral_ata =

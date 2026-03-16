@@ -4,8 +4,8 @@ use {
     crate::processor::*,
     core::{mem::MaybeUninit, slice::from_raw_parts},
     pinocchio::{
-        default_allocator, default_panic_handler, entrypoint::deserialize,
-        error::ProgramError, AccountView, ProgramResult, MAX_TX_ACCOUNTS, SUCCESS,
+        default_allocator, default_panic_handler, entrypoint::deserialize, error::ProgramError,
+        AccountView, ProgramResult, MAX_TX_ACCOUNTS, SUCCESS,
     },
 };
 
@@ -37,14 +37,14 @@ fn log_error(_error: &ProgramError) {
 }
 
 /// Process an instruction.
-#[inline(always)]
+#[inline(never)]
 pub fn process_instruction(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let result = inner_process_instruction(accounts, instruction_data);
     result.inspect_err(log_error)
 }
 
 /// Process an instruction.
-#[inline(always)]
+#[inline(never)]
 pub(crate) fn inner_process_instruction(
     accounts: &[AccountView],
     instruction_data: &[u8],
@@ -138,11 +138,31 @@ pub(crate) fn inner_process_instruction(
 
             process_delegate_shuttle_ephemeral_ata(accounts, instruction_data)
         }
-        instruction::DELEGATE_SHUTTLE_EPHEMERAL_ATA_WITH_MERGE => {
+        instruction::SETUP_AND_DELEGATE_SHUTTLE_EPHEMERAL_ATA_WITH_MERGE => {
             #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: DelegateShuttleEphemeralAtaWithMerge");
+            pinocchio_log::log!("Instruction: SetupAndDelegateShuttleEphemeralAtaWithMerge");
 
-            process_delegate_shuttle_ephemeral_ata_with_merge(accounts, instruction_data)
+            process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge(
+                accounts,
+                instruction_data,
+            )
+        }
+        instruction::DEPOSIT_AND_DELEGATE_SHUTTLE_EPHEMERAL_ATA_WITH_MERGE_AND_PRIVATE_TRANSFER => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!(
+                "Instruction: DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer"
+            );
+
+            process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer(
+                accounts,
+                instruction_data,
+            )
+        }
+        instruction::WITHDRAW_THROUGH_DELEGATED_SHUTTLE_WITH_MERGE => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: WithdrawThroughDelegatedShuttleWithMerge");
+
+            process_withdraw_through_delegated_shuttle_with_merge(accounts, instruction_data)
         }
         instruction::UNDELEGATE_SHUTTLE_EPHEMERAL_ATA => {
             #[cfg(feature = "logging")]
@@ -192,17 +212,23 @@ pub(crate) fn inner_process_instruction(
 
             process_commit_fees_pda(accounts, instruction_data)
         }
+        instruction::INITIALIZE_RENT_PDA => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: InitializeRentPda");
+
+            process_initialize_rent_pda(accounts, instruction_data)
+        }
         internal::UNDELEGATION_CALLBACK => {
             #[cfg(feature = "logging")]
             pinocchio_log::log!("Instruction: UndelegationCallback");
 
             process_undelegation_callback(accounts, instruction_data)
         }
-        internal::CLOSE_SHUTTLE_ATA_INTENT_V2 => {
+        internal::CLOSE_SHUTTLE_ATA_INTENT => {
             #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: CloseShuttleAtaIntentV2");
+            pinocchio_log::log!("Instruction: CloseShuttleAtaIntent");
 
-            process_close_shuttle_ata_intent_v2(accounts, instruction_data)
+            process_close_shuttle_ata_intent(accounts, instruction_data)
         }
         internal::EXECUTE_READY_QUEUED_TRANSFER => {
             #[cfg(feature = "logging")]
@@ -215,6 +241,12 @@ pub(crate) fn inner_process_instruction(
             pinocchio_log::log!("Instruction: ProcessTransferQueueTick");
 
             process_transfer_queue_tick(accounts, instruction_data)
+        }
+        internal::UNDELEGATE_WITHDRAW_AND_CLOSE_SHUTTLE_EPHEMERAL_ATA => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: UndelegateWithdrawAndCloseShuttleEphemeralAta");
+
+            process_undelegate_withdraw_and_close_shuttle_ephemeral_ata(accounts, instruction_data)
         }
         _ => Err(EphemeralSplError::InvalidInstruction.into()),
     }

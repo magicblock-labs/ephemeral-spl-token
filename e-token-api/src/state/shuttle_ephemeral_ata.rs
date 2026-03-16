@@ -7,7 +7,7 @@ use super::{Initializable, RawType};
 pub struct ShuttleEphemeralAta {
     /// The logical owner of this shuttle account (seed used for shuttle PDA).
     pub owner: Address,
-    /// The account that funded rent for this shuttle account.
+    /// The account that receives rent refunds for this shuttle account flow.
     pub payer: Address,
     /// User-defined identifier to allow multiple shuttles per [owner, mint].
     pub id: u32,

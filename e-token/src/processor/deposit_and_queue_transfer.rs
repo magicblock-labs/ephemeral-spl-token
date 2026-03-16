@@ -38,14 +38,14 @@ pub fn process_deposit_and_queue_transfer(
     }
 
     let amount = args.amount();
+    validate_deposit_and_queue_transfer_params(
+        amount,
+        args.min_delay_ms(),
+        args.max_delay_ms(),
+        args.split(),
+    )?;
 
     let split = args.split() as usize;
-    if amount == 0 || split == 0 || (split as u64) > amount {
-        return Err(ProgramError::InvalidInstructionData);
-    }
-    if args.max_delay_ms() < args.min_delay_ms() {
-        return Err(ProgramError::InvalidInstructionData);
-    }
     let program_id = ephemeral_spl_api::program::id_address();
     let (derived_queue, _) = ephemeral_spl_api::Address::find_program_address(
         &[QUEUE_SEED, mint_info.address().as_ref()],
@@ -244,6 +244,23 @@ impl DepositAndQueueTransferArgs<'_> {
         }
         u64::from_le_bytes(buf)
     }
+}
+
+#[inline(always)]
+pub(crate) fn validate_deposit_and_queue_transfer_params(
+    amount: u64,
+    min_delay_ms: u64,
+    max_delay_ms: u64,
+    split: u32,
+) -> ProgramResult {
+    if amount == 0 || split == 0 || (split as u64) > amount {
+        return Err(ProgramError::InvalidInstructionData);
+    }
+    if max_delay_ms < min_delay_ms {
+        return Err(ProgramError::InvalidInstructionData);
+    }
+
+    Ok(())
 }
 
 #[inline(always)]
