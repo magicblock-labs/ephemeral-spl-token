@@ -11,9 +11,8 @@
       "name": "initializeEphemeralAta",
       "discriminator": [0],
       "docs": [
-        "Initializes an Ephemeral Associated Token Account (ATA) for a user-mint pair.",
-        "The account is derived as a PDA from [user, mint, bump].",
-        "This instruction is idempotent - returns Ok if already initialized."
+        "Initializes the ephemeral ATA PDA derived from [user, mint].",
+        "Instruction data: [0] bump."
       ],
       "accounts": [
         {
@@ -38,12 +37,10 @@
           "signer": true
         },
         {
-          "name": "user",
-          "docs": ["The owner of the ephemeral ATA"]
+          "name": "user"
         },
         {
-          "name": "mint",
-          "docs": ["The SPL token mint"]
+          "name": "mint"
         },
         {
           "name": "systemProgram",
@@ -61,9 +58,8 @@
       "name": "initializeGlobalVault",
       "discriminator": [1],
       "docs": [
-        "Initializes a Global Vault for a specific mint.",
-        "The vault holds actual SPL tokens and is derived as a PDA from [mint, bump].",
-        "Only one vault exists per mint."
+        "Initializes the per-mint global vault PDA and its backing accounts.",
+        "Instruction data: [0] bump."
       ],
       "accounts": [
         {
@@ -84,22 +80,33 @@
           "signer": true
         },
         {
-          "name": "mint",
-          "docs": ["The SPL token mint for this vault"]
+          "name": "mint"
+        },
+        {
+          "name": "vaultEphemeralAta",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault"
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
         },
         {
           "name": "vaultToken",
-          "writable": true,
-          "docs": ["The vault associated token account"]
+          "writable": true
         },
         {
-          "name": "tokenProgram",
-          "docs": ["SPL Token Program"],
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+          "name": "tokenProgram"
         },
         {
           "name": "associatedTokenProgram",
-          "docs": ["SPL Associated Token Program"],
           "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         },
         {
@@ -118,43 +125,34 @@
       "name": "depositSplTokens",
       "discriminator": [2],
       "docs": [
-        "Deposits SPL tokens into an ephemeral ATA.",
-        "Transfers tokens from the user's token account to the global vault,",
-        "and credits the amount to the user's ephemeral ATA balance."
+        "Transfers SPL tokens into the global vault and credits an ephemeral ATA.",
+        "Instruction data: [0..8] amount (u64 LE)."
       ],
       "accounts": [
         {
           "name": "ephemeralAta",
-          "writable": true,
-          "docs": ["The ephemeral ATA to credit"]
+          "writable": true
         },
         {
-          "name": "vault",
-          "docs": ["The global vault data account for this mint"]
+          "name": "vault"
         },
         {
-          "name": "mint",
-          "docs": ["The SPL token mint"]
+          "name": "mint"
         },
         {
           "name": "sourceToken",
-          "writable": true,
-          "docs": ["The user's source token account to transfer from"]
+          "writable": true
         },
         {
           "name": "vaultToken",
-          "writable": true,
-          "docs": ["The vault's token account to receive tokens"]
+          "writable": true
         },
         {
           "name": "authority",
-          "signer": true,
-          "docs": ["The authority over the source token account"]
+          "signer": true
         },
         {
-          "name": "tokenProgram",
-          "docs": ["SPL Token Program"],
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+          "name": "tokenProgram"
         }
       ],
       "args": [
@@ -168,44 +166,34 @@
       "name": "withdrawSplTokens",
       "discriminator": [3],
       "docs": [
-        "Withdraws SPL tokens from an ephemeral ATA.",
-        "Transfers tokens from the global vault to the user's token account,",
-        "and debits the amount from the user's ephemeral ATA balance.",
-        "Only the owner of the ephemeral ATA can withdraw."
+        "Transfers SPL tokens out of the global vault and debits an ephemeral ATA.",
+        "Instruction data: [0..8] amount (u64 LE), [8] vault bump."
       ],
       "accounts": [
         {
           "name": "owner",
-          "signer": true,
-          "docs": ["The owner of the ephemeral ATA (must sign)"]
+          "signer": true
         },
         {
           "name": "ephemeralAta",
-          "writable": true,
-          "docs": ["The ephemeral ATA to debit"]
+          "writable": true
         },
         {
-          "name": "vault",
-          "docs": ["The global vault data account for this mint"]
+          "name": "vault"
         },
         {
-          "name": "mint",
-          "docs": ["The SPL token mint"]
+          "name": "mint"
         },
         {
           "name": "vaultSource",
-          "writable": true,
-          "docs": ["The vault's token account to transfer from"]
+          "writable": true
         },
         {
           "name": "userDest",
-          "writable": true,
-          "docs": ["The user's token account to receive tokens"]
+          "writable": true
         },
         {
-          "name": "tokenProgram",
-          "docs": ["SPL Token Program"],
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+          "name": "tokenProgram"
         }
       ],
       "args": [
@@ -223,44 +211,36 @@
       "name": "delegateEphemeralAta",
       "discriminator": [4],
       "docs": [
-        "Delegates an ephemeral ATA to a Data Layer Program (DLP).",
-        "This allows the DLP to manage the ephemeral ATA state.",
-        "Optionally specify a validator to restrict delegation."
+        "Delegates an ephemeral ATA to the delegation program.",
+        "Instruction data: [0] bump, plus an optional trailing 32-byte validator pubkey."
       ],
       "accounts": [
         {
           "name": "payer",
           "writable": true,
-          "signer": true,
-          "docs": ["The payer for any rent/fees"]
+          "signer": true
         },
         {
           "name": "ephemeralAta",
-          "writable": true,
-          "docs": ["The ephemeral ATA to delegate (signer via PDA seeds)"]
+          "writable": true
         },
         {
-          "name": "ownerProgram",
-          "docs": ["The program that will own the delegated account"]
+          "name": "ownerProgram"
         },
         {
           "name": "buffer",
-          "writable": true,
-          "docs": ["Delegation buffer account"]
+          "writable": true
         },
         {
           "name": "delegationRecord",
-          "writable": true,
-          "docs": ["Delegation record account"]
+          "writable": true
         },
         {
           "name": "delegationMetadata",
-          "writable": true,
-          "docs": ["Delegation metadata account"]
+          "writable": true
         },
         {
           "name": "delegationProgram",
-          "docs": ["The Delegation Program"],
           "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
         },
         {
@@ -287,34 +267,26 @@
       "name": "undelegateEphemeralAta",
       "discriminator": [5],
       "docs": [
-        "Undelegates an ephemeral ATA from a Data Layer Program.",
-        "Commits state and returns control of the ephemeral ATA to this program."
+        "Commits and undelegates an ephemeral ATA using the delegation helper."
       ],
       "accounts": [
         {
           "name": "payer",
-          "signer": true,
-          "docs": ["The payer (must be the owner of the ephemeral ATA)"]
+          "signer": true
         },
         {
           "name": "ata",
-          "writable": true,
-          "docs": ["The user's SPL token account (ATA for [payer, mint])"]
+          "writable": true
         },
         {
-          "name": "ephemeralAta",
-          "writable": true,
-          "docs": ["The ephemeral ATA to undelegate"]
+          "name": "ephemeralAta"
         },
         {
           "name": "magicContext",
-          "writable": true,
-          "docs": ["Magic context account for undelegation"]
+          "writable": true
         },
         {
-          "name": "magicProgram",
-          "docs": ["The Magic Program for undelegation"],
-          "address": "Magic11111111111111111111111111111111111111"
+          "name": "magicProgram"
         }
       ],
       "args": []
@@ -323,26 +295,22 @@
       "name": "createEphemeralAtaPermission",
       "discriminator": [6],
       "docs": [
-        "Creates a permission account for an ephemeral ATA.",
-        "This enables ACL-based access control on the ephemeral ATA.",
-        "Idempotent - returns Ok if permission already exists."
+        "Creates the ACL permission PDA for an ephemeral ATA.",
+        "Instruction data: [0] bump, [1] permission flags."
       ],
       "accounts": [
         {
           "name": "ephemeralAta",
-          "writable": true,
-          "docs": ["The ephemeral ATA to create permission for (signer via PDA seeds)"]
+          "writable": true
         },
         {
           "name": "permission",
-          "writable": true,
-          "docs": ["The permission account to create (PDA from [\"permission:\", ephemeral_ata])"]
+          "writable": true
         },
         {
           "name": "payer",
           "writable": true,
-          "signer": true,
-          "docs": ["The payer for rent"]
+          "signer": true
         },
         {
           "name": "systemProgram",
@@ -350,7 +318,6 @@
         },
         {
           "name": "permissionProgram",
-          "docs": ["The Permission Program (ACL)"],
           "address": "ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1"
         }
       ],
@@ -369,30 +336,26 @@
       "name": "delegateEphemeralAtaPermission",
       "discriminator": [7],
       "docs": [
-        "Delegates an ephemeral ATA's permission account to a DLP.",
-        "This allows fine-grained permission management during delegation."
+        "Delegates an ephemeral ATA permission PDA.",
+        "Instruction data: [0] bump."
       ],
       "accounts": [
         {
           "name": "payer",
           "writable": true,
-          "signer": true,
-          "docs": ["The payer for any rent/fees (also used as authority)"]
+          "signer": true
         },
         {
           "name": "ephemeralAta",
-          "writable": true,
-          "docs": ["The ephemeral ATA whose permission is being delegated (signer via PDA seeds)"]
+          "writable": true
         },
         {
           "name": "permissionProgram",
-          "docs": ["The Permission Program (ACL)"],
           "address": "ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1"
         },
         {
           "name": "permission",
-          "writable": true,
-          "docs": ["The permission account to delegate"]
+          "writable": true
         },
         {
           "name": "systemProgram",
@@ -400,27 +363,22 @@
         },
         {
           "name": "buffer",
-          "writable": true,
-          "docs": ["Delegation buffer account"]
+          "writable": true
         },
         {
-          "name": "record",
-          "writable": true,
-          "docs": ["Delegation record account"]
+          "name": "delegationRecord",
+          "writable": true
         },
         {
-          "name": "metadata",
-          "writable": true,
-          "docs": ["Delegation metadata account"]
+          "name": "delegationMetadata",
+          "writable": true
         },
         {
           "name": "delegationProgram",
-          "docs": ["The Delegation Program"],
           "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
         },
         {
-          "name": "validator",
-          "docs": ["Validator to restrict delegation (can be any pubkey)"]
+          "name": "validator"
         }
       ],
       "args": [
@@ -434,39 +392,31 @@
       "name": "undelegateEphemeralAtaPermission",
       "discriminator": [8],
       "docs": [
-        "Undelegates an ephemeral ATA's permission account from a DLP.",
-        "Returns control of the permission to this program."
+        "Commits and undelegates the permission PDA for an ephemeral ATA."
       ],
       "accounts": [
         {
           "name": "payer",
-          "signer": true,
-          "docs": ["The payer (must be the owner of the ephemeral ATA)"]
+          "signer": true
         },
         {
           "name": "ephemeralAta",
-          "writable": true,
-          "docs": ["The ephemeral ATA whose permission is being undelegated"]
+          "writable": true
         },
         {
           "name": "permission",
-          "writable": true,
-          "docs": ["The permission account to undelegate"]
+          "writable": true
         },
         {
           "name": "permissionProgram",
-          "docs": ["The Permission Program (ACL)"],
           "address": "ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1"
         },
         {
-          "name": "magicProgram",
-          "docs": ["The Magic Program for undelegation"],
-          "address": "Magic11111111111111111111111111111111111111"
+          "name": "magicProgram"
         },
         {
           "name": "magicContext",
-          "writable": true,
-          "docs": ["Magic context account for undelegation"]
+          "writable": true
         }
       ],
       "args": []
@@ -475,28 +425,24 @@
       "name": "resetEphemeralAtaPermission",
       "discriminator": [9],
       "docs": [
-        "Resets the permission flags on an ephemeral ATA's permission account.",
-        "Only the owner of the ephemeral ATA can reset permissions."
+        "Resets the permission members for an ephemeral ATA.",
+        "Instruction data: [0] bump, [1] permission flags."
       ],
       "accounts": [
         {
           "name": "ephemeralAta",
-          "writable": true,
-          "docs": ["The ephemeral ATA whose permission is being reset (signer via PDA seeds)"]
+          "writable": true
         },
         {
           "name": "permission",
-          "writable": true,
-          "docs": ["The permission account to reset"]
+          "writable": true
         },
         {
           "name": "owner",
-          "signer": true,
-          "docs": ["The owner of the ephemeral ATA (must sign)"]
+          "signer": true
         },
         {
           "name": "permissionProgram",
-          "docs": ["The Permission Program (ACL)"],
           "address": "ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1"
         }
       ],
@@ -515,50 +461,828 @@
       "name": "closeEphemeralAta",
       "discriminator": [10],
       "docs": [
-        "Closes an empty ephemeral ATA and refunds its rent to a recipient account.",
-        "Only the owner of the ephemeral ATA can close it."
+        "Closes an empty ephemeral ATA and refunds its rent."
       ],
       "accounts": [
         {
           "name": "owner",
-          "signer": true,
-          "docs": ["The owner of the ephemeral ATA (must sign)"]
+          "signer": true
         },
         {
           "name": "ephemeralAta",
-          "writable": true,
-          "docs": ["The ephemeral ATA to close (must have amount = 0)"]
+          "writable": true
         },
         {
           "name": "recipient",
-          "writable": true,
-          "docs": ["The recipient account for the reclaimed rent lamports"]
+          "writable": true
         }
       ],
       "args": []
     },
     {
+      "name": "initializeShuttleEphemeralAta",
+      "discriminator": [11],
+      "docs": [
+        "Initializes shuttle metadata, shuttle EATA, and the shuttle wallet ATA.",
+        "Instruction data: [0..4] shuttle_id (u32 LE), [4] shuttle bump."
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "shuttle"
+        },
+        {
+          "name": "shuttleEphemeralAta",
+          "writable": true
+        },
+        {
+          "name": "shuttleWalletAta",
+          "writable": true
+        },
+        {
+          "name": "owner"
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "tokenProgram"
+        },
+        {
+          "name": "associatedTokenProgram",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "shuttleId",
+          "type": "u32"
+        },
+        {
+          "name": "bump",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "initializeTransferQueue",
+      "discriminator": [12],
+      "docs": [
+        "Initializes the per-mint transfer queue PDA.",
+        "Instruction data may be omitted for the default size, or set to a 4-byte size in bytes. Zero also means default."
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "queue",
+          "writable": true
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "sizeBytes",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "delegateShuttleEphemeralAta",
+      "discriminator": [13],
+      "docs": [
+        "Delegates a shuttle EATA to the delegation program.",
+        "Instruction data: [0] bump, plus an optional trailing 32-byte validator pubkey."
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "shuttle",
+          "writable": true
+        },
+        {
+          "name": "shuttleEphemeralAta",
+          "writable": true
+        },
+        {
+          "name": "ownerProgram"
+        },
+        {
+          "name": "buffer",
+          "writable": true
+        },
+        {
+          "name": "delegationRecord",
+          "writable": true
+        },
+        {
+          "name": "delegationMetadata",
+          "writable": true
+        },
+        {
+          "name": "delegationProgram",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "bump",
+          "type": "u8"
+        },
+        {
+          "name": "validator",
+          "type": {
+            "option": {
+              "array": ["u8", 32]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "undelegateShuttleEphemeralAta",
+      "discriminator": [14],
+      "docs": [
+        "Commits and undelegates a shuttle wallet ATA, then schedules shuttle cleanup.",
+        "Instruction data may be omitted, or contain a single escrow index byte."
+      ],
+      "accounts": [
+        {
+          "name": "executor",
+          "signer": true
+        },
+        {
+          "name": "rentReimbursement",
+          "writable": true
+        },
+        {
+          "name": "shuttle"
+        },
+        {
+          "name": "shuttleEphemeralAta"
+        },
+        {
+          "name": "shuttleWalletAta",
+          "writable": true
+        },
+        {
+          "name": "tokenProgram"
+        },
+        {
+          "name": "magicContext",
+          "writable": true
+        },
+        {
+          "name": "magicProgram"
+        }
+      ],
+      "args": [
+        {
+          "name": "escrowIndex",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "mergeShuttleIntoEphemeralAta",
+      "discriminator": [15],
+      "docs": [
+        "Transfers the full shuttle wallet ATA balance into a destination token account."
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "signer": true
+        },
+        {
+          "name": "destinationToken",
+          "writable": true
+        },
+        {
+          "name": "shuttle"
+        },
+        {
+          "name": "shuttleWalletAta",
+          "writable": true
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "tokenProgram"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "depositAndQueueTransfer",
+      "discriminator": [16],
+      "docs": [
+        "Deposits into the global vault and enqueues one or more delayed transfers.",
+        "Instruction data: [0..8] amount, [8..16] min_delay_ms, [16..24] max_delay_ms, [24..28] split."
+      ],
+      "accounts": [
+        {
+          "name": "queue",
+          "writable": true
+        },
+        {
+          "name": "vault"
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "userSourceToken",
+          "writable": true
+        },
+        {
+          "name": "vaultToken",
+          "writable": true
+        },
+        {
+          "name": "destinationToken"
+        },
+        {
+          "name": "userAuthority",
+          "signer": true
+        },
+        {
+          "name": "tokenProgram"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "minDelayMs",
+          "type": "u64"
+        },
+        {
+          "name": "maxDelayMs",
+          "type": "u64"
+        },
+        {
+          "name": "split",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "ensureTransferQueueCrank",
+      "discriminator": [17],
+      "docs": [
+        "Ensures the recurring transfer-queue crank is scheduled."
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "queue",
+          "writable": true
+        },
+        {
+          "name": "magicContext",
+          "writable": true
+        },
+        {
+          "name": "magicProgram"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "delegateTransferQueue",
+      "discriminator": [19],
+      "docs": [
+        "Delegates the per-mint transfer queue PDA."
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true
+        },
+        {
+          "name": "queue",
+          "writable": true
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "ownerProgram"
+        },
+        {
+          "name": "buffer",
+          "writable": true
+        },
+        {
+          "name": "delegationRecord",
+          "writable": true
+        },
+        {
+          "name": "delegationMetadata",
+          "writable": true
+        },
+        {
+          "name": "delegationProgram",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "initializeFeesPda",
+      "discriminator": [20],
+      "docs": [
+        "Initializes the validator-scoped FEES PDA."
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "feesPda",
+          "writable": true
+        },
+        {
+          "name": "validator"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "delegateFeesPda",
+      "discriminator": [21],
+      "docs": [
+        "Delegates the validator-scoped FEES PDA."
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true
+        },
+        {
+          "name": "feesPda",
+          "writable": true
+        },
+        {
+          "name": "validator"
+        },
+        {
+          "name": "ownerProgram"
+        },
+        {
+          "name": "buffer",
+          "writable": true
+        },
+        {
+          "name": "delegationRecord",
+          "writable": true
+        },
+        {
+          "name": "delegationMetadata",
+          "writable": true
+        },
+        {
+          "name": "delegationProgram",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "commitFeesPda",
+      "discriminator": [22],
+      "docs": [
+        "Schedules a commit for the validator-scoped FEES PDA."
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true
+        },
+        {
+          "name": "feesPda",
+          "writable": true
+        },
+        {
+          "name": "validator"
+        },
+        {
+          "name": "magicContext",
+          "writable": true
+        },
+        {
+          "name": "magicProgram"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "initializeRentPda",
+      "discriminator": [23],
+      "docs": [
+        "Initializes the global rent sponsorship PDA."
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "rentPda",
+          "writable": true
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "setupAndDelegateShuttleEphemeralAtaWithMerge",
+      "discriminator": [24],
+      "docs": [
+        "Initializes shuttle accounts, deposits into the vault, sponsors delegation, and schedules merge plus cleanup.",
+        "Instruction data: [0..4] shuttle_id, [4] shuttle bump, [5..13] amount, plus an optional trailing 32-byte validator pubkey."
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "rentPda",
+          "writable": true
+        },
+        {
+          "name": "shuttle",
+          "writable": true
+        },
+        {
+          "name": "shuttleEphemeralAta",
+          "writable": true
+        },
+        {
+          "name": "shuttleWalletAta",
+          "writable": true
+        },
+        {
+          "name": "owner",
+          "signer": true
+        },
+        {
+          "name": "ownerProgram"
+        },
+        {
+          "name": "buffer",
+          "writable": true
+        },
+        {
+          "name": "delegationRecord",
+          "writable": true
+        },
+        {
+          "name": "delegationMetadata",
+          "writable": true
+        },
+        {
+          "name": "delegationProgram",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "associatedTokenProgram",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "destinationToken",
+          "writable": true
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "tokenProgram"
+        },
+        {
+          "name": "globalVault"
+        },
+        {
+          "name": "ownerSourceToken",
+          "writable": true
+        },
+        {
+          "name": "vaultToken",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "shuttleId",
+          "type": "u32"
+        },
+        {
+          "name": "shuttleBump",
+          "type": "u8"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "validator",
+          "type": {
+            "option": {
+              "array": ["u8", 32]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "depositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer",
+      "discriminator": [25],
+      "docs": [
+        "Same shuttle setup flow as discriminator 24, plus a queued private transfer.",
+        "Instruction data: shuttle_id, shuttle bump, amount, min_delay_ms, max_delay_ms, split, plus an optional trailing 32-byte validator pubkey."
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "rentPda",
+          "writable": true
+        },
+        {
+          "name": "shuttle",
+          "writable": true
+        },
+        {
+          "name": "shuttleEphemeralAta",
+          "writable": true
+        },
+        {
+          "name": "shuttleWalletAta",
+          "writable": true
+        },
+        {
+          "name": "owner",
+          "signer": true
+        },
+        {
+          "name": "ownerProgram"
+        },
+        {
+          "name": "buffer",
+          "writable": true
+        },
+        {
+          "name": "delegationRecord",
+          "writable": true
+        },
+        {
+          "name": "delegationMetadata",
+          "writable": true
+        },
+        {
+          "name": "delegationProgram",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "associatedTokenProgram",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "destinationToken",
+          "writable": true
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "tokenProgram"
+        },
+        {
+          "name": "globalVault"
+        },
+        {
+          "name": "ownerSourceToken",
+          "writable": true
+        },
+        {
+          "name": "vaultToken",
+          "writable": true
+        },
+        {
+          "name": "queue",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "shuttleId",
+          "type": "u32"
+        },
+        {
+          "name": "shuttleBump",
+          "type": "u8"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "minDelayMs",
+          "type": "u64"
+        },
+        {
+          "name": "maxDelayMs",
+          "type": "u64"
+        },
+        {
+          "name": "split",
+          "type": "u32"
+        },
+        {
+          "name": "validator",
+          "type": {
+            "option": {
+              "array": ["u8", 32]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "withdrawThroughDelegatedShuttleWithMerge",
+      "discriminator": [26],
+      "docs": [
+        "Sponsors shuttle delegation and schedules an owner-to-shuttle transfer followed by shuttle cleanup.",
+        "Instruction data: [0..4] shuttle_id, [4] shuttle bump, [5..13] amount, plus an optional trailing 32-byte validator pubkey."
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "rentPda",
+          "writable": true
+        },
+        {
+          "name": "shuttle",
+          "writable": true
+        },
+        {
+          "name": "shuttleEphemeralAta",
+          "writable": true
+        },
+        {
+          "name": "shuttleWalletAta",
+          "writable": true
+        },
+        {
+          "name": "owner",
+          "signer": true
+        },
+        {
+          "name": "ownerProgram"
+        },
+        {
+          "name": "buffer",
+          "writable": true
+        },
+        {
+          "name": "delegationRecord",
+          "writable": true
+        },
+        {
+          "name": "delegationMetadata",
+          "writable": true
+        },
+        {
+          "name": "delegationProgram",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "associatedTokenProgram",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "ownerToken",
+          "writable": true
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "tokenProgram"
+        }
+      ],
+      "args": [
+        {
+          "name": "shuttleId",
+          "type": "u32"
+        },
+        {
+          "name": "shuttleBump",
+          "type": "u8"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "validator",
+          "type": {
+            "option": {
+              "array": ["u8", 32]
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "undelegationCallback",
       "discriminator": [196],
       "docs": [
-        "Callback invoked by the Delegation Program during undelegation.",
-        "Restores the ephemeral ATA state after undelegation completes.",
-        "This instruction should only be called by the Delegation Program."
+        "Delegation-program callback that restores account state after undelegation."
       ],
       "accounts": [
         {
           "name": "delegatedAccount",
-          "writable": true,
-          "docs": ["The account being undelegated (Ephemeral ATA PDA)"]
+          "writable": true
         },
         {
           "name": "bufferAccount",
-          "signer": true,
-          "docs": ["The delegation buffer account holding the snapshot (must sign)"]
+          "signer": true
         },
         {
-          "name": "payer",
-          "docs": ["The payer account"]
+          "name": "payer"
         },
         {
           "name": "systemProgram",
@@ -569,6 +1293,181 @@
         {
           "name": "delegationProgramData",
           "type": "bytes"
+        }
+      ]
+    },
+    {
+      "name": "closeShuttleAtaIntent",
+      "discriminator": [197],
+      "docs": [
+        "Internal post-undelegation handler that withdraws any remaining shuttle balance and closes shuttle accounts.",
+        "Instruction data: [0] escrow index."
+      ],
+      "accounts": [
+        {
+          "name": "rentReimbursement",
+          "writable": true
+        },
+        {
+          "name": "shuttle",
+          "writable": true
+        },
+        {
+          "name": "shuttleEphemeralAta",
+          "writable": true
+        },
+        {
+          "name": "shuttleWalletAta",
+          "writable": true
+        },
+        {
+          "name": "destinationToken",
+          "writable": true
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "vault"
+        },
+        {
+          "name": "vaultToken",
+          "writable": true
+        },
+        {
+          "name": "tokenProgram"
+        },
+        {
+          "name": "escrowAuthority"
+        },
+        {
+          "name": "escrowSigner",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "escrowIndex",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "executeReadyQueuedTransfer",
+      "discriminator": [198],
+      "docs": [
+        "Internal handler that settles one ready queued transfer from the global vault.",
+        "Instruction data: [0] escrow index, [1..9] amount (u64 LE)."
+      ],
+      "accounts": [
+        {
+          "name": "queue"
+        },
+        {
+          "name": "vault"
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "vaultToken",
+          "writable": true
+        },
+        {
+          "name": "destinationToken",
+          "writable": true
+        },
+        {
+          "name": "tokenProgram"
+        },
+        {
+          "name": "escrowAuthority"
+        },
+        {
+          "name": "escrowSigner",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "escrowIndex",
+          "type": "u8"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "processTransferQueueTick",
+      "discriminator": [199],
+      "docs": [
+        "Internal recurring crank callback that checks the queue and schedules settlement."
+      ],
+      "accounts": [
+        {
+          "name": "queue",
+          "writable": true
+        },
+        {
+          "name": "magicContext",
+          "writable": true
+        },
+        {
+          "name": "magicProgram"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "undelegateWithdrawAndCloseShuttleEphemeralAta",
+      "discriminator": [201],
+      "docs": [
+        "Internal post-delegation handler that commits shuttle withdrawal and schedules the final close/refund action.",
+        "Instruction data may be omitted, or contain a single escrow index byte."
+      ],
+      "accounts": [
+        {
+          "name": "executor",
+          "signer": true
+        },
+        {
+          "name": "rentReimbursement",
+          "writable": true
+        },
+        {
+          "name": "shuttle"
+        },
+        {
+          "name": "shuttleEphemeralAta"
+        },
+        {
+          "name": "shuttleWalletAta",
+          "writable": true
+        },
+        {
+          "name": "destinationToken",
+          "writable": true
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "tokenProgram"
+        },
+        {
+          "name": "magicContext",
+          "writable": true
+        },
+        {
+          "name": "magicProgram"
+        }
+      ],
+      "args": [
+        {
+          "name": "escrowIndex",
+          "type": "u8"
         }
       ]
     }
