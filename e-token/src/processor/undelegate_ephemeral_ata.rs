@@ -14,6 +14,7 @@ fn commit_and_undelegate_accounts(
         magic_context,
         magic_program,
         None,
+        None,
     )
 }
 

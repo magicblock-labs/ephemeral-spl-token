@@ -279,8 +279,7 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
     Transfer {
         from: payer_info,
         to: rent_pda_info,
-        lamports:
-            ephemeral_spl_api::consts::SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS,
+        lamports: ephemeral_spl_api::consts::SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS,
     }
     .invoke()?;
 

@@ -1721,7 +1721,8 @@ dependencies = [
 
 [[package]]
 name = "ephemeral-rollups-pinocchio"
-version = "0.8.8"
+version = "0.10.0"
+source = "git+https://github.com/magicblock-labs/ephemeral-rollups-sdk?branch=release%2Fv0.10.0#4659295a3cf4ecb8103adc44b4d74524fe4eb333"
 dependencies = [
  "bincode 2.0.1",
  "borsh 1.6.0",

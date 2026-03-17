@@ -177,6 +177,7 @@ pub fn process_commit_fees_pda(accounts: &[AccountView], instruction_data: &[u8]
         magic_context,
         magic_program,
         None,
+        None,
     )
 }
 
