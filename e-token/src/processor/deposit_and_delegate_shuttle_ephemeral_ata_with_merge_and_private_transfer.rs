@@ -51,7 +51,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
     if derived_queue != *queue_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
-    if !queue_info.owned_by(&program_id) {
+    if !queue_info.owned_by(&ephemeral_spl_api::program::DELEGATION_PROGRAM_ID) {
         return Err(ProgramError::IllegalOwner);
     }
 

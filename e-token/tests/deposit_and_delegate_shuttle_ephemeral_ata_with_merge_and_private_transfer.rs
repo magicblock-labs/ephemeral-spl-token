@@ -182,6 +182,16 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
         &[b"buffer", shuttle_eata.as_ref()],
         &ephemeral_spl_api::program::id().into(),
     );
+    let (queue_buffer_pda, _) =
+        Pubkey::find_program_address(&[b"buffer", queue.as_ref()], &PROGRAM);
+    let (queue_delegation_record_pda, _) = Pubkey::find_program_address(
+        &[b"delegation", queue.as_ref()],
+        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,
+    );
+    let (queue_delegation_metadata_pda, _) = Pubkey::find_program_address(
+        &[b"delegation-metadata", queue.as_ref()],
+        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,
+    );
     let (delegation_record_pda, _) = Pubkey::find_program_address(
         &[b"delegation", shuttle_eata.as_ref()],
         &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,
@@ -228,6 +238,34 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
         ],
         data: delegate_data,
     };
+
+    let ix_delegate_queue = Instruction {
+        program_id: PROGRAM,
+        accounts: vec![
+            AccountMeta::new_readonly(payer, true),
+            AccountMeta::new(queue, false),
+            AccountMeta::new_readonly(mint, false),
+            AccountMeta::new_readonly(PROGRAM, false),
+            AccountMeta::new(queue_buffer_pda, false),
+            AccountMeta::new(queue_delegation_record_pda, false),
+            AccountMeta::new(queue_delegation_metadata_pda, false),
+            AccountMeta::new_readonly(ephemeral_rollups_pinocchio::ID, false),
+            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+        ],
+        data: vec![instruction::DELEGATE_TRANSFER_QUEUE],
+    };
+
+    let tx_delegate_queue = Transaction::new_signed_with_payer(
+        &[ix_delegate_queue],
+        Some(&payer),
+        &[&context.payer],
+        context.banks_client.get_latest_blockhash().await.unwrap(),
+    );
+    context
+        .banks_client
+        .process_transaction(tx_delegate_queue)
+        .await
+        .unwrap();
 
     let tx_delegate = Transaction::new_signed_with_payer(
         &[ix_delegate],
@@ -287,6 +325,10 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
         .await
         .unwrap()
         .expect("queue must exist");
+    assert_eq!(
+        queue_account.owner,
+        ephemeral_spl_api::program::DELEGATION_PROGRAM_ID
+    );
     let queue_header = read_header_unaligned(&queue_account.data);
     assert_eq!(queue_header.length, 0);
 
