@@ -466,7 +466,7 @@ fn merge_shuttle_into_destination_action(
     }
 }
 
-fn undelegate_and_close_shuttle_action(
+pub(crate) fn undelegate_and_close_shuttle_action(
     accounts: &DepositAndDelegateShuttleAccounts<'_>,
 ) -> Instruction {
     Instruction {

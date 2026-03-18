@@ -31,6 +31,9 @@ pub fn process_close_shuttle_ata_intent(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
+
+    // TODO(GabrielePicco): ensure we schedule this from the same program id
+
     let [escrow_index] = instruction_data else {
         return Err(ProgramError::InvalidInstructionData);
     };

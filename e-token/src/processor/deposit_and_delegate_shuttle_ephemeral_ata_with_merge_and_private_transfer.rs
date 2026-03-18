@@ -6,9 +6,10 @@ use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_pubkey::Pubkey;
 
+use crate::processor::deposit_and_delegate_shuttle_ephemeral_ata_with_merge::undelegate_and_close_shuttle_action;
 use crate::processor::{
     deposit_and_delegate_shuttle_ephemeral_ata_with_merge::{
-        default_post_delegation_actions, parse_deposit_and_delegate_shuttle_accounts,
+        parse_deposit_and_delegate_shuttle_accounts,
         process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions, pubkey,
         DepositAndDelegateShuttleCommonArgs,
     },
@@ -55,13 +56,36 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
         return Err(ProgramError::IllegalOwner);
     }
 
-    let mut actions = default_post_delegation_actions(&common_accounts);
-    actions.push(private_transfer_action(&common_accounts, queue_info, &args));
+    let actions = [
+        Instruction {
+            program_id: Pubkey::from(ephemeral_spl_api::program::ID),
+            accounts: alloc::vec![
+                AccountMeta::new_readonly(pubkey(common_accounts.owner_info.address()), true),
+                AccountMeta::new(
+                    pubkey(common_accounts.owner_source_token_info.address()),
+                    false
+                ),
+                AccountMeta::new_readonly(pubkey(common_accounts.shuttle_info.address()), false),
+                AccountMeta::new(
+                    pubkey(common_accounts.shuttle_wallet_ata_info.address()),
+                    false
+                ),
+                AccountMeta::new_readonly(pubkey(common_accounts.mint_info.address()), false),
+                AccountMeta::new_readonly(
+                    pubkey(common_accounts.token_program_info.address()),
+                    false
+                ),
+            ],
+            data: alloc::vec![ephemeral_spl_api::instruction::MERGE_SHUTTLE_INTO_EPHEMERAL_ATA],
+        },
+        undelegate_and_close_shuttle_action(&common_accounts),
+        private_transfer_action(&common_accounts, queue_info, &args),
+    ];
 
     process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions(
         &common_accounts,
         args.common_args(),
-        actions,
+        actions.into(),
     )
 }
 
