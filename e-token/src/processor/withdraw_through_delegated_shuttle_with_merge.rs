@@ -5,6 +5,8 @@ use pinocchio_token_2022::state::TokenAccount;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_pubkey::Pubkey;
 
+const TRANSFER_CHECKED_DISCRIMINATOR: u8 = 12;
+
 #[cfg(feature = "logging")]
 use crate::alloc::string::ToString;
 
@@ -165,7 +167,7 @@ fn transfer_owner_tokens_into_shuttle_action(
     amount: u64,
     decimals: u8,
 ) -> Result<Instruction, ProgramError> {
-    let mut data = alloc::vec![12];
+    let mut data = alloc::vec![TRANSFER_CHECKED_DISCRIMINATOR];
     data.extend_from_slice(&amount.to_le_bytes());
     data.push(decimals);
 

@@ -9,8 +9,7 @@ use solana_pubkey::Pubkey;
 use crate::processor::deposit_and_delegate_shuttle_ephemeral_ata_with_merge::undelegate_and_close_shuttle_action;
 use crate::processor::{
     deposit_and_delegate_shuttle_ephemeral_ata_with_merge::{
-        merge_shuttle_into_token_account_action,
-        parse_deposit_and_delegate_shuttle_accounts,
+        merge_shuttle_into_token_account_action, parse_deposit_and_delegate_shuttle_accounts,
         process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions, pubkey,
         DepositAndDelegateShuttleCommonArgs,
     },

@@ -27,11 +27,9 @@ solana-pubkey = { workspace = true }
 
 [dev-dependencies]
 solana-program-pack = { workspace = true }
-solana-instruction = { workspace = true }
 solana-keypair = { workspace = true }
 solana-program = { workspace = true }
 solana-program-test = { workspace = true }
-solana-pubkey = { workspace = true }
 solana-signer = { workspace = true }
 solana-transaction = { workspace = true }
 solana-system-interface = { workspace = true }

@@ -1,5 +1,5 @@
 use ephemeral_spl_api::state::{
-    load_unchecked, shuttle_ephemeral_ata::ShuttleEphemeralAta, Initializable,
+    load_unchecked, shuttle_ephemeral_ata::ShuttleMetadata, Initializable,
 };
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
@@ -33,7 +33,7 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
 
     let (shuttle_owner, shuttle_id) = {
         let shuttle =
-            unsafe { load_unchecked::<ShuttleEphemeralAta>(shuttle_info.borrow_unchecked())? };
+            unsafe { load_unchecked::<ShuttleMetadata>(shuttle_info.borrow_unchecked())? };
         if !shuttle.is_initialized() {
             return Err(ProgramError::InvalidAccountData);
         }

@@ -1,7 +1,7 @@
 use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
-use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleEphemeralAta;
+use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
 use ephemeral_spl_api::state::{load_mut_unchecked, Initializable, RawType};
 use solana_instruction::Instruction;
 use solana_keypair::Keypair;
@@ -76,11 +76,10 @@ async fn initialize_shuttle_ephemeral_ata() {
         .expect("shuttle account must exist");
 
     assert_eq!(account.owner, PROGRAM);
-    assert_eq!(account.data.len(), ShuttleEphemeralAta::LEN);
+    assert_eq!(account.data.len(), ShuttleMetadata::LEN);
 
     let mut mut_acc = account.data.clone();
-    let shuttle =
-        unsafe { load_mut_unchecked::<ShuttleEphemeralAta>(mut_acc.as_mut_slice()).unwrap() };
+    let shuttle = unsafe { load_mut_unchecked::<ShuttleMetadata>(mut_acc.as_mut_slice()).unwrap() };
     assert!(shuttle.is_initialized());
     assert_eq!(shuttle.owner.as_array(), &owner.to_bytes());
     assert_eq!(shuttle.payer.as_array(), &payer.to_bytes());

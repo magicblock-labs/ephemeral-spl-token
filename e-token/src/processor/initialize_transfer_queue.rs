@@ -74,10 +74,6 @@ pub fn process_initialize_transfer_queue(
         .invoke_signed(&[signer])?;
     }
 
-    if !queue_info.owned_by(&program_id) {
-        return Err(ProgramError::IllegalOwner);
-    }
-
     let data_len = queue_info.data_len();
     if data_len < header_len() || capacity_from_data_len(data_len) == 0 {
         return Err(ProgramError::InvalidAccountData);

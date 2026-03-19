@@ -2,7 +2,7 @@ use dlp::state::DelegationRecord;
 use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
-use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleEphemeralAta;
+use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
 use ephemeral_spl_api::state::transfer_queue::{header_len, TransferQueueHeader, QUEUE_SEED};
 use ephemeral_spl_api::state::{load_mut_unchecked, Initializable};
 use solana_account::Account;
@@ -288,7 +288,7 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
     assert_eq!(shuttle_account.owner, PROGRAM);
     let mut shuttle_data = shuttle_account.data.clone();
     let shuttle =
-        unsafe { load_mut_unchecked::<ShuttleEphemeralAta>(shuttle_data.as_mut_slice()).unwrap() };
+        unsafe { load_mut_unchecked::<ShuttleMetadata>(shuttle_data.as_mut_slice()).unwrap() };
     assert!(shuttle.is_initialized());
     assert_eq!(shuttle.owner.as_array(), &owner.pubkey().to_bytes());
     assert_eq!(shuttle.payer.as_array(), &rent_pda.to_bytes());

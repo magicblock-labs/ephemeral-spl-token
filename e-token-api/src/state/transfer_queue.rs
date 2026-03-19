@@ -163,6 +163,26 @@ pub fn queue_views_mut_checked(
 }
 
 #[inline(always)]
+pub fn queue_len_for_mint_with_capacity(
+    data: &[u8],
+    expected_mint: &Address,
+    required_slots: usize,
+) -> Result<usize, ProgramError> {
+    let (header, items) = queue_views_checked(data)?;
+    if header.mint != *expected_mint {
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    let queue_len = header.length as usize;
+    let available_slots = items.len() - queue_len;
+    if available_slots < required_slots {
+        return Err(ProgramError::AccountDataTooSmall);
+    }
+
+    Ok(queue_len)
+}
+
+#[inline(always)]
 fn higher_priority(a: &QueuedTransfer, b: &QueuedTransfer) -> bool {
     if a.ready_at != b.ready_at {
         return a.ready_at < b.ready_at;
@@ -170,19 +190,23 @@ fn higher_priority(a: &QueuedTransfer, b: &QueuedTransfer) -> bool {
     if a.inserted_at != b.inserted_at {
         return a.inserted_at < b.inserted_at;
     }
+    if a.amount != b.amount {
+        return a.amount < b.amount;
+    }
     if a.destination.as_ref() != b.destination.as_ref() {
         return a.destination.as_ref() < b.destination.as_ref();
     }
     if a.source.as_ref() != b.source.as_ref() {
         return a.source.as_ref() < b.source.as_ref();
     }
-    if a.amount != b.amount {
-        return a.amount < b.amount;
-    }
 
     a.task_id < b.task_id
 }
 
+// The queue items are stored as an array-backed binary min-heap.
+// Index 0 is the next transfer to execute; for node i, children are at
+// 2*i+1 and 2*i+2. `heap_push` bubbles a new item up, and `heap_pop`
+// moves the last item to the root and sifts it down.
 #[inline(always)]
 fn parent(i: usize) -> usize {
     (i - 1) / 2
@@ -382,6 +406,24 @@ mod tests {
         assert_eq!(p3.task_id, 1);
 
         assert!(queue_pop_from_data(data).unwrap().is_none());
+    }
+
+    #[test]
+    fn queue_amount_breaks_timestamp_ties_before_addresses() {
+        let data_len = header_len() + (4 * item_len());
+        let words = data_len.div_ceil(8);
+        let mut aligned = std::vec![0u64; words];
+        let data = &mut bytemuck::cast_slice_mut::<u64, u8>(&mut aligned)[..data_len];
+
+        init_queue(data, 1, addr(9)).unwrap();
+
+        queue_push_from_data(data, item(1, 1, 100, 10, 5)).unwrap();
+        queue_push_from_data(data, item(9, 9, 50, 10, 5)).unwrap();
+
+        let top = queue_peek_from_data(data).unwrap().unwrap();
+        assert_eq!(top.amount, 50);
+        assert_eq!(top.source, addr(9));
+        assert_eq!(top.destination, addr(9));
     }
 
     #[test]

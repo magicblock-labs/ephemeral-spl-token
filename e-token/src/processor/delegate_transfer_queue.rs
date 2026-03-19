@@ -37,21 +37,26 @@ pub fn process_delegate_transfer_queue(
         return Err(ProgramError::IllegalOwner);
     }
 
-    let (derived_queue, bump) = ephemeral_spl_api::Address::find_program_address(
-        &[QUEUE_SEED, mint_info.address().as_ref()],
-        &program_id,
-    );
-    if derived_queue != *queue_info.address() {
-        return Err(ProgramError::InvalidSeeds);
-    }
-
-    {
+    let bump = {
         let data = unsafe { queue_info.borrow_unchecked() };
         let (header, _) = queue_views_checked(data)?;
-        if header.mint != *mint_info.address() || header.bump != bump {
+        if header.mint != *mint_info.address() {
             return Err(ProgramError::InvalidAccountData);
         }
-    }
+
+        let bump = header.bump;
+        let bump_seed = [bump];
+        let derived_queue = ephemeral_spl_api::Address::create_program_address(
+            &[QUEUE_SEED, mint_info.address().as_ref(), bump_seed.as_ref()],
+            &program_id,
+        )
+        .map_err(|_| ProgramError::InvalidAccountData)?;
+        if derived_queue != *queue_info.address() {
+            return Err(ProgramError::InvalidSeeds);
+        }
+
+        bump
+    };
 
     if queue_info.owned_by(&delegation_program) {
         return Ok(());

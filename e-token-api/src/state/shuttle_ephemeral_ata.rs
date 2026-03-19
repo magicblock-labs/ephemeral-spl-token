@@ -2,9 +2,9 @@ use pinocchio::Address;
 
 use super::{Initializable, RawType};
 
-/// Internal representation of a shuttle ephemeral token account.
+/// Internal representation of a shuttle metadata account.
 #[repr(C)]
-pub struct ShuttleEphemeralAta {
+pub struct ShuttleMetadata {
     /// The logical owner of this shuttle account (seed used for shuttle PDA).
     pub owner: Address,
     /// The account that receives rent refunds for this shuttle account flow.
@@ -13,11 +13,11 @@ pub struct ShuttleEphemeralAta {
     pub id: u32,
 }
 
-impl RawType for ShuttleEphemeralAta {
-    const LEN: usize = core::mem::size_of::<ShuttleEphemeralAta>();
+impl RawType for ShuttleMetadata {
+    const LEN: usize = core::mem::size_of::<ShuttleMetadata>();
 }
 
-impl Initializable for ShuttleEphemeralAta {
+impl Initializable for ShuttleMetadata {
     #[inline(always)]
     fn is_initialized(&self) -> bool {
         self.owner != Address::default()

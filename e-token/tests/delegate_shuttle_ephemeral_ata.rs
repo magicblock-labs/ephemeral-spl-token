@@ -91,7 +91,7 @@ async fn delegate_shuttle_ephemeral_ata_succeeds() {
         .expect("shuttle account must exist");
     assert_eq!(
         shuttle_meta_account.data.len(),
-        ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleEphemeralAta::LEN
+        ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata::LEN
     );
     let shuttle_eata_account = context
         .banks_client

@@ -43,14 +43,18 @@ pub fn process_ensure_transfer_queue_crank(
     }
 
     let program_id = ephemeral_spl_api::program::id_address();
-    let mint = {
+    let (mint, bump) = {
         let data = unsafe { queue_info.borrow_unchecked() };
         let (header, _) = queue_views_checked(data)?;
-        header.mint
+        (header.mint, header.bump)
     };
 
-    let (derived_queue, _) =
-        ephemeral_spl_api::Address::find_program_address(&[QUEUE_SEED, mint.as_ref()], &program_id);
+    let bump_seed = [bump];
+    let derived_queue = ephemeral_spl_api::Address::create_program_address(
+        &[QUEUE_SEED, mint.as_ref(), bump_seed.as_ref()],
+        &program_id,
+    )
+    .map_err(|_| ProgramError::InvalidAccountData)?;
     if derived_queue != *queue_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }

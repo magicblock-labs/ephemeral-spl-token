@@ -4,7 +4,7 @@ use {
     ephemeral_rollups_pinocchio::pda::ephemeral_balance_pda_from_payer,
     ephemeral_spl_api::state::{global_vault::GlobalVault, load_unchecked},
     pinocchio::{error::ProgramError, AccountView, ProgramResult},
-    pinocchio_token_2022::state::{Mint, TokenAccount},
+    pinocchio_token_2022::state::Mint,
 };
 
 use pinocchio::cpi::{Seed, Signer};
@@ -53,9 +53,7 @@ pub fn process_execute_ready_queued_transfer(
         return Err(ProgramError::InvalidSeeds);
     }
 
-    validate_vault_for_mint(vault_info, mint_info, vault_token_acc_info)?;
-    validate_destination_token_account(destination_token_acc_info, token_program_info, mint_info)?;
-
+    let vault_bump = validate_vault_for_mint(vault_info, mint_info, vault_token_acc_info)?;
     let decimals = {
         let mint_data = unsafe { mint_info.borrow_unchecked() };
         if mint_data.len() < Mint::BASE_LEN {
@@ -68,7 +66,7 @@ pub fn process_execute_ready_queued_transfer(
         mint.decimals()
     };
 
-    let vault_bump = [derive_vault_bump(vault_info, mint_info)?];
+    let vault_bump = [vault_bump];
     let signer_seeds = [
         Seed::from(mint_info.address().as_ref()),
         Seed::from(&vault_bump),
@@ -94,7 +92,7 @@ pub(crate) fn validate_vault_for_mint(
     vault_info: &AccountView,
     mint_info: &AccountView,
     vault_token_acc_info: &AccountView,
-) -> ProgramResult {
+) -> Result<u8, ProgramError> {
     unsafe {
         if vault_info
             .owner()
@@ -105,7 +103,7 @@ pub(crate) fn validate_vault_for_mint(
     }
 
     let vault = unsafe { load_unchecked::<GlobalVault>(vault_info.borrow_unchecked())? };
-    let (derived_vault, _) = ephemeral_spl_api::Address::find_program_address(
+    let (derived_vault, bump) = ephemeral_spl_api::Address::find_program_address(
         &[mint_info.address().as_ref()],
         &ephemeral_spl_api::program::id_address(),
     );
@@ -114,45 +112,6 @@ pub(crate) fn validate_vault_for_mint(
         || vault.token_account != *vault_token_acc_info.address()
     {
         return Err(ProgramError::InvalidAccountData);
-    }
-
-    Ok(())
-}
-
-#[inline(always)]
-pub(crate) fn validate_destination_token_account(
-    destination_token_acc_info: &AccountView,
-    token_program_info: &AccountView,
-    mint_info: &AccountView,
-) -> ProgramResult {
-    if !destination_token_acc_info.owned_by(token_program_info.address()) {
-        return Err(ProgramError::IllegalOwner);
-    }
-
-    let destination_token_data = unsafe { destination_token_acc_info.borrow_unchecked() };
-    if destination_token_data.len() < TokenAccount::BASE_LEN {
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    let destination_token = unsafe { TokenAccount::from_bytes_unchecked(destination_token_data) };
-    if destination_token.mint() != mint_info.address() {
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    Ok(())
-}
-
-#[inline(always)]
-fn derive_vault_bump(
-    vault_info: &AccountView,
-    mint_info: &AccountView,
-) -> Result<u8, ProgramError> {
-    let (derived_vault, bump) = ephemeral_spl_api::Address::find_program_address(
-        &[mint_info.address().as_ref()],
-        &ephemeral_spl_api::program::id_address(),
-    );
-    if derived_vault != *vault_info.address() {
-        return Err(ProgramError::InvalidSeeds);
     }
 
     Ok(bump)

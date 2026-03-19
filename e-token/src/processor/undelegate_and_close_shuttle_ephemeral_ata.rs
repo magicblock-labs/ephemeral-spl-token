@@ -3,7 +3,7 @@ use ephemeral_rollups_pinocchio::intent_bundle::{
 };
 use ephemeral_spl_api::instruction::internal::CLOSE_SHUTTLE_ATA_INTENT;
 use ephemeral_spl_api::state::{
-    ephemeral_ata::EphemeralAta, load_unchecked, shuttle_ephemeral_ata::ShuttleEphemeralAta,
+    ephemeral_ata::EphemeralAta, load_unchecked, shuttle_ephemeral_ata::ShuttleMetadata,
     Initializable,
 };
 use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
@@ -51,8 +51,7 @@ pub fn process_undelegate_and_close_shuttle_ephemeral_ata(
         }
     }
 
-    let shuttle =
-        unsafe { load_unchecked::<ShuttleEphemeralAta>(shuttle_info.borrow_unchecked())? };
+    let shuttle = unsafe { load_unchecked::<ShuttleMetadata>(shuttle_info.borrow_unchecked())? };
     if !shuttle.is_initialized() {
         return Err(ProgramError::InvalidAccountData);
     }

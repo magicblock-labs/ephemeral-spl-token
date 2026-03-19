@@ -110,8 +110,13 @@ pub mod instruction {
     ///      [13..45] optional validator pubkey
     pub const SETUP_AND_DELEGATE_SHUTTLE_EPHEMERAL_ATA_WITH_MERGE: u8 = 24;
     /// 25 - DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer:
-    ///      same setup/deposit/delegate flow as instruction 24, plus a third post-delegation
-    ///      action that schedules a second private transfer of the same amount to the destination token account.
+    ///      same setup/deposit/delegate flow as instruction 24, but instead of using instruction 24's
+    ///      merge-to-destination behavior, the first post-delegation action restores the owner's
+    ///      source token account by merging the shuttle balance back there, then a third post-delegation
+    ///      action schedules a private transfer of the same amount to the destination token account.
+    ///      SDK callers must account for that queued private transfer when calculating required source
+    ///      balances and expected destination credits; the destination does not hold the final funds
+    ///      immediately after the merge/cleanup steps.
     ///      Instruction data:
     ///      [0..4] shuttle_id (u32 LE)
     ///      [4]    shuttle metadata bump

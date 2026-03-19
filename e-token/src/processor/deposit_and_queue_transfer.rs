@@ -2,7 +2,7 @@ use core::{convert::TryFrom, marker::PhantomData};
 
 use crate::processor::deposit_spl_tokens::transfer_to_vault_for_mint;
 use ephemeral_spl_api::state::transfer_queue::{
-    queue_push_from_data, queue_views_checked, QueuedTransfer, QUEUE_SEED,
+    queue_len_for_mint_with_capacity, queue_push_from_data, QueuedTransfer, QUEUE_SEED,
 };
 use pinocchio::sysvars::clock::Clock;
 use pinocchio::sysvars::Sysvar;
@@ -59,7 +59,10 @@ pub fn process_deposit_and_queue_transfer(
     }
 
     validate_destination_token_account(destination_token_acc, token_program_info, mint_info)?;
-    let queue_len_before = validate_queue_capacity(queue_info, mint_info, split)?;
+    let queue_len_before = {
+        let data = unsafe { queue_info.borrow_unchecked() };
+        queue_len_for_mint_with_capacity(data, mint_info.address(), split)?
+    };
     #[cfg(not(feature = "logging"))]
     let _ = queue_len_before;
 
@@ -169,27 +172,6 @@ fn read_mint_decimals(mint_info: &AccountView) -> Result<u8, ProgramError> {
     }
 
     Ok(mint.decimals())
-}
-
-#[inline(always)]
-fn validate_queue_capacity(
-    queue_info: &AccountView,
-    mint_info: &AccountView,
-    required_slots: usize,
-) -> Result<usize, ProgramError> {
-    let data = unsafe { queue_info.borrow_unchecked() };
-    let (header, items) = queue_views_checked(data)?;
-    if header.mint != *mint_info.address() {
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    let queue_len = header.length as usize;
-    let available_slots = items.len() - queue_len;
-    if available_slots < required_slots {
-        return Err(ProgramError::AccountDataTooSmall);
-    }
-
-    Ok(queue_len)
 }
 
 pub struct DepositAndQueueTransferArgs<'a> {

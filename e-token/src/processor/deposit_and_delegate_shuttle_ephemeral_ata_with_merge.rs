@@ -14,7 +14,7 @@ use ephemeral_rollups_pinocchio::{
 };
 use ephemeral_spl_api::state::{
     ephemeral_ata::EphemeralAta, load_mut_unchecked, load_unchecked,
-    shuttle_ephemeral_ata::ShuttleEphemeralAta, Initializable,
+    shuttle_ephemeral_ata::ShuttleMetadata, Initializable,
 };
 use pinocchio::{
     cpi::{invoke_signed_with_bounds, Seed, Signer},
@@ -324,8 +324,7 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
         }
     }
 
-    let shuttle =
-        unsafe { load_unchecked::<ShuttleEphemeralAta>(shuttle_info.borrow_unchecked())? };
+    let shuttle = unsafe { load_unchecked::<ShuttleMetadata>(shuttle_info.borrow_unchecked())? };
     if !shuttle.is_initialized() {
         return Err(ProgramError::InvalidAccountData);
     }

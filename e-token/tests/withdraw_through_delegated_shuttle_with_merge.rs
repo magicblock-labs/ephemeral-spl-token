@@ -7,7 +7,7 @@ use dlp::state::DelegationRecord;
 use ephemeral_spl_api::instruction::{self, internal};
 use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
-use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleEphemeralAta;
+use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
 use ephemeral_spl_api::state::{load_mut_unchecked, Initializable, RawType};
 use magicblock_magic_program_api::{
     args::{MagicIntentBundleArgs, UndelegateTypeArgs},
@@ -303,7 +303,7 @@ async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_clean
         .expect("shuttle metadata must exist");
     let mut shuttle_data = shuttle_account.data.clone();
     let shuttle =
-        unsafe { load_mut_unchecked::<ShuttleEphemeralAta>(shuttle_data.as_mut_slice()).unwrap() };
+        unsafe { load_mut_unchecked::<ShuttleMetadata>(shuttle_data.as_mut_slice()).unwrap() };
     assert!(shuttle.is_initialized());
     assert_eq!(shuttle.owner.as_array(), &owner.pubkey().to_bytes());
     assert_eq!(shuttle.payer.as_array(), &rent_pda.to_bytes());
@@ -371,9 +371,9 @@ async fn undelegate_withdraw_and_close_shuttle_ephemeral_ata_schedules_close_act
     let (shuttle_eata, _) = utils::derive_shuttle_eata(PROGRAM, shuttle_metadata, mint);
     let shuttle_wallet_ata = utils::derive_associated_token_address(shuttle_metadata, mint);
 
-    let mut shuttle_data = vec![0u8; ShuttleEphemeralAta::LEN];
+    let mut shuttle_data = vec![0u8; ShuttleMetadata::LEN];
     let shuttle_state =
-        unsafe { load_mut_unchecked::<ShuttleEphemeralAta>(shuttle_data.as_mut_slice()).unwrap() };
+        unsafe { load_mut_unchecked::<ShuttleMetadata>(shuttle_data.as_mut_slice()).unwrap() };
     shuttle_state.owner = owner.pubkey();
     shuttle_state.payer = rent_pda;
     shuttle_state.id = shuttle_id;
@@ -401,9 +401,7 @@ async fn undelegate_withdraw_and_close_shuttle_ephemeral_ata_schedules_close_act
     pt.add_account(
         shuttle_metadata,
         Account {
-            lamports: Rent::default()
-                .minimum_balance(ShuttleEphemeralAta::LEN)
-                .max(1),
+            lamports: Rent::default().minimum_balance(ShuttleMetadata::LEN).max(1),
             data: shuttle_data,
             owner: PROGRAM,
             executable: false,

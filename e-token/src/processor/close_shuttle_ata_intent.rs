@@ -1,7 +1,6 @@
 use crate::processor::withdraw_spl_tokens::withdraw_ephemeral_ata_tokens;
 use ephemeral_spl_api::state::{
-    ephemeral_ata::EphemeralAta, load_unchecked, shuttle_ephemeral_ata::ShuttleEphemeralAta,
-    Initializable,
+    ephemeral_ata::EphemeralAta, load, shuttle_ephemeral_ata::ShuttleMetadata,
 };
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
@@ -14,7 +13,7 @@ const DLP_EPHEMERAL_BALANCE_TAG: &[u8] = b"balance";
 /// shuttle EATA, and shuttle metadata, refunding rent to the stored payer.
 ///
 /// Expected leading accounts:
-/// 0. [writable] Shuttle rent reimbursement account (must equal `ShuttleEphemeralAta.payer`)
+/// 0. [writable] Shuttle rent reimbursement account (must equal `ShuttleMetadata.payer`)
 /// 1. [writable] Shuttle metadata account
 /// 2. [writable] Shuttle EATA account (PDA [shuttle_metadata, mint])
 /// 3. [writable] Shuttle wallet ATA account
@@ -31,7 +30,6 @@ pub fn process_close_shuttle_ata_intent(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-
     // TODO(GabrielePicco): ensure we schedule this from the same program id
 
     let [escrow_index] = instruction_data else {
@@ -74,9 +72,6 @@ pub fn process_close_shuttle_ata_intent(
     let shuttle_present = shuttle_info.lamports() > 0;
     let shuttle_ephemeral_present = shuttle_ephemeral_ata_info.lamports() > 0;
     let shuttle_wallet_present = shuttle_wallet_ata_info.lamports() > 0;
-    if !shuttle_present && !shuttle_ephemeral_present && !shuttle_wallet_present {
-        return Ok(());
-    }
 
     let mut shuttle_id = 0u32;
     let mut shuttle_owner_opt = None;
@@ -84,11 +79,14 @@ pub fn process_close_shuttle_ata_intent(
         if !shuttle_info.owned_by(&ephemeral_spl_api::program::id_address()) {
             return Err(ProgramError::IllegalOwner);
         }
-        let shuttle =
-            unsafe { load_unchecked::<ShuttleEphemeralAta>(shuttle_info.borrow_unchecked())? };
-        if !shuttle.is_initialized() {
-            return Err(ProgramError::InvalidAccountData);
-        }
+        let shuttle_data = shuttle_info.try_borrow()?;
+        let shuttle = unsafe { load::<ShuttleMetadata>(&shuttle_data) }.map_err(|err| {
+            if err == ProgramError::UninitializedAccount {
+                ProgramError::InvalidAccountData
+            } else {
+                err
+            }
+        })?;
         if shuttle.payer != *rent_reimbursement_info.address() {
             return Err(ProgramError::IncorrectAuthority);
         }
@@ -109,18 +107,19 @@ pub fn process_close_shuttle_ata_intent(
             .as_ref()
             .ok_or(ProgramError::InvalidAccountData)?;
         let (mint, shuttle_wallet_amount) = {
-            let shuttle_wallet_data = unsafe { shuttle_wallet_ata_info.borrow_unchecked() };
+            let shuttle_wallet_data = shuttle_wallet_ata_info.try_borrow()?;
             if shuttle_wallet_data.len() < TokenAccount::BASE_LEN {
                 return Err(ProgramError::InvalidAccountData);
             }
-            let shuttle_wallet = unsafe { TokenAccount::from_bytes_unchecked(shuttle_wallet_data) };
+            let shuttle_wallet =
+                unsafe { TokenAccount::from_bytes_unchecked(&shuttle_wallet_data) };
             if !shuttle_wallet.is_initialized() {
                 return Err(ProgramError::UninitializedAccount);
             }
             if shuttle_wallet.owner() != shuttle_info.address() {
                 return Err(ProgramError::InvalidAccountData);
             }
-            let mint = shuttle_wallet.mint();
+            let mint = *shuttle_wallet.mint();
             (mint, shuttle_wallet.amount())
         };
 
@@ -171,12 +170,15 @@ pub fn process_close_shuttle_ata_intent(
             .as_ref()
             .ok_or(ProgramError::InvalidAccountData)?;
         let (mint, shuttle_ephemeral_amount) = {
-            let shuttle_ephemeral_ata = unsafe {
-                load_unchecked::<EphemeralAta>(shuttle_ephemeral_ata_info.borrow_unchecked())?
-            };
-            if !shuttle_ephemeral_ata.is_initialized() {
-                return Err(ProgramError::InvalidAccountData);
-            }
+            let shuttle_ephemeral_ata_data = shuttle_ephemeral_ata_info.try_borrow()?;
+            let shuttle_ephemeral_ata =
+                unsafe { load::<EphemeralAta>(&shuttle_ephemeral_ata_data) }.map_err(|err| {
+                    if err == ProgramError::UninitializedAccount {
+                        ProgramError::InvalidAccountData
+                    } else {
+                        err
+                    }
+                })?;
             if shuttle_ephemeral_ata.owner != *shuttle_info.address() {
                 return Err(ProgramError::InvalidAccountData);
             }

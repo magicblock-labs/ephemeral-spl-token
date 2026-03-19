@@ -6,7 +6,7 @@ use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
 use pinocchio_system::instructions::CreateAccount;
 use {
-    ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleEphemeralAta,
+    ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata,
     pinocchio::{error::ProgramError, AccountView, ProgramResult},
 };
 
@@ -105,8 +105,8 @@ pub(crate) fn initialize_shuttle_ephemeral_ata_with_sponsor(
         let create_shuttle = CreateAccount {
             from: sponsor_info,
             to: shuttle_info,
-            space: ShuttleEphemeralAta::LEN as u64,
-            lamports: Rent::get()?.try_minimum_balance(ShuttleEphemeralAta::LEN)?,
+            space: ShuttleMetadata::LEN as u64,
+            lamports: Rent::get()?.try_minimum_balance(ShuttleMetadata::LEN)?,
             owner: &ephemeral_spl_api::program::id_address(),
         };
         if let Some(sponsor_signer) = sponsor_signer.as_ref() {
@@ -117,16 +117,15 @@ pub(crate) fn initialize_shuttle_ephemeral_ata_with_sponsor(
             create_shuttle.invoke_signed(&signers)?;
         }
 
-        let shuttle = unsafe {
-            load_mut_unchecked::<ShuttleEphemeralAta>(shuttle_info.borrow_unchecked_mut())?
-        };
+        let shuttle =
+            unsafe { load_mut_unchecked::<ShuttleMetadata>(shuttle_info.borrow_unchecked_mut())? };
 
         shuttle.owner = *owner_info.address();
         shuttle.payer = *refund_recipient_info.address();
         shuttle.id = shuttle_id;
     } else {
         let shuttle =
-            unsafe { load_unchecked::<ShuttleEphemeralAta>(shuttle_info.borrow_unchecked())? };
+            unsafe { load_unchecked::<ShuttleMetadata>(shuttle_info.borrow_unchecked())? };
         if !shuttle.is_initialized()
             || shuttle.id != shuttle_id
             || shuttle.owner != *owner_info.address()
