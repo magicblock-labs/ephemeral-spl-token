@@ -9,6 +9,7 @@ use solana_pubkey::Pubkey;
 use crate::processor::deposit_and_delegate_shuttle_ephemeral_ata_with_merge::undelegate_and_close_shuttle_action;
 use crate::processor::{
     deposit_and_delegate_shuttle_ephemeral_ata_with_merge::{
+        merge_shuttle_into_token_account_action,
         parse_deposit_and_delegate_shuttle_accounts,
         process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions, pubkey,
         DepositAndDelegateShuttleCommonArgs,
@@ -57,27 +58,10 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
     }
 
     let actions = [
-        Instruction {
-            program_id: Pubkey::from(ephemeral_spl_api::program::ID),
-            accounts: alloc::vec![
-                AccountMeta::new_readonly(pubkey(common_accounts.owner_info.address()), true),
-                AccountMeta::new(
-                    pubkey(common_accounts.owner_source_token_info.address()),
-                    false
-                ),
-                AccountMeta::new_readonly(pubkey(common_accounts.shuttle_info.address()), false),
-                AccountMeta::new(
-                    pubkey(common_accounts.shuttle_wallet_ata_info.address()),
-                    false
-                ),
-                AccountMeta::new_readonly(pubkey(common_accounts.mint_info.address()), false),
-                AccountMeta::new_readonly(
-                    pubkey(common_accounts.token_program_info.address()),
-                    false
-                ),
-            ],
-            data: alloc::vec![ephemeral_spl_api::instruction::MERGE_SHUTTLE_INTO_EPHEMERAL_ATA],
-        },
+        merge_shuttle_into_token_account_action(
+            &common_accounts,
+            common_accounts.owner_source_token_info,
+        ),
         undelegate_and_close_shuttle_action(&common_accounts),
         private_transfer_action(&common_accounts, queue_info, &args),
     ];

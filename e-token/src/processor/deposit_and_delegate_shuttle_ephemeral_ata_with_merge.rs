@@ -452,11 +452,18 @@ pub(crate) fn read_mint_decimals(mint_info: &AccountView) -> Result<u8, ProgramE
 fn merge_shuttle_into_destination_action(
     accounts: &DepositAndDelegateShuttleAccounts<'_>,
 ) -> Instruction {
+    merge_shuttle_into_token_account_action(accounts, accounts.destination_token_info)
+}
+
+pub(crate) fn merge_shuttle_into_token_account_action(
+    accounts: &DepositAndDelegateShuttleAccounts<'_>,
+    destination_token_info: &AccountView,
+) -> Instruction {
     Instruction {
         program_id: Pubkey::from(ephemeral_spl_api::program::ID),
         accounts: alloc::vec![
             AccountMeta::new_readonly(pubkey(accounts.owner_info.address()), true),
-            AccountMeta::new(pubkey(accounts.destination_token_info.address()), false),
+            AccountMeta::new(pubkey(destination_token_info.address()), false),
             AccountMeta::new_readonly(pubkey(accounts.shuttle_info.address()), false),
             AccountMeta::new(pubkey(accounts.shuttle_wallet_ata_info.address()), false),
             AccountMeta::new_readonly(pubkey(accounts.mint_info.address()), false),
