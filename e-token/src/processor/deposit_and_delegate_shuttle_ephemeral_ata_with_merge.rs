@@ -122,7 +122,7 @@ impl DepositAndDelegateShuttleArgs<'_> {
 
     #[inline]
     pub fn validator(&self) -> Option<[u8; 32]> {
-        if self.len == 14 {
+        if self.len == 12 {
             return None;
         }
 
