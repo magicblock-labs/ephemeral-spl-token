@@ -43,6 +43,15 @@ pub(crate) fn initialize_ephemeral_ata_with_sponsor(
     user_info: &AccountView,
     mint_info: &AccountView,
 ) -> ProgramResult {
+    // Validate PDA derivation up front, even for idempotent re-initialization.
+    let (derived_pda, eata_bump) = ephemeral_spl_api::Address::find_program_address(
+        &[user_info.address().as_ref(), mint_info.address().as_ref()],
+        &ephemeral_spl_api::program::id_address(),
+    );
+    if derived_pda != *ephemeral_ata_info.address() {
+        return Err(ProgramError::InvalidSeeds);
+    }
+
     // Make init idempotent even if the account is currently delegated (owner changed).
     if let Ok(ephemeral_ata) =
         unsafe { load_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked()) }
@@ -53,15 +62,6 @@ pub(crate) fn initialize_ephemeral_ata_with_sponsor(
         {
             return Ok(());
         }
-    }
-
-    // Validate PDA derivation up front, even for idempotent re-initialization.
-    let (derived_pda, eata_bump) = ephemeral_spl_api::Address::find_program_address(
-        &[user_info.address().as_ref(), mint_info.address().as_ref()],
-        &ephemeral_spl_api::program::id_address(),
-    );
-    if derived_pda != *ephemeral_ata_info.address() {
-        return Err(ProgramError::InvalidSeeds);
     }
 
     // Migrate legacy ephemeral ATAs from 32-byte layout (mint only) to 64-byte layout.
