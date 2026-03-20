@@ -15,7 +15,7 @@ crate-type = ["cdylib"]
 logging = []
 
 [dependencies]
-ephemeral-rollups-pinocchio = { workspace = true, features = ["delegation-actions"] }
+ephemeral-rollups-pinocchio = { workspace = true }
 pinocchio = { workspace = true }
 pinocchio-log = { workspace = true }
 pinocchio-system = { workspace = true }
@@ -24,6 +24,7 @@ pinocchio-associated-token-account = { workspace = true }
 ephemeral-spl-api = { path = "../e-token-api" }
 solana-instruction = { workspace = true }
 solana-pubkey = { workspace = true }
+magicblock-delegation-program-api = { version = "0.1.1", default-features = false, features = ["cpi"] }
 
 [dev-dependencies]
 solana-program-pack = { workspace = true }

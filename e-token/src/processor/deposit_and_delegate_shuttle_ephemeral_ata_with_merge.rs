@@ -3,14 +3,15 @@ use alloc::string::ToString;
 
 use alloc::vec::Vec;
 use core::{marker::PhantomData, mem::MaybeUninit};
+use dlp_api::{args::PostDelegationActions, compact::ClearText};
 use ephemeral_rollups_pinocchio::{
     consts::{
         BUFFER, DELEGATION_PROGRAM_ID, MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID,
         MAX_POST_DELEGATION_SIGNERS,
     },
-    instruction::{fill_seeds, ClearText, PostDelegationActions},
+    instruction::fill_seeds,
     types::{DelegateAccountArgs, DelegateConfig},
-    utils::{close_pda_acc, make_seed_buf, serialize_delegate_with_actions_data},
+    utils::{close_pda_acc, make_seed_buf},
 };
 use ephemeral_spl_api::state::{
     ephemeral_ata::EphemeralAta, load_mut_unchecked, load_unchecked,
@@ -650,7 +651,21 @@ fn cpi_delegate_with_actions_from_sponsor(
         i += 1;
     }
 
-    let data = serialize_delegate_with_actions_data(delegate_args, actions)?;
+    let delegate = dlp_api::args::DelegateArgs {
+        commit_frequency_ms: delegate_args.commit_frequency_ms,
+        seeds: delegate_args.seeds.iter().map(|seed| seed.to_vec()).collect(),
+        validator: delegate_args
+            .validator
+            .map(|validator| (*validator.as_array()).into()),
+    };
+    let data = dlp_api::cpi::delegate_with_actions(
+        (*sponsor_info.address().as_array()).into(),
+        (*pda_acc.address().as_array()).into(),
+        Some((*owner_program.address().as_array()).into()),
+        delegate,
+        actions,
+    )
+    .data;
     let mut account_refs: [&AccountView; MAX_DELEGATE_WITH_ACTIONS_ACCOUNTS] =
         [sponsor_info; MAX_DELEGATE_WITH_ACTIONS_ACCOUNTS];
     account_refs[0] = sponsor_info;
@@ -686,7 +701,6 @@ fn cpi_delegate_with_actions_from_sponsor(
 
     Ok(())
 }
-
 #[inline]
 pub(crate) fn pubkey(address: &Address) -> Pubkey {
     Pubkey::from(address.to_bytes())
