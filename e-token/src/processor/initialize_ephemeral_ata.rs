@@ -64,7 +64,7 @@ pub(crate) fn initialize_ephemeral_ata_with_sponsor(
         }
     }
 
-    // Migrate legacy ephemeral ATAs from 32-byte layout (mint only) to 64-byte layout.
+    // Migrate legacy ephemeral ATAs
     // TODO: Remove this migration path once all deployed ATAs are upgraded.
     if ephemeral_ata_info.data_len() == EPHEMERAL_ATA_V0_LEN
         && ephemeral_ata_info.owned_by(&crate::ID.into())
