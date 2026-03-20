@@ -31,7 +31,7 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
     assert_owner(shuttle_wallet_ata_info, token_program_info.address())?;
     assert_owner(destination_token_info, token_program_info.address())?;
 
-    let (shuttle_owner, shuttle_id) = {
+    let (shuttle_owner, shuttle_id, bump) = {
         let shuttle =
             unsafe { load_unchecked::<ShuttleMetadata>(shuttle_info.borrow_unchecked())? };
         if !shuttle.is_initialized() {
@@ -42,18 +42,19 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
         }
         #[allow(clippy::clone_on_copy)]
         let owner = shuttle.owner.clone();
-        (owner, shuttle.id)
+        (owner, shuttle.id, [shuttle.bump])
     };
 
     let shuttle_id_seed = shuttle_id.to_le_bytes();
-    let (derived_shuttle, shuttle_bump) = ephemeral_spl_api::Address::find_program_address(
+    let derived_shuttle = ephemeral_spl_api::Address::create_program_address(
         &[
             shuttle_owner.as_ref(),
             mint_info.address().as_ref(),
             shuttle_id_seed.as_ref(),
+            bump.as_ref(),
         ],
         &ephemeral_spl_api::program::id_address(),
-    );
+    )?;
     if derived_shuttle != *shuttle_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
@@ -76,7 +77,6 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
 
     let decimals = read_mint_decimals(mint_info)?;
 
-    let bump = [shuttle_bump];
     let seeds = [
         Seed::from(shuttle_owner.as_ref()),
         Seed::from(mint_info.address().as_ref()),

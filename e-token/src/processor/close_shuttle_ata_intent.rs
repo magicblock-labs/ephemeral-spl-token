@@ -192,11 +192,6 @@ pub fn process_close_shuttle_ata_intent(
                 return Err(ProgramError::InvalidAccountData);
             }
 
-            let (_, vault_bump) = ephemeral_spl_api::Address::find_program_address(
-                &[mint_info.address().as_ref()],
-                &ephemeral_spl_api::program::id_address(),
-            );
-
             withdraw_ephemeral_ata_tokens(
                 shuttle_info,
                 false,
@@ -207,7 +202,6 @@ pub fn process_close_shuttle_ata_intent(
                 destination_token_info,
                 token_program_info,
                 shuttle_ephemeral_amount,
-                vault_bump,
             )?;
         }
 

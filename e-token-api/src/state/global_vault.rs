@@ -9,6 +9,8 @@ pub struct GlobalVault {
     pub mint: Address,
     /// The token account that holds this vault's tokens.
     pub token_account: Address,
+    /// The bump of the global vault
+    pub bump: u8,
 }
 
 impl RawType for GlobalVault {

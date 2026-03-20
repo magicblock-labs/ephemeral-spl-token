@@ -2,25 +2,25 @@ use ephemeral_spl_api::state::{Initializable, RawType};
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
-use pinocchio_system::instructions::CreateAccount;
+use pinocchio_system::instructions::{CreateAccount, Transfer};
 use {
     ephemeral_spl_api::state::ephemeral_ata::EphemeralAta,
     ephemeral_spl_api::state::{load_mut_unchecked, load_unchecked},
     pinocchio::{error::ProgramError, AccountView, ProgramResult},
 };
 
+const EPHEMERAL_ATA_V0_LEN: usize = 72;
+
 #[inline(always)]
 pub fn process_initialize_ephemeral_ata(
     accounts: &[AccountView],
-    instruction_data: &[u8],
+    _instruction_data: &[u8],
 ) -> ProgramResult {
     // Expected accounts:
     // 0. [writable] Ephemeral ATA account (PDA derived from [user, mint])
     // 1. []         Payer (funding account)
     // 2. []         User  (seed)
     // 3. []         Mint  (seed)
-
-    let args = InitializeEphemeralAta::try_from_bytes(instruction_data)?;
 
     let [ephemeral_ata_info, payer_info, user_info, mint_info, ..] = accounts else {
         return Err(ProgramError::NotEnoughAccountKeys);
@@ -32,7 +32,6 @@ pub fn process_initialize_ephemeral_ata(
         None,
         user_info,
         mint_info,
-        args.bump(),
     )
 }
 
@@ -43,10 +42,9 @@ pub(crate) fn initialize_ephemeral_ata_with_sponsor(
     sponsor_signer: Option<Signer<'_, '_>>,
     user_info: &AccountView,
     mint_info: &AccountView,
-    bump: u8,
 ) -> ProgramResult {
     // Validate PDA derivation up front, even for idempotent re-initialization.
-    let (derived_pda, _) = ephemeral_spl_api::Address::find_program_address(
+    let (derived_pda, eata_bump) = ephemeral_spl_api::Address::find_program_address(
         &[user_info.address().as_ref(), mint_info.address().as_ref()],
         &ephemeral_spl_api::program::id_address(),
     );
@@ -66,12 +64,50 @@ pub(crate) fn initialize_ephemeral_ata_with_sponsor(
         }
     }
 
+    // Migrate legacy ephemeral ATAs
+    // TODO: Remove this migration path once all deployed ATAs are upgraded.
+    if ephemeral_ata_info.data_len() == EPHEMERAL_ATA_V0_LEN
+        && ephemeral_ata_info.owned_by(&crate::ID.into())
+    {
+        let current_lamports = ephemeral_ata_info.lamports();
+        if current_lamports < Rent::get()?.try_minimum_balance(EphemeralAta::LEN)? {
+            if let Some(sponsor_signer) = sponsor_signer {
+                Transfer {
+                    from: sponsor_info,
+                    to: ephemeral_ata_info,
+                    lamports: Rent::get()?.try_minimum_balance(EphemeralAta::LEN)?
+                        - current_lamports,
+                }
+                .invoke_signed(&[sponsor_signer])?;
+            } else {
+                Transfer {
+                    from: sponsor_info,
+                    to: ephemeral_ata_info,
+                    lamports: Rent::get()?.try_minimum_balance(EphemeralAta::LEN)?
+                        - current_lamports,
+                }
+                .invoke()?;
+            }
+        }
+
+        ephemeral_ata_info.resize(EphemeralAta::LEN)?;
+
+        let ephemeral_ata = unsafe {
+            load_mut_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked_mut())?
+        };
+
+        // Set the missing bump
+        ephemeral_ata.bump = eata_bump;
+
+        return Ok(());
+    }
+
     // Any other pre-existing account at this PDA is invalid for initialization.
     if ephemeral_ata_info.lamports() > 0 {
         return Err(ProgramError::InvalidAccountData);
     }
 
-    let bump = [bump];
+    let bump = [eata_bump];
     let seed = [
         Seed::from(user_info.address().as_ref()),
         Seed::from(mint_info.address().as_ref()),
@@ -103,27 +139,7 @@ pub(crate) fn initialize_ephemeral_ata_with_sponsor(
     ephemeral_ata.owner = *user_info.address();
     ephemeral_ata.mint = *mint_info.address();
     ephemeral_ata.amount = 0;
+    ephemeral_ata.bump = eata_bump;
 
     Ok(())
-}
-
-/// Instruction data for the `InitializeMint` instruction.
-pub struct InitializeEphemeralAta {
-    bump: u8,
-}
-
-impl InitializeEphemeralAta {
-    #[inline]
-    pub fn try_from_bytes(bytes: &[u8]) -> Result<InitializeEphemeralAta, ProgramError> {
-        if bytes.len() != 1 {
-            return Err(ProgramError::InvalidInstructionData);
-        }
-
-        Ok(InitializeEphemeralAta { bump: bytes[0] })
-    }
-
-    #[inline]
-    pub fn bump(&self) -> u8 {
-        self.bump
-    }
 }

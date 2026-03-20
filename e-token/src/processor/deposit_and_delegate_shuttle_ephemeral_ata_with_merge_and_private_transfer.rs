@@ -83,7 +83,7 @@ impl DepositAndDelegateShuttleWithPrivateTransferArgs<'_> {
     fn try_from_bytes(
         bytes: &[u8],
     ) -> Result<DepositAndDelegateShuttleWithPrivateTransferArgs<'_>, ProgramError> {
-        if bytes.len() != 33 && bytes.len() != 65 {
+        if bytes.len() != 32 && bytes.len() != 64 {
             return Err(ProgramError::InvalidInstructionData);
         }
 
@@ -104,43 +104,38 @@ impl DepositAndDelegateShuttleWithPrivateTransferArgs<'_> {
     }
 
     #[inline]
-    fn shuttle_bump(&self) -> u8 {
-        unsafe { *self.raw.add(4) }
-    }
-
-    #[inline]
     fn amount(&self) -> u64 {
-        self.read_u64(5)
+        self.read_u64(4)
     }
 
     #[inline]
     fn min_delay_ms(&self) -> u64 {
-        self.read_u64(13)
+        self.read_u64(12)
     }
 
     #[inline]
     fn max_delay_ms(&self) -> u64 {
-        self.read_u64(21)
+        self.read_u64(20)
     }
 
     #[inline]
     fn split(&self) -> u32 {
         let mut buf = [0u8; 4];
         unsafe {
-            core::ptr::copy_nonoverlapping(self.raw.add(29), buf.as_mut_ptr(), 4);
+            core::ptr::copy_nonoverlapping(self.raw.add(28), buf.as_mut_ptr(), 4);
         }
         u32::from_le_bytes(buf)
     }
 
     #[inline]
     fn validator(&self) -> Option<[u8; 32]> {
-        if self.len == 33 {
+        if self.len == 32 {
             return None;
         }
 
         let mut validator = [0u8; 32];
         unsafe {
-            core::ptr::copy_nonoverlapping(self.raw.add(33), validator.as_mut_ptr(), 32);
+            core::ptr::copy_nonoverlapping(self.raw.add(32), validator.as_mut_ptr(), 32);
         }
         Some(validator)
     }
@@ -149,7 +144,6 @@ impl DepositAndDelegateShuttleWithPrivateTransferArgs<'_> {
     fn common_args(&self) -> DepositAndDelegateShuttleCommonArgs {
         DepositAndDelegateShuttleCommonArgs {
             shuttle_id: self.shuttle_id(),
-            shuttle_bump: self.shuttle_bump(),
             amount: self.amount(),
             validator: self.validator(),
         }

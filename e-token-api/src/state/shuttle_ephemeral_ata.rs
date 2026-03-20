@@ -11,6 +11,9 @@ pub struct ShuttleMetadata {
     pub payer: Address,
     /// User-defined identifier to allow multiple shuttles per [owner, mint].
     pub id: u32,
+    /// The bump of the shuttle metadata account
+    pub bump: u8,
+    pub _pad0: [u8; 3],
 }
 
 impl RawType for ShuttleMetadata {

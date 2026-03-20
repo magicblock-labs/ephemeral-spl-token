@@ -56,7 +56,7 @@ pub fn process_delegate_shuttle_ephemeral_ata(
         }
     }
 
-    let mint = {
+    let (mint, eata_bump) = {
         let ephemeral_ata =
             unsafe { load_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked())? };
         if !ephemeral_ata.is_initialized() {
@@ -67,10 +67,10 @@ pub fn process_delegate_shuttle_ephemeral_ata(
         }
         #[allow(clippy::clone_on_copy)]
         let mint = ephemeral_ata.mint.clone();
-        mint
+        (mint, ephemeral_ata.bump)
     };
 
-    let bump = [args.bump()];
+    let bump = [eata_bump];
     let derived_ephemeral_ata = ephemeral_spl_api::Address::create_program_address(
         &[
             shuttle_info.address().as_ref(),
@@ -78,8 +78,7 @@ pub fn process_delegate_shuttle_ephemeral_ata(
             bump.as_ref(),
         ],
         &ephemeral_spl_api::program::id_address(),
-    )
-    .map_err(|_| ProgramError::InvalidSeeds)?;
+    )?;
     if derived_ephemeral_ata != *ephemeral_ata_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
@@ -106,13 +105,12 @@ pub fn process_delegate_shuttle_ephemeral_ata(
         system_program,
     )
     .seeds(seeds)
-    .bump(args.bump())
+    .bump(eata_bump)
     .config(config)
     .invoke()
 }
 
 pub struct DelegateShuttleArgs {
-    bump: u8,
     validator: Option<[u8; 32]>,
 }
 
@@ -120,29 +118,20 @@ impl DelegateShuttleArgs {
     #[inline]
     pub fn try_from_bytes(bytes: &[u8]) -> Result<DelegateShuttleArgs, ProgramError> {
         if bytes.is_empty() {
-            return Err(ProgramError::InvalidInstructionData);
-        }
-        let bump = bytes[0];
-        let rest = &bytes[1..];
-        let validator = if rest.is_empty() {
-            None
-        } else if rest.len() == 32 {
+            Ok(DelegateShuttleArgs { validator: None })
+        } else if bytes.len() >= 32 {
             let mut arr = [0u8; 32];
-            arr.copy_from_slice(rest);
-            Some(arr)
+            arr.copy_from_slice(&bytes[..32]);
+            Ok(DelegateShuttleArgs {
+                validator: Some(arr),
+            })
         } else {
-            return Err(ProgramError::InvalidInstructionData);
-        };
-        Ok(DelegateShuttleArgs { bump, validator })
+            Err(ProgramError::InvalidInstructionData)
+        }
     }
 
     #[inline]
     pub fn validator(&self) -> Option<[u8; 32]> {
         self.validator
-    }
-
-    #[inline]
-    pub fn bump(&self) -> u8 {
-        self.bump
     }
 }

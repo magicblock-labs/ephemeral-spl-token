@@ -43,7 +43,7 @@ async fn initialize_global_vault() {
     .await;
 
     let vault_token_acc = utils::derive_associated_token_address(pdas.vault, mint);
-    let (vault_eata, _vault_eata_bump) =
+    let (vault_eata, _) =
         Pubkey::find_program_address(&[pdas.vault.as_ref(), mint.as_ref()], &PROGRAM);
 
     // Build instruction
@@ -59,7 +59,7 @@ async fn initialize_global_vault() {
             AccountMeta::new_readonly(utils::associated_token_program_id(), false), // associated token program
             AccountMeta::new_readonly(solana_system_interface::program::ID, false), // system program
         ],
-        data: vec![instruction::INITIALIZE_GLOBAL_VAULT, pdas.bump_vault],
+        data: vec![instruction::INITIALIZE_GLOBAL_VAULT],
     };
 
     let tx = Transaction::new_signed_with_payer(
@@ -138,7 +138,7 @@ async fn initialize_global_vault_migrates_legacy_layout() {
     .await;
 
     let vault_token_acc = utils::derive_associated_token_address(pdas.vault, mint);
-    let (vault_eata, _vault_eata_bump) =
+    let (vault_eata, _) =
         Pubkey::find_program_address(&[pdas.vault.as_ref(), mint.as_ref()], &PROGRAM);
 
     let ix = Instruction {
@@ -153,7 +153,7 @@ async fn initialize_global_vault_migrates_legacy_layout() {
             AccountMeta::new_readonly(utils::associated_token_program_id(), false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_GLOBAL_VAULT, pdas.bump_vault],
+        data: vec![instruction::INITIALIZE_GLOBAL_VAULT],
     };
 
     let tx = Transaction::new_signed_with_payer(

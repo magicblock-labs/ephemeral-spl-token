@@ -22,7 +22,7 @@ async fn close_ephemeral_ata_refunds_rent_and_closes_account() {
     let user = payer;
     let mint = Pubkey::new_unique();
 
-    let (ephemeral_ata, bump) =
+    let (ephemeral_ata, _) =
         Pubkey::find_program_address(&[user.as_ref(), mint.as_ref()], &PROGRAM);
 
     let recipient_kp = Keypair::new();
@@ -46,7 +46,7 @@ async fn close_ephemeral_ata_refunds_rent_and_closes_account() {
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_EPHEMERAL_ATA, bump],
+        data: vec![instruction::INITIALIZE_EPHEMERAL_ATA],
     };
 
     let tx_init = Transaction::new_signed_with_payer(

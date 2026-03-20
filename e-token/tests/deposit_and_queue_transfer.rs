@@ -66,11 +66,9 @@ async fn setup_fixture(queue_size_bytes: Option<u32>) -> Fixture {
 
     let queue = Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref()], &PROGRAM).0;
     let vault = pdas.vault;
-    let vault_bump = pdas.bump_vault;
     let user_source_ata = setup.user_tokens[0];
     let destination_ata = setup.user_tokens[1];
-    let (vault_eata, _vault_eata_bump) =
-        Pubkey::find_program_address(&[vault.as_ref(), mint.as_ref()], &PROGRAM);
+    let (vault_eata, _) = Pubkey::find_program_address(&[vault.as_ref(), mint.as_ref()], &PROGRAM);
     let vault_ata = utils::derive_associated_token_address(vault, mint);
 
     let ix_init_vault = Instruction {
@@ -85,7 +83,7 @@ async fn setup_fixture(queue_size_bytes: Option<u32>) -> Fixture {
             AccountMeta::new_readonly(utils::associated_token_program_id(), false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_GLOBAL_VAULT, vault_bump],
+        data: vec![instruction::INITIALIZE_GLOBAL_VAULT],
     };
 
     let mut queue_init_data = vec![instruction::INITIALIZE_TRANSFER_QUEUE];

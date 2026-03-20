@@ -19,9 +19,7 @@ use spl_token_interface::state::{Account as SplAccount, Mint};
 #[allow(dead_code)]
 pub struct Pdas {
     pub ephemeral_ata: Pubkey,
-    pub bump_ata: u8,
     pub vault: Pubkey,
-    pub bump_vault: u8,
 }
 
 #[allow(dead_code)]
@@ -129,16 +127,14 @@ pub fn derive_associated_token_address(wallet: Pubkey, mint: Pubkey) -> Pubkey {
 
 #[allow(dead_code)]
 pub fn derive_pdas(program: Pubkey, owner: Pubkey, mint: Pubkey) -> Pdas {
-    let (ephemeral_ata, bump_ata) = Pubkey::find_program_address(
+    let (ephemeral_ata, _) = Pubkey::find_program_address(
         &[owner.to_bytes().as_slice(), mint.to_bytes().as_slice()],
         &program,
     );
-    let (vault, bump_vault) = Pubkey::find_program_address(&[mint.to_bytes().as_slice()], &program);
+    let (vault, _) = Pubkey::find_program_address(&[mint.to_bytes().as_slice()], &program);
     Pdas {
         ephemeral_ata,
-        bump_ata,
         vault,
-        bump_vault,
     }
 }
 

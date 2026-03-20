@@ -56,7 +56,7 @@ async fn reset_ephemeral_ata_permission() {
     let user = payer;
     let mint = Pubkey::new_unique();
 
-    let (ephemeral_ata, bump) =
+    let (ephemeral_ata, _) =
         Pubkey::find_program_address(&[user.as_ref(), mint.as_ref()], &PROGRAM);
     let (permission_pda, _) = Pubkey::find_program_address(
         &[b"permission:", ephemeral_ata.as_ref()],
@@ -72,7 +72,7 @@ async fn reset_ephemeral_ata_permission() {
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_EPHEMERAL_ATA, bump],
+        data: vec![instruction::INITIALIZE_EPHEMERAL_ATA],
     };
 
     let ix_create_permission = Instruction {
@@ -87,7 +87,7 @@ async fn reset_ephemeral_ata_permission() {
         data: {
             let flag =
                 ephemeral_rollups_pinocchio::acl::types::MemberFlags::default().to_acl_flag_byte();
-            vec![instruction::CREATE_EPHEMERAL_ATA_PERMISSION, bump, flag]
+            vec![instruction::CREATE_EPHEMERAL_ATA_PERMISSION, flag]
         },
     };
 
@@ -100,11 +100,7 @@ async fn reset_ephemeral_ata_permission() {
             AccountMeta::new(payer, true),
             AccountMeta::new_readonly(permission_program_id, false),
         ],
-        data: vec![
-            instruction::RESET_EPHEMERAL_ATA_PERMISSION,
-            bump,
-            reset_flag,
-        ],
+        data: vec![instruction::RESET_EPHEMERAL_ATA_PERMISSION, reset_flag],
     };
 
     let tx = Transaction::new_signed_with_payer(

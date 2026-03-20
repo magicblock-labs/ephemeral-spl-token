@@ -272,11 +272,9 @@ async fn setup_fixture() -> Fixture {
 
     let queue = Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref()], &PROGRAM).0;
     let vault = pdas.vault;
-    let vault_bump = pdas.bump_vault;
     let source_ata = setup.user_tokens[0];
     let destination_ata = setup.user_tokens[1];
-    let (vault_eata, _vault_eata_bump) =
-        Pubkey::find_program_address(&[vault.as_ref(), mint.as_ref()], &PROGRAM);
+    let (vault_eata, _) = Pubkey::find_program_address(&[vault.as_ref(), mint.as_ref()], &PROGRAM);
     let vault_ata = utils::derive_associated_token_address(vault, mint);
 
     let ix_init_vault = Instruction {
@@ -291,7 +289,7 @@ async fn setup_fixture() -> Fixture {
             AccountMeta::new_readonly(utils::associated_token_program_id(), false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_GLOBAL_VAULT, vault_bump],
+        data: vec![instruction::INITIALIZE_GLOBAL_VAULT],
     };
 
     let ix_init_queue = Instruction {
@@ -558,10 +556,9 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
 
         let queue = Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref()], &PROGRAM).0;
         let vault = pdas.vault;
-        let vault_bump = pdas.bump_vault;
         let source_ata = setup.user_tokens[0];
         let destination_ata = setup.user_tokens[1];
-        let (vault_eata, _vault_eata_bump) =
+        let (vault_eata, _) =
             Pubkey::find_program_address(&[vault.as_ref(), mint.as_ref()], &PROGRAM);
         let vault_ata = utils::derive_associated_token_address(vault, mint);
 
@@ -577,7 +574,7 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
                 AccountMeta::new_readonly(utils::associated_token_program_id(), false),
                 AccountMeta::new_readonly(solana_system_interface::program::ID, false),
             ],
-            data: vec![instruction::INITIALIZE_GLOBAL_VAULT, vault_bump],
+            data: vec![instruction::INITIALIZE_GLOBAL_VAULT],
         };
 
         let ix_init_queue = Instruction {

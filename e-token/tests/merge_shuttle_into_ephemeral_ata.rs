@@ -33,10 +33,9 @@ async fn merge_shuttle_into_ephemeral_ata_transfers_from_shuttle_ata_to_destinat
     let mint_kp = Keypair::new();
     let mint = mint_kp.pubkey();
 
-    let (shuttle_ephemeral_ata, shuttle_bump) =
+    let (shuttle_ephemeral_ata, _) =
         utils::derive_shuttle_ephemeral_ata(PROGRAM, owner, mint, shuttle_id);
-    let (shuttle_eata, _shuttle_eata_bump) =
-        utils::derive_shuttle_eata(PROGRAM, shuttle_ephemeral_ata, mint);
+    let (shuttle_eata, _) = utils::derive_shuttle_eata(PROGRAM, shuttle_ephemeral_ata, mint);
     let shuttle_wallet_ata = utils::derive_associated_token_address(shuttle_ephemeral_ata, mint);
 
     let setup = utils::setup_mint_and_token_accounts(
@@ -52,7 +51,6 @@ async fn merge_shuttle_into_ephemeral_ata_transfers_from_shuttle_ata_to_destinat
 
     let mut shuttle_init_data = vec![instruction::INITIALIZE_SHUTTLE_EPHEMERAL_ATA];
     shuttle_init_data.extend_from_slice(&shuttle_id.to_le_bytes());
-    shuttle_init_data.push(shuttle_bump);
     let ix_init_shuttle = Instruction {
         program_id: PROGRAM,
         accounts: vec![

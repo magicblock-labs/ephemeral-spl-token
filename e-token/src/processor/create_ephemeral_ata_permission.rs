@@ -86,7 +86,7 @@ pub fn process_create_ephemeral_ata_permission(
     );
     builder
         .seeds(&[ephemeral_ata.owner.as_ref(), ephemeral_ata.mint.as_ref()])
-        .bump(args.bump())
+        .bump(ephemeral_ata.bump)
         .members(members_args)
         .invoke()
 }
@@ -99,7 +99,7 @@ pub struct CreateEphemeralAtaPermission<'a> {
 impl CreateEphemeralAtaPermission<'_> {
     #[inline]
     pub fn try_from_bytes(bytes: &[u8]) -> Result<CreateEphemeralAtaPermission<'_>, ProgramError> {
-        if bytes.len() < 2 {
+        if bytes.is_empty() {
             return Err(ProgramError::InvalidInstructionData);
         }
 
@@ -110,12 +110,7 @@ impl CreateEphemeralAtaPermission<'_> {
     }
 
     #[inline]
-    pub fn bump(&self) -> u8 {
-        unsafe { *self.raw }
-    }
-
-    #[inline]
     pub fn flag_byte(&self) -> u8 {
-        unsafe { *self.raw.add(1) }
+        unsafe { *self.raw }
     }
 }

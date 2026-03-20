@@ -1,4 +1,3 @@
-use core::marker::PhantomData;
 use ephemeral_rollups_pinocchio::acl::{
     consts::PERMISSION_PROGRAM_ID, instruction::DelegatePermissionCpiBuilder,
     pda::permission_pda_from_permissioned_account,
@@ -13,7 +12,7 @@ use pinocchio::{
 #[inline(always)]
 pub fn process_delegate_ephemeral_ata_permission(
     accounts: &[AccountView],
-    instruction_data: &[u8],
+    _instruction_data: &[u8],
 ) -> ProgramResult {
     // Expected accounts:
     // 0. [signer]   Payer (also authority)
@@ -26,8 +25,6 @@ pub fn process_delegate_ephemeral_ata_permission(
     // 7. [writable] Delegation metadata PDA
     // 8. []         Delegation program
     // 9. []         Validator
-
-    let args = DelegatePermissionArgs::try_from_bytes(instruction_data)?;
 
     let [payer_info, ephemeral_ata_info, permission_program, permission_info, system_program, delegation_buffer, delegation_record, delegation_metadata, delegation_program, validator, ..] =
         accounts
@@ -62,7 +59,7 @@ pub fn process_delegate_ephemeral_ata_permission(
         return Err(ProgramError::InvalidSeeds);
     }
 
-    let bump = [args.bump()];
+    let bump = [ephemeral_ata.bump];
     let seeds = [
         Seed::from(ephemeral_ata.owner.as_ref()),
         Seed::from(ephemeral_ata.mint.as_ref()),
@@ -86,28 +83,4 @@ pub fn process_delegate_ephemeral_ata_permission(
     )
     .signer_seeds(signer_seeds)
     .invoke()
-}
-
-pub struct DelegatePermissionArgs<'a> {
-    raw: *const u8,
-    _data: PhantomData<&'a [u8]>,
-}
-
-impl DelegatePermissionArgs<'_> {
-    #[inline]
-    pub fn try_from_bytes(bytes: &[u8]) -> Result<DelegatePermissionArgs<'_>, ProgramError> {
-        if bytes.is_empty() {
-            return Err(ProgramError::InvalidInstructionData);
-        }
-
-        Ok(DelegatePermissionArgs {
-            raw: bytes.as_ptr(),
-            _data: PhantomData,
-        })
-    }
-
-    #[inline]
-    pub fn bump(&self) -> u8 {
-        unsafe { *self.raw }
-    }
 }
