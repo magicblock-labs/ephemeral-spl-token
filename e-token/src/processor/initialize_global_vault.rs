@@ -1,5 +1,4 @@
 use crate::processor::initialize_ephemeral_ata::process_initialize_ephemeral_ata;
-use core::marker::PhantomData;
 use ephemeral_spl_api::state::RawType;
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::rent::Rent;
@@ -16,7 +15,7 @@ const LEGACY_GLOBAL_VAULT_LEN: usize = core::mem::size_of::<pinocchio::Address>(
 #[inline(always)]
 pub fn process_initialize_global_vault(
     accounts: &[AccountView],
-    instruction_data: &[u8],
+    _instruction_data: &[u8],
 ) -> ProgramResult {
     // Expected accounts:
     // 0. [writable] Global Vault account (PDA derived from [mint])
@@ -27,8 +26,6 @@ pub fn process_initialize_global_vault(
     // 5. []         Token program
     // 6. []         Associated token program
     // 7. []         System program
-
-    let args = InitializeGlobalVault::try_from_bytes(instruction_data)?;
 
     let [vault_info, payer_info, mint_info, vault_ephemeral_ata_info, vault_token_acc_info, token_program_info, associated_token_program_info, system_program_info, ..] =
         accounts
@@ -41,7 +38,15 @@ pub fn process_initialize_global_vault(
     }
 
     let program_id = ephemeral_spl_api::program::id_address();
-    let bump = [args.bump()];
+    let (vault_derived_pda, vault_bump) = ephemeral_spl_api::Address::find_program_address(
+        &[mint_info.address().as_ref()],
+        &program_id,
+    );
+    if vault_derived_pda != *vault_info.address() {
+        return Err(ProgramError::InvalidSeeds);
+    }
+
+    let bump = [vault_bump];
     let seed = [Seed::from(mint_info.address().as_ref()), Seed::from(&bump)];
     let signer_seeds = Signer::from(&seed);
     let required_lamports = Rent::get()?.try_minimum_balance(GlobalVault::LEN)?;
@@ -86,12 +91,12 @@ pub fn process_initialize_global_vault(
         .invoke_signed(&[signer_seeds])?;
     }
 
-    let (derived_vault_ephemeral_ata, vault_ephemeral_ata_bump) =
+    let (vault_ephemeral_ata_derived_pda, vault_ephemeral_ata_bump) =
         ephemeral_spl_api::Address::find_program_address(
             &[vault_info.address().as_ref(), mint_info.address().as_ref()],
             &program_id,
         );
-    if derived_vault_ephemeral_ata != *vault_ephemeral_ata_info.address() {
+    if vault_ephemeral_ata_derived_pda != *vault_ephemeral_ata_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
 
@@ -120,31 +125,7 @@ pub fn process_initialize_global_vault(
     // Initialize the vault
     vault.mint = *mint_info.address();
     vault.token_account = *vault_token_acc_info.address();
+    vault.bump = vault_bump;
 
     Ok(())
-}
-
-/// Instruction data for the `InitializeGlobalVault` instruction.
-pub struct InitializeGlobalVault<'a> {
-    raw: *const u8,
-    _data: PhantomData<&'a [u8]>,
-}
-
-impl InitializeGlobalVault<'_> {
-    #[inline]
-    pub fn try_from_bytes(bytes: &[u8]) -> Result<InitializeGlobalVault<'_>, ProgramError> {
-        if bytes.is_empty() {
-            return Err(ProgramError::InvalidInstructionData);
-        }
-
-        Ok(InitializeGlobalVault {
-            raw: bytes.as_ptr(),
-            _data: PhantomData,
-        })
-    }
-
-    #[inline]
-    pub fn bump(&self) -> u8 {
-        unsafe { *self.raw }
-    }
 }

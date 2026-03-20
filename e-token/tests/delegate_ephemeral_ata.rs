@@ -57,11 +57,11 @@ async fn delegate_ephemeral_ata_succeeds() {
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_EPHEMERAL_ATA, pdas.bump_ata],
+        data: vec![instruction::INITIALIZE_EPHEMERAL_ATA],
     };
 
     let vault_token_acc = utils::derive_associated_token_address(pdas.vault, mint);
-    let (vault_eata, _vault_eata_bump) =
+    let (vault_eata, _) =
         Pubkey::find_program_address(&[pdas.vault.as_ref(), mint.as_ref()], &PROGRAM);
 
     let ix_init_vault = Instruction {
@@ -76,7 +76,7 @@ async fn delegate_ephemeral_ata_succeeds() {
             AccountMeta::new_readonly(utils::associated_token_program_id(), false), // associated token program
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_GLOBAL_VAULT, pdas.bump_vault],
+        data: vec![instruction::INITIALIZE_GLOBAL_VAULT],
     };
 
     let tx_init = Transaction::new_signed_with_payer(
@@ -129,7 +129,7 @@ async fn delegate_ephemeral_ata_succeeds() {
             AccountMeta::new_readonly(ephemeral_rollups_pinocchio::ID, false), // delegation program
             AccountMeta::new_readonly(solana_system_interface::program::ID, false), // system program
         ],
-        data: vec![instruction::DELEGATE_EPHEMERAL_ATA, pdas.bump_ata],
+        data: vec![instruction::DELEGATE_EPHEMERAL_ATA],
     };
 
     let tx = Transaction::new_signed_with_payer(
@@ -178,7 +178,7 @@ async fn delegate_ephemeral_ata_succeeds() {
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_EPHEMERAL_ATA, pdas.bump_ata],
+        data: vec![instruction::INITIALIZE_EPHEMERAL_ATA],
     };
 
     let reinit_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
@@ -248,11 +248,11 @@ async fn delegate_ephemeral_ata_non_owner_succeeds() {
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_EPHEMERAL_ATA, pdas.bump_ata],
+        data: vec![instruction::INITIALIZE_EPHEMERAL_ATA],
     };
 
     let vault_token_acc = utils::derive_associated_token_address(pdas.vault, mint);
-    let (vault_eata, _vault_eata_bump) =
+    let (vault_eata, _) =
         Pubkey::find_program_address(&[pdas.vault.as_ref(), mint.as_ref()], &PROGRAM);
 
     let ix_init_vault = Instruction {
@@ -267,7 +267,7 @@ async fn delegate_ephemeral_ata_non_owner_succeeds() {
             AccountMeta::new_readonly(utils::associated_token_program_id(), false), // associated token program
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_GLOBAL_VAULT, pdas.bump_vault],
+        data: vec![instruction::INITIALIZE_GLOBAL_VAULT],
     };
 
     let tx_init = Transaction::new_signed_with_payer(
@@ -307,7 +307,7 @@ async fn delegate_ephemeral_ata_non_owner_succeeds() {
             AccountMeta::new_readonly(ephemeral_rollups_pinocchio::ID, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::DELEGATE_EPHEMERAL_ATA, pdas.bump_ata],
+        data: vec![instruction::DELEGATE_EPHEMERAL_ATA],
     };
 
     let tx = Transaction::new_signed_with_payer(

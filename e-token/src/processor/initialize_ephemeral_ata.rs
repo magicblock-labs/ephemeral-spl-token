@@ -12,15 +12,13 @@ use {
 #[inline(always)]
 pub fn process_initialize_ephemeral_ata(
     accounts: &[AccountView],
-    instruction_data: &[u8],
+    _instruction_data: &[u8],
 ) -> ProgramResult {
     // Expected accounts:
     // 0. [writable] Ephemeral ATA account (PDA derived from [user, mint])
     // 1. []         Payer (funding account)
     // 2. []         User  (seed)
     // 3. []         Mint  (seed)
-
-    let args = InitializeEphemeralAta::try_from_bytes(instruction_data)?;
 
     let [ephemeral_ata_info, payer_info, user_info, mint_info, ..] = accounts else {
         return Err(ProgramError::NotEnoughAccountKeys);
@@ -32,7 +30,6 @@ pub fn process_initialize_ephemeral_ata(
         None,
         user_info,
         mint_info,
-        args.bump(),
     )
 }
 
@@ -43,17 +40,7 @@ pub(crate) fn initialize_ephemeral_ata_with_sponsor(
     sponsor_signer: Option<Signer<'_, '_>>,
     user_info: &AccountView,
     mint_info: &AccountView,
-    bump: u8,
 ) -> ProgramResult {
-    // Validate PDA derivation up front, even for idempotent re-initialization.
-    let (derived_pda, _) = ephemeral_spl_api::Address::find_program_address(
-        &[user_info.address().as_ref(), mint_info.address().as_ref()],
-        &ephemeral_spl_api::program::id_address(),
-    );
-    if derived_pda != *ephemeral_ata_info.address() {
-        return Err(ProgramError::InvalidSeeds);
-    }
-
     // Make init idempotent even if the account is currently delegated (owner changed).
     if let Ok(ephemeral_ata) =
         unsafe { load_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked()) }
@@ -66,12 +53,21 @@ pub(crate) fn initialize_ephemeral_ata_with_sponsor(
         }
     }
 
+    // Validate PDA derivation up front, even for idempotent re-initialization.
+    let (derived_pda, eata_bump) = ephemeral_spl_api::Address::find_program_address(
+        &[user_info.address().as_ref(), mint_info.address().as_ref()],
+        &ephemeral_spl_api::program::id_address(),
+    );
+    if derived_pda != *ephemeral_ata_info.address() {
+        return Err(ProgramError::InvalidSeeds);
+    }
+
     // Any other pre-existing account at this PDA is invalid for initialization.
     if ephemeral_ata_info.lamports() > 0 {
         return Err(ProgramError::InvalidAccountData);
     }
 
-    let bump = [bump];
+    let bump = [eata_bump];
     let seed = [
         Seed::from(user_info.address().as_ref()),
         Seed::from(mint_info.address().as_ref()),
@@ -103,27 +99,7 @@ pub(crate) fn initialize_ephemeral_ata_with_sponsor(
     ephemeral_ata.owner = *user_info.address();
     ephemeral_ata.mint = *mint_info.address();
     ephemeral_ata.amount = 0;
+    ephemeral_ata.bump = eata_bump;
 
     Ok(())
-}
-
-/// Instruction data for the `InitializeMint` instruction.
-pub struct InitializeEphemeralAta {
-    bump: u8,
-}
-
-impl InitializeEphemeralAta {
-    #[inline]
-    pub fn try_from_bytes(bytes: &[u8]) -> Result<InitializeEphemeralAta, ProgramError> {
-        if bytes.len() != 1 {
-            return Err(ProgramError::InvalidInstructionData);
-        }
-
-        Ok(InitializeEphemeralAta { bump: bytes[0] })
-    }
-
-    #[inline]
-    pub fn bump(&self) -> u8 {
-        self.bump
-    }
 }

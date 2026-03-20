@@ -25,9 +25,9 @@ async fn undelegate_ephemeral_ata_permission_callback() {
     let payer_pubkey = payer.pubkey();
     let mint = Keypair::new().pubkey();
 
-    let (ephemeral_ata, _bump) =
+    let (ephemeral_ata, _) =
         Pubkey::find_program_address(&[payer_pubkey.as_ref(), mint.as_ref()], &PROGRAM);
-    let (permission_pda, _perm_bump) = Pubkey::find_program_address(
+    let (permission_pda, _) = Pubkey::find_program_address(
         &[b"permission:", ephemeral_ata.as_ref()],
         &PERMISSION_PROGRAM_ID,
     );

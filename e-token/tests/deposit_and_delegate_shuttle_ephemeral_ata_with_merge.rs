@@ -76,13 +76,12 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_deposits_and_stor
     .await;
     let destination_ata = setup.user_tokens[0];
 
-    let (shuttle_metadata, shuttle_bump) =
+    let (shuttle_metadata, _) =
         utils::derive_shuttle_ephemeral_ata(PROGRAM, owner.pubkey(), mint, shuttle_id);
     let (shuttle_eata, _) = utils::derive_shuttle_eata(PROGRAM, shuttle_metadata, mint);
     let shuttle_wallet_ata = utils::derive_associated_token_address(shuttle_metadata, mint);
     let pdas = utils::derive_pdas(PROGRAM, owner.pubkey(), mint);
     let vault = pdas.vault;
-    let vault_bump = pdas.bump_vault;
     let (vault_eata, _) = Pubkey::find_program_address(&[vault.as_ref(), mint.as_ref()], &PROGRAM);
     let vault_ata = utils::derive_associated_token_address(vault, mint);
     let owner_source_ata = owner_token.pubkey();
@@ -109,7 +108,7 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_deposits_and_stor
             AccountMeta::new_readonly(utils::associated_token_program_id(), false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_GLOBAL_VAULT, vault_bump],
+        data: vec![instruction::INITIALIZE_GLOBAL_VAULT],
     };
     let rent = context.banks_client.get_rent().await.unwrap();
     let ix_create_owner_source = solana_system_interface::instruction::create_account(
@@ -172,7 +171,6 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_deposits_and_stor
 
     let mut delegate_data = vec![instruction::SETUP_AND_DELEGATE_SHUTTLE_EPHEMERAL_ATA_WITH_MERGE];
     delegate_data.extend_from_slice(&shuttle_id.to_le_bytes());
-    delegate_data.push(shuttle_bump);
     delegate_data.extend_from_slice(&DEPOSIT_AMOUNT.to_le_bytes());
     delegate_data.extend_from_slice(&validator.to_bytes());
 

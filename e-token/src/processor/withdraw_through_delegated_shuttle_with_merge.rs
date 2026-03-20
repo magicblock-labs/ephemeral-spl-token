@@ -1,5 +1,8 @@
 use ephemeral_rollups_pinocchio::consts::{MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID};
-use ephemeral_spl_api::instruction::internal;
+use ephemeral_spl_api::{
+    instruction::internal,
+    state::{ephemeral_ata::EphemeralAta, load_unchecked},
+};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_token_2022::state::TokenAccount;
 use solana_instruction::{AccountMeta, Instruction};
@@ -51,7 +54,6 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
         accounts.token_program_info,
         accounts.system_program,
         args.shuttle_id(),
-        args.shuttle_bump(),
     )?;
 
     #[cfg(feature = "logging")]
@@ -75,6 +77,9 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
         undelegate_withdraw_and_close_shuttle_action(&accounts),
     ];
 
+    let shuttle_eata =
+        unsafe { load_unchecked::<EphemeralAta>(accounts.shuttle_eata_info.borrow_unchecked())? };
+
     delegate_sponsored_shuttle_with_post_actions(
         accounts.payer_info,
         accounts.rent_pda_info,
@@ -88,7 +93,7 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
         accounts.system_program,
         args.common_args(),
         &prepared.mint,
-        prepared.shuttle_eata_bump,
+        shuttle_eata.bump,
         prepared.rent_bump,
         post_actions,
     )

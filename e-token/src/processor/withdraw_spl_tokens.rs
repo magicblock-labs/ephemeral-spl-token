@@ -41,7 +41,6 @@ pub fn process_withdraw_spl_tokens(
         user_dest_token_acc,
         token_program_info,
         args.amount(),
-        args.bump(),
     )
 }
 
@@ -57,7 +56,6 @@ pub(crate) fn withdraw_ephemeral_ata_tokens(
     user_dest_token_acc: &AccountView,
     token_program_info: &AccountView,
     amount: u64,
-    vault_bump: u8,
 ) -> ProgramResult {
     if require_owner_signature && !owner.is_signer() {
         return Err(ProgramError::MissingRequiredSignature);
@@ -111,7 +109,7 @@ pub(crate) fn withdraw_ephemeral_ata_tokens(
     };
 
     // Perform transfer from vault token account to user destination, signed by vault PDA
-    let bump = [vault_bump];
+    let bump = [vault.bump];
     let seeds = [Seed::from(mint_info.address().as_ref()), Seed::from(&bump)];
     let signer = Signer::from(&seeds);
 
@@ -144,7 +142,7 @@ pub struct WithdrawArgs<'a> {
 impl WithdrawArgs<'_> {
     #[inline]
     pub fn try_from_bytes(bytes: &[u8]) -> Result<WithdrawArgs<'_>, ProgramError> {
-        if bytes.len() < 9 {
+        if bytes.len() != 8 {
             return Err(ProgramError::InvalidInstructionData);
         }
         Ok(WithdrawArgs {
@@ -161,10 +159,5 @@ impl WithdrawArgs<'_> {
             core::ptr::copy_nonoverlapping(self.raw, buf.as_mut_ptr(), 8);
         }
         u64::from_le_bytes(buf)
-    }
-
-    #[inline]
-    pub fn bump(&self) -> u8 {
-        unsafe { *self.raw.add(8) }
     }
 }

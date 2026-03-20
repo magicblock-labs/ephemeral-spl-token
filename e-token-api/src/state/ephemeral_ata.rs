@@ -11,6 +11,8 @@ pub struct EphemeralAta {
     pub mint: Address,
     /// The amount of tokens this account holds.
     pub amount: u64,
+    /// The bump of the eata
+    pub bump: u8,
 }
 
 impl RawType for EphemeralAta {

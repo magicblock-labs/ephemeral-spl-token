@@ -171,7 +171,7 @@ async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_clean
     let validator = Pubkey::new_unique();
     let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
 
-    let (shuttle_metadata, shuttle_bump) =
+    let (shuttle_metadata, _) =
         utils::derive_shuttle_ephemeral_ata(PROGRAM, owner.pubkey(), mint, shuttle_id);
     let (shuttle_eata, _) = utils::derive_shuttle_eata(PROGRAM, shuttle_metadata, mint);
     let shuttle_wallet_ata = utils::derive_associated_token_address(shuttle_metadata, mint);
@@ -256,7 +256,6 @@ async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_clean
 
     let mut withdraw_data = vec![instruction::WITHDRAW_THROUGH_DELEGATED_SHUTTLE_WITH_MERGE];
     withdraw_data.extend_from_slice(&shuttle_id.to_le_bytes());
-    withdraw_data.push(shuttle_bump);
     withdraw_data.extend_from_slice(&TRANSFER_AMOUNT.to_le_bytes());
     withdraw_data.extend_from_slice(&validator.to_bytes());
 

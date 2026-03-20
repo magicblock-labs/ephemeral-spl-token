@@ -59,7 +59,7 @@ async fn delegate_ephemeral_ata_permission_succeeds() {
     let user = payer;
     let mint = Pubkey::new_unique();
 
-    let (ephemeral_ata, bump) = Pubkey::find_program_address(
+    let (ephemeral_ata, _) = Pubkey::find_program_address(
         &[user.to_bytes().as_slice(), mint.to_bytes().as_slice()],
         &PROGRAM,
     );
@@ -77,7 +77,7 @@ async fn delegate_ephemeral_ata_permission_succeeds() {
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_EPHEMERAL_ATA, bump],
+        data: vec![instruction::INITIALIZE_EPHEMERAL_ATA],
     };
 
     let ix_create_permission = Instruction {
@@ -92,7 +92,7 @@ async fn delegate_ephemeral_ata_permission_succeeds() {
         data: {
             let flag =
                 ephemeral_rollups_pinocchio::acl::types::MemberFlags::default().to_acl_flag_byte();
-            vec![instruction::CREATE_EPHEMERAL_ATA_PERMISSION, bump, flag]
+            vec![instruction::CREATE_EPHEMERAL_ATA_PERMISSION, flag]
         },
     };
 
@@ -135,7 +135,7 @@ async fn delegate_ephemeral_ata_permission_succeeds() {
             AccountMeta::new_readonly(ephemeral_rollups_pinocchio::ID, false),
             AccountMeta::new_readonly(validator, false),
         ],
-        data: vec![instruction::DELEGATE_EPHEMERAL_ATA_PERMISSION, bump],
+        data: vec![instruction::DELEGATE_EPHEMERAL_ATA_PERMISSION],
     };
 
     let tx_delegate = Transaction::new_signed_with_payer(
@@ -221,7 +221,7 @@ async fn delegate_ephemeral_ata_permission_non_owner_succeeds() {
     let user = Pubkey::new_unique();
     let mint = Pubkey::new_unique();
 
-    let (ephemeral_ata, bump) = Pubkey::find_program_address(
+    let (ephemeral_ata, _) = Pubkey::find_program_address(
         &[user.to_bytes().as_slice(), mint.to_bytes().as_slice()],
         &PROGRAM,
     );
@@ -239,7 +239,7 @@ async fn delegate_ephemeral_ata_permission_non_owner_succeeds() {
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_EPHEMERAL_ATA, bump],
+        data: vec![instruction::INITIALIZE_EPHEMERAL_ATA],
     };
 
     let ix_create_permission = Instruction {
@@ -254,7 +254,7 @@ async fn delegate_ephemeral_ata_permission_non_owner_succeeds() {
         data: {
             let flag =
                 ephemeral_rollups_pinocchio::acl::types::MemberFlags::default().to_acl_flag_byte();
-            vec![instruction::CREATE_EPHEMERAL_ATA_PERMISSION, bump, flag]
+            vec![instruction::CREATE_EPHEMERAL_ATA_PERMISSION, flag]
         },
     };
 
@@ -297,7 +297,7 @@ async fn delegate_ephemeral_ata_permission_non_owner_succeeds() {
             AccountMeta::new_readonly(ephemeral_rollups_pinocchio::ID, false),
             AccountMeta::new_readonly(validator, false),
         ],
-        data: vec![instruction::DELEGATE_EPHEMERAL_ATA_PERMISSION, bump],
+        data: vec![instruction::DELEGATE_EPHEMERAL_ATA_PERMISSION],
     };
 
     let tx_delegate = Transaction::new_signed_with_payer(

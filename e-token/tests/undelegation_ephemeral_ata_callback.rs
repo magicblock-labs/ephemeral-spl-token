@@ -31,7 +31,7 @@ async fn undelegation_callback_restores_ephemeral_ata() {
     let payer = Keypair::new();
     let payer_pubkey = payer.pubkey();
     let seeds: [&[u8]; 2] = [payer_pubkey.as_ref(), mint.as_ref()];
-    let (delegated_ata, _bump) = Pubkey::find_program_address(&seeds, &PROGRAM);
+    let (delegated_ata, _) = Pubkey::find_program_address(&seeds, &PROGRAM);
 
     println!("Delegated ata: {:?}", delegated_ata);
 

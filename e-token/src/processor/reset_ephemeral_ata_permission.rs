@@ -20,8 +20,7 @@ pub fn process_reset_ephemeral_ata_permission(
     // 3. []         Permission program (ACL)
 
     // Instruction data layout:
-    // [0] bump
-    // [1] MemberFlags bitfield encoded via MemberFlags::to_acl_flag_byte.
+    // [0] MemberFlags bitfield encoded via MemberFlags::to_acl_flag_byte.
     let args = ResetEphemeralAtaPermission::try_from_bytes(instruction_data)?;
 
     let [ephemeral_ata_info, permission_info, owner_info, permission_program, ..] = accounts else {
@@ -76,7 +75,7 @@ pub fn process_reset_ephemeral_ata_permission(
         &PERMISSION_PROGRAM_ID,
     )
     .seeds(&[ephemeral_ata.owner.as_ref(), ephemeral_ata.mint.as_ref()])
-    .bump(args.bump())
+    .bump(ephemeral_ata.bump)
     .members(members_args)
     .invoke()
 }
@@ -89,7 +88,7 @@ pub struct ResetEphemeralAtaPermission<'a> {
 impl ResetEphemeralAtaPermission<'_> {
     #[inline]
     pub fn try_from_bytes(bytes: &[u8]) -> Result<ResetEphemeralAtaPermission<'_>, ProgramError> {
-        if bytes.len() < 2 {
+        if bytes.is_empty() {
             return Err(ProgramError::InvalidInstructionData);
         }
 
@@ -100,12 +99,7 @@ impl ResetEphemeralAtaPermission<'_> {
     }
 
     #[inline]
-    pub fn bump(&self) -> u8 {
-        unsafe { *self.raw }
-    }
-
-    #[inline]
     pub fn flag_byte(&self) -> u8 {
-        unsafe { *self.raw.add(1) }
+        unsafe { *self.raw }
     }
 }

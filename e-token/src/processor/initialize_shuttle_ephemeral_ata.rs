@@ -49,7 +49,6 @@ pub fn process_initialize_shuttle_ephemeral_ata(
         token_program_info,
         system_program_info,
         args.shuttle_id(),
-        args.bump(),
     )?;
 
     Ok(())
@@ -69,20 +68,16 @@ pub(crate) fn initialize_shuttle_ephemeral_ata_with_sponsor(
     token_program_info: &AccountView,
     system_program_info: &AccountView,
     shuttle_id: u32,
-    shuttle_bump: u8,
 ) -> ProgramResult {
     let shuttle_id_seed = shuttle_id.to_le_bytes();
-    let bump = [shuttle_bump];
-    let derived_shuttle_pda = ephemeral_spl_api::Address::create_program_address(
+    let (derived_shuttle_pda, shuttle_bump) = ephemeral_spl_api::Address::find_program_address(
         &[
             owner_info.address().as_ref(),
             mint_info.address().as_ref(),
             shuttle_id_seed.as_ref(),
-            bump.as_ref(),
         ],
         &ephemeral_spl_api::program::id_address(),
-    )
-    .map_err(|_| ProgramError::InvalidSeeds)?;
+    );
     if derived_shuttle_pda != *shuttle_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
@@ -94,6 +89,7 @@ pub(crate) fn initialize_shuttle_ephemeral_ata_with_sponsor(
     };
 
     if !shuttle_is_owned_by_program {
+        let bump = [shuttle_bump];
         let shuttle_seed = [
             Seed::from(owner_info.address().as_ref()),
             Seed::from(mint_info.address().as_ref()),
@@ -123,6 +119,7 @@ pub(crate) fn initialize_shuttle_ephemeral_ata_with_sponsor(
         shuttle.owner = *owner_info.address();
         shuttle.payer = *refund_recipient_info.address();
         shuttle.id = shuttle_id;
+        shuttle.bump = shuttle_bump;
     } else {
         let shuttle =
             unsafe { load_unchecked::<ShuttleMetadata>(shuttle_info.borrow_unchecked())? };
@@ -135,25 +132,12 @@ pub(crate) fn initialize_shuttle_ephemeral_ata_with_sponsor(
         }
     }
 
-    let (derived_shuttle_eata, shuttle_eata_bump) =
-        ephemeral_spl_api::Address::find_program_address(
-            &[
-                shuttle_info.address().as_ref(),
-                mint_info.address().as_ref(),
-            ],
-            &ephemeral_spl_api::program::id_address(),
-        );
-    if derived_shuttle_eata != *shuttle_eata_info.address() {
-        return Err(ProgramError::InvalidSeeds);
-    }
-
     initialize_ephemeral_ata_with_sponsor(
         shuttle_eata_info,
         sponsor_info,
         sponsor_signer.clone(),
         shuttle_info,
         mint_info,
-        shuttle_eata_bump,
     )?;
 
     let ata_ix = pinocchio_associated_token_account::instructions::CreateIdempotent {
@@ -181,7 +165,7 @@ pub struct InitializeShuttleEphemeralAta<'a> {
 impl InitializeShuttleEphemeralAta<'_> {
     #[inline]
     pub fn try_from_bytes(bytes: &[u8]) -> Result<InitializeShuttleEphemeralAta<'_>, ProgramError> {
-        if bytes.len() < 5 {
+        if bytes.len() < 4 {
             return Err(ProgramError::InvalidInstructionData);
         }
 
@@ -198,10 +182,5 @@ impl InitializeShuttleEphemeralAta<'_> {
             core::ptr::copy_nonoverlapping(self.raw, buf.as_mut_ptr(), 4);
         }
         u32::from_le_bytes(buf)
-    }
-
-    #[inline]
-    pub fn bump(&self) -> u8 {
-        unsafe { *self.raw.add(4) }
     }
 }

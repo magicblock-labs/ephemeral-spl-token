@@ -56,7 +56,6 @@ pub(crate) struct DepositAndDelegateShuttleAccounts<'a> {
 
 pub(crate) struct PreparedShuttleDelegation {
     pub(crate) mint: Address,
-    pub(crate) shuttle_eata_bump: u8,
     pub(crate) rent_bump: u8,
     pub(crate) already_delegated: bool,
 }
@@ -64,7 +63,6 @@ pub(crate) struct PreparedShuttleDelegation {
 #[derive(Clone, Copy)]
 pub(crate) struct DepositAndDelegateShuttleCommonArgs {
     pub(crate) shuttle_id: u32,
-    pub(crate) shuttle_bump: u8,
     pub(crate) amount: u64,
     pub(crate) validator: Option<[u8; 32]>,
 }
@@ -93,7 +91,7 @@ pub struct DepositAndDelegateShuttleArgs<'a> {
 impl DepositAndDelegateShuttleArgs<'_> {
     #[inline]
     pub fn try_from_bytes(bytes: &[u8]) -> Result<DepositAndDelegateShuttleArgs<'_>, ProgramError> {
-        if bytes.len() != 13 && bytes.len() != 45 {
+        if bytes.len() != 12 && bytes.len() != 44 {
             return Err(ProgramError::InvalidInstructionData);
         }
 
@@ -114,28 +112,23 @@ impl DepositAndDelegateShuttleArgs<'_> {
     }
 
     #[inline]
-    pub fn shuttle_bump(&self) -> u8 {
-        unsafe { *self.raw.add(4) }
-    }
-
-    #[inline]
     pub fn amount(&self) -> u64 {
         let mut buf = [0u8; 8];
         unsafe {
-            core::ptr::copy_nonoverlapping(self.raw.add(5), buf.as_mut_ptr(), 8);
+            core::ptr::copy_nonoverlapping(self.raw.add(4), buf.as_mut_ptr(), 8);
         }
         u64::from_le_bytes(buf)
     }
 
     #[inline]
     pub fn validator(&self) -> Option<[u8; 32]> {
-        if self.len == 13 {
+        if self.len == 14 {
             return None;
         }
 
         let mut validator = [0u8; 32];
         unsafe {
-            core::ptr::copy_nonoverlapping(self.raw.add(13), validator.as_mut_ptr(), 32);
+            core::ptr::copy_nonoverlapping(self.raw.add(12), validator.as_mut_ptr(), 32);
         }
         Some(validator)
     }
@@ -144,7 +137,6 @@ impl DepositAndDelegateShuttleArgs<'_> {
     pub(crate) fn common_args(&self) -> DepositAndDelegateShuttleCommonArgs {
         DepositAndDelegateShuttleCommonArgs {
             shuttle_id: self.shuttle_id(),
-            shuttle_bump: self.shuttle_bump(),
             amount: self.amount(),
             validator: self.validator(),
         }
@@ -206,7 +198,6 @@ pub(crate) fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actio
         accounts.token_program_info,
         accounts.system_program,
         args.shuttle_id,
-        args.shuttle_bump,
     )?;
 
     if prepared.already_delegated {
@@ -245,7 +236,7 @@ pub(crate) fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actio
         accounts.system_program,
         args,
         &prepared.mint,
-        prepared.shuttle_eata_bump,
+        shuttle_eata.bump,
         prepared.rent_bump,
         post_actions,
     )
@@ -263,7 +254,6 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
     token_program_info: &AccountView,
     system_program: &AccountView,
     shuttle_id: u32,
-    shuttle_bump: u8,
 ) -> Result<PreparedShuttleDelegation, ProgramError> {
     if !payer_info.is_signer() || !owner_info.is_signer() {
         return Err(ProgramError::MissingRequiredSignature);
@@ -303,14 +293,12 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
         token_program_info,
         system_program,
         shuttle_id,
-        shuttle_bump,
     )?;
 
     let delegation_program = ephemeral_spl_api::program::DELEGATION_PROGRAM_ID;
     if shuttle_eata_info.owned_by(&delegation_program) {
         return Ok(PreparedShuttleDelegation {
             mint: *mint_info.address(),
-            shuttle_eata_bump: 0,
             rent_bump,
             already_delegated: true,
         });
@@ -342,7 +330,7 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
         }
     }
 
-    let mint = {
+    let (mint, bump) = {
         let shuttle_eata =
             unsafe { load_unchecked::<EphemeralAta>(shuttle_eata_info.borrow_unchecked())? };
         if !shuttle_eata.is_initialized() {
@@ -351,25 +339,23 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
         if shuttle_eata.owner != *shuttle_info.address() {
             return Err(ProgramError::InvalidAccountData);
         }
-        shuttle_eata.mint
+        (shuttle_eata.mint, [shuttle_eata.bump])
     };
 
     if mint != *mint_info.address() {
         return Err(ProgramError::InvalidAccountData);
     }
 
-    let (derived_shuttle_eata, shuttle_eata_bump) =
-        ephemeral_spl_api::Address::find_program_address(
-            &[shuttle_info.address().as_ref(), mint.as_ref()],
-            &ephemeral_spl_api::program::id_address(),
-        );
+    let derived_shuttle_eata = ephemeral_spl_api::Address::create_program_address(
+        &[shuttle_info.address().as_ref(), mint.as_ref(), &bump],
+        &ephemeral_spl_api::program::id_address(),
+    )?;
     if derived_shuttle_eata != *shuttle_eata_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
 
     Ok(PreparedShuttleDelegation {
         mint,
-        shuttle_eata_bump,
         rent_bump,
         already_delegated: false,
     })
