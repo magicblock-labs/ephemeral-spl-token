@@ -1,4 +1,4 @@
-use dlp::pda::{fees_vault_pda, validator_fees_vault_pda_from_validator};
+use dlp_api::pda::{fees_vault_pda, validator_fees_vault_pda_from_validator};
 use ephemeral_rollups_pinocchio::consts::DELEGATION_PROGRAM_ID;
 use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
@@ -78,8 +78,8 @@ async fn undelegation_callback_restores_ephemeral_ata() {
 
     // Setup the delegated record PDA
     let mut delegation_record_data =
-        vec![0u8; dlp::state::DelegationRecord::size_with_discriminator()];
-    let delegation_record = dlp::state::DelegationRecord {
+        vec![0u8; dlp_api::state::DelegationRecord::size_with_discriminator()];
+    let delegation_record = dlp_api::state::DelegationRecord {
         authority: payer_pubkey.to_bytes().into(),
         owner: PROGRAM.to_bytes().into(),
         delegation_slot: 0,
@@ -105,7 +105,7 @@ async fn undelegation_callback_restores_ephemeral_ata() {
     );
 
     // Setup the delegation metadata PDA
-    let delegation_metadata = dlp::state::DelegationMetadata {
+    let delegation_metadata = dlp_api::state::DelegationMetadata {
         last_update_nonce: 0,
         is_undelegatable: true,
         seeds: seeds.iter().map(|s| s.to_vec()).collect(),
@@ -159,7 +159,7 @@ async fn undelegation_callback_restores_ephemeral_ata() {
     let context = pt.start_with_context().await;
 
     // Call undelegation
-    let ix_undelegate = dlp::instruction_builder::undelegate(
+    let ix_undelegate = dlp_api::instruction_builder::undelegate(
         payer_pubkey.to_bytes().into(),
         delegated_ata.to_bytes().into(),
         PROGRAM.to_bytes().into(),

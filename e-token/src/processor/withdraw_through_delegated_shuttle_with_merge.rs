@@ -1,3 +1,4 @@
+use dlp_api::compact::ClearText;
 use ephemeral_rollups_pinocchio::consts::{MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID};
 use ephemeral_spl_api::{
     instruction::internal,
@@ -95,7 +96,7 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
         &prepared.mint,
         shuttle_eata.bump,
         prepared.rent_bump,
-        post_actions,
+        post_actions.cleartext(),
     )
 }
 
