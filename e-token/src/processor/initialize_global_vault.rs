@@ -11,6 +11,7 @@ use {
 };
 
 const LEGACY_GLOBAL_VAULT_LEN: usize = core::mem::size_of::<pinocchio::Address>();
+const GLOBAL_VAULT_V0_LEN: usize = core::mem::size_of::<GlobalVault>() - 1;
 
 #[inline(always)]
 pub fn process_initialize_global_vault(
@@ -55,7 +56,8 @@ pub fn process_initialize_global_vault(
         let vault_data_len = vault_info.data_len();
         if vault_data_len == GlobalVault::LEN {
             // Already on current layout.
-        } else if vault_data_len == LEGACY_GLOBAL_VAULT_LEN {
+        } else if vault_data_len == LEGACY_GLOBAL_VAULT_LEN || vault_data_len == GLOBAL_VAULT_V0_LEN
+        {
             // Migrate legacy vaults from 32-byte layout (mint only) to 64-byte layout.
             // TODO: Remove this migration path once all deployed vaults are upgraded.
             let legacy_mint = {
