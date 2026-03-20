@@ -61,6 +61,8 @@ async fn delegate_ephemeral_ata_succeeds() {
     };
 
     let vault_token_acc = utils::derive_associated_token_address(pdas.vault, mint);
+    let (vault_eata, _vault_eata_bump) =
+        Pubkey::find_program_address(&[pdas.vault.as_ref(), mint.as_ref()], &PROGRAM);
 
     let ix_init_vault = Instruction {
         program_id: PROGRAM,
@@ -68,6 +70,7 @@ async fn delegate_ephemeral_ata_succeeds() {
             AccountMeta::new(pdas.vault, false),
             AccountMeta::new(payer, true),
             AccountMeta::new_readonly(mint, false),
+            AccountMeta::new(vault_eata, false),
             AccountMeta::new(vault_token_acc, false), // vault token account
             AccountMeta::new_readonly(spl_token_interface::ID, false), // token program
             AccountMeta::new_readonly(utils::associated_token_program_id(), false), // associated token program
@@ -130,13 +133,28 @@ async fn delegate_ephemeral_ata_succeeds() {
     };
 
     let tx = Transaction::new_signed_with_payer(
-        &[ix_delegate],
+        &[ix_delegate.clone()],
         Some(&payer),
         &[&context.payer],
         context.last_blockhash,
     );
 
     context.banks_client.process_transaction(tx).await.unwrap();
+
+    let redelegate_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
+
+    let tx_redelegate = Transaction::new_signed_with_payer(
+        &[ix_delegate],
+        Some(&payer),
+        &[&context.payer],
+        redelegate_blockhash,
+    );
+
+    context
+        .banks_client
+        .process_transaction(tx_redelegate)
+        .await
+        .unwrap();
 
     // Assert ATA is owned by delegation program after delegation
     let ata_account = context
@@ -147,6 +165,44 @@ async fn delegate_ephemeral_ata_succeeds() {
     assert!(ata_account.is_some());
     assert_eq!(
         ata_account.unwrap().owner,
+        ephemeral_spl_api::program::DELEGATION_PROGRAM_ID
+    );
+
+    // Re-running InitializeEphemeralAta must be idempotent even when delegated.
+    let ix_reinit = Instruction {
+        program_id: PROGRAM,
+        accounts: vec![
+            AccountMeta::new(pdas.ephemeral_ata, false),
+            AccountMeta::new_readonly(payer, false),
+            AccountMeta::new_readonly(user, false),
+            AccountMeta::new_readonly(mint, false),
+            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+        ],
+        data: vec![instruction::INITIALIZE_EPHEMERAL_ATA, pdas.bump_ata],
+    };
+
+    let reinit_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
+
+    let tx_reinit = Transaction::new_signed_with_payer(
+        &[ix_reinit],
+        Some(&payer),
+        &[&context.payer],
+        reinit_blockhash,
+    );
+    context
+        .banks_client
+        .process_transaction(tx_reinit)
+        .await
+        .unwrap();
+
+    let ata_account_after_reinit = context
+        .banks_client
+        .get_account(pdas.ephemeral_ata)
+        .await
+        .unwrap()
+        .expect("ephemeral ata should still exist");
+    assert_eq!(
+        ata_account_after_reinit.owner,
         ephemeral_spl_api::program::DELEGATION_PROGRAM_ID
     );
 
@@ -196,6 +252,8 @@ async fn delegate_ephemeral_ata_non_owner_succeeds() {
     };
 
     let vault_token_acc = utils::derive_associated_token_address(pdas.vault, mint);
+    let (vault_eata, _vault_eata_bump) =
+        Pubkey::find_program_address(&[pdas.vault.as_ref(), mint.as_ref()], &PROGRAM);
 
     let ix_init_vault = Instruction {
         program_id: PROGRAM,
@@ -203,6 +261,7 @@ async fn delegate_ephemeral_ata_non_owner_succeeds() {
             AccountMeta::new(pdas.vault, false),
             AccountMeta::new(payer, true),
             AccountMeta::new_readonly(mint, false),
+            AccountMeta::new(vault_eata, false),
             AccountMeta::new(vault_token_acc, false), // vault token account
             AccountMeta::new_readonly(spl_token_interface::ID, false), // token program
             AccountMeta::new_readonly(utils::associated_token_program_id(), false), // associated token program

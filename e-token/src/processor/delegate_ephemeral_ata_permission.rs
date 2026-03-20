@@ -43,6 +43,12 @@ pub fn process_delegate_ephemeral_ata_permission(
         return Err(ProgramError::InvalidAccountData);
     }
 
+    let dlp_program = ephemeral_spl_api::program::DELEGATION_PROGRAM_ID;
+
+    if permission_info.owned_by(&dlp_program) {
+        return Ok(());
+    }
+
     let ephemeral_ata =
         unsafe { load_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked())? };
 
@@ -89,7 +95,7 @@ pub struct DelegatePermissionArgs<'a> {
 
 impl DelegatePermissionArgs<'_> {
     #[inline]
-    pub fn try_from_bytes(bytes: &[u8]) -> Result<DelegatePermissionArgs, ProgramError> {
+    pub fn try_from_bytes(bytes: &[u8]) -> Result<DelegatePermissionArgs<'_>, ProgramError> {
         if bytes.is_empty() {
             return Err(ProgramError::InvalidInstructionData);
         }

@@ -50,6 +50,8 @@ async fn withdraw_spl_tokens_decrements_ephemeral_amount() {
     let bump_vault = pdas.bump_vault;
     let user_source = setup.user_tokens[0];
     let user_dest = setup.user_tokens[1];
+    let (vault_eata, _vault_eata_bump) =
+        Pubkey::find_program_address(&[vault.as_ref(), mint.as_ref()], &PROGRAM);
     let vault_token = utils::derive_associated_token_address(vault, mint);
 
     // Initialize Ephemeral ATA
@@ -72,6 +74,7 @@ async fn withdraw_spl_tokens_decrements_ephemeral_amount() {
             AccountMeta::new(vault, false),
             AccountMeta::new_readonly(payer, false),
             AccountMeta::new_readonly(mint, false),
+            AccountMeta::new(vault_eata, false),
             AccountMeta::new(vault_token, false), // vault token account
             AccountMeta::new_readonly(spl_token_interface::ID, false), // token program
             AccountMeta::new_readonly(utils::associated_token_program_id(), false), // associated token program

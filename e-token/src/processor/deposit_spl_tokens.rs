@@ -3,7 +3,7 @@ use {
     ephemeral_spl_api::state::{
         ephemeral_ata::EphemeralAta, global_vault::GlobalVault, load_mut_unchecked, load_unchecked,
     },
-    pinocchio::{error::ProgramError, AccountView, ProgramResult},
+    pinocchio::{error::ProgramError, AccountView, Address, ProgramResult},
     pinocchio_token_2022::state::Mint,
 };
 
@@ -13,7 +13,7 @@ pub fn process_deposit_spl_tokens(
     instruction_data: &[u8],
 ) -> ProgramResult {
     // Expected accounts:
-    // 0. [writable] Ephemeral ATA data account (PDA [payer, mint])
+    // 0. [writable] Ephemeral ATA data account (standard EATA or shuttle EATA)
     // 1. []         Global Vault data account (PDA [mint])
     // 2. []         Mint account (readonly)
     // 3. [writable] User source token account (SPL Token)
@@ -39,11 +39,47 @@ pub fn process_deposit_spl_tokens(
         }
     }
 
-    // Validate EphemeralAta account
+    let ephemeral_ata_mint = {
+        let ephemeral_ata =
+            unsafe { load_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked())? };
+        #[allow(clippy::clone_on_copy)]
+        let mint = ephemeral_ata.mint.clone();
+        mint
+    };
+
+    transfer_to_vault_for_mint(
+        vault_info,
+        mint_info,
+        user_source_token_acc,
+        vault_token_acc,
+        user_authority,
+        token_program_info,
+        &ephemeral_ata_mint,
+        args.amount(),
+    )?;
+
     let ephemeral_ata =
         unsafe { load_mut_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked_mut())? };
+    ephemeral_ata.amount = ephemeral_ata
+        .amount
+        .checked_add(args.amount())
+        .ok_or(ProgramError::InvalidArgument)?;
 
-    // Validate vault ownership first, before reading raw data.
+    Ok(())
+}
+
+#[inline(always)]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn transfer_to_vault_for_mint(
+    vault_info: &AccountView,
+    mint_info: &AccountView,
+    user_source_token_acc: &AccountView,
+    vault_token_acc: &AccountView,
+    user_authority: &AccountView,
+    token_program_info: &AccountView,
+    expected_mint: &Address,
+    amount: u64,
+) -> ProgramResult {
     unsafe {
         if vault_info
             .owner()
@@ -53,19 +89,14 @@ pub fn process_deposit_spl_tokens(
         }
     }
 
-    // Validate Vault data account
     let vault = unsafe { load_unchecked::<GlobalVault>(vault_info.borrow_unchecked())? };
-
-    // Check mint consistency
-    if ephemeral_ata.mint != *mint_info.address()
-        || vault.mint != *mint_info.address()
+    if vault.mint != *mint_info.address()
         || vault.token_account != *vault_token_acc.address()
+        || vault.mint != *expected_mint
     {
         return Err(ProgramError::InvalidAccountData);
     }
 
-    // Perform the actual SPL Token transfer via CPI using custom token transfer.
-    // Parse the base mint layout shared by both legacy SPL Token and Token-2022.
     let decimals = {
         let mint_data = unsafe { mint_info.borrow_unchecked() };
         if mint_data.len() < Mint::BASE_LEN {
@@ -84,18 +115,10 @@ pub fn process_deposit_spl_tokens(
         to: vault_token_acc,
         authority: user_authority,
         token_program: token_program_info.address(),
-        amount: args.amount(),
+        amount,
         decimals,
     }
-    .invoke()?;
-
-    // Safely increase the amount in the EphemeralAta
-    ephemeral_ata.amount = ephemeral_ata
-        .amount
-        .checked_add(args.amount())
-        .ok_or(ProgramError::InvalidArgument)?;
-
-    Ok(())
+    .invoke()
 }
 
 /// Instruction data for the `DepositSplTokens` instruction.
@@ -106,7 +129,7 @@ pub struct DepositArgs<'a> {
 
 impl DepositArgs<'_> {
     #[inline]
-    pub fn try_from_bytes(bytes: &[u8]) -> Result<DepositArgs, ProgramError> {
+    pub fn try_from_bytes(bytes: &[u8]) -> Result<DepositArgs<'_>, ProgramError> {
         if bytes.len() < 8 {
             return Err(ProgramError::InvalidInstructionData);
         }

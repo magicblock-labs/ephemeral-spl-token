@@ -9,11 +9,12 @@ Ephemeral SPL Token program implementing [MIMD 0013](https://github.com/magicblo
 ## Key functionalities
 The program exposes the following instructions (see `e-token-api/src/lib.rs`):
 - `0` InitializeEphemeralAta — create the Ephemeral ATA PDA derived from `[payer, mint]`.
-- `1` InitializeGlobalVault — create the global vault PDA derived from `[mint]` and its vault ATA.
+- `1` InitializeGlobalVault — create the global vault PDA derived from `[mint]`, plus the vault-owned Ephemeral ATA and vault ATA.
 - `2` DepositSplTokens — transfer tokens from the user into the global vault and increase the Ephemeral ATA balance.
 - `3` WithdrawSplTokens — transfer tokens back to the user from the global vault and decrease the Ephemeral ATA balance.
 - `4` DelegateEphemeralAta — delegate the Ephemeral ATA to a DLP program using PDA seeds.
 - `5` UndelegateEphemeralAta — commit state and undelegate via the delegation program.
+- `12` InitializeTransferQueue — create a per-mint transfer queue PDA derived from `[QUEUE_SEED, mint]`.
 
 Program ID and external program:
 - Ephemeral SPL Token Program ID is declared in `e-token-api/src/lib.rs` under `program::id()`.

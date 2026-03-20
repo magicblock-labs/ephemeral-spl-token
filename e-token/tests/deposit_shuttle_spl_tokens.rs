@@ -1,6 +1,7 @@
 use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
+use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
 use ephemeral_spl_api::state::{load_mut_unchecked, RawType};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
@@ -17,23 +18,29 @@ mod utils;
 
 pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 
-const DECIMALS: u8 = 6; // canonical USDC decimals
-const STARTING_BALANCE: u64 = 10_000 * 10u64.pow(DECIMALS as u32); // payer holds 10,000 tokens
+const DECIMALS: u8 = 6;
+const STARTING_BALANCE: u64 = 10_000 * 10u64.pow(DECIMALS as u32);
 
 #[tokio::test]
-async fn deposit_spl_tokens_increments_ephemeral_amount() {
+async fn deposit_spl_tokens_increments_shuttle_amount() {
     let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
     utils::add_associated_token_program(&mut pt);
     let mut context = pt.start_with_context().await;
 
     let payer = context.payer.pubkey();
-    let user = payer; // in this test, user == payer
+    let owner = payer;
+    let shuttle_id = 11_u32;
 
     let mint_kp = Keypair::new();
     let mint = mint_kp.pubkey();
 
-    // Derive PDAs and setup mint/accounts via utils
-    let pdas = utils::derive_pdas(PROGRAM, user, mint);
+    let pdas = utils::derive_pdas(PROGRAM, owner, mint);
+    let (shuttle_ephemeral_ata, shuttle_bump) =
+        utils::derive_shuttle_ephemeral_ata(PROGRAM, owner, mint, shuttle_id);
+    let (shuttle_eata, _shuttle_eata_bump) =
+        utils::derive_shuttle_eata(PROGRAM, shuttle_ephemeral_ata, mint);
+    let shuttle_wallet_ata = utils::derive_associated_token_address(shuttle_ephemeral_ata, mint);
+
     let setup = utils::setup_mint_and_token_accounts(
         &mut context,
         payer,
@@ -44,39 +51,32 @@ async fn deposit_spl_tokens_increments_ephemeral_amount() {
     )
     .await;
 
-    let ephemeral_ata = pdas.ephemeral_ata;
-    let bump_ata = pdas.bump_ata;
     let vault = pdas.vault;
-    let bump_vault = pdas.bump_vault;
+    let vault_bump = pdas.bump_vault;
     let user_ata = setup.user_tokens[0];
     let (vault_eata, _vault_eata_bump) =
         Pubkey::find_program_address(&[vault.as_ref(), mint.as_ref()], &PROGRAM);
     let vault_ata = utils::derive_associated_token_address(vault, mint);
 
-    // Assert initial SPL token balances
-    let user_token_acc_before = context
-        .banks_client
-        .get_account(user_ata)
-        .await
-        .unwrap()
-        .expect("user token account must exist");
-    let user_token_state_before = Account::unpack(&user_token_acc_before.data).unwrap();
-    assert_eq!(user_token_state_before.amount, STARTING_BALANCE);
-
-    // 1) Initialize Ephemeral ATA
-    let ix_init_ata = Instruction {
+    let mut shuttle_init_data = vec![instruction::INITIALIZE_SHUTTLE_EPHEMERAL_ATA];
+    shuttle_init_data.extend_from_slice(&shuttle_id.to_le_bytes());
+    shuttle_init_data.push(shuttle_bump);
+    let ix_init_shuttle = Instruction {
         program_id: PROGRAM,
         accounts: vec![
-            AccountMeta::new(ephemeral_ata, false),
-            AccountMeta::new_readonly(payer, false),
-            AccountMeta::new_readonly(user, false),
+            AccountMeta::new_readonly(payer, true),
+            AccountMeta::new(shuttle_ephemeral_ata, false),
+            AccountMeta::new(shuttle_eata, false),
+            AccountMeta::new(shuttle_wallet_ata, false),
+            AccountMeta::new_readonly(owner, false),
             AccountMeta::new_readonly(mint, false),
+            AccountMeta::new_readonly(spl_token_interface::ID, false),
+            AccountMeta::new_readonly(utils::associated_token_program_id(), false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_EPHEMERAL_ATA, bump_ata],
+        data: shuttle_init_data,
     };
 
-    // 2) Initialize Global Vault
     let ix_init_vault = Instruction {
         program_id: PROGRAM,
         accounts: vec![
@@ -84,17 +84,16 @@ async fn deposit_spl_tokens_increments_ephemeral_amount() {
             AccountMeta::new(payer, true),
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new(vault_eata, false),
-            AccountMeta::new(vault_ata, false), // vault token account
-            AccountMeta::new_readonly(spl_token_interface::ID, false), // token program
-            AccountMeta::new_readonly(utils::associated_token_program_id(), false), // associated token program
+            AccountMeta::new(vault_ata, false),
+            AccountMeta::new_readonly(spl_token_interface::ID, false),
+            AccountMeta::new_readonly(utils::associated_token_program_id(), false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_GLOBAL_VAULT, bump_vault],
+        data: vec![instruction::INITIALIZE_GLOBAL_VAULT, vault_bump],
     };
 
-    // Send both initializations in one tx
     let tx_init = Transaction::new_signed_with_payer(
-        &[ix_init_ata, ix_init_vault],
+        &[ix_init_shuttle, ix_init_vault],
         Some(&payer),
         &[&context.payer],
         context.last_blockhash,
@@ -105,16 +104,6 @@ async fn deposit_spl_tokens_increments_ephemeral_amount() {
         .await
         .unwrap();
 
-    let vault_token_acc_before = context
-        .banks_client
-        .get_account(vault_ata)
-        .await
-        .unwrap()
-        .expect("vault token account must exist");
-    let vault_token_state_before = Account::unpack(&vault_token_acc_before.data).unwrap();
-    assert_eq!(vault_token_state_before.amount, 0);
-
-    // 3) Deposit amount from payer's token to vault's token and increment Ephemeral ATA amount
     let amount: u64 = 100 * 10u64.pow(DECIMALS as u32);
     let mut data = vec![instruction::DEPOSIT_SPL_TOKENS];
     data.extend_from_slice(&amount.to_le_bytes());
@@ -122,13 +111,13 @@ async fn deposit_spl_tokens_increments_ephemeral_amount() {
     let ix_deposit = Instruction {
         program_id: PROGRAM,
         accounts: vec![
-            AccountMeta::new(ephemeral_ata, false), // [writable] Ephemeral ATA data
-            AccountMeta::new_readonly(vault, false), // [] Global vault data
-            AccountMeta::new_readonly(mint, false), // [] Mint pubkey (seed/consistency)
-            AccountMeta::new(user_ata, false),      // [writable] user source token acc
-            AccountMeta::new(vault_ata, false),     // [writable] vault token acc
-            AccountMeta::new_readonly(payer, true), // [signer] user authority
-            AccountMeta::new_readonly(spl_token_interface::ID, false), // [] token program id (readonly)
+            AccountMeta::new(shuttle_eata, false),
+            AccountMeta::new_readonly(vault, false),
+            AccountMeta::new_readonly(mint, false),
+            AccountMeta::new(user_ata, false),
+            AccountMeta::new(vault_ata, false),
+            AccountMeta::new_readonly(payer, true),
+            AccountMeta::new_readonly(spl_token_interface::ID, false),
         ],
         data,
     };
@@ -141,7 +130,6 @@ async fn deposit_spl_tokens_increments_ephemeral_amount() {
     );
     context.banks_client.process_transaction(tx).await.unwrap();
 
-    // Assert SPL token balances after deposit
     let user_token_acc_after = context
         .banks_client
         .get_account(user_ata)
@@ -160,18 +148,35 @@ async fn deposit_spl_tokens_increments_ephemeral_amount() {
     let vault_token_state_after = Account::unpack(&vault_token_acc_after.data).unwrap();
     assert_eq!(vault_token_state_after.amount, amount);
 
-    // Read back the Ephemeral ATA and verify amount incremented
     let account = context
         .banks_client
-        .get_account(ephemeral_ata)
+        .get_account(shuttle_ephemeral_ata)
         .await
         .unwrap()
-        .expect("ephemeral ata account must exist");
+        .expect("shuttle account must exist");
 
     assert_eq!(account.owner, PROGRAM);
-    assert_eq!(account.data.len(), EphemeralAta::LEN);
+    assert_eq!(account.data.len(), ShuttleMetadata::LEN);
 
     let mut mut_acc = account.data.clone();
-    let ata_data = unsafe { load_mut_unchecked::<EphemeralAta>(mut_acc.as_mut_slice()).unwrap() };
-    assert_eq!(ata_data.amount, amount);
+    let shuttle = unsafe { load_mut_unchecked::<ShuttleMetadata>(mut_acc.as_mut_slice()).unwrap() };
+    assert_eq!(shuttle.id, shuttle_id);
+    assert_eq!(shuttle.owner.as_array(), &owner.to_bytes());
+    assert_eq!(shuttle.payer.as_array(), &payer.to_bytes());
+
+    let shuttle_eata_account = context
+        .banks_client
+        .get_account(shuttle_eata)
+        .await
+        .unwrap()
+        .expect("shuttle eata must exist");
+    assert_eq!(shuttle_eata_account.data.len(), EphemeralAta::LEN);
+    let mut mut_shuttle_eata = shuttle_eata_account.data.clone();
+    let shuttle_eata_data =
+        unsafe { load_mut_unchecked::<EphemeralAta>(mut_shuttle_eata.as_mut_slice()).unwrap() };
+    assert_eq!(shuttle_eata_data.amount, amount);
+    assert_eq!(
+        shuttle_eata_data.owner.as_array(),
+        &shuttle_ephemeral_ata.to_bytes()
+    );
 }

@@ -1,7 +1,10 @@
 use pinocchio::error::ProgramError;
 
 pub mod ephemeral_ata;
+pub mod fees_pda;
 pub mod global_vault;
+pub mod shuttle_ephemeral_ata;
+pub mod transfer_queue;
 
 /// Trait to represent a type that can be initialized.
 pub trait Initializable {
@@ -13,7 +16,9 @@ pub trait Initializable {
 ///
 /// # Safety
 ///
-/// The caller must ensure that `bytes` contains a valid representation of `T`.
+/// The caller must ensure that `bytes` is properly aligned for `T` and contains
+/// a valid representation of `T`. The length and initialization checks below do
+/// not prove either property.
 #[inline(always)]
 pub unsafe fn load<T: Initializable + RawType>(bytes: &[u8]) -> Result<&T, ProgramError> {
     load_unchecked(bytes).and_then(|t: &T| {
@@ -32,7 +37,9 @@ pub unsafe fn load<T: Initializable + RawType>(bytes: &[u8]) -> Result<&T, Progr
 ///
 /// # Safety
 ///
-/// The caller must ensure that `bytes` contains a valid representation of `T`.
+/// The caller must ensure that `bytes` is properly aligned for `T` and contains
+/// a valid representation of `T`. The length check below does not prove either
+/// property.
 #[inline(always)]
 pub unsafe fn load_unchecked<T: RawType>(bytes: &[u8]) -> Result<&T, ProgramError> {
     if bytes.len() != T::LEN {
@@ -45,7 +52,9 @@ pub unsafe fn load_unchecked<T: RawType>(bytes: &[u8]) -> Result<&T, ProgramErro
 ///
 /// # Safety
 ///
-/// The caller must ensure that `bytes` contains a valid representation of `T`.
+/// The caller must ensure that `bytes` is properly aligned for `T` and contains
+/// a valid representation of `T`. The length and initialization checks below do
+/// not prove either property.
 #[inline(always)]
 pub unsafe fn load_mut<T: Initializable + RawType>(
     bytes: &mut [u8],
@@ -80,7 +89,9 @@ pub trait RawType {
 ///
 /// # Safety
 ///
-/// The caller must ensure that `bytes` contains a valid representation of `T`.
+/// The caller must ensure that `bytes` is properly aligned for `T` and contains
+/// a valid representation of `T`. The length check below does not prove either
+/// property.
 #[inline(always)]
 pub unsafe fn load_mut_unchecked<T: RawType>(bytes: &mut [u8]) -> Result<&mut T, ProgramError> {
     if bytes.len() != T::LEN {

@@ -1,4 +1,5 @@
 use ephemeral_spl_api::program::ID;
+use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::global_vault::GlobalVault;
 use ephemeral_spl_api::state::{load_mut_unchecked, Initializable, RawType};
 use solana_account::Account as SolanaAccount;
@@ -42,6 +43,8 @@ async fn initialize_global_vault() {
     .await;
 
     let vault_token_acc = utils::derive_associated_token_address(pdas.vault, mint);
+    let (vault_eata, _vault_eata_bump) =
+        Pubkey::find_program_address(&[pdas.vault.as_ref(), mint.as_ref()], &PROGRAM);
 
     // Build instruction
     let ix = Instruction {
@@ -50,6 +53,7 @@ async fn initialize_global_vault() {
             AccountMeta::new(pdas.vault, false),    // writable vault account
             AccountMeta::new(payer, true),          // payer (funds, signer)
             AccountMeta::new_readonly(mint, false), // mint (seed)
+            AccountMeta::new(vault_eata, false),    // vault ephemeral ATA
             AccountMeta::new(vault_token_acc, false), // vault token account
             AccountMeta::new_readonly(spl_token_interface::ID, false), // token program
             AccountMeta::new_readonly(utils::associated_token_program_id(), false), // associated token program
@@ -88,6 +92,15 @@ async fn initialize_global_vault() {
         .unwrap()
         .expect("vault token account must exist");
     assert_eq!(vault_token_acc_state.owner, spl_token_interface::ID);
+
+    let vault_eata_account = context
+        .banks_client
+        .get_account(vault_eata)
+        .await
+        .unwrap()
+        .expect("vault ephemeral ATA must exist");
+    assert_eq!(vault_eata_account.owner, PROGRAM);
+    assert_eq!(vault_eata_account.data.len(), EphemeralAta::LEN);
 }
 
 #[tokio::test]
@@ -125,6 +138,8 @@ async fn initialize_global_vault_migrates_legacy_layout() {
     .await;
 
     let vault_token_acc = utils::derive_associated_token_address(pdas.vault, mint);
+    let (vault_eata, _vault_eata_bump) =
+        Pubkey::find_program_address(&[pdas.vault.as_ref(), mint.as_ref()], &PROGRAM);
 
     let ix = Instruction {
         program_id: PROGRAM,
@@ -132,6 +147,7 @@ async fn initialize_global_vault_migrates_legacy_layout() {
             AccountMeta::new(pdas.vault, false),
             AccountMeta::new(payer, true),
             AccountMeta::new_readonly(mint, false),
+            AccountMeta::new(vault_eata, false),
             AccountMeta::new(vault_token_acc, false),
             AccountMeta::new_readonly(spl_token_interface::ID, false),
             AccountMeta::new_readonly(utils::associated_token_program_id(), false),
@@ -169,4 +185,13 @@ async fn initialize_global_vault_migrates_legacy_layout() {
         vault_data.token_account,
         ephemeral_spl_api::Address::new_from_array(vault_token_acc.to_bytes())
     );
+
+    let vault_eata_account = context
+        .banks_client
+        .get_account(vault_eata)
+        .await
+        .unwrap()
+        .expect("vault ephemeral ATA must exist after migration");
+    assert_eq!(vault_eata_account.owner, PROGRAM);
+    assert_eq!(vault_eata_account.data.len(), EphemeralAta::LEN);
 }
