@@ -653,7 +653,11 @@ fn cpi_delegate_with_actions_from_sponsor(
 
     let delegate = dlp_api::args::DelegateArgs {
         commit_frequency_ms: delegate_args.commit_frequency_ms,
-        seeds: delegate_args.seeds.iter().map(|seed| seed.to_vec()).collect(),
+        seeds: delegate_args
+            .seeds
+            .iter()
+            .map(|seed| seed.to_vec())
+            .collect(),
         validator: delegate_args
             .validator
             .map(|validator| (*validator.as_array()).into()),
