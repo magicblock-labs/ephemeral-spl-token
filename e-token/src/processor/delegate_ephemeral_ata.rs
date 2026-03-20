@@ -75,7 +75,7 @@ impl DelegateArgs {
     pub fn try_from_bytes(bytes: &[u8]) -> Result<DelegateArgs, ProgramError> {
         if bytes.is_empty() {
             Ok(DelegateArgs { validator: None })
-        } else if bytes.len() >= 32 {
+        } else if bytes.len() == 32 {
             let mut arr = [0u8; 32];
             arr.copy_from_slice(&bytes[..32]);
             Ok(DelegateArgs {
