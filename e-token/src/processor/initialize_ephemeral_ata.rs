@@ -2,12 +2,14 @@ use ephemeral_spl_api::state::{Initializable, RawType};
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
-use pinocchio_system::instructions::CreateAccount;
+use pinocchio_system::instructions::{CreateAccount, Transfer};
 use {
     ephemeral_spl_api::state::ephemeral_ata::EphemeralAta,
     ephemeral_spl_api::state::{load_mut_unchecked, load_unchecked},
     pinocchio::{error::ProgramError, AccountView, ProgramResult},
 };
+
+const EPHEMERAL_ATA_V0_LEN: usize = core::mem::size_of::<EphemeralAta>() - 8;
 
 #[inline(always)]
 pub fn process_initialize_ephemeral_ata(
@@ -60,6 +62,31 @@ pub(crate) fn initialize_ephemeral_ata_with_sponsor(
     );
     if derived_pda != *ephemeral_ata_info.address() {
         return Err(ProgramError::InvalidSeeds);
+    }
+
+    // Migrate legacy ephemeral ATAs from 32-byte layout (mint only) to 64-byte layout.
+    // TODO: Remove this migration path once all deployed ATAs are upgraded.
+    if ephemeral_ata_info.data_len() == EPHEMERAL_ATA_V0_LEN
+        && ephemeral_ata_info.owned_by(&crate::ID.into())
+    {
+        let current_lamports = ephemeral_ata_info.lamports();
+        if current_lamports < Rent::get()?.try_minimum_balance(EphemeralAta::LEN)? {
+            Transfer {
+                from: sponsor_info,
+                to: ephemeral_ata_info,
+                lamports: Rent::get()?.try_minimum_balance(EphemeralAta::LEN)? - current_lamports,
+            }
+            .invoke()?;
+        }
+
+        let ephemeral_ata = unsafe {
+            load_mut_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked_mut())?
+        };
+
+        // Set the missing bump
+        ephemeral_ata.bump = eata_bump;
+
+        return Ok(());
     }
 
     // Any other pre-existing account at this PDA is invalid for initialization.
