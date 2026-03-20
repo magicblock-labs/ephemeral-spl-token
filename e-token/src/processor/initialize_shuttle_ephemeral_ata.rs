@@ -10,7 +10,7 @@ use {
     pinocchio::{error::ProgramError, AccountView, ProgramResult},
 };
 
-const SHUTTLE_METADATA_V0_LEN: usize = core::mem::size_of::<ShuttleMetadata>() - 4;
+const SHUTTLE_METADATA_V0_LEN: usize = 68;
 
 #[inline(always)]
 pub fn process_initialize_shuttle_ephemeral_ata(

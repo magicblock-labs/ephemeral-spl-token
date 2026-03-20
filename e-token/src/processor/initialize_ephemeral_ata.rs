@@ -9,7 +9,7 @@ use {
     pinocchio::{error::ProgramError, AccountView, ProgramResult},
 };
 
-const EPHEMERAL_ATA_V0_LEN: usize = core::mem::size_of::<EphemeralAta>() - 8;
+const EPHEMERAL_ATA_V0_LEN: usize = 72;
 
 #[inline(always)]
 pub fn process_initialize_ephemeral_ata(

@@ -11,7 +11,7 @@ use {
 };
 
 const LEGACY_GLOBAL_VAULT_LEN: usize = core::mem::size_of::<pinocchio::Address>();
-const GLOBAL_VAULT_V0_LEN: usize = core::mem::size_of::<GlobalVault>() - 1;
+const GLOBAL_VAULT_V0_LEN: usize = 64;
 
 #[inline(always)]
 pub fn process_initialize_global_vault(
