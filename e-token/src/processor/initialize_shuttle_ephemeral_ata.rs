@@ -4,11 +4,13 @@ use ephemeral_spl_api::state::{load_mut_unchecked, load_unchecked, Initializable
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
-use pinocchio_system::instructions::CreateAccount;
+use pinocchio_system::instructions::{CreateAccount, Transfer};
 use {
     ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata,
     pinocchio::{error::ProgramError, AccountView, ProgramResult},
 };
+
+const SHUTTLE_METADATA_V0_LEN: usize = core::mem::size_of::<ShuttleMetadata>() - 4;
 
 #[inline(always)]
 pub fn process_initialize_shuttle_ephemeral_ata(
@@ -121,6 +123,25 @@ pub(crate) fn initialize_shuttle_ephemeral_ata_with_sponsor(
         shuttle.id = shuttle_id;
         shuttle.bump = shuttle_bump;
     } else {
+        // Migrate legacy shuttle metadata
+        if shuttle_info.data_len() == SHUTTLE_METADATA_V0_LEN {
+            let current_lamports = shuttle_info.lamports();
+            if current_lamports < Rent::get()?.try_minimum_balance(ShuttleMetadata::LEN)? {
+                Transfer {
+                    from: sponsor_info,
+                    to: shuttle_info,
+                    lamports: Rent::get()?.try_minimum_balance(ShuttleMetadata::LEN)?
+                        - current_lamports,
+                }
+                .invoke()?;
+            }
+            shuttle_info.resize(ShuttleMetadata::LEN)?;
+            let shuttle = unsafe {
+                load_mut_unchecked::<ShuttleMetadata>(shuttle_info.borrow_unchecked_mut())?
+            };
+            shuttle.bump = shuttle_bump;
+        }
+
         let shuttle =
             unsafe { load_unchecked::<ShuttleMetadata>(shuttle_info.borrow_unchecked())? };
         if !shuttle.is_initialized()
