@@ -13,6 +13,7 @@ pub struct EphemeralAta {
     pub amount: u64,
     /// The bump of the eata
     pub bump: u8,
+    pub _pad0: [u8; 7],
 }
 
 impl RawType for EphemeralAta {
