@@ -1,4 +1,4 @@
-use dlp::state::DelegationRecord;
+use dlp_api::state::DelegationRecord;
 use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
@@ -71,7 +71,8 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
     let mint_kp = Keypair::new();
     let mint = mint_kp.pubkey();
     let shuttle_id = 9_u32;
-    let validator = Pubkey::new_unique();
+    let validator = Keypair::new().pubkey();
+
     let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
 
     let setup = utils::setup_mint_and_token_accounts(
@@ -205,10 +206,45 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
     ];
     delegate_data.extend_from_slice(&shuttle_id.to_le_bytes());
     delegate_data.extend_from_slice(&DEPOSIT_AMOUNT.to_le_bytes());
-    delegate_data.extend_from_slice(&MIN_DELAY_MS.to_le_bytes());
-    delegate_data.extend_from_slice(&MAX_DELAY_MS.to_le_bytes());
-    delegate_data.extend_from_slice(&SPLIT.to_le_bytes());
-    delegate_data.extend_from_slice(&validator.to_bytes());
+
+    // add optional validator (varindex: 0)
+    {
+        delegate_data.push(32);
+        delegate_data.extend_from_slice(validator.as_array());
+    }
+
+    // add encrypted_destination_token_account (varindex: 1)
+    {
+        let data = dlp_api::encryption::encrypt_ed25519_recipient(
+            destination_ata.as_array(),
+            &validator.to_bytes(),
+        )
+        .expect("validator key should be valid for encryption");
+
+        println!("encrypted_destination: {:?}", data);
+
+        delegate_data.push(data.len().try_into().unwrap());
+        delegate_data.extend_from_slice(&data);
+    }
+
+    // add encrypted {min_delay_ms, max_delay_ms, split } (varindex: 2
+    {
+        let data = dlp_api::encryption::encrypt_ed25519_recipient(
+            &[
+                &MIN_DELAY_MS.to_le_bytes()[..],
+                &MAX_DELAY_MS.to_le_bytes()[..],
+                &SPLIT.to_le_bytes()[..],
+            ]
+            .concat(),
+            &validator.to_bytes(),
+        )
+        .expect("validator key should be valid for encryption");
+
+        println!("encrypted_data_suffix: {:?}", data);
+
+        delegate_data.push(data.len().try_into().unwrap());
+        delegate_data.extend_from_slice(&data);
+    }
 
     let ix_delegate = Instruction {
         program_id: PROGRAM,
@@ -343,7 +379,13 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
     )
     .expect("delegation record must deserialize");
     assert_eq!(record.owner.to_bytes(), PROGRAM.to_bytes());
-    assert_eq!(record.authority.to_bytes(), validator.to_bytes());
+    assert_eq!(
+        record.authority.to_bytes(),
+        validator.to_bytes(),
+        "record.authority = {}, validator = {}",
+        record.authority,
+        validator
+    );
     assert!(
         delegation_record_account.data.len() > record_len,
         "expected stored post-delegation payload bytes"

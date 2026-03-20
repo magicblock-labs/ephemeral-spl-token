@@ -78,7 +78,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge(
     process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions(
         &accounts,
         args.common_args(),
-        default_post_delegation_actions(&accounts),
+        default_post_delegation_actions(&accounts).cleartext(),
     )
 }
 
@@ -185,7 +185,7 @@ pub(crate) fn default_post_delegation_actions(
 pub(crate) fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions(
     accounts: &DepositAndDelegateShuttleAccounts<'_>,
     args: DepositAndDelegateShuttleCommonArgs,
-    post_actions: Vec<Instruction>,
+    post_actions: PostDelegationActions,
 ) -> ProgramResult {
     let prepared = prepare_sponsored_shuttle_delegation(
         accounts.payer_info,
@@ -377,7 +377,7 @@ pub(crate) fn delegate_sponsored_shuttle_with_post_actions(
     mint: &Address,
     shuttle_eata_bump: u8,
     rent_bump: u8,
-    post_actions: Vec<Instruction>,
+    post_actions: PostDelegationActions,
 ) -> ProgramResult {
     let rent_bump_seed = [rent_bump];
     let rent_signer_seed = [
@@ -391,7 +391,7 @@ pub(crate) fn delegate_sponsored_shuttle_with_post_actions(
         validator: args.validator.map(Address::new_from_array),
         ..DelegateConfig::default()
     };
-    let actions = post_actions.cleartext();
+
     let mut action_signer_accounts = alloc::vec![owner_info];
     if owner_info.address() != payer_info.address() {
         action_signer_accounts.push(payer_info);
@@ -415,7 +415,7 @@ pub(crate) fn delegate_sponsored_shuttle_with_post_actions(
         seeds,
         shuttle_eata_bump,
         config,
-        actions,
+        post_actions,
         &action_signer_accounts,
     )
 }

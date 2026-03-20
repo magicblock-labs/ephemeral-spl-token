@@ -1,19 +1,23 @@
 use alloc::vec::Vec;
 use core::marker::PhantomData;
+use core::ptr::read_unaligned;
+use core::slice;
+use dlp_api::args::{
+    EncryptedBuffer, MaybeEncryptedAccountMeta, MaybeEncryptedInstruction, MaybeEncryptedIxData,
+    MaybeEncryptedPubkey,
+};
+use dlp_api::compact::{self};
 
 use ephemeral_spl_api::state::transfer_queue::QUEUE_SEED;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
-use solana_instruction::{AccountMeta, Instruction};
-use solana_pubkey::Pubkey;
+
+use dlp_api::{args::PostDelegationActions, compact::ClearTextWithInsertable};
 
 use crate::processor::deposit_and_delegate_shuttle_ephemeral_ata_with_merge::undelegate_and_close_shuttle_action;
-use crate::processor::{
-    deposit_and_delegate_shuttle_ephemeral_ata_with_merge::{
-        merge_shuttle_into_token_account_action, parse_deposit_and_delegate_shuttle_accounts,
-        process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions, pubkey,
-        DepositAndDelegateShuttleCommonArgs,
-    },
-    deposit_and_queue_transfer::validate_deposit_and_queue_transfer_params,
+use crate::processor::deposit_and_delegate_shuttle_ephemeral_ata_with_merge::{
+    merge_shuttle_into_token_account_action, parse_deposit_and_delegate_shuttle_accounts,
+    process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions,
+    DepositAndDelegateShuttleCommonArgs,
 };
 
 #[inline(never)]
@@ -25,21 +29,10 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
     // 0..18 Same as DepositAndDelegateShuttleEphemeralAtaWithMerge
     // 19. [writable] Transfer queue PDA derived from [QUEUE_SEED, mint]
     //
-    // Instruction data:
-    // [0..4] shuttle_id (u32 LE)
-    // [4]    shuttle metadata bump
-    // [5..13] deposit amount (u64 LE)
-    // [13..21] min_delay_ms (u64 LE)
-    // [21..29] max_delay_ms (u64 LE)
-    // [29..33] split count (u32 LE)
-    // [33..65] optional validator pubkey
     let args = DepositAndDelegateShuttleWithPrivateTransferArgs::try_from_bytes(instruction_data)?;
-    validate_deposit_and_queue_transfer_params(
-        args.amount(),
-        args.min_delay_ms(),
-        args.max_delay_ms(),
-        args.split(),
-    )?;
+    if args.amount() == 0 {
+        return Err(ProgramError::InvalidInstructionData);
+    }
 
     let common_accounts = parse_deposit_and_delegate_shuttle_accounts(accounts)?;
     let queue_info = accounts.get(19).ok_or(ProgramError::NotEnoughAccountKeys)?;
@@ -56,22 +49,37 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
         return Err(ProgramError::IllegalOwner);
     }
 
-    let actions = [
-        merge_shuttle_into_token_account_action(
-            &common_accounts,
-            common_accounts.owner_source_token_info,
-        ),
-        undelegate_and_close_shuttle_action(&common_accounts),
-        private_transfer_action(&common_accounts, queue_info, &args),
-    ];
+    let actions = {
+        let private_transfer =
+            private_transfer_action_encrypted(&common_accounts, queue_info, &args)?;
+
+        alloc::vec![
+            merge_shuttle_into_token_account_action(
+                &common_accounts,
+                common_accounts.owner_source_token_info,
+            ),
+            undelegate_and_close_shuttle_action(&common_accounts),
+        ]
+        .cleartext_with_insertable(private_transfer, 10)
+    };
 
     process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions(
         &common_accounts,
-        args.common_args(),
+        args.common_args()?,
         actions.into(),
     )
 }
 
+///
+/// DataLayout:
+///
+///     00..04 : shuttle_id (u32)
+///     04..12 : amount (u64)
+///     12.... : validator (Option<Pubkey>; 0: None,  32: Some(..))
+///     ...... : encrypted_destination (&u[8]; len: buffer)
+///     ...... : encrypted_data_suffix (&u[8]; len: buffer)
+///
+///
 struct DepositAndDelegateShuttleWithPrivateTransferArgs<'a> {
     raw: *const u8,
     len: usize,
@@ -83,7 +91,16 @@ impl DepositAndDelegateShuttleWithPrivateTransferArgs<'_> {
     fn try_from_bytes(
         bytes: &[u8],
     ) -> Result<DepositAndDelegateShuttleWithPrivateTransferArgs<'_>, ProgramError> {
-        if bytes.len() != 32 && bytes.len() != 64 {
+        // MIN_LEN is the sum of the legth of 3 mandatory fixed-size fields
+        //
+        const MIN_LEN: usize = 4 +  // shuttle_id 
+            8 +  // amount
+            1 +  // min len for optional validator 
+            1 + 32 +  // min len for mandatory destination_ata
+            1 + 8 + 8 + 4 // min len for mandatory (min_delay_ms + max_delay_ms + split) 
+            ;
+
+        if bytes.len() < MIN_LEN {
             return Err(ProgramError::InvalidInstructionData);
         }
 
@@ -105,90 +122,125 @@ impl DepositAndDelegateShuttleWithPrivateTransferArgs<'_> {
 
     #[inline]
     fn amount(&self) -> u64 {
-        self.read_u64(4)
+        unsafe { read_unaligned(self.raw.add(4) as *const u64) }
     }
 
     #[inline]
-    fn min_delay_ms(&self) -> u64 {
-        self.read_u64(12)
+    fn common_args(&self) -> Result<DepositAndDelegateShuttleCommonArgs, ProgramError> {
+        Ok(DepositAndDelegateShuttleCommonArgs {
+            shuttle_id: self.shuttle_id(),
+            amount: self.amount(),
+            validator: self.validator()?,
+        })
     }
 
     #[inline]
-    fn max_delay_ms(&self) -> u64 {
-        self.read_u64(20)
-    }
+    fn validator(&self) -> Result<Option<[u8; 32]>, ProgramError> {
+        let data = unsafe { self.read_vardata::<0>()? };
 
-    #[inline]
-    fn split(&self) -> u32 {
-        let mut buf = [0u8; 4];
-        unsafe {
-            core::ptr::copy_nonoverlapping(self.raw.add(28), buf.as_mut_ptr(), 4);
-        }
-        u32::from_le_bytes(buf)
-    }
-
-    #[inline]
-    fn validator(&self) -> Option<[u8; 32]> {
-        if self.len == 32 {
-            return None;
+        if data.is_empty() {
+            return Ok(None);
+        } else if data.len() != 32 {
+            return Err(ProgramError::InvalidInstructionData);
         }
 
         let mut validator = [0u8; 32];
         unsafe {
-            core::ptr::copy_nonoverlapping(self.raw.add(32), validator.as_mut_ptr(), 32);
+            core::ptr::copy_nonoverlapping(data.as_ptr(), validator.as_mut_ptr(), 32);
         }
-        Some(validator)
+        Ok(Some(validator))
     }
 
+    // decrypted { destination_token_account: pubkey }
     #[inline]
-    fn common_args(&self) -> DepositAndDelegateShuttleCommonArgs {
-        DepositAndDelegateShuttleCommonArgs {
-            shuttle_id: self.shuttle_id(),
-            amount: self.amount(),
-            validator: self.validator(),
-        }
+    fn encrypted_destination(&self) -> Result<&[u8], ProgramError> {
+        unsafe { self.read_vardata::<1>() }
     }
 
+    // decrypted { min_delay_ms: u64, max_delay_ms: 64, split: u32 } :: PACKED
     #[inline]
-    fn read_u64(&self, offset: usize) -> u64 {
-        let mut buf = [0u8; 8];
-        unsafe {
-            core::ptr::copy_nonoverlapping(self.raw.add(offset), buf.as_mut_ptr(), 8);
+    fn encrypted_data_suffix(&self) -> Result<&[u8], ProgramError> {
+        unsafe { self.read_vardata::<2>() }
+    }
+
+    unsafe fn read_vardata<const VARINDEX: usize>(&self) -> Result<&[u8], ProgramError> {
+        let mut offset = 12; // index where first vardata starts
+        let mut var = 0;
+        while var < VARINDEX {
+            if offset >= self.len {
+                return Err(ProgramError::InvalidInstructionData);
+            }
+
+            let len = *self.raw.add(offset);
+
+            offset += 1 + len as usize;
+            var += 1;
         }
-        u64::from_le_bytes(buf)
+        if offset >= self.len {
+            return Err(ProgramError::InvalidInstructionData);
+        }
+
+        let len = *self.raw.add(offset);
+
+        if len == 0 {
+            Ok(&[])
+        } else if (offset + 1 + len as usize) <= self.len {
+            Ok(slice::from_raw_parts(
+                self.raw.add(offset + 1),
+                len as usize,
+            ))
+        } else {
+            Err(ProgramError::InvalidInstructionData)
+        }
     }
 }
 
-fn private_transfer_action(
+fn private_transfer_action_encrypted(
     common_accounts: &crate::processor::deposit_and_delegate_shuttle_ephemeral_ata_with_merge::DepositAndDelegateShuttleAccounts<'_>,
     queue_info: &AccountView,
     args: &DepositAndDelegateShuttleWithPrivateTransferArgs<'_>,
-) -> Instruction {
-    let mut data = Vec::with_capacity(1 + 8 + 8 + 8 + 4);
-    data.push(ephemeral_spl_api::instruction::DEPOSIT_AND_QUEUE_TRANSFER);
-    data.extend_from_slice(&args.amount().to_le_bytes());
-    data.extend_from_slice(&args.min_delay_ms().to_le_bytes());
-    data.extend_from_slice(&args.max_delay_ms().to_le_bytes());
-    data.extend_from_slice(&args.split().to_le_bytes());
-
-    Instruction {
-        program_id: Pubkey::from(ephemeral_spl_api::program::ID),
-        accounts: alloc::vec![
-            AccountMeta::new(pubkey(queue_info.address()), false),
-            AccountMeta::new_readonly(pubkey(common_accounts.global_vault_info.address()), false),
-            AccountMeta::new_readonly(pubkey(common_accounts.mint_info.address()), false),
-            AccountMeta::new(
-                pubkey(common_accounts.owner_source_token_info.address()),
-                false
-            ),
-            AccountMeta::new(pubkey(common_accounts.vault_token_info.address()), false),
-            AccountMeta::new_readonly(
-                pubkey(common_accounts.destination_token_info.address()),
-                false
-            ),
-            AccountMeta::new_readonly(pubkey(common_accounts.owner_info.address()), true),
-            AccountMeta::new_readonly(pubkey(common_accounts.token_program_info.address()), false),
+) -> Result<PostDelegationActions, ProgramError> {
+    Ok(PostDelegationActions {
+        inserted_signers: 0,
+        inserted_non_signers: 0,
+        signers: alloc::vec![common_accounts.owner_info.address().to_bytes()], // 0
+        non_signers: alloc::vec![
+            MaybeEncryptedPubkey::ClearText(ephemeral_spl_api::program::ID), // 1
+            MaybeEncryptedPubkey::ClearText(queue_info.address().to_bytes()), // 2
+            MaybeEncryptedPubkey::ClearText(common_accounts.global_vault_info.address().to_bytes()), // 3
+            MaybeEncryptedPubkey::ClearText(common_accounts.mint_info.address().to_bytes()), // 4
+            MaybeEncryptedPubkey::ClearText(
+                common_accounts.owner_source_token_info.address().to_bytes()
+            ), // 5
+            MaybeEncryptedPubkey::ClearText(common_accounts.vault_token_info.address().to_bytes()), // 6
+            MaybeEncryptedPubkey::Encrypted(
+                EncryptedBuffer::new(args.encrypted_destination()?.into()) // common_accounts.destination_token_info.address().to_bytes()
+            ), // 7
+            MaybeEncryptedPubkey::ClearText(
+                common_accounts.token_program_info.address().to_bytes()
+            ), // 8
         ],
-        data,
-    }
+        instructions: alloc::vec![MaybeEncryptedInstruction {
+            program_id: 1,
+            accounts: alloc::vec![
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(2, false)), // queue_info
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(3, false)), // global_vault_info
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(4, false)), // mint_info
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(5, false)), // owner_source_token_info
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(6, false)), // vault_token_info
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(7, false)), // destination_token_info
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(0, true)), // owner_info
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(8, false)), // token_program_info
+            ],
+            data: MaybeEncryptedIxData {
+                prefix: {
+                    let mut data_prefix = Vec::with_capacity(1 + 8);
+                    data_prefix.push(ephemeral_spl_api::instruction::DEPOSIT_AND_QUEUE_TRANSFER);
+                    data_prefix.extend_from_slice(&args.amount().to_le_bytes());
+                    data_prefix
+                },
+                suffix: EncryptedBuffer::new(args.encrypted_data_suffix()?.into()),
+            },
+        }],
+    })
 }

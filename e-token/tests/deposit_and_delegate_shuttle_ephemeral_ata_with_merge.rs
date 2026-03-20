@@ -1,4 +1,4 @@
-use dlp::state::DelegationRecord;
+use dlp_api::state::DelegationRecord;
 use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;

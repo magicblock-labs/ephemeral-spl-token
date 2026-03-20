@@ -24,7 +24,7 @@ pinocchio-associated-token-account = { workspace = true }
 ephemeral-spl-api = { path = "../e-token-api" }
 solana-instruction = { workspace = true }
 solana-pubkey = { workspace = true }
-magicblock-delegation-program-api = { version = "0.1.1", default-features = false, features = ["cpi"] }
+magicblock-delegation-program-api = { workspace = true, default-features = false, features = ["cpi"] }
 
 [dev-dependencies]
 solana-program-pack = { workspace = true }
@@ -36,7 +36,7 @@ solana-transaction = { workspace = true }
 solana-system-interface = { workspace = true }
 solana-account = { workspace = true }
 spl-token-interface = { workspace = true }
-magicblock-delegation-program = { workspace = true }
+magicblock-delegation-program-api = { workspace = true, default-features = true }
 magicblock-magic-program-api = "=0.8.1"
 bincode = "1.3.3"
 
