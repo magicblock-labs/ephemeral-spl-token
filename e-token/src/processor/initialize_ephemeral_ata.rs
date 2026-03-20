@@ -79,6 +79,8 @@ pub(crate) fn initialize_ephemeral_ata_with_sponsor(
             .invoke()?;
         }
 
+        ephemeral_ata_info.resize(EphemeralAta::LEN)?;
+
         let ephemeral_ata = unsafe {
             load_mut_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked_mut())?
         };
