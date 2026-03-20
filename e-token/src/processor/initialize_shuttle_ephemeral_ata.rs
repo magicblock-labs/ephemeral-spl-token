@@ -127,13 +127,23 @@ pub(crate) fn initialize_shuttle_ephemeral_ata_with_sponsor(
         if shuttle_info.data_len() == SHUTTLE_METADATA_V0_LEN {
             let current_lamports = shuttle_info.lamports();
             if current_lamports < Rent::get()?.try_minimum_balance(ShuttleMetadata::LEN)? {
-                Transfer {
-                    from: sponsor_info,
-                    to: shuttle_info,
-                    lamports: Rent::get()?.try_minimum_balance(ShuttleMetadata::LEN)?
-                        - current_lamports,
+                if let Some(sponsor_signer) = sponsor_signer.clone() {
+                    Transfer {
+                        from: sponsor_info,
+                        to: shuttle_info,
+                        lamports: Rent::get()?.try_minimum_balance(ShuttleMetadata::LEN)?
+                            - current_lamports,
+                    }
+                    .invoke_signed(&[sponsor_signer])?;
+                } else {
+                    Transfer {
+                        from: sponsor_info,
+                        to: shuttle_info,
+                        lamports: Rent::get()?.try_minimum_balance(ShuttleMetadata::LEN)?
+                            - current_lamports,
+                    }
+                    .invoke()?;
                 }
-                .invoke()?;
             }
             shuttle_info.resize(ShuttleMetadata::LEN)?;
             let shuttle = unsafe {
