@@ -1,6 +1,7 @@
 use crate::processor::withdraw_spl_tokens::withdraw_ephemeral_ata_tokens;
 use ephemeral_spl_api::state::{
-    ephemeral_ata::EphemeralAta, load, shuttle_ephemeral_ata::ShuttleMetadata,
+    ephemeral_ata::read_ephemeral_ata_compat,
+    load, shuttle_ephemeral_ata::ShuttleMetadata,
 };
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
@@ -171,20 +172,18 @@ pub fn process_close_shuttle_ata_intent(
             .ok_or(ProgramError::InvalidAccountData)?;
         let (mint, shuttle_ephemeral_amount) = {
             let shuttle_ephemeral_ata_data = shuttle_ephemeral_ata_info.try_borrow()?;
-            let shuttle_ephemeral_ata =
-                unsafe { load::<EphemeralAta>(&shuttle_ephemeral_ata_data) }.map_err(|err| {
+            let (ephemeral_owner, mint, amount) =
+                read_ephemeral_ata_compat(&shuttle_ephemeral_ata_data).map_err(|err| {
                     if err == ProgramError::UninitializedAccount {
                         ProgramError::InvalidAccountData
                     } else {
                         err
                     }
                 })?;
-            if shuttle_ephemeral_ata.owner != *shuttle_info.address() {
+            if ephemeral_owner != *shuttle_info.address() {
                 return Err(ProgramError::InvalidAccountData);
             }
-            #[allow(clippy::clone_on_copy)]
-            let mint = shuttle_ephemeral_ata.mint.clone();
-            (mint, shuttle_ephemeral_ata.amount)
+            (mint, amount)
         };
 
         if shuttle_ephemeral_amount != 0 {
