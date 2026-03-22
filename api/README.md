@@ -470,8 +470,7 @@ curl -X POST http://127.0.0.1:8787/v1/spl/deposit \
     "initIfMissing": true,
     "initAtasIfMissing": true,
     "initVaultIfMissing": true,
-    "idempotent": true,
-    "private": true
+    "idempotent": true
   }'
 ```
 
@@ -495,7 +494,6 @@ Relevant fields:
 - `initVaultIfMissing`
 - `initAtasIfMissing`
 - `idempotent`
-- `private`
 
 ### `POST /v1/spl/withdraw`
 

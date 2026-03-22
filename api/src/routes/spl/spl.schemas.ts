@@ -104,7 +104,6 @@ export const depositRequestSchema = z.object({
   initVaultIfMissing: z.boolean().optional(),
   initAtasIfMissing: z.boolean().optional(),
   idempotent: z.boolean().optional(),
-  private: z.boolean().optional(),
 }).openapi("DepositRequest", {
   example: {
     owner: DEPOSIT_EXAMPLE_OWNER,
@@ -113,7 +112,6 @@ export const depositRequestSchema = z.object({
     initVaultIfMissing: true,
     initAtasIfMissing: true,
     idempotent: true,
-    private: true,
   },
 });
 

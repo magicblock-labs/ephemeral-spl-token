@@ -67,7 +67,6 @@ type DepositInput = {
   initVaultIfMissing?: boolean;
   initAtasIfMissing?: boolean;
   idempotent?: boolean;
-  private?: boolean;
 };
 
 type WithdrawInput = {
@@ -449,7 +448,6 @@ export async function buildDepositTransaction(env: AppEnv, input: DepositInput) 
     shuttleId: createRandomShuttleId(),
     escrowIndex: 0,
     idempotent: input.idempotent,
-    private: input.private,
   });
 
   return serializeTransaction(
