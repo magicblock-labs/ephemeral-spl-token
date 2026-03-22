@@ -3,7 +3,8 @@ use ephemeral_spl_api::error::EphemeralSplError;
 use pinocchio::cpi::{Seed, Signer};
 use {
     ephemeral_spl_api::state::{
-        ephemeral_ata::EphemeralAta, global_vault::GlobalVault, load_mut_unchecked, load_unchecked,
+        ephemeral_ata::load_ephemeral_ata_compat_mut,
+        global_vault::GlobalVault, load_unchecked,
     },
     pinocchio::{error::ProgramError, AccountView, ProgramResult},
     pinocchio_token_2022::state::Mint,
@@ -70,8 +71,8 @@ pub(crate) fn withdraw_ephemeral_ata_tokens(
             return Err(ProgramError::IllegalOwner);
         }
     }
-    let ephemeral_ata =
-        unsafe { load_mut_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked_mut())? };
+    let mut ephemeral_ata =
+        load_ephemeral_ata_compat_mut(unsafe { ephemeral_ata_info.borrow_unchecked_mut() })?;
 
     // Validate vault ownership before reading raw data.
     unsafe {
@@ -87,9 +88,9 @@ pub(crate) fn withdraw_ephemeral_ata_tokens(
     let vault = unsafe { load_unchecked::<GlobalVault>(vault_info.borrow_unchecked())? };
 
     // Check eata consistency
-    if ephemeral_ata.mint != *mint_info.address()
+    if ephemeral_ata.mint() != mint_info.address()
         || vault.mint != *mint_info.address()
-        || ephemeral_ata.owner != *owner.address()
+        || ephemeral_ata.owner() != owner.address()
         || vault.token_account != *vault_source_token_acc.address()
     {
         return Err(EphemeralSplError::EphemeralAtaMismatch.into());
@@ -125,10 +126,11 @@ pub(crate) fn withdraw_ephemeral_ata_tokens(
     .invoke_signed(&[signer])?;
 
     // Safely decrease the amount in the EphemeralAta
-    ephemeral_ata.amount = ephemeral_ata
-        .amount
+    let updated_amount = ephemeral_ata
+        .amount()
         .checked_sub(amount)
         .ok_or(ProgramError::InvalidArgument)?;
+    ephemeral_ata.set_amount(updated_amount);
 
     Ok(())
 }

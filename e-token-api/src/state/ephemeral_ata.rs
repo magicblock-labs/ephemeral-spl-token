@@ -1,6 +1,8 @@
-use pinocchio::Address;
+use pinocchio::{error::ProgramError, Address};
 
-use super::{Initializable, RawType};
+use super::{load, load_mut_unchecked, load_unchecked, Initializable, RawType};
+
+const LEGACY_EPHEMERAL_ATA_LEN: usize = 72;
 
 /// Internal representation of a token account data.
 #[repr(C)]
@@ -25,4 +27,108 @@ impl Initializable for EphemeralAta {
     fn is_initialized(&self) -> bool {
         self.mint != Address::default()
     }
+}
+
+// Temporary compatibility shim for legacy 72-byte EphemeralAta accounts.
+// Some undelegation flows can still restore old snapshots without the stored bump.
+// Keep it self-contained here so it can be removed cleanly once those snapshots are gone.
+#[repr(C)]
+struct LegacyEphemeralAta {
+    owner: Address,
+    mint: Address,
+    amount: u64,
+}
+
+impl RawType for LegacyEphemeralAta {
+    const LEN: usize = LEGACY_EPHEMERAL_ATA_LEN;
+}
+
+enum EphemeralAtaCompatMutInner<'a> {
+    Current(&'a mut EphemeralAta),
+    Legacy(&'a mut LegacyEphemeralAta),
+}
+
+pub struct EphemeralAtaCompatMut<'a>(EphemeralAtaCompatMutInner<'a>);
+
+impl EphemeralAtaCompatMut<'_> {
+    #[inline(always)]
+    pub fn owner(&self) -> &Address {
+        match &self.0 {
+            EphemeralAtaCompatMutInner::Current(ephemeral_ata) => &ephemeral_ata.owner,
+            EphemeralAtaCompatMutInner::Legacy(ephemeral_ata) => &ephemeral_ata.owner,
+        }
+    }
+
+    #[inline(always)]
+    pub fn mint(&self) -> &Address {
+        match &self.0 {
+            EphemeralAtaCompatMutInner::Current(ephemeral_ata) => &ephemeral_ata.mint,
+            EphemeralAtaCompatMutInner::Legacy(ephemeral_ata) => &ephemeral_ata.mint,
+        }
+    }
+
+    #[inline(always)]
+    pub fn amount(&self) -> u64 {
+        match &self.0 {
+            EphemeralAtaCompatMutInner::Current(ephemeral_ata) => ephemeral_ata.amount,
+            EphemeralAtaCompatMutInner::Legacy(ephemeral_ata) => ephemeral_ata.amount,
+        }
+    }
+
+    #[inline(always)]
+    pub fn set_amount(&mut self, amount: u64) {
+        match &mut self.0 {
+            EphemeralAtaCompatMutInner::Current(ephemeral_ata) => ephemeral_ata.amount = amount,
+            EphemeralAtaCompatMutInner::Legacy(ephemeral_ata) => ephemeral_ata.amount = amount,
+        }
+    }
+}
+
+#[inline(always)]
+pub fn read_ephemeral_ata_compat(bytes: &[u8]) -> Result<(Address, Address, u64), ProgramError> {
+    if bytes.len() == EphemeralAta::LEN {
+        let ephemeral_ata = unsafe { load::<EphemeralAta>(bytes)? };
+        #[allow(clippy::clone_on_copy)]
+        let owner = ephemeral_ata.owner.clone();
+        #[allow(clippy::clone_on_copy)]
+        let mint = ephemeral_ata.mint.clone();
+        return Ok((owner, mint, ephemeral_ata.amount));
+    }
+
+    if bytes.len() == LEGACY_EPHEMERAL_ATA_LEN {
+        let ephemeral_ata = unsafe { load_unchecked::<LegacyEphemeralAta>(bytes)? };
+        if ephemeral_ata.mint == Address::default() {
+            return Err(ProgramError::UninitializedAccount);
+        }
+        #[allow(clippy::clone_on_copy)]
+        let owner = ephemeral_ata.owner.clone();
+        #[allow(clippy::clone_on_copy)]
+        let mint = ephemeral_ata.mint.clone();
+        return Ok((owner, mint, ephemeral_ata.amount));
+    }
+
+    Err(ProgramError::InvalidAccountData)
+}
+
+#[inline(always)]
+pub fn load_ephemeral_ata_compat_mut(
+    bytes: &mut [u8],
+) -> Result<EphemeralAtaCompatMut<'_>, ProgramError> {
+    if bytes.len() == EphemeralAta::LEN {
+        return Ok(EphemeralAtaCompatMut(
+            EphemeralAtaCompatMutInner::Current(unsafe {
+                load_mut_unchecked::<EphemeralAta>(bytes)?
+            }),
+        ));
+    }
+
+    if bytes.len() == LEGACY_EPHEMERAL_ATA_LEN {
+        return Ok(EphemeralAtaCompatMut(
+            EphemeralAtaCompatMutInner::Legacy(unsafe {
+                load_mut_unchecked::<LegacyEphemeralAta>(bytes)?
+            }),
+        ));
+    }
+
+    Err(ProgramError::InvalidAccountData)
 }
