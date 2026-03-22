@@ -3,7 +3,7 @@ use pinocchio::{error::ProgramError, Address};
 
 /// Current queue version that stores inserted/ready timestamps in milliseconds.
 /// Bump this value only when the on-chain layout changes or queue semantics require it.
-pub const TRANSFER_QUEUE_VERSION: u8 = 2;
+pub const TRANSFER_QUEUE_VERSION: u8 = 1;
 /// PDA seed prefix for transfer queues.
 pub const QUEUE_SEED: &[u8] = b"queue";
 pub const QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA: u8 = 1 << 0;
