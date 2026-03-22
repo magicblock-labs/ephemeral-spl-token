@@ -1,0 +1,624 @@
+import {
+  delegateSpl,
+  transferSpl,
+  withdrawSpl,
+} from "@magicblock-labs/ephemeral-rollups-sdk";
+import {
+  Connection,
+  PublicKey,
+  Transaction,
+  TransactionInstruction,
+} from "@solana/web3.js";
+
+import type { AppEnv } from "../env";
+import { ApiError } from "./errors";
+
+export const TOKEN_PROGRAM_ID = new PublicKey(
+  "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+);
+
+const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey(
+  "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+);
+
+const NOOP_PROGRAM_ID = new PublicKey(
+  "noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV",
+);
+
+const DEFAULT_DEPOSIT_VALIDATOR = "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57";
+const DEFAULT_DEPOSIT_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+
+const connectionCache = new Map<string, Connection>();
+const validatorCache = new Map<string, Promise<PublicKey | undefined>>();
+
+type SendTarget = "base" | "ephemeral";
+
+type BlockhashResult = {
+  blockhash: string;
+  lastValidBlockHeight: number;
+};
+
+type RpcConfig = {
+  baseRpcUrl: string;
+  ephemeralRpcUrl: string;
+  cluster: "mainnet" | "devnet" | "custom";
+  validatorPubkey?: string;
+};
+
+type TransactionResponse = {
+  kind: "deposit" | "withdraw" | "transfer";
+  version: "legacy";
+  transactionBase64: string;
+  sendTo: SendTarget;
+  recentBlockhash: string;
+  lastValidBlockHeight: number;
+  instructionCount: number;
+  requiredSigners: string[];
+  validator?: string;
+};
+
+type DepositInput = {
+  owner: string;
+  mint?: string;
+  amount: string | number;
+  cluster?: string;
+  validator?: string;
+  initIfMissing?: boolean;
+  initVaultIfMissing?: boolean;
+  initAtasIfMissing?: boolean;
+  idempotent?: boolean;
+  private?: boolean;
+};
+
+type WithdrawInput = {
+  owner: string;
+  mint: string;
+  amount: string | number;
+  cluster?: string;
+  validator?: string;
+  initIfMissing?: boolean;
+  initAtasIfMissing?: boolean;
+  shuttleId?: number;
+  escrowIndex?: number;
+  idempotent?: boolean;
+};
+
+type TransferInput = {
+  from: string;
+  to: string;
+  mint: string;
+  amount: string | number;
+  cluster?: string;
+  fromBalance: "base" | "ephemeral";
+  toBalance: "base" | "ephemeral";
+  visibility: "public" | "private";
+  validator?: string;
+  initIfMissing?: boolean;
+  initAtasIfMissing?: boolean;
+  initVaultIfMissing?: boolean;
+  shuttleId?: number;
+  minDelayMs?: string;
+  maxDelayMs?: string;
+  split?: number;
+};
+
+type BalanceInput = {
+  address: string;
+  mint: string;
+  cluster?: string;
+};
+
+type BalanceResponse = {
+  address: string;
+  mint: string;
+  ata: string;
+  location: SendTarget;
+  balance: string;
+};
+
+type RpcIdentityResponse = {
+  result?: {
+    identity?: string;
+  };
+  error?: {
+    message?: string;
+  };
+};
+
+function getConnection(endpoint: string) {
+  let connection = connectionCache.get(endpoint);
+
+  if (!connection) {
+    connection = new Connection(endpoint, "confirmed");
+    connectionCache.set(endpoint, connection);
+  }
+
+  return connection;
+}
+
+function getBaseConnection(config: RpcConfig) {
+  return getConnection(config.baseRpcUrl);
+}
+
+function getEphemeralConnection(config: RpcConfig) {
+  return getConnection(config.ephemeralRpcUrl);
+}
+
+function createClusterConfigError(missingVars: Array<"BASE_DEVNET_RPC_URL" | "EPHEMERAL_DEVNET_RPC_URL">) {
+  return new ApiError(
+    500,
+    "CONFIG_ERROR",
+    "Missing worker environment variables for cluster=devnet",
+    {
+      issues: missingVars.map((name) => ({
+        path: [name],
+        message: "Required for cluster=devnet",
+      })),
+      hint: "Set BASE_DEVNET_RPC_URL and EPHEMERAL_DEVNET_RPC_URL before using cluster=devnet.",
+    },
+  );
+}
+
+function resolveRpcConfig(env: AppEnv, cluster?: string): RpcConfig {
+  const value = cluster?.trim();
+  const normalized = value?.toLowerCase();
+
+  if (!value || normalized === "mainnet") {
+    return {
+      baseRpcUrl: env.BASE_RPC_URL,
+      ephemeralRpcUrl: env.EPHEMERAL_RPC_URL,
+      cluster: "mainnet",
+      validatorPubkey: env.VALIDATOR_PUBKEY,
+    };
+  }
+
+  if (normalized === "devnet") {
+    const missingVars = [
+      ...(!env.BASE_DEVNET_RPC_URL ? ["BASE_DEVNET_RPC_URL" as const] : []),
+      ...(!env.EPHEMERAL_DEVNET_RPC_URL ? ["EPHEMERAL_DEVNET_RPC_URL" as const] : []),
+    ];
+
+    if (missingVars.length > 0) {
+      throw createClusterConfigError(missingVars);
+    }
+
+    return {
+      baseRpcUrl: env.BASE_DEVNET_RPC_URL!,
+      ephemeralRpcUrl: env.EPHEMERAL_DEVNET_RPC_URL!,
+      cluster: "devnet",
+      validatorPubkey: env.VALIDATOR_PUBKEY,
+    };
+  }
+
+  try {
+    const url = new URL(value);
+
+    if (!["http:", "https:"].includes(url.protocol)) {
+      throw new Error("invalid protocol");
+    }
+
+    return {
+      baseRpcUrl: url.toString(),
+      ephemeralRpcUrl: url.toString(),
+      cluster: "custom",
+      validatorPubkey: env.VALIDATOR_PUBKEY,
+    };
+  }
+  catch {
+    throw new ApiError(400, "INVALID_CLUSTER", "cluster must be \"mainnet\", \"devnet\", or a valid http(s) URL");
+  }
+}
+
+function parsePublicKey(value: string, fieldName: string) {
+  try {
+    return new PublicKey(value);
+  }
+  catch {
+    throw new ApiError(400, "INVALID_PUBLIC_KEY", `Invalid ${fieldName}`);
+  }
+}
+
+function parseAmount(value: string | number, fieldName: string) {
+  try {
+    const amount = typeof value === "number"
+      ? (() => {
+          if (!Number.isSafeInteger(value) || value <= 0) {
+            throw new Error("non-positive");
+          }
+
+          return BigInt(value);
+        })()
+      : BigInt(value);
+
+    if (amount <= 0n) {
+      throw new Error("non-positive");
+    }
+    return amount;
+  }
+  catch {
+    throw new ApiError(400, "INVALID_AMOUNT", `${fieldName} must be a positive integer string`);
+  }
+}
+
+function parseOptionalAmount(value: string | undefined, fieldName: string) {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  try {
+    return BigInt(value);
+  }
+  catch {
+    throw new ApiError(400, "INVALID_AMOUNT", `${fieldName} must be an integer string`);
+  }
+}
+
+function parseOptionalPublicKey(value: string | undefined, fieldName: string) {
+  return value ? parsePublicKey(value, fieldName) : undefined;
+}
+
+function getAssociatedTokenAddressSync(
+  mint: PublicKey,
+  owner: PublicKey,
+  allowOwnerOffCurve: boolean = false,
+  programId: PublicKey = TOKEN_PROGRAM_ID,
+  associatedTokenProgramId: PublicKey = ASSOCIATED_TOKEN_PROGRAM_ID,
+) {
+  if (!allowOwnerOffCurve && !PublicKey.isOnCurve(owner.toBuffer())) {
+    throw new ApiError(400, "INVALID_OWNER", "Owner public key is off-curve");
+  }
+
+  const [ata] = PublicKey.findProgramAddressSync(
+    [owner.toBuffer(), programId.toBuffer(), mint.toBuffer()],
+    associatedTokenProgramId,
+  );
+
+  return ata;
+}
+
+function parseTokenAmount(accountInfo: { data: Buffer | Uint8Array }) {
+  const data = Buffer.isBuffer(accountInfo.data)
+    ? accountInfo.data
+    : Buffer.from(accountInfo.data);
+
+  if (data.length < 72) {
+    return null;
+  }
+
+  return data.readBigUInt64LE(64);
+}
+
+function createNoopInstruction() {
+  return new TransactionInstruction({
+    programId: NOOP_PROGRAM_ID,
+    keys: [],
+    data: Buffer.from(crypto.getRandomValues(new Uint8Array(5))),
+  });
+}
+
+function createRandomShuttleId() {
+  return crypto.getRandomValues(new Uint32Array(1))[0] & 0x7fffffff;
+}
+
+async function getValidatorFromRpc(endpoint: string) {
+  let request = validatorCache.get(endpoint);
+
+  if (!request) {
+    request = (async () => {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "getIdentity",
+          params: [],
+        }),
+      });
+
+      if (!response.ok) {
+        throw new ApiError(502, "RPC_ERROR", "Failed to resolve validator identity", {
+          endpoint,
+          status: response.status,
+        });
+      }
+
+      const payload = await response.json() as RpcIdentityResponse;
+
+      if (payload.error) {
+        throw new ApiError(502, "RPC_ERROR", payload.error.message || "Failed to resolve validator identity", {
+          endpoint,
+        });
+      }
+
+      return payload.result?.identity
+        ? new PublicKey(payload.result.identity)
+        : undefined;
+    })();
+
+    validatorCache.set(endpoint, request);
+  }
+
+  return request;
+}
+
+async function resolveValidator(config: RpcConfig, explicitValidator?: string) {
+  if (explicitValidator) {
+    return parsePublicKey(explicitValidator, "validator");
+  }
+
+  if (config.validatorPubkey) {
+    return parsePublicKey(config.validatorPubkey, "VALIDATOR_PUBKEY");
+  }
+
+  return getValidatorFromRpc(config.ephemeralRpcUrl);
+}
+
+async function resolveDepositValidator(config: RpcConfig, explicitValidator?: string) {
+  if (explicitValidator) {
+    return parsePublicKey(explicitValidator, "validator");
+  }
+
+  if (config.cluster === "mainnet") {
+    return parsePublicKey(DEFAULT_DEPOSIT_VALIDATOR, "validator");
+  }
+
+  return resolveValidator(config);
+}
+
+async function getBlockhash(config: RpcConfig, source: SendTarget): Promise<BlockhashResult> {
+  const connection = source === "base"
+    ? getBaseConnection(config)
+    : getEphemeralConnection(config);
+
+  try {
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
+    return { blockhash, lastValidBlockHeight };
+  }
+  catch (error) {
+    throw new ApiError(502, "RPC_ERROR", "Failed to fetch recent blockhash", {
+      source,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+function getRequiredSigners(feePayer: PublicKey, instructions: TransactionInstruction[]) {
+  const signers = new Set<string>([feePayer.toBase58()]);
+
+  for (const instruction of instructions) {
+    for (const key of instruction.keys) {
+      if (key.isSigner) {
+        signers.add(key.pubkey.toBase58());
+      }
+    }
+  }
+
+  return [...signers];
+}
+
+function serializeTransaction(
+  kind: TransactionResponse["kind"],
+  sendTo: SendTarget,
+  instructions: TransactionInstruction[],
+  feePayer: PublicKey,
+  blockhash: BlockhashResult,
+  validator?: PublicKey,
+): TransactionResponse {
+  const transaction = new Transaction();
+  transaction.feePayer = feePayer;
+  transaction.recentBlockhash = blockhash.blockhash;
+  transaction.add(...instructions);
+
+  return {
+    kind,
+    version: "legacy",
+    transactionBase64: Buffer.from(
+      transaction.serialize({
+        requireAllSignatures: false,
+        verifySignatures: false,
+      }),
+    ).toString("base64"),
+    sendTo,
+    recentBlockhash: blockhash.blockhash,
+    lastValidBlockHeight: blockhash.lastValidBlockHeight,
+    instructionCount: instructions.length,
+    requiredSigners: getRequiredSigners(feePayer, instructions),
+    validator: validator?.toBase58(),
+  };
+}
+
+export async function buildDepositTransaction(env: AppEnv, input: DepositInput) {
+  const config = resolveRpcConfig(env, input.cluster);
+  const owner = parsePublicKey(input.owner, "owner");
+  const mint = parsePublicKey(input.mint ?? DEFAULT_DEPOSIT_MINT, "mint");
+  const amount = parseAmount(input.amount, "amount");
+  const payer = owner;
+  const feePayer = owner;
+  const validator = await resolveDepositValidator(config, input.validator);
+  const blockhash = await getBlockhash(config, "base");
+
+  const instructions = await delegateSpl(owner, mint, amount, {
+    payer,
+    validator,
+    initIfMissing: input.initIfMissing,
+    initVaultIfMissing: input.initVaultIfMissing,
+    initAtasIfMissing: input.initAtasIfMissing,
+    shuttleId: createRandomShuttleId(),
+    escrowIndex: 0,
+    idempotent: input.idempotent,
+    private: input.private,
+  });
+
+  return serializeTransaction(
+    "deposit",
+    "base",
+    instructions,
+    feePayer,
+    blockhash,
+    validator,
+  );
+}
+
+export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawInput) {
+  const config = resolveRpcConfig(env, input.cluster);
+  const owner = parsePublicKey(input.owner, "owner");
+  const mint = parsePublicKey(input.mint, "mint");
+  const amount = parseAmount(input.amount, "amount");
+  const payer = owner;
+  const feePayer = owner;
+  const validator = await resolveValidator(config, input.validator);
+  const blockhash = await getBlockhash(config, "base");
+
+  const instructions = await withdrawSpl(owner, mint, amount, {
+    payer,
+    validator,
+    initIfMissing: input.initIfMissing,
+    initAtasIfMissing: input.initAtasIfMissing,
+    shuttleId: input.shuttleId,
+    escrowIndex: input.escrowIndex,
+    idempotent: input.idempotent,
+  });
+
+  return serializeTransaction(
+    "withdraw",
+    "base",
+    instructions,
+    feePayer,
+    blockhash,
+    validator,
+  );
+}
+
+export async function buildTransferTransaction(env: AppEnv, input: TransferInput) {
+  const config = resolveRpcConfig(env, input.cluster);
+  const from = parsePublicKey(input.from, "from");
+  const to = parsePublicKey(input.to, "to");
+  const mint = parsePublicKey(input.mint, "mint");
+  const amount = parseAmount(input.amount, "amount");
+  const payer = from;
+  const feePayer = from;
+
+  const minDelayMs = parseOptionalAmount(input.minDelayMs, "minDelayMs");
+  const maxDelayMs = parseOptionalAmount(input.maxDelayMs, "maxDelayMs");
+  const split = input.split;
+
+  if (minDelayMs !== undefined && minDelayMs < 0n) {
+    throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "minDelayMs must be non-negative");
+  }
+
+  if (maxDelayMs !== undefined && maxDelayMs < 0n) {
+    throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "maxDelayMs must be non-negative");
+  }
+
+  if (
+    minDelayMs !== undefined
+    && maxDelayMs !== undefined
+    && maxDelayMs < minDelayMs
+  ) {
+    throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "maxDelayMs must be greater than or equal to minDelayMs");
+  }
+
+  if (split !== undefined && split <= 0) {
+    throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "split must be a positive integer");
+  }
+
+  if (split !== undefined && BigInt(split) > amount) {
+    throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "split cannot exceed amount");
+  }
+
+  const shouldResolveValidator = input.validator
+    || input.visibility === "private"
+    || input.fromBalance === "base"
+    || input.initVaultIfMissing;
+
+  const validator = shouldResolveValidator
+    ? await resolveValidator(config, input.validator)
+    : undefined;
+
+  const sendTo: SendTarget = input.fromBalance === "ephemeral" ? "ephemeral" : "base";
+  const blockhash = await getBlockhash(config, sendTo);
+
+  try {
+    const instructions = [
+      createNoopInstruction(),
+      ...(await transferSpl(from, to, mint, amount, {
+        visibility: input.visibility,
+        fromBalance: input.fromBalance,
+        toBalance: input.toBalance,
+        payer,
+        validator,
+        initIfMissing: input.initIfMissing,
+        initAtasIfMissing: input.initAtasIfMissing,
+        initVaultIfMissing: input.initVaultIfMissing,
+        shuttleId: input.shuttleId,
+        privateTransfer: input.minDelayMs !== undefined || input.maxDelayMs !== undefined || input.split !== undefined
+          ? {
+              minDelayMs,
+              maxDelayMs,
+              split,
+            }
+          : undefined,
+      })),
+    ];
+
+    return serializeTransaction(
+      "transfer",
+      sendTo,
+      instructions,
+      feePayer,
+      blockhash,
+      validator,
+    );
+  }
+  catch (error) {
+    if (error instanceof Error && error.message.includes("transferSpl route not implemented")) {
+      throw new ApiError(400, "UNSUPPORTED_TRANSFER_ROUTE", error.message);
+    }
+
+    throw error;
+  }
+}
+
+async function getBalanceInternal(
+  env: AppEnv,
+  input: BalanceInput,
+  location: SendTarget,
+): Promise<BalanceResponse> {
+  const config = resolveRpcConfig(env, input.cluster);
+  const owner = parsePublicKey(input.address, "address");
+  const mint = parsePublicKey(input.mint, "mint");
+  const ata = getAssociatedTokenAddressSync(mint, owner, false, TOKEN_PROGRAM_ID);
+  const connection = location === "base"
+    ? getBaseConnection(config)
+    : getEphemeralConnection(config);
+
+  try {
+    const accountInfo = await connection.getAccountInfo(ata, "confirmed");
+    const balance = accountInfo ? (parseTokenAmount(accountInfo) ?? 0n) : 0n;
+
+    return {
+      address: owner.toBase58(),
+      mint: mint.toBase58(),
+      ata: ata.toBase58(),
+      location,
+      balance: balance.toString(),
+    };
+  }
+  catch (error) {
+    throw new ApiError(502, "RPC_ERROR", "Failed to fetch token balance", {
+      location,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+export function getBaseBalance(env: AppEnv, input: BalanceInput) {
+  return getBalanceInternal(env, input, "base");
+}
+
+export function getPrivateBalance(env: AppEnv, input: BalanceInput) {
+  return getBalanceInternal(env, input, "ephemeral");
+}

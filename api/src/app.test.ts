@@ -1,0 +1,499 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import {
+  AccountInfo,
+  Connection,
+  Keypair,
+  Transaction,
+} from "@solana/web3.js";
+
+import app from "./app";
+import { TOKEN_PROGRAM_ID } from "./lib/solana";
+
+const env = {
+  BASE_RPC_URL: "https://base.rpc.test",
+  EPHEMERAL_RPC_URL: "https://ephemeral.rpc.test",
+  BASE_DEVNET_RPC_URL: "https://base.devnet.rpc.test",
+  EPHEMERAL_DEVNET_RPC_URL: "https://ephemeral.devnet.rpc.test",
+  VALIDATOR_PUBKEY: "11111111111111111111111111111111",
+  CORS_ORIGIN: "*",
+};
+
+const owner = Keypair.generate().publicKey.toBase58();
+const destination = Keypair.generate().publicKey.toBase58();
+
+function createMcpFetch() {
+  return (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request
+      ? input
+      : new Request(input instanceof URL ? input : String(input), init);
+
+    return Promise.resolve(app.fetch(request, env));
+  };
+}
+
+function createTokenAccountData(amount: bigint) {
+  const data = Buffer.alloc(165);
+  data.writeBigUInt64LE(amount, 64);
+  return data;
+}
+
+function createAccountInfo(amount: bigint): AccountInfo<Buffer> {
+  return {
+    data: createTokenAccountData(amount),
+    executable: false,
+    lamports: 0,
+    owner: TOKEN_PROGRAM_ID,
+    rentEpoch: 0,
+  };
+}
+
+describe("app", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("redirects / to /reference", async () => {
+    const response = await app.request("/", {}, env);
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe("/reference");
+  });
+
+  it("serves the OpenAPI document", async () => {
+    const response = await app.request("/doc", {}, env);
+
+    expect(response.status).toBe(200);
+
+    const json = await response.json() as {
+      paths: Record<string, {
+        get?: unknown;
+        post?: {
+          requestBody?: {
+            content?: Record<string, {
+              schema?: unknown;
+            }>;
+          };
+          responses?: Record<string, {
+            content?: Record<string, {
+              example?: {
+                kind?: string;
+                instructionCount?: number;
+              };
+            }>;
+          }>;
+        };
+      }>;
+    };
+    expect(json.paths["/v1/spl/deposit"]).toBeDefined();
+    expect(json.paths["/mcp"]?.post).toBeDefined();
+    expect(json.paths["/mcp"]?.get).toBeUndefined();
+    expect(json.paths["/.well-known/mcp.json"]).toBeUndefined();
+    expect(json.paths["/mcp"]?.post?.requestBody?.content?.["application/json"]?.schema).toBeDefined();
+    expect(json.paths["/v1/spl/private-balance"]).toBeDefined();
+    expect(json.paths["/v1/spl/deposit"]?.post?.responses?.["200"]?.content?.["application/json"]?.example).toMatchObject({
+      kind: "deposit",
+      instructionCount: 3,
+    });
+    expect(json.paths["/v1/spl/withdraw"]?.post?.responses?.["200"]?.content?.["application/json"]?.example).toMatchObject({
+      kind: "withdraw",
+      instructionCount: 2,
+    });
+  });
+
+  it("serves MCP info and discovery documents", async () => {
+    const mcpResponse = await app.request("/mcp", {}, env);
+    const discoveryResponse = await app.request("/.well-known/mcp.json", {}, env);
+
+    expect(mcpResponse.status).toBe(200);
+    expect(discoveryResponse.status).toBe(200);
+
+    const mcpJson = await mcpResponse.json() as {
+      endpoint: string;
+      discovery: string;
+      tools: Array<{ name: string }>;
+    };
+    const discoveryJson = await discoveryResponse.json() as {
+      transport: { endpoint: string; type: string };
+      tools: Array<{ name: string }>;
+    };
+
+    expect(mcpJson.endpoint).toBe("http://localhost/mcp");
+    expect(mcpJson.discovery).toBe("http://localhost/.well-known/mcp.json");
+    expect(mcpJson.tools.some((tool) => tool.name === "spl.transfer")).toBe(true);
+
+    expect(discoveryJson.transport.type).toBe("streamable-http");
+    expect(discoveryJson.transport.endpoint).toBe("http://localhost/mcp");
+    expect(discoveryJson.tools.some((tool) => tool.name === "spl.getPrivateBalance")).toBe(true);
+  });
+
+  it("accepts MCP initialize requests from doc clients that do not send a JSON content type", async () => {
+    const response = await app.request("/mcp", {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-11-25",
+          capabilities: {},
+          clientInfo: {
+            name: "doc-example",
+            version: "1.0.0",
+          },
+        },
+      }),
+    }, env);
+
+    expect(response.status).toBe(200);
+
+    const json = await response.json() as {
+      result?: {
+        protocolVersion?: string;
+      };
+    };
+
+    expect(json.result?.protocolVersion).toBe("2025-11-25");
+  });
+
+  it("builds an unsigned deposit transaction", async () => {
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123,
+    });
+
+    const response = await app.request("/v1/spl/deposit", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        owner,
+        amount: 1,
+        idempotent: true,
+        initIfMissing: true,
+        initAtasIfMissing: true,
+        initVaultIfMissing: true,
+      }),
+    }, env);
+
+    expect(response.status).toBe(200);
+
+    const json = await response.json() as {
+      sendTo: string;
+      transactionBase64: string;
+      recentBlockhash: string;
+      validator: string;
+    };
+
+    expect(json.sendTo).toBe("base");
+    expect(json.recentBlockhash).toBe("11111111111111111111111111111111");
+    expect(json.validator).toBe("MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57");
+
+    const transaction = Transaction.from(Buffer.from(json.transactionBase64, "base64"));
+    expect(transaction.instructions.length).toBeGreaterThan(0);
+  });
+
+  it("uses the devnet RPC endpoints when cluster=devnet", async () => {
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockImplementation(async function getLatestBlockhash(this: Connection & { _rpcEndpoint: string }) {
+      const endpoint = (this as Connection & { _rpcEndpoint: string })._rpcEndpoint;
+      return endpoint.includes("base.devnet.rpc.test")
+        ? {
+            blockhash: "So11111111111111111111111111111111111111112",
+            lastValidBlockHeight: 321,
+          }
+        : {
+            blockhash: "11111111111111111111111111111111",
+            lastValidBlockHeight: 123,
+          };
+    });
+
+    const response = await app.request("/v1/spl/deposit", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        owner,
+        amount: 1,
+        cluster: "devnet",
+      }),
+    }, env);
+
+    expect(response.status).toBe(200);
+
+    const json = await response.json() as {
+      recentBlockhash: string;
+    };
+
+    expect(json.recentBlockhash).toBe("So11111111111111111111111111111111111111112");
+  });
+
+  it("builds an unsigned withdraw transaction with integer amount", async () => {
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123,
+    });
+
+    const response = await app.request("/v1/spl/withdraw", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        owner,
+        mint: "So11111111111111111111111111111111111111112",
+        amount: 1,
+        idempotent: true,
+      }),
+    }, env);
+
+    expect(response.status).toBe(200);
+
+    const json = await response.json() as {
+      sendTo: string;
+      transactionBase64: string;
+      recentBlockhash: string;
+      validator: string;
+    };
+
+    expect(json.sendTo).toBe("base");
+    expect(json.recentBlockhash).toBe("11111111111111111111111111111111");
+    expect(json.validator).toBe("11111111111111111111111111111111");
+
+    const transaction = Transaction.from(Buffer.from(json.transactionBase64, "base64"));
+    expect(transaction.instructions.length).toBeGreaterThan(0);
+  });
+
+  it("returns a config error when RPC env vars are missing", async () => {
+    const response = await app.request("/v1/spl/deposit", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        owner,
+        amount: 1,
+      }),
+    }, {
+      CORS_ORIGIN: "*",
+    });
+
+    expect(response.status).toBe(500);
+
+    const json = await response.json() as {
+      error: {
+        code: string;
+        details?: {
+          hint?: string;
+        };
+      };
+    };
+
+    expect(json.error.code).toBe("CONFIG_ERROR");
+    expect(json.error.details?.hint).toContain(".dev.vars");
+  });
+
+  it("exposes the SPL tools over MCP", async () => {
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123,
+    });
+
+    const client = new Client({
+      name: "vitest-client",
+      version: "1.0.0",
+    });
+    const transport = new StreamableHTTPClientTransport(new URL("http://localhost/mcp"), {
+      fetch: createMcpFetch(),
+    });
+
+    await client.connect(transport);
+
+    const tools = await client.listTools();
+    expect(tools.tools.some((tool) => tool.name === "spl.deposit")).toBe(true);
+    expect(tools.tools.some((tool) => tool.name === "spl.getPrivateBalance")).toBe(true);
+
+    const result = await client.callTool({
+      name: "spl.deposit",
+      arguments: {
+        owner,
+        amount: 1,
+        validator: "11111111111111111111111111111111",
+      },
+    });
+
+    expect(result.isError).toBeUndefined();
+    expect(result.structuredContent).toMatchObject({
+      kind: "deposit",
+      sendTo: "base",
+    });
+
+    await client.close();
+    await transport.close();
+  });
+
+  it("uses the ephemeral blockhash for ephemeral transfers", async () => {
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockImplementation(async function getLatestBlockhash(this: Connection & { _rpcEndpoint: string }) {
+      const endpoint = (this as Connection & { _rpcEndpoint: string })._rpcEndpoint;
+      return endpoint.includes("ephemeral")
+        ? {
+            blockhash: "11111111111111111111111111111111",
+            lastValidBlockHeight: 456,
+          }
+        : {
+            blockhash: "So11111111111111111111111111111111111111112",
+            lastValidBlockHeight: 123,
+          };
+    });
+
+    const response = await app.request("/v1/spl/transfer", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        from: owner,
+        to: destination,
+        mint: "So11111111111111111111111111111111111111112",
+        amount: 1,
+        visibility: "public",
+        fromBalance: "ephemeral",
+        toBalance: "ephemeral",
+      }),
+    }, env);
+
+    expect(response.status).toBe(200);
+
+    const json = await response.json() as {
+      sendTo: string;
+      recentBlockhash: string;
+      instructionCount: number;
+    };
+
+    expect(json.sendTo).toBe("ephemeral");
+    expect(json.recentBlockhash).toBe("11111111111111111111111111111111");
+    expect(json.instructionCount).toBe(2);
+  });
+
+  it("builds a private transfer with top-level split and delay options", async () => {
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123,
+    });
+
+    const response = await app.request("/v1/spl/transfer", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        from: owner,
+        to: destination,
+        mint: "So11111111111111111111111111111111111111112",
+        amount: 2,
+        visibility: "private",
+        fromBalance: "base",
+        toBalance: "base",
+        minDelayMs: "0",
+        maxDelayMs: "0",
+        split: 1,
+      }),
+    }, env);
+
+    expect(response.status).toBe(200);
+
+    const json = await response.json() as {
+      sendTo: string;
+      recentBlockhash: string;
+    };
+
+    expect(json.sendTo).toBe("base");
+    expect(json.recentBlockhash).toBe("11111111111111111111111111111111");
+  });
+
+  it("returns a 400 for unsupported transfer combinations", async () => {
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123,
+    });
+
+    const response = await app.request("/v1/spl/transfer", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        from: owner,
+        to: destination,
+        mint: "So11111111111111111111111111111111111111112",
+        amount: 1,
+        visibility: "public",
+        fromBalance: "base",
+        toBalance: "ephemeral",
+      }),
+    }, env);
+
+    expect(response.status).toBe(400);
+
+    const json = await response.json() as { error: { code: string } };
+    expect(json.error.code).toBe("UNSUPPORTED_TRANSFER_ROUTE");
+  });
+
+  it("returns base and private balances from different RPCs", async () => {
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(async function getAccountInfo(this: Connection & { _rpcEndpoint: string }) {
+      const endpoint = (this as Connection & { _rpcEndpoint: string })._rpcEndpoint;
+      return endpoint.includes("ephemeral")
+        ? createAccountInfo(9n)
+        : createAccountInfo(3n);
+    });
+
+    const baseResponse = await app.request(
+      `/v1/spl/balance?address=${owner}&mint=So11111111111111111111111111111111111111112`,
+      {},
+      env,
+    );
+    const privateResponse = await app.request(
+      `/v1/spl/private-balance?address=${owner}&mint=So11111111111111111111111111111111111111112`,
+      {},
+      env,
+    );
+
+    expect(baseResponse.status).toBe(200);
+    expect(privateResponse.status).toBe(200);
+
+    const baseJson = await baseResponse.json() as { location: string; balance: string };
+    const privateJson = await privateResponse.json() as { location: string; balance: string };
+
+    expect(baseJson.location).toBe("base");
+    expect(baseJson.balance).toBe("3");
+    expect(privateJson.location).toBe("ephemeral");
+    expect(privateJson.balance).toBe("9");
+  });
+
+  it("uses a custom RPC URL when cluster is a URL", async () => {
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(async function getAccountInfo(this: Connection & { _rpcEndpoint: string }) {
+      const endpoint = (this as Connection & { _rpcEndpoint: string })._rpcEndpoint;
+      return endpoint.includes("custom.rpc.test")
+        ? createAccountInfo(7n)
+        : createAccountInfo(0n);
+    });
+
+    const response = await app.request(
+      `/v1/spl/private-balance?address=${owner}&mint=So11111111111111111111111111111111111111112&cluster=${encodeURIComponent("https://custom.rpc.test")}`,
+      {},
+      env,
+    );
+
+    expect(response.status).toBe(200);
+
+    const json = await response.json() as { location: string; balance: string };
+
+    expect(json.location).toBe("ephemeral");
+    expect(json.balance).toBe("7");
+  });
+});
