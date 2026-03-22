@@ -1,3 +1,4 @@
+use crate::processor::rent_pda::derive_rent_pda;
 use ephemeral_rollups_pinocchio::intent_bundle::{
     ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
 };
@@ -10,11 +11,12 @@ use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::clock::Clock;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
 pub(crate) const EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX: u8 = 0;
 
 const ASSOCIATED_TOKEN_PROGRAM_ID: ephemeral_spl_api::Address =
     pinocchio_associated_token_account::ID;
-const EXECUTE_READY_QUEUED_TRANSFER_COMPUTE_UNITS: u32 = 100_000;
+const EXECUTE_READY_QUEUED_TRANSFER_COMPUTE_UNITS: u32 = 140_000;
 const MAGIC_INTENT_BUNDLE_DATA_LEN: usize = 512;
 const MILLIS_PER_SECOND: i64 = 1_000;
 
@@ -86,15 +88,15 @@ pub fn process_transfer_queue_tick(
     let (vault, _) =
         ephemeral_spl_api::Address::find_program_address(&[mint.as_ref()], &program_id);
     let vault_token_account = derive_associated_token_address(&vault, &mint);
-    let mut execute_data = [0_u8; 10];
+    let destination_token_account =
+        derive_associated_token_address(&queued_transfer.destination_owner, &mint);
+    let (rent_pda, _) = derive_rent_pda();
+    let mut execute_data = [0_u8; 11];
     execute_data[0] = EXECUTE_READY_QUEUED_TRANSFER;
     execute_data[1] = EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX;
-    execute_data[2..].copy_from_slice(&queued_transfer.amount.to_le_bytes());
+    execute_data[2..10].copy_from_slice(&queued_transfer.amount.to_le_bytes());
+    execute_data[10] = queued_transfer.flags;
     let execute_accounts = [
-        ShortAccountMeta {
-            pubkey: *queue_info.address(),
-            is_writable: false,
-        },
         ShortAccountMeta {
             pubkey: vault,
             is_writable: false,
@@ -108,11 +110,27 @@ pub fn process_transfer_queue_tick(
             is_writable: true,
         },
         ShortAccountMeta {
-            pubkey: queued_transfer.destination,
+            pubkey: queued_transfer.destination_owner,
+            is_writable: false,
+        },
+        ShortAccountMeta {
+            pubkey: destination_token_account,
+            is_writable: true,
+        },
+        ShortAccountMeta {
+            pubkey: rent_pda,
             is_writable: true,
         },
         ShortAccountMeta {
             pubkey: TOKEN_PROGRAM_ID,
+            is_writable: false,
+        },
+        ShortAccountMeta {
+            pubkey: ASSOCIATED_TOKEN_PROGRAM_ID,
+            is_writable: false,
+        },
+        ShortAccountMeta {
+            pubkey: SYSTEM_PROGRAM_ID,
             is_writable: false,
         },
     ];

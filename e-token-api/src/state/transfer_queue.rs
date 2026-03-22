@@ -3,9 +3,10 @@ use pinocchio::{error::ProgramError, Address};
 
 /// Current queue version that stores inserted/ready timestamps in milliseconds.
 /// Bump this value only when the on-chain layout changes or queue semantics require it.
-pub const TRANSFER_QUEUE_VERSION: u8 = 1;
+pub const TRANSFER_QUEUE_VERSION: u8 = 2;
 /// PDA seed prefix for transfer queues.
 pub const QUEUE_SEED: &[u8] = b"queue";
+pub const QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA: u8 = 1 << 0;
 
 /// Header stored at the start of the queue account.
 /// The trailing bytes are interpreted as `[QueuedTransfer]` heap storage.
@@ -29,15 +30,24 @@ pub struct TransferQueueHeader {
 #[derive(Copy, Clone, Pod, Zeroable)]
 pub struct QueuedTransfer {
     pub source: Address,
-    pub destination: Address,
+    pub destination_owner: Address,
     pub amount: u64,
     pub ready_at: i64,
     pub inserted_at: i64,
     pub task_id: u64,
+    pub flags: u8,
+    pub _pad0: [u8; 7],
 }
 
 const _: [(); 64] = [(); core::mem::size_of::<TransferQueueHeader>()];
-const _: [(); 96] = [(); core::mem::size_of::<QueuedTransfer>()];
+const _: [(); 104] = [(); core::mem::size_of::<QueuedTransfer>()];
+
+impl QueuedTransfer {
+    #[inline(always)]
+    pub fn should_create_destination_ata_idempotent(&self) -> bool {
+        self.flags & QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA != 0
+    }
+}
 
 #[inline(always)]
 pub const fn header_len() -> usize {
@@ -193,8 +203,8 @@ fn higher_priority(a: &QueuedTransfer, b: &QueuedTransfer) -> bool {
     if a.amount != b.amount {
         return a.amount < b.amount;
     }
-    if a.destination.as_ref() != b.destination.as_ref() {
-        return a.destination.as_ref() < b.destination.as_ref();
+    if a.destination_owner.as_ref() != b.destination_owner.as_ref() {
+        return a.destination_owner.as_ref() < b.destination_owner.as_ref();
     }
     if a.source.as_ref() != b.source.as_ref() {
         return a.source.as_ref() < b.source.as_ref();
@@ -367,11 +377,13 @@ mod tests {
     ) -> QueuedTransfer {
         QueuedTransfer {
             source: addr(source),
-            destination: addr(destination),
+            destination_owner: addr(destination),
             amount,
             ready_at,
             inserted_at,
             task_id: 0,
+            flags: 0,
+            _pad0: [0; 7],
         }
     }
 
@@ -423,7 +435,7 @@ mod tests {
         let top = queue_peek_from_data(data).unwrap().unwrap();
         assert_eq!(top.amount, 50);
         assert_eq!(top.source, addr(9));
-        assert_eq!(top.destination, addr(9));
+        assert_eq!(top.destination_owner, addr(9));
     }
 
     #[test]

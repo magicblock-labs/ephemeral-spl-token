@@ -1,3 +1,5 @@
+#[cfg(feature = "logging")]
+use alloc::string::ToString;
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 use core::ptr::read_unaligned;
@@ -15,9 +17,9 @@ use dlp_api::{args::PostDelegationActions, compact::ClearTextWithInsertable};
 
 use crate::processor::deposit_and_delegate_shuttle_ephemeral_ata_with_merge::undelegate_and_close_shuttle_action;
 use crate::processor::deposit_and_delegate_shuttle_ephemeral_ata_with_merge::{
-    merge_shuttle_into_token_account_action, parse_deposit_and_delegate_shuttle_accounts,
+    merge_shuttle_into_token_account_action,
     process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions,
-    DepositAndDelegateShuttleCommonArgs,
+    DepositAndDelegateShuttleAccounts, DepositAndDelegateShuttleCommonArgs,
 };
 
 #[inline(never)]
@@ -26,16 +28,45 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
     instruction_data: &[u8],
 ) -> ProgramResult {
     // Expected accounts:
-    // 0..18 Same as DepositAndDelegateShuttleEphemeralAtaWithMerge
-    // 19. [writable] Transfer queue PDA derived from [QUEUE_SEED, mint]
+    // 0..17 Same as DepositAndDelegateShuttleEphemeralAtaWithMerge, except there is no
+    //        cleartext destination ATA account in this outer instruction.
+    // 18. [writable] Transfer queue PDA derived from [QUEUE_SEED, mint]
     //
     let args = DepositAndDelegateShuttleWithPrivateTransferArgs::try_from_bytes(instruction_data)?;
     if args.amount() == 0 {
         return Err(ProgramError::InvalidInstructionData);
     }
 
-    let common_accounts = parse_deposit_and_delegate_shuttle_accounts(accounts)?;
-    let queue_info = accounts.get(19).ok_or(ProgramError::NotEnoughAccountKeys)?;
+    let (common_accounts, queue_info) =
+        parse_deposit_and_delegate_shuttle_private_transfer_accounts(accounts)?;
+
+    #[cfg(feature = "logging")]
+    {
+        let shuttle = common_accounts.shuttle_info.address().to_string();
+        let shuttle_eata = common_accounts.shuttle_eata_info.address().to_string();
+        let shuttle_wallet = common_accounts
+            .shuttle_wallet_ata_info
+            .address()
+            .to_string();
+        let mint = common_accounts.mint_info.address().to_string();
+        let owner_source = common_accounts
+            .owner_source_token_info
+            .address()
+            .to_string();
+        let vault_token = common_accounts.vault_token_info.address().to_string();
+        let queue = queue_info.address().to_string();
+
+        pinocchio_log::log!(
+            "Private shuttle ix accounts shuttle={} shuttle_eata={} shuttle_wallet={} mint={} owner_source={} vault_token={} queue={}",
+            shuttle.as_str(),
+            shuttle_eata.as_str(),
+            shuttle_wallet.as_str(),
+            mint.as_str(),
+            owner_source.as_str(),
+            vault_token.as_str(),
+            queue.as_str(),
+        );
+    }
 
     let program_id = ephemeral_spl_api::program::id_address();
     let (derived_queue, _) = ephemeral_spl_api::Address::find_program_address(
@@ -43,6 +74,16 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
         &program_id,
     );
     if derived_queue != *queue_info.address() {
+        #[cfg(feature = "logging")]
+        {
+            let expected = derived_queue.to_string();
+            let actual = queue_info.address().to_string();
+            pinocchio_log::log!(
+                "Private shuttle ix queue mismatch expected={} actual={}",
+                expected.as_str(),
+                actual.as_str(),
+            );
+        }
         return Err(ProgramError::InvalidSeeds);
     }
     if !queue_info.owned_by(&ephemeral_spl_api::program::DELEGATION_PROGRAM_ID) {
@@ -66,7 +107,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
     process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions(
         &common_accounts,
         args.common_args()?,
-        actions.into(),
+        actions,
     )
 }
 
@@ -151,13 +192,13 @@ impl DepositAndDelegateShuttleWithPrivateTransferArgs<'_> {
         Ok(Some(validator))
     }
 
-    // decrypted { destination_token_account: pubkey }
+    // decrypted { destination_owner: pubkey }
     #[inline]
     fn encrypted_destination(&self) -> Result<&[u8], ProgramError> {
         unsafe { self.read_vardata::<1>() }
     }
 
-    // decrypted { min_delay_ms: u64, max_delay_ms: 64, split: u32 } :: PACKED
+    // decrypted { min_delay_ms: u64, max_delay_ms: 64, split: u32, flags: u8 } :: PACKED
     #[inline]
     fn encrypted_data_suffix(&self) -> Result<&[u8], ProgramError> {
         unsafe { self.read_vardata::<2>() }
@@ -196,7 +237,7 @@ impl DepositAndDelegateShuttleWithPrivateTransferArgs<'_> {
 }
 
 fn private_transfer_action_encrypted(
-    common_accounts: &crate::processor::deposit_and_delegate_shuttle_ephemeral_ata_with_merge::DepositAndDelegateShuttleAccounts<'_>,
+    common_accounts: &DepositAndDelegateShuttleAccounts<'_>,
     queue_info: &AccountView,
     args: &DepositAndDelegateShuttleWithPrivateTransferArgs<'_>,
 ) -> Result<PostDelegationActions, ProgramError> {
@@ -213,9 +254,9 @@ fn private_transfer_action_encrypted(
                 common_accounts.owner_source_token_info.address().to_bytes()
             ), // 5
             MaybeEncryptedPubkey::ClearText(common_accounts.vault_token_info.address().to_bytes()), // 6
-            MaybeEncryptedPubkey::Encrypted(
-                EncryptedBuffer::new(args.encrypted_destination()?.into()) // common_accounts.destination_token_info.address().to_bytes()
-            ), // 7
+            MaybeEncryptedPubkey::Encrypted(EncryptedBuffer::new(
+                args.encrypted_destination()?.into()
+            )), // 7
             MaybeEncryptedPubkey::ClearText(
                 common_accounts.token_program_info.address().to_bytes()
             ), // 8
@@ -228,7 +269,7 @@ fn private_transfer_action_encrypted(
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(4, false)), // mint_info
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(5, false)), // owner_source_token_info
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(6, false)), // vault_token_info
-                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(7, false)), // destination_token_info
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(7, false)), // destination_owner_info
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(0, true)), // owner_info
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(8, false)), // token_program_info
             ],
@@ -243,4 +284,36 @@ fn private_transfer_action_encrypted(
             },
         }],
     })
+}
+
+fn parse_deposit_and_delegate_shuttle_private_transfer_accounts(
+    accounts: &[AccountView],
+) -> Result<(DepositAndDelegateShuttleAccounts<'_>, &AccountView), ProgramError> {
+    let [payer_info, rent_pda_info, shuttle_info, shuttle_eata_info, shuttle_wallet_ata_info, owner_info, owner_program, buffer_acc, delegation_record, delegation_metadata, _delegation_program, _associated_token_program, system_program, mint_info, token_program_info, global_vault_info, owner_source_token_info, vault_token_info, queue_info, ..] =
+        accounts
+    else {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    };
+
+    Ok((
+        DepositAndDelegateShuttleAccounts {
+            payer_info,
+            rent_pda_info,
+            shuttle_info,
+            shuttle_eata_info,
+            shuttle_wallet_ata_info,
+            owner_info,
+            owner_program,
+            buffer_acc,
+            delegation_record,
+            delegation_metadata,
+            system_program,
+            mint_info,
+            token_program_info,
+            global_vault_info,
+            owner_source_token_info,
+            vault_token_info,
+        },
+        queue_info,
+    ))
 }

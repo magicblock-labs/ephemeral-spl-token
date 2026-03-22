@@ -46,12 +46,16 @@ pub(crate) struct DepositAndDelegateShuttleAccounts<'a> {
     pub(crate) delegation_record: &'a AccountView,
     pub(crate) delegation_metadata: &'a AccountView,
     pub(crate) system_program: &'a AccountView,
-    pub(crate) destination_token_info: &'a AccountView,
     pub(crate) mint_info: &'a AccountView,
     pub(crate) token_program_info: &'a AccountView,
     pub(crate) global_vault_info: &'a AccountView,
     pub(crate) owner_source_token_info: &'a AccountView,
     pub(crate) vault_token_info: &'a AccountView,
+}
+
+pub(crate) struct DepositAndDelegateShuttleWithMergeAccounts<'a> {
+    pub(crate) common: DepositAndDelegateShuttleAccounts<'a>,
+    pub(crate) destination_token_info: &'a AccountView,
 }
 
 pub(crate) struct PreparedShuttleDelegation {
@@ -73,10 +77,10 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge(
     instruction_data: &[u8],
 ) -> ProgramResult {
     let args = DepositAndDelegateShuttleArgs::try_from_bytes(instruction_data)?;
-    let accounts = parse_deposit_and_delegate_shuttle_accounts(accounts)?;
+    let accounts = parse_deposit_and_delegate_shuttle_with_merge_accounts(accounts)?;
 
     process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions(
-        &accounts,
+        &accounts.common,
         args.common_args(),
         default_post_delegation_actions(&accounts).cleartext(),
     )
@@ -143,42 +147,44 @@ impl DepositAndDelegateShuttleArgs<'_> {
     }
 }
 
-pub(crate) fn parse_deposit_and_delegate_shuttle_accounts(
+pub(crate) fn parse_deposit_and_delegate_shuttle_with_merge_accounts(
     accounts: &[AccountView],
-) -> Result<DepositAndDelegateShuttleAccounts<'_>, ProgramError> {
+) -> Result<DepositAndDelegateShuttleWithMergeAccounts<'_>, ProgramError> {
     let [payer_info, rent_pda_info, shuttle_info, shuttle_eata_info, shuttle_wallet_ata_info, owner_info, owner_program, buffer_acc, delegation_record, delegation_metadata, _delegation_program, _associated_token_program, system_program, destination_token_info, mint_info, token_program_info, global_vault_info, owner_source_token_info, vault_token_info, ..] =
         accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
-    Ok(DepositAndDelegateShuttleAccounts {
-        payer_info,
-        rent_pda_info,
-        shuttle_info,
-        shuttle_eata_info,
-        shuttle_wallet_ata_info,
-        owner_info,
-        owner_program,
-        buffer_acc,
-        delegation_record,
-        delegation_metadata,
-        system_program,
+    Ok(DepositAndDelegateShuttleWithMergeAccounts {
+        common: DepositAndDelegateShuttleAccounts {
+            payer_info,
+            rent_pda_info,
+            shuttle_info,
+            shuttle_eata_info,
+            shuttle_wallet_ata_info,
+            owner_info,
+            owner_program,
+            buffer_acc,
+            delegation_record,
+            delegation_metadata,
+            system_program,
+            mint_info,
+            token_program_info,
+            global_vault_info,
+            owner_source_token_info,
+            vault_token_info,
+        },
         destination_token_info,
-        mint_info,
-        token_program_info,
-        global_vault_info,
-        owner_source_token_info,
-        vault_token_info,
     })
 }
 
 pub(crate) fn default_post_delegation_actions(
-    accounts: &DepositAndDelegateShuttleAccounts<'_>,
+    accounts: &DepositAndDelegateShuttleWithMergeAccounts<'_>,
 ) -> Vec<Instruction> {
     alloc::vec![
         merge_shuttle_into_destination_action(accounts),
-        undelegate_and_close_shuttle_action(accounts),
+        undelegate_and_close_shuttle_action(&accounts.common),
     ]
 }
 
@@ -257,6 +263,26 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
 ) -> Result<PreparedShuttleDelegation, ProgramError> {
     if !payer_info.is_signer() || !owner_info.is_signer() {
         return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    #[cfg(feature = "logging")]
+    {
+        let shuttle = shuttle_info.address().to_string();
+        let shuttle_eata = shuttle_eata_info.address().to_string();
+        let shuttle_wallet = shuttle_wallet_ata_info.address().to_string();
+        let owner = owner_info.address().to_string();
+        let mint = mint_info.address().to_string();
+        let rent_pda = rent_pda_info.address().to_string();
+        pinocchio_log::log!(
+            "PrepareShuttleDelegation accounts shuttle={} shuttle_eata={} shuttle_wallet={} owner={} mint={} rent_pda={} shuttle_id={}",
+            shuttle.as_str(),
+            shuttle_eata.as_str(),
+            shuttle_wallet.as_str(),
+            owner.as_str(),
+            mint.as_str(),
+            rent_pda.as_str(),
+            shuttle_id,
+        );
     }
 
     let (derived_rent_pda, rent_bump) = derive_rent_pda();
@@ -339,6 +365,20 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
         if shuttle_eata.owner != *shuttle_info.address() {
             return Err(ProgramError::InvalidAccountData);
         }
+
+        #[cfg(feature = "logging")]
+        {
+            let shuttle_owner = shuttle_eata.owner.to_string();
+            let shuttle_mint = shuttle_eata.mint.to_string();
+            pinocchio_log::log!(
+                "PrepareShuttleDelegation shuttle_eata_state data_len={} owner={} mint={} bump={}",
+                shuttle_eata_info.data_len(),
+                shuttle_owner.as_str(),
+                shuttle_mint.as_str(),
+                shuttle_eata.bump,
+            );
+        }
+
         (shuttle_eata.mint, [shuttle_eata.bump])
     };
 
@@ -346,11 +386,39 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    let derived_shuttle_eata = ephemeral_spl_api::Address::create_program_address(
+    let derived_shuttle_eata = match ephemeral_spl_api::Address::create_program_address(
         &[shuttle_info.address().as_ref(), mint.as_ref(), &bump],
         &ephemeral_spl_api::program::id_address(),
-    )?;
+    ) {
+        Ok(address) => address,
+        Err(err) => {
+            #[cfg(feature = "logging")]
+            {
+                let shuttle = shuttle_info.address().to_string();
+                let shuttle_eata = shuttle_eata_info.address().to_string();
+                let mint = mint.to_string();
+                pinocchio_log::log!(
+                    "PrepareShuttleDelegation failed deriving shuttle_eata shuttle={} mint={} bump={} actual={}",
+                    shuttle.as_str(),
+                    mint.as_str(),
+                    bump[0],
+                    shuttle_eata.as_str(),
+                );
+            }
+            return Err(err.into());
+        }
+    };
     if derived_shuttle_eata != *shuttle_eata_info.address() {
+        #[cfg(feature = "logging")]
+        {
+            let expected = derived_shuttle_eata.to_string();
+            let actual = shuttle_eata_info.address().to_string();
+            pinocchio_log::log!(
+                "PrepareShuttleDelegation shuttle_eata mismatch expected={} actual={}",
+                expected.as_str(),
+                actual.as_str(),
+            );
+        }
         return Err(ProgramError::InvalidSeeds);
     }
 
@@ -436,9 +504,9 @@ pub(crate) fn read_mint_decimals(mint_info: &AccountView) -> Result<u8, ProgramE
 }
 
 fn merge_shuttle_into_destination_action(
-    accounts: &DepositAndDelegateShuttleAccounts<'_>,
+    accounts: &DepositAndDelegateShuttleWithMergeAccounts<'_>,
 ) -> Instruction {
-    merge_shuttle_into_token_account_action(accounts, accounts.destination_token_info)
+    merge_shuttle_into_token_account_action(&accounts.common, accounts.destination_token_info)
 }
 
 pub(crate) fn merge_shuttle_into_token_account_action(

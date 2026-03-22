@@ -115,19 +115,15 @@ pub fn load_ephemeral_ata_compat_mut(
     bytes: &mut [u8],
 ) -> Result<EphemeralAtaCompatMut<'_>, ProgramError> {
     if bytes.len() == EphemeralAta::LEN {
-        return Ok(EphemeralAtaCompatMut(
-            EphemeralAtaCompatMutInner::Current(unsafe {
-                load_mut_unchecked::<EphemeralAta>(bytes)?
-            }),
-        ));
+        return Ok(EphemeralAtaCompatMut(EphemeralAtaCompatMutInner::Current(
+            unsafe { load_mut_unchecked::<EphemeralAta>(bytes)? },
+        )));
     }
 
     if bytes.len() == LEGACY_EPHEMERAL_ATA_LEN {
-        return Ok(EphemeralAtaCompatMut(
-            EphemeralAtaCompatMutInner::Legacy(unsafe {
-                load_mut_unchecked::<LegacyEphemeralAta>(bytes)?
-            }),
-        ));
+        return Ok(EphemeralAtaCompatMut(EphemeralAtaCompatMutInner::Legacy(
+            unsafe { load_mut_unchecked::<LegacyEphemeralAta>(bytes)? },
+        )));
     }
 
     Err(ProgramError::InvalidAccountData)
