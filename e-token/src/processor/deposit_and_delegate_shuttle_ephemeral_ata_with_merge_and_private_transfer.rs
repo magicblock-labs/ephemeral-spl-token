@@ -10,7 +10,7 @@ use dlp_api::args::{
 };
 use dlp_api::compact::{self};
 
-use ephemeral_spl_api::state::transfer_queue::QUEUE_SEED;
+use ephemeral_spl_api::state::transfer_queue::{queue_views, TransferQueue};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
 use dlp_api::{args::PostDelegationActions, compact::ClearTextWithInsertable};
@@ -68,26 +68,17 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
         );
     }
 
-    let program_id = ephemeral_spl_api::ID;
-    let (derived_queue, _) = ephemeral_spl_api::Address::find_program_address(
-        &[QUEUE_SEED, common_accounts.mint_info.address().as_ref()],
-        &program_id,
-    );
-    if derived_queue != *queue_info.address() {
-        #[cfg(feature = "logging")]
-        {
-            let expected = derived_queue.to_string();
-            let actual = queue_info.address().to_string();
-            pinocchio_log::log!(
-                "Private shuttle ix queue mismatch expected={} actual={}",
-                expected.as_str(),
-                actual.as_str(),
-            );
-        }
-        return Err(ProgramError::InvalidSeeds);
-    }
     if !queue_info.owned_by(&ephemeral_spl_api::program::DELEGATION_PROGRAM_ID) {
         return Err(ProgramError::IllegalOwner);
+    }
+    let bump = {
+        let data = unsafe { queue_info.borrow_unchecked() };
+        let (header, _) = queue_views(data)?;
+        header.bump
+    };
+    let derived_queue = TransferQueue::create_pda(common_accounts.mint_info.address(), bump)?;
+    if derived_queue != *queue_info.address() {
+        return Err(ProgramError::InvalidSeeds);
     }
 
     let actions = {

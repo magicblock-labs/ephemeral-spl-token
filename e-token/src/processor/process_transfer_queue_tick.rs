@@ -4,10 +4,11 @@ use ephemeral_rollups_pinocchio::intent_bundle::{
 };
 use ephemeral_rollups_pinocchio::spl::consts::TOKEN_PROGRAM_ID;
 use ephemeral_spl_api::instruction::internal::EXECUTE_READY_QUEUED_TRANSFER;
+use ephemeral_spl_api::state::global_vault::GlobalVault;
 use ephemeral_spl_api::state::transfer_queue::{
-    queue_peek_from_data, queue_pop_from_data, queue_views_checked, QUEUE_SEED,
+    queue_peek_from_data, queue_pop_from_data, queue_views_checked, TransferQueue,
 };
-use pinocchio::cpi::{Seed, Signer};
+use pinocchio::cpi::Signer;
 use pinocchio::sysvars::clock::Clock;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
@@ -49,10 +50,7 @@ pub fn process_transfer_queue_tick(
             .checked_mul(MILLIS_PER_SECOND)
             .ok_or(ProgramError::InvalidInstructionData)?;
 
-        let (derived_queue, queue_bump) = ephemeral_spl_api::Address::find_program_address(
-            &[QUEUE_SEED, mint.as_ref()],
-            &program_id,
-        );
+        let derived_queue = TransferQueue::create_pda(&mint, header.bump)?;
         if derived_queue != *queue_info.address() {
             return Err(ProgramError::InvalidSeeds);
         }
@@ -80,13 +78,12 @@ pub fn process_transfer_queue_tick(
             queue_len
         );
 
-        (mint, queue_bump, queue_len, next)
+        (mint, header.bump, queue_len, next)
     };
     #[cfg(not(feature = "logging"))]
     let _ = queue_len;
 
-    let (vault, _) =
-        ephemeral_spl_api::Address::find_program_address(&[mint.as_ref()], &program_id);
+    let (vault, _) = GlobalVault::find_pda(&mint);
     let vault_token_account = derive_associated_token_address(&vault, &mint);
     let destination_token_account =
         derive_associated_token_address(&queued_transfer.destination_owner, &mint);
@@ -144,11 +141,7 @@ pub fn process_transfer_queue_tick(
     }];
     let mut intent_bundle_data = [0_u8; MAGIC_INTENT_BUNDLE_DATA_LEN];
     let queue_bump_seed = [queue_bump];
-    let signer_seeds = [
-        Seed::from(QUEUE_SEED),
-        Seed::from(mint.as_ref()),
-        Seed::from(&queue_bump_seed),
-    ];
+    let signer_seeds = TransferQueue::signer_seeds(&mint, &queue_bump_seed);
     let signer = Signer::from(&signer_seeds);
 
     MagicIntentBundleBuilder::new(

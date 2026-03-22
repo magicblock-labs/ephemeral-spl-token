@@ -105,10 +105,7 @@ pub fn process_execute_ready_queued_transfer(
     };
 
     let vault_bump = [vault_bump];
-    let signer_seeds = [
-        Seed::from(mint_info.address().as_ref()),
-        Seed::from(&vault_bump),
-    ];
+    let signer_seeds = GlobalVault::signer_seeds(mint_info.address(), &vault_bump);
     let signer = Signer::from(&signer_seeds);
 
     pinocchio_token_2022::instructions::TransferChecked {
@@ -138,10 +135,7 @@ pub(crate) fn validate_vault_for_mint(
     }
 
     let vault = unsafe { load_unchecked::<GlobalVault>(vault_info.borrow_unchecked())? };
-    let (derived_vault, bump) = ephemeral_spl_api::Address::find_program_address(
-        &[mint_info.address().as_ref()],
-        &ephemeral_spl_api::ID,
-    );
+    let derived_vault = GlobalVault::create_pda(mint_info.address(), vault.bump)?;
     if derived_vault != *vault_info.address()
         || vault.mint != *mint_info.address()
         || vault.token_account != *vault_token_acc_info.address()
@@ -149,7 +143,7 @@ pub(crate) fn validate_vault_for_mint(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    Ok(bump)
+    Ok(vault.bump)
 }
 
 pub struct ExecuteQueuedTransferArgs<'a> {

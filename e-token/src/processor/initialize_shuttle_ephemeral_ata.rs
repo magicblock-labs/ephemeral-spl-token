@@ -1,7 +1,7 @@
 use crate::processor::initialize_ephemeral_ata::initialize_ephemeral_ata_with_sponsor;
 use core::marker::PhantomData;
 use ephemeral_spl_api::state::{load_mut_unchecked, load_unchecked, Initializable, RawType};
-use pinocchio::cpi::{Seed, Signer};
+use pinocchio::cpi::Signer;
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
 use pinocchio_system::instructions::{CreateAccount, Transfer};
@@ -72,14 +72,8 @@ pub(crate) fn initialize_shuttle_ephemeral_ata_with_sponsor(
     shuttle_id: u32,
 ) -> ProgramResult {
     let shuttle_id_seed = shuttle_id.to_le_bytes();
-    let (derived_shuttle_pda, shuttle_bump) = ephemeral_spl_api::Address::find_program_address(
-        &[
-            owner_info.address().as_ref(),
-            mint_info.address().as_ref(),
-            shuttle_id_seed.as_ref(),
-        ],
-        &ephemeral_spl_api::ID,
-    );
+    let (derived_shuttle_pda, shuttle_bump) =
+        ShuttleMetadata::find_pda(owner_info.address(), mint_info.address(), shuttle_id);
     if derived_shuttle_pda != *shuttle_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
@@ -88,12 +82,12 @@ pub(crate) fn initialize_shuttle_ephemeral_ata_with_sponsor(
 
     if !shuttle_is_owned_by_program {
         let bump = [shuttle_bump];
-        let shuttle_seed = [
-            Seed::from(owner_info.address().as_ref()),
-            Seed::from(mint_info.address().as_ref()),
-            Seed::from(shuttle_id_seed.as_ref()),
-            Seed::from(&bump),
-        ];
+        let shuttle_seed = ShuttleMetadata::signer_seeds(
+            owner_info.address(),
+            mint_info.address(),
+            &shuttle_id_seed,
+            &bump,
+        );
         let shuttle_signer = Signer::from(&shuttle_seed);
 
         let create_shuttle = CreateAccount {

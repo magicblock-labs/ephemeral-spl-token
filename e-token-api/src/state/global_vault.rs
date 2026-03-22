@@ -1,4 +1,4 @@
-use pinocchio::Address;
+use pinocchio::{cpi::Seed, error::ProgramError, Address};
 
 use super::{Initializable, RawType};
 
@@ -21,5 +21,34 @@ impl Initializable for GlobalVault {
     #[inline(always)]
     fn is_initialized(&self) -> bool {
         self.mint != Address::default()
+    }
+}
+
+impl GlobalVault {
+    #[inline(always)]
+    pub fn create_pda(mint: &Address, bump_seed: u8) -> Result<Address, ProgramError> {
+        let bump = [bump_seed];
+        let pda = Address::create_program_address(&[mint.as_ref(), &bump], &crate::ID)?;
+        Ok(pda)
+    }
+
+    #[inline(always)]
+    pub fn find_pda(mint: &Address) -> (Address, u8) {
+        Address::find_program_address(&[mint.as_ref()], &crate::ID)
+    }
+
+    #[inline(always)]
+    pub fn seeds<'a>(mint: &'a Address) -> [&'a [u8]; 1] {
+        [mint.as_ref()]
+    }
+
+    #[inline(always)]
+    pub fn seeds_with_bump<'a>(mint: &'a Address, bump: &'a [u8]) -> [&'a [u8]; 2] {
+        [&mint.as_ref(), &bump]
+    }
+
+    #[inline(always)]
+    pub fn signer_seeds<'a>(mint: &'a Address, bump: &'a [u8]) -> [Seed<'a>; 2] {
+        [Seed::from(mint.as_ref()), Seed::from(bump)]
     }
 }

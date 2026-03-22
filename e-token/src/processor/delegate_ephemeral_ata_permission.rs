@@ -3,11 +3,7 @@ use ephemeral_rollups_pinocchio::acl::{
     pda::permission_pda_from_permissioned_account,
 };
 use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_unchecked, Initializable};
-use pinocchio::{
-    cpi::{Seed, Signer},
-    error::ProgramError,
-    AccountView, ProgramResult,
-};
+use pinocchio::{cpi::Signer, error::ProgramError, AccountView, ProgramResult};
 
 #[inline(always)]
 pub fn process_delegate_ephemeral_ata_permission(
@@ -60,11 +56,7 @@ pub fn process_delegate_ephemeral_ata_permission(
     }
 
     let bump = [ephemeral_ata.bump];
-    let seeds = [
-        Seed::from(ephemeral_ata.owner.as_ref()),
-        Seed::from(ephemeral_ata.mint.as_ref()),
-        Seed::from(&bump),
-    ];
+    let seeds = EphemeralAta::signer_seeds(&ephemeral_ata.owner, &ephemeral_ata.mint, &bump);
     let signer_seeds = Signer::from(&seeds);
 
     DelegatePermissionCpiBuilder::new(

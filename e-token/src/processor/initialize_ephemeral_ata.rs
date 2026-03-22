@@ -1,5 +1,5 @@
 use ephemeral_spl_api::state::{Initializable, RawType};
-use pinocchio::cpi::{Seed, Signer};
+use pinocchio::cpi::Signer;
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
 use pinocchio_system::instructions::{CreateAccount, Transfer};
@@ -44,10 +44,7 @@ pub(crate) fn initialize_ephemeral_ata_with_sponsor(
     mint_info: &AccountView,
 ) -> ProgramResult {
     // Validate PDA derivation up front, even for idempotent re-initialization.
-    let (derived_pda, eata_bump) = ephemeral_spl_api::Address::find_program_address(
-        &[user_info.address().as_ref(), mint_info.address().as_ref()],
-        &ephemeral_spl_api::ID,
-    );
+    let (derived_pda, eata_bump) = EphemeralAta::find_pda(user_info.address(), mint_info.address());
     if derived_pda != *ephemeral_ata_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
@@ -108,11 +105,7 @@ pub(crate) fn initialize_ephemeral_ata_with_sponsor(
     }
 
     let bump = [eata_bump];
-    let seed = [
-        Seed::from(user_info.address().as_ref()),
-        Seed::from(mint_info.address().as_ref()),
-        Seed::from(&bump),
-    ];
+    let seed = EphemeralAta::signer_seeds(user_info.address(), mint_info.address(), &bump);
     let signer_seeds = Signer::from(&seed);
 
     let create_ephemeral_ata = CreateAccount {

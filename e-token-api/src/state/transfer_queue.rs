@@ -1,5 +1,5 @@
 use bytemuck::{Pod, Zeroable};
-use pinocchio::{error::ProgramError, Address};
+use pinocchio::{cpi::Seed, error::ProgramError, Address};
 
 /// Current queue version that stores inserted/ready timestamps in milliseconds.
 /// Bump this value only when the on-chain layout changes or queue semantics require it.
@@ -37,6 +37,41 @@ pub struct QueuedTransfer {
     pub task_id: u64,
     pub flags: u8,
     pub _pad0: [u8; 7],
+}
+
+pub struct TransferQueue;
+
+impl TransferQueue {
+    #[inline(always)]
+    pub fn create_pda(mint: &Address, bump_seed: u8) -> Result<Address, ProgramError> {
+        let bump = [bump_seed];
+        let pda = Address::create_program_address(&[QUEUE_SEED, mint.as_ref(), &bump], &crate::ID)?;
+        Ok(pda)
+    }
+
+    #[inline(always)]
+    pub fn find_pda(mint: &Address) -> (Address, u8) {
+        Address::find_program_address(&[QUEUE_SEED, mint.as_ref()], &crate::ID)
+    }
+
+    #[inline(always)]
+    pub fn seeds<'a>(mint: &'a Address) -> [&'a [u8]; 2] {
+        [&QUEUE_SEED, mint.as_ref()]
+    }
+
+    #[inline(always)]
+    pub fn seeds_with_bump<'a>(mint: &'a Address, bump: &'a [u8]) -> [&'a [u8]; 3] {
+        [&QUEUE_SEED, mint.as_ref(), &bump]
+    }
+
+    #[inline(always)]
+    pub fn signer_seeds<'a>(mint: &'a Address, bump: &'a [u8]) -> [Seed<'a>; 3] {
+        [
+            Seed::from(QUEUE_SEED),
+            Seed::from(mint.as_ref()),
+            Seed::from(bump),
+        ]
+    }
 }
 
 const _: [(); 64] = [(); core::mem::size_of::<TransferQueueHeader>()];
@@ -173,11 +208,11 @@ pub fn queue_views_mut_checked(
 }
 
 #[inline(always)]
-pub fn queue_len_for_mint_with_capacity(
+pub fn queue_len_and_bump_for_mint_with_capacity(
     data: &[u8],
     expected_mint: &Address,
     required_slots: usize,
-) -> Result<usize, ProgramError> {
+) -> Result<(usize, u8), ProgramError> {
     let (header, items) = queue_views_checked(data)?;
     if header.mint != *expected_mint {
         return Err(ProgramError::InvalidAccountData);
@@ -189,7 +224,7 @@ pub fn queue_len_for_mint_with_capacity(
         return Err(ProgramError::AccountDataTooSmall);
     }
 
-    Ok(queue_len)
+    Ok((queue_len, header.bump))
 }
 
 #[inline(always)]

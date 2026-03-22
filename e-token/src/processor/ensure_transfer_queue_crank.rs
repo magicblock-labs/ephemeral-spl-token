@@ -4,7 +4,7 @@ use ephemeral_rollups_pinocchio::crank::{CrankInstruction, ScheduleCrankArgs, Sc
 use ephemeral_spl_api::instruction::internal::PROCESS_TRANSFER_QUEUE_TICK;
 use ephemeral_spl_api::state::transfer_queue::{
     queue_crank_task_id_from_data, queue_set_crank_task_id_from_data, queue_views_checked,
-    QUEUE_SEED,
+    TransferQueue,
 };
 use pinocchio::cpi::invoke_with_bounds;
 use pinocchio::instruction::{InstructionAccount, InstructionView};
@@ -49,12 +49,7 @@ pub fn process_ensure_transfer_queue_crank(
         (header.mint, header.bump)
     };
 
-    let bump_seed = [bump];
-    let derived_queue = ephemeral_spl_api::Address::create_program_address(
-        &[QUEUE_SEED, mint.as_ref(), bump_seed.as_ref()],
-        &program_id,
-    )
-    .map_err(|_| ProgramError::InvalidAccountData)?;
+    let derived_queue = TransferQueue::create_pda(&mint, bump)?;
     if derived_queue != *queue_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }

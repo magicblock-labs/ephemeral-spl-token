@@ -1,6 +1,6 @@
 use core::marker::PhantomData;
 use ephemeral_spl_api::error::EphemeralSplError;
-use pinocchio::cpi::{Seed, Signer};
+use pinocchio::cpi::Signer;
 use {
     ephemeral_spl_api::state::{
         ephemeral_ata::load_ephemeral_ata_compat_mut, global_vault::GlobalVault, load_unchecked,
@@ -104,7 +104,7 @@ pub(crate) fn withdraw_ephemeral_ata_tokens(
 
     // Perform transfer from vault token account to user destination, signed by vault PDA
     let bump = [vault.bump];
-    let seeds = [Seed::from(mint_info.address().as_ref()), Seed::from(&bump)];
+    let seeds = GlobalVault::signer_seeds(mint_info.address(), &bump);
     let signer = Signer::from(&seeds);
 
     pinocchio_token_2022::instructions::TransferChecked {

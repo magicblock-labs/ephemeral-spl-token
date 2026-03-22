@@ -1,6 +1,6 @@
 use ephemeral_rollups_pinocchio::instruction::DelegateAccountCpiBuilder;
 use ephemeral_rollups_pinocchio::types::DelegateConfig;
-use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, QUEUE_SEED};
+use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, TransferQueue, QUEUE_SEED};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
 pub fn process_delegate_transfer_queue(
@@ -45,12 +45,7 @@ pub fn process_delegate_transfer_queue(
         }
 
         let bump = header.bump;
-        let bump_seed = [bump];
-        let derived_queue = ephemeral_spl_api::Address::create_program_address(
-            &[QUEUE_SEED, mint_info.address().as_ref(), bump_seed.as_ref()],
-            &program_id,
-        )
-        .map_err(|_| ProgramError::InvalidAccountData)?;
+        let derived_queue = TransferQueue::create_pda(mint_info.address(), bump)?;
         if derived_queue != *queue_info.address() {
             return Err(ProgramError::InvalidSeeds);
         }

@@ -2,8 +2,8 @@ use core::{convert::TryFrom, marker::PhantomData};
 
 use crate::processor::deposit_spl_tokens::transfer_to_vault_for_mint;
 use ephemeral_spl_api::state::transfer_queue::{
-    queue_len_for_mint_with_capacity, queue_push_from_data, QueuedTransfer,
-    QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA, QUEUE_SEED,
+    queue_len_and_bump_for_mint_with_capacity, queue_push_from_data, QueuedTransfer, TransferQueue,
+    QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
 };
 use pinocchio::sysvars::clock::Clock;
 use pinocchio::sysvars::Sysvar;
@@ -46,23 +46,21 @@ pub fn process_deposit_and_queue_transfer(
         args.split(),
     )?;
 
-    let split = args.split() as usize;
-    let program_id = ephemeral_spl_api::ID;
-    let (derived_queue, _) = ephemeral_spl_api::Address::find_program_address(
-        &[QUEUE_SEED, mint_info.address().as_ref()],
-        &program_id,
-    );
-    if derived_queue != *queue_info.address() {
-        return Err(ProgramError::InvalidSeeds);
-    }
-    if !queue_info.owned_by(&program_id) {
+    if !queue_info.owned_by(&crate::ID) {
         return Err(ProgramError::IllegalOwner);
     }
 
-    let queue_len_before = {
+    let split = args.split() as usize;
+    let (queue_len_before, queue_bump) = {
         let data = unsafe { queue_info.borrow_unchecked() };
-        queue_len_for_mint_with_capacity(data, mint_info.address(), split)?
+        queue_len_and_bump_for_mint_with_capacity(data, mint_info.address(), split)?
     };
+
+    let derived_queue = TransferQueue::create_pda(mint_info.address(), queue_bump)?;
+    if derived_queue != *queue_info.address() {
+        return Err(ProgramError::InvalidSeeds);
+    }
+
     #[cfg(not(feature = "logging"))]
     let _ = queue_len_before;
 

@@ -2,7 +2,6 @@ use core::marker::PhantomData;
 use ephemeral_rollups_pinocchio::acl::{
     consts::PERMISSION_PROGRAM_ID,
     instruction::UpdatePermissionCpiBuilder,
-    pda::permission_pda_from_permissioned_account,
     types::{Member, MemberFlags, MembersArgs},
 };
 use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_unchecked, Initializable};
@@ -44,13 +43,6 @@ pub fn process_reset_ephemeral_ata_permission(
 
     if ephemeral_ata.owner != *owner_info.address() {
         return Err(ProgramError::IncorrectAuthority);
-    }
-
-    // TODO(GabrielePicco): pass bump once supported in the SDK
-    let expected_permission =
-        permission_pda_from_permissioned_account(ephemeral_ata_info.address());
-    if expected_permission != *permission_info.address() {
-        return Err(ProgramError::InvalidSeeds);
     }
 
     if permission_info.lamports() == 0 {

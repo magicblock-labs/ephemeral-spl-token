@@ -2,6 +2,7 @@ use ephemeral_rollups_pinocchio::intent_bundle::{
     ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
 };
 use ephemeral_spl_api::instruction::internal::CLOSE_SHUTTLE_ATA_INTENT;
+use ephemeral_spl_api::state::global_vault::GlobalVault;
 use ephemeral_spl_api::state::{
     ephemeral_ata::EphemeralAta, load_unchecked, shuttle_ephemeral_ata::ShuttleMetadata,
     Initializable,
@@ -185,10 +186,7 @@ fn undelegate_withdraw_and_close_shuttle_ephemeral_ata(
     magic_program: &AccountView,
     escrow_index: u8,
 ) -> ProgramResult {
-    let (vault_info, _) = ephemeral_spl_api::Address::find_program_address(
-        &[mint_info.address().as_ref()],
-        &ephemeral_spl_api::ID,
-    );
+    let (vault_info, _) = GlobalVault::find_pda(&mint_info.address());
     let vault_token_info = get_associated_token_address(
         &vault_info,
         mint_info.address(),

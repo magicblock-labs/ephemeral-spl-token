@@ -2,7 +2,7 @@ use ephemeral_rollups_pinocchio::instruction::{commit_accounts, DelegateAccountC
 use ephemeral_rollups_pinocchio::types::DelegateConfig;
 use ephemeral_spl_api::state::fees_pda::{FeesPda, FEES_PDA_SEED, FEES_PDA_TAG};
 use ephemeral_spl_api::state::{load_mut_unchecked, load_unchecked, Initializable, RawType};
-use pinocchio::cpi::{Seed, Signer};
+use pinocchio::cpi::Signer;
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
@@ -26,7 +26,7 @@ pub fn process_initialize_fees_pda(
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
-    let (derived_fees_pda, bump) = derive_fees_pda(validator_info);
+    let (derived_fees_pda, bump) = FeesPda::find_pda(validator_info.address());
     if derived_fees_pda != *fees_pda_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
@@ -43,11 +43,7 @@ pub fn process_initialize_fees_pda(
     }
 
     let bump_seed = [bump];
-    let signer_seeds = [
-        Seed::from(FEES_PDA_SEED),
-        Seed::from(validator_info.address().as_ref()),
-        Seed::from(&bump_seed),
-    ];
+    let signer_seeds = FeesPda::signer_seeds(validator_info.address(), &bump_seed);
     let signer = Signer::from(&signer_seeds);
 
     CreateAccount {
@@ -96,23 +92,23 @@ pub fn process_delegate_fees_pda(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    let program_id = ephemeral_spl_api::ID;
     let delegation_program = ephemeral_spl_api::program::DELEGATION_PROGRAM_ID;
-    let (derived_fees_pda, bump) = derive_fees_pda(validator_info);
+
+    let bump = validate_fees_pda(fees_pda_info, validator_info)?;
+    let derived_fees_pda = FeesPda::create_pda(validator_info.address(), bump)?;
     if derived_fees_pda != *fees_pda_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
 
-    if !fees_pda_info.owned_by(&program_id) && !fees_pda_info.owned_by(&delegation_program) {
+    if !fees_pda_info.owned_by(&crate::ID) && !fees_pda_info.owned_by(&delegation_program) {
         return Err(ProgramError::IllegalOwner);
     }
-    validate_fees_pda(fees_pda_info, validator_info, bump)?;
 
     if fees_pda_info.owned_by(&delegation_program) {
         return Ok(());
     }
 
-    if owner_program.address() != &program_id {
+    if owner_program.address() != &crate::ID {
         return Err(ProgramError::IncorrectProgramId);
     }
     if system_program.address() != &pinocchio_system::ID {
@@ -162,15 +158,17 @@ pub fn process_commit_fees_pda(accounts: &[AccountView], instruction_data: &[u8]
 
     let program_id = ephemeral_spl_api::ID;
     let delegation_program = ephemeral_spl_api::program::DELEGATION_PROGRAM_ID;
-    let (derived_fees_pda, bump) = derive_fees_pda(validator_info);
-    if derived_fees_pda != *fees_pda_info.address() {
-        return Err(ProgramError::InvalidSeeds);
-    }
+
     if !fees_pda_info.owned_by(&program_id) && !fees_pda_info.owned_by(&delegation_program) {
         return Err(ProgramError::IllegalOwner);
     }
 
-    validate_fees_pda(fees_pda_info, validator_info, bump)?;
+    let bump = validate_fees_pda(fees_pda_info, validator_info)?;
+    let derived_fees_pda = FeesPda::create_pda(validator_info.address(), bump)?;
+    if derived_fees_pda != *fees_pda_info.address() {
+        return Err(ProgramError::InvalidSeeds);
+    }
+
     commit_accounts(
         payer_info,
         &[fees_pda_info.clone()],
@@ -178,14 +176,6 @@ pub fn process_commit_fees_pda(accounts: &[AccountView], instruction_data: &[u8]
         magic_program,
         None,
         None,
-    )
-}
-
-#[inline(always)]
-fn derive_fees_pda(validator_info: &AccountView) -> (ephemeral_spl_api::Address, u8) {
-    ephemeral_spl_api::Address::find_program_address(
-        &[FEES_PDA_SEED, validator_info.address().as_ref()],
-        &ephemeral_spl_api::ID,
     )
 }
 
@@ -215,14 +205,10 @@ fn is_valid_initialized_fees_pda(
 fn validate_fees_pda(
     fees_pda_info: &AccountView,
     validator_info: &AccountView,
-    bump: u8,
-) -> ProgramResult {
+) -> Result<u8, ProgramError> {
     let fees_pda = unsafe { load_unchecked::<FeesPda>(fees_pda_info.borrow_unchecked())? };
-    if !fees_pda.is_initialized()
-        || fees_pda.validator != *validator_info.address()
-        || fees_pda.bump != bump
-    {
+    if !fees_pda.is_initialized() || fees_pda.validator != *validator_info.address() {
         return Err(ProgramError::InvalidAccountData);
     }
-    Ok(())
+    Ok(fees_pda.bump)
 }

@@ -1,4 +1,4 @@
-use pinocchio::{error::ProgramError, Address};
+use pinocchio::{cpi::Seed, error::ProgramError, Address};
 
 use super::{load, load_mut_unchecked, load_unchecked, Initializable, RawType};
 
@@ -85,14 +85,16 @@ impl EphemeralAtaCompatMut<'_> {
 }
 
 #[inline(always)]
-pub fn read_ephemeral_ata_compat(bytes: &[u8]) -> Result<(Address, Address, u64), ProgramError> {
+pub fn read_ephemeral_ata_compat(
+    bytes: &[u8],
+) -> Result<(Address, Address, u64, u8), ProgramError> {
     if bytes.len() == EphemeralAta::LEN {
         let ephemeral_ata = unsafe { load::<EphemeralAta>(bytes)? };
         #[allow(clippy::clone_on_copy)]
         let owner = ephemeral_ata.owner.clone();
         #[allow(clippy::clone_on_copy)]
         let mint = ephemeral_ata.mint.clone();
-        return Ok((owner, mint, ephemeral_ata.amount));
+        return Ok((owner, mint, ephemeral_ata.amount, ephemeral_ata.bump));
     }
 
     if bytes.len() == LEGACY_EPHEMERAL_ATA_LEN {
@@ -104,7 +106,12 @@ pub fn read_ephemeral_ata_compat(bytes: &[u8]) -> Result<(Address, Address, u64)
         let owner = ephemeral_ata.owner.clone();
         #[allow(clippy::clone_on_copy)]
         let mint = ephemeral_ata.mint.clone();
-        return Ok((owner, mint, ephemeral_ata.amount));
+        return Ok((
+            owner,
+            mint,
+            ephemeral_ata.amount,
+            EphemeralAta::find_pda(&owner, &mint).1,
+        ));
     }
 
     Err(ProgramError::InvalidAccountData)
@@ -127,4 +134,51 @@ pub fn load_ephemeral_ata_compat_mut(
     }
 
     Err(ProgramError::InvalidAccountData)
+}
+impl EphemeralAta {
+    #[inline(always)]
+    pub fn create_pda(
+        owner: &Address,
+        mint: &Address,
+        bump_seed: u8,
+    ) -> Result<Address, ProgramError> {
+        let bump_seed = [bump_seed];
+        let pda = Address::create_program_address(
+            &[owner.as_ref(), mint.as_ref(), &bump_seed],
+            &crate::ID,
+        )?;
+        Ok(pda)
+    }
+
+    #[inline(always)]
+    pub fn find_pda(owner: &Address, mint: &Address) -> (Address, u8) {
+        Address::find_program_address(&[owner.as_ref(), mint.as_ref()], &crate::ID)
+    }
+
+    #[inline(always)]
+    pub fn seeds<'a>(owner: &'a Address, mint: &'a Address) -> [&'a [u8]; 2] {
+        [&owner.as_ref(), &mint.as_ref()]
+    }
+
+    #[inline(always)]
+    pub fn seeds_with_bump<'a>(
+        owner: &'a Address,
+        mint: &'a Address,
+        bump: &'a [u8],
+    ) -> [&'a [u8]; 3] {
+        [&owner.as_ref(), &mint.as_ref(), &bump]
+    }
+
+    #[inline(always)]
+    pub fn signer_seeds<'a>(
+        owner: &'a Address,
+        mint: &'a Address,
+        bump: &'a [u8],
+    ) -> [Seed<'a>; 3] {
+        [
+            Seed::from(owner.as_ref()),
+            Seed::from(mint.as_ref()),
+            Seed::from(bump),
+        ]
+    }
 }

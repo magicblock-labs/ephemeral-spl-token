@@ -1,8 +1,9 @@
 use crate::processor::withdraw_spl_tokens::withdraw_ephemeral_ata_tokens;
+use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::{
     ephemeral_ata::read_ephemeral_ata_compat, load, shuttle_ephemeral_ata::ShuttleMetadata,
 };
-use pinocchio::cpi::{Seed, Signer};
+use pinocchio::cpi::Signer;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_token_2022::instructions::CloseAccount;
 use pinocchio_token_2022::state::TokenAccount;
@@ -75,6 +76,7 @@ pub fn process_close_shuttle_ata_intent(
 
     let mut shuttle_id = 0u32;
     let mut shuttle_owner_opt = None;
+    let mut shuttle_bump = None;
     if shuttle_present {
         if !shuttle_info.owned_by(&ephemeral_spl_api::ID) {
             return Err(ProgramError::IllegalOwner);
@@ -93,15 +95,17 @@ pub fn process_close_shuttle_ata_intent(
         shuttle_id = shuttle.id;
         let shuttle_owner = shuttle.owner;
         shuttle_owner_opt = Some(shuttle_owner);
+        shuttle_bump = Some(shuttle.bump);
     }
 
     if shuttle_wallet_present {
         if !shuttle_wallet_ata_info.owned_by(token_program_info.address()) {
             return Err(ProgramError::IllegalOwner);
         }
-        if !shuttle_present {
+        let Some(shuttle_bump) = shuttle_bump else {
+            // If the shuttle wallet is present, so is the shuttle and its bump
             return Err(ProgramError::InvalidAccountData);
-        }
+        };
 
         let shuttle_owner = shuttle_owner_opt
             .as_ref()
@@ -128,25 +132,15 @@ pub fn process_close_shuttle_ata_intent(
         }
 
         let shuttle_id_seed = shuttle_id.to_le_bytes();
-        let (derived_shuttle, shuttle_bump) = ephemeral_spl_api::Address::find_program_address(
-            &[
-                shuttle_owner.as_ref(),
-                mint.as_ref(),
-                shuttle_id_seed.as_ref(),
-            ],
-            &ephemeral_spl_api::ID,
-        );
+        let derived_shuttle =
+            ShuttleMetadata::create_pda(shuttle_owner, &mint, shuttle_id, shuttle_bump)?;
         if derived_shuttle != *shuttle_info.address() {
             return Err(ProgramError::InvalidSeeds);
         }
 
         let bump = [shuttle_bump];
-        let signer_seeds = [
-            Seed::from(shuttle_owner.as_ref()),
-            Seed::from(mint.as_ref()),
-            Seed::from(shuttle_id_seed.as_ref()),
-            Seed::from(&bump),
-        ];
+        let signer_seeds =
+            ShuttleMetadata::signer_seeds(shuttle_owner, &mint, &shuttle_id_seed, &bump);
         let signer = Signer::from(&signer_seeds);
 
         CloseAccount {
@@ -162,16 +156,17 @@ pub fn process_close_shuttle_ata_intent(
         if !shuttle_ephemeral_ata_info.owned_by(&ephemeral_spl_api::ID) {
             return Err(ProgramError::IllegalOwner);
         }
-        if !shuttle_present {
+        let Some(shuttle_bump) = shuttle_bump else {
+            // If the shuttle ephemeral ATA is present, so is the shuttle and its bump
             return Err(ProgramError::InvalidAccountData);
-        }
+        };
 
         let shuttle_owner = shuttle_owner_opt
             .as_ref()
             .ok_or(ProgramError::InvalidAccountData)?;
-        let (mint, shuttle_ephemeral_amount) = {
+        let (mint, shuttle_ephemeral_amount, shuttle_eata_bump) = {
             let shuttle_ephemeral_ata_data = shuttle_ephemeral_ata_info.try_borrow()?;
-            let (ephemeral_owner, mint, amount) =
+            let (ephemeral_owner, mint, amount, shuttle_eata_bump) =
                 read_ephemeral_ata_compat(&shuttle_ephemeral_ata_data).map_err(|err| {
                     if err == ProgramError::UninitializedAccount {
                         ProgramError::InvalidAccountData
@@ -182,7 +177,7 @@ pub fn process_close_shuttle_ata_intent(
             if ephemeral_owner != *shuttle_info.address() {
                 return Err(ProgramError::InvalidAccountData);
             }
-            (mint, amount)
+            (mint, amount, shuttle_eata_bump)
         };
 
         if shuttle_ephemeral_amount != 0 {
@@ -203,23 +198,14 @@ pub fn process_close_shuttle_ata_intent(
             )?;
         }
 
-        let shuttle_id_seed = shuttle_id.to_le_bytes();
-        let (derived_shuttle, _) = ephemeral_spl_api::Address::find_program_address(
-            &[
-                shuttle_owner.as_ref(),
-                mint.as_ref(),
-                shuttle_id_seed.as_ref(),
-            ],
-            &ephemeral_spl_api::ID,
-        );
+        let derived_shuttle =
+            ShuttleMetadata::create_pda(shuttle_owner, &mint, shuttle_id, shuttle_bump)?;
         if derived_shuttle != *shuttle_info.address() {
             return Err(ProgramError::InvalidSeeds);
         }
 
-        let (derived_shuttle_ephemeral_ata, _) = ephemeral_spl_api::Address::find_program_address(
-            &[shuttle_info.address().as_ref(), mint.as_ref()],
-            &ephemeral_spl_api::ID,
-        );
+        let derived_shuttle_ephemeral_ata =
+            EphemeralAta::create_pda(shuttle_info.address(), &mint, shuttle_eata_bump)?;
         if derived_shuttle_ephemeral_ata != *shuttle_ephemeral_ata_info.address() {
             return Err(ProgramError::InvalidSeeds);
         }

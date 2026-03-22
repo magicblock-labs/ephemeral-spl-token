@@ -1,6 +1,7 @@
 use ephemeral_rollups_pinocchio::intent_bundle::{
     ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
 };
+use ephemeral_rollups_pinocchio::spl::GlobalVault;
 use ephemeral_spl_api::instruction::internal::CLOSE_SHUTTLE_ATA_INTENT;
 use ephemeral_spl_api::state::{
     ephemeral_ata::EphemeralAta, load_unchecked, shuttle_ephemeral_ata::ShuttleMetadata,
@@ -56,7 +57,7 @@ pub fn process_undelegate_and_close_shuttle_ephemeral_ata(
         return Err(ProgramError::IncorrectAuthority);
     }
 
-    let mint = {
+    let (mint, bump) = {
         let shuttle_ephemeral_ata = unsafe {
             load_unchecked::<EphemeralAta>(shuttle_ephemeral_ata_info.borrow_unchecked())?
         };
@@ -65,13 +66,11 @@ pub fn process_undelegate_and_close_shuttle_ephemeral_ata(
         }
         #[allow(clippy::clone_on_copy)]
         let mint = shuttle_ephemeral_ata.mint.clone();
-        mint
+        (mint, shuttle_ephemeral_ata.bump)
     };
 
-    let (derived_shuttle_ephemeral_ata, _) = ephemeral_spl_api::Address::find_program_address(
-        &[shuttle_info.address().as_ref(), mint.as_ref()],
-        &ephemeral_spl_api::ID,
-    );
+    let derived_shuttle_ephemeral_ata =
+        EphemeralAta::create_pda(&shuttle_info.address(), &mint, bump)?;
     if derived_shuttle_ephemeral_ata != *shuttle_ephemeral_ata_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
@@ -157,8 +156,7 @@ fn undelegate_and_close_shuttle_ephemeral_ata(
     magic_program: &AccountView,
     escrow_index: u8,
 ) -> ProgramResult {
-    let (vault_info, _) =
-        ephemeral_spl_api::Address::find_program_address(&[mint.as_ref()], &ephemeral_spl_api::ID);
+    let (vault_info, _) = GlobalVault::find_pda(&mint);
     let vault_token_info =
         get_associated_token_address(&vault_info, mint, token_program_info.address());
     // The close intent now always expects the expanded withdraw-capable shape.

@@ -359,31 +359,14 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
         if shuttle_eata.owner != *shuttle_info.address() {
             return Err(ProgramError::InvalidAccountData);
         }
-
-        #[cfg(feature = "logging")]
-        {
-            let shuttle_owner = shuttle_eata.owner.to_string();
-            let shuttle_mint = shuttle_eata.mint.to_string();
-            pinocchio_log::log!(
-                "PrepareShuttleDelegation shuttle_eata_state data_len={} owner={} mint={} bump={}",
-                shuttle_eata_info.data_len(),
-                shuttle_owner.as_str(),
-                shuttle_mint.as_str(),
-                shuttle_eata.bump,
-            );
-        }
-
-        (shuttle_eata.mint, [shuttle_eata.bump])
+        (shuttle_eata.mint, shuttle_eata.bump)
     };
 
     if mint != *mint_info.address() {
         return Err(ProgramError::InvalidAccountData);
     }
 
-    let derived_shuttle_eata = ephemeral_spl_api::Address::create_program_address(
-        &[shuttle_info.address().as_ref(), mint.as_ref(), &bump],
-        &ephemeral_spl_api::ID,
-    )?;
+    let derived_shuttle_eata = EphemeralAta::create_pda(shuttle_info.address(), &mint, bump)?;
     if derived_shuttle_eata != *shuttle_eata_info.address() {
         #[cfg(feature = "logging")]
         {

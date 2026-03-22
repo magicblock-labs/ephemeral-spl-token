@@ -24,7 +24,7 @@ pub fn process_close_ephemeral_ata(
         }
     }
 
-    let (mint, lamports_to_refund) = {
+    let (mint, lamports_to_refund, bump) = {
         let ephemeral_ata =
             unsafe { load_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked())? };
 
@@ -42,13 +42,10 @@ pub fn process_close_ephemeral_ata(
 
         #[allow(clippy::clone_on_copy)]
         let mint = ephemeral_ata.mint.clone();
-        (mint, ephemeral_ata_info.lamports())
+        (mint, ephemeral_ata_info.lamports(), ephemeral_ata.bump)
     };
 
-    let (derived_pda, _) = ephemeral_spl_api::Address::find_program_address(
-        &[owner_info.address().as_ref(), mint.as_ref()],
-        &ephemeral_spl_api::ID,
-    );
+    let derived_pda = EphemeralAta::create_pda(owner_info.address(), &mint, bump)?;
     if derived_pda != *ephemeral_ata_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
