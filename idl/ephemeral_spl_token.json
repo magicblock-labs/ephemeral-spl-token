@@ -4,15 +4,15 @@
     "name": "ephemeral_spl_token",
     "version": "0.1.0",
     "spec": "0.1.0",
-    "description": "Ephemeral SPL Token Program - Implements MIMD 0013 for temporary SPL token balances that can be delegated to Data Layer Programs (DLPs)"
+    "description": "Ephemeral SPL Token program implementing temporary SPL balances, delegation flows, shuttle routing, and queued transfers."
   },
   "instructions": [
     {
       "name": "initializeEphemeralAta",
       "discriminator": [0],
       "docs": [
-        "Initializes the ephemeral ATA PDA derived from [user, mint].",
-        "Instruction data: [0] bump."
+        "Idempotently initializes the Ephemeral ATA PDA derived from [user, mint].",
+        "Instruction data: none."
       ],
       "accounts": [
         {
@@ -47,19 +47,14 @@
           "address": "11111111111111111111111111111111"
         }
       ],
-      "args": [
-        {
-          "name": "bump",
-          "type": "u8"
-        }
-      ]
+      "args": []
     },
     {
       "name": "initializeGlobalVault",
       "discriminator": [1],
       "docs": [
-        "Initializes the per-mint global vault PDA and its backing accounts.",
-        "Instruction data: [0] bump."
+        "Idempotently initializes the per-mint global vault PDA, its vault-owned Ephemeral ATA, and its vault ATA.",
+        "Instruction data: none."
       ],
       "accounts": [
         {
@@ -114,18 +109,13 @@
           "address": "11111111111111111111111111111111"
         }
       ],
-      "args": [
-        {
-          "name": "bump",
-          "type": "u8"
-        }
-      ]
+      "args": []
     },
     {
       "name": "depositSplTokens",
       "discriminator": [2],
       "docs": [
-        "Transfers SPL tokens into the global vault and credits an ephemeral ATA.",
+        "Transfers SPL tokens into the global vault and credits a standard or shuttle Ephemeral ATA.",
         "Instruction data: [0..8] amount (u64 LE)."
       ],
       "accounts": [
@@ -166,8 +156,8 @@
       "name": "withdrawSplTokens",
       "discriminator": [3],
       "docs": [
-        "Transfers SPL tokens out of the global vault and debits an ephemeral ATA.",
-        "Instruction data: [0..8] amount (u64 LE), [8] vault bump."
+        "Transfers SPL tokens out of the global vault and debits an Ephemeral ATA.",
+        "Instruction data: [0..8] amount (u64 LE)."
       ],
       "accounts": [
         {
@@ -200,10 +190,6 @@
         {
           "name": "amount",
           "type": "u64"
-        },
-        {
-          "name": "bump",
-          "type": "u8"
         }
       ]
     },
@@ -211,8 +197,8 @@
       "name": "delegateEphemeralAta",
       "discriminator": [4],
       "docs": [
-        "Delegates an ephemeral ATA to the delegation program.",
-        "Instruction data: [0] bump, plus an optional trailing 32-byte validator pubkey."
+        "Delegates an Ephemeral ATA to the delegation program.",
+        "Instruction data: empty, or exactly 32 raw validator bytes appended after the discriminator."
       ],
       "accounts": [
         {
@@ -248,26 +234,13 @@
           "address": "11111111111111111111111111111111"
         }
       ],
-      "args": [
-        {
-          "name": "bump",
-          "type": "u8"
-        },
-        {
-          "name": "validator",
-          "type": {
-            "option": {
-              "array": ["u8", 32]
-            }
-          }
-        }
-      ]
+      "args": []
     },
     {
       "name": "undelegateEphemeralAta",
       "discriminator": [5],
       "docs": [
-        "Commits and undelegates an ephemeral ATA using the delegation helper."
+        "Commits and undelegates a user's delegated ATA flow."
       ],
       "accounts": [
         {
@@ -295,8 +268,8 @@
       "name": "createEphemeralAtaPermission",
       "discriminator": [6],
       "docs": [
-        "Creates the ACL permission PDA for an ephemeral ATA.",
-        "Instruction data: [0] bump, [1] permission flags."
+        "Creates the ACL permission PDA for an Ephemeral ATA.",
+        "Instruction data: [0] permission flags byte."
       ],
       "accounts": [
         {
@@ -323,10 +296,6 @@
       ],
       "args": [
         {
-          "name": "bump",
-          "type": "u8"
-        },
-        {
           "name": "flags",
           "type": "u8"
         }
@@ -336,8 +305,8 @@
       "name": "delegateEphemeralAtaPermission",
       "discriminator": [7],
       "docs": [
-        "Delegates an ephemeral ATA permission PDA.",
-        "Instruction data: [0] bump."
+        "Delegates the permission PDA associated with an Ephemeral ATA.",
+        "Instruction data: none."
       ],
       "accounts": [
         {
@@ -381,18 +350,13 @@
           "name": "validator"
         }
       ],
-      "args": [
-        {
-          "name": "bump",
-          "type": "u8"
-        }
-      ]
+      "args": []
     },
     {
       "name": "undelegateEphemeralAtaPermission",
       "discriminator": [8],
       "docs": [
-        "Commits and undelegates the permission PDA for an ephemeral ATA."
+        "Commits and undelegates the permission PDA for an Ephemeral ATA."
       ],
       "accounts": [
         {
@@ -425,8 +389,8 @@
       "name": "resetEphemeralAtaPermission",
       "discriminator": [9],
       "docs": [
-        "Resets the permission members for an ephemeral ATA.",
-        "Instruction data: [0] bump, [1] permission flags."
+        "Resets permission members to the owner plus the requested ACL flags.",
+        "Instruction data: [0] permission flags byte."
       ],
       "accounts": [
         {
@@ -448,10 +412,6 @@
       ],
       "args": [
         {
-          "name": "bump",
-          "type": "u8"
-        },
-        {
           "name": "flags",
           "type": "u8"
         }
@@ -461,7 +421,7 @@
       "name": "closeEphemeralAta",
       "discriminator": [10],
       "docs": [
-        "Closes an empty ephemeral ATA and refunds its rent."
+        "Closes an empty Ephemeral ATA and refunds its rent."
       ],
       "accounts": [
         {
@@ -483,8 +443,8 @@
       "name": "initializeShuttleEphemeralAta",
       "discriminator": [11],
       "docs": [
-        "Initializes shuttle metadata, shuttle EATA, and the shuttle wallet ATA.",
-        "Instruction data: [0..4] shuttle_id (u32 LE), [4] shuttle bump."
+        "Idempotently initializes shuttle metadata, shuttle EATA, and shuttle wallet ATA for [owner, mint, shuttle_id].",
+        "Instruction data: [0..4] shuttle_id (u32 LE)."
       ],
       "accounts": [
         {
@@ -493,7 +453,8 @@
           "signer": true
         },
         {
-          "name": "shuttle"
+          "name": "shuttle",
+          "writable": true
         },
         {
           "name": "shuttleEphemeralAta",
@@ -525,10 +486,6 @@
         {
           "name": "shuttleId",
           "type": "u32"
-        },
-        {
-          "name": "bump",
-          "type": "u8"
         }
       ]
     },
@@ -536,8 +493,8 @@
       "name": "initializeTransferQueue",
       "discriminator": [12],
       "docs": [
-        "Initializes the per-mint transfer queue PDA.",
-        "Instruction data may be omitted for the default size, or set to a 4-byte size in bytes. Zero also means default."
+        "Initializes the per-mint transfer queue PDA derived from [\"queue\", mint].",
+        "Instruction data may be omitted, or may contain [0..4] size_bytes (u32 LE). Zero selects the default queue size."
       ],
       "accounts": [
         {
@@ -568,8 +525,8 @@
       "name": "delegateShuttleEphemeralAta",
       "discriminator": [13],
       "docs": [
-        "Delegates a shuttle EATA to the delegation program.",
-        "Instruction data: [0] bump, plus an optional trailing 32-byte validator pubkey."
+        "Delegates a shuttle Ephemeral ATA to the delegation program.",
+        "Instruction data: empty, or exactly 32 raw validator bytes appended after the discriminator."
       ],
       "accounts": [
         {
@@ -578,8 +535,7 @@
           "signer": true
         },
         {
-          "name": "shuttle",
-          "writable": true
+          "name": "shuttle"
         },
         {
           "name": "shuttleEphemeralAta",
@@ -609,27 +565,14 @@
           "address": "11111111111111111111111111111111"
         }
       ],
-      "args": [
-        {
-          "name": "bump",
-          "type": "u8"
-        },
-        {
-          "name": "validator",
-          "type": {
-            "option": {
-              "array": ["u8", 32]
-            }
-          }
-        }
-      ]
+      "args": []
     },
     {
       "name": "undelegateShuttleEphemeralAta",
       "discriminator": [14],
       "docs": [
-        "Commits and undelegates a shuttle wallet ATA, then schedules shuttle cleanup.",
-        "Instruction data may be omitted, or contain a single escrow index byte."
+        "Commits and undelegates a shuttle wallet ATA, then schedules shuttle close/refund handling.",
+        "Instruction data: empty, or [0] escrow index. Omitting the byte uses the default escrow slot."
       ],
       "accounts": [
         {
@@ -704,7 +647,7 @@
       "discriminator": [16],
       "docs": [
         "Deposits into the global vault and enqueues one or more delayed transfers.",
-        "Instruction data: [0..8] amount, [8..16] min_delay_ms, [16..24] max_delay_ms, [24..28] split."
+        "Instruction data: [0..8] amount, [8..16] min_delay_ms, [16..24] max_delay_ms, [24..28] split, optionally [28] flags."
       ],
       "accounts": [
         {
@@ -726,7 +669,7 @@
           "writable": true
         },
         {
-          "name": "destinationToken"
+          "name": "destinationTokenOrOwner"
         },
         {
           "name": "userAuthority",
@@ -752,6 +695,10 @@
         {
           "name": "split",
           "type": "u32"
+        },
+        {
+          "name": "flags",
+          "type": "u8"
         }
       ]
     },
@@ -927,7 +874,7 @@
       "name": "initializeRentPda",
       "discriminator": [23],
       "docs": [
-        "Initializes the global rent sponsorship PDA."
+        "Initializes the global rent sponsorship PDA derived from [\"rent\"]."
       ],
       "accounts": [
         {
@@ -950,8 +897,8 @@
       "name": "setupAndDelegateShuttleEphemeralAtaWithMerge",
       "discriminator": [24],
       "docs": [
-        "Initializes shuttle accounts, deposits into the vault, sponsors delegation, and schedules merge plus cleanup.",
-        "Instruction data: [0..4] shuttle_id, [4] shuttle bump, [5..13] amount, plus an optional trailing 32-byte validator pubkey."
+        "Initializes shuttle accounts if needed, deposits into the vault, sponsors delegation from the rent PDA, and schedules merge plus cleanup.",
+        "Instruction data: [0..4] shuttle_id (u32 LE), [4..12] amount (u64 LE), with an optional trailing 32-byte validator pubkey."
       ],
       "accounts": [
         {
@@ -1034,20 +981,8 @@
           "type": "u32"
         },
         {
-          "name": "shuttleBump",
-          "type": "u8"
-        },
-        {
           "name": "amount",
           "type": "u64"
-        },
-        {
-          "name": "validator",
-          "type": {
-            "option": {
-              "array": ["u8", 32]
-            }
-          }
         }
       ]
     },
@@ -1055,8 +990,8 @@
       "name": "depositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer",
       "discriminator": [25],
       "docs": [
-        "Same shuttle setup flow as discriminator 24, plus a queued private transfer.",
-        "Instruction data: shuttle_id, shuttle bump, amount, min_delay_ms, max_delay_ms, split, plus an optional trailing 32-byte validator pubkey."
+        "Same sponsored shuttle setup/deposit/delegate flow as discriminator 24, but merges back into the owner's source token account before scheduling a private queued transfer.",
+        "Instruction data starts with [0..4] shuttle_id (u32 LE) and [4..12] amount (u64 LE), then appends three single-byte-length-prefixed raw buffers: validator bytes, encrypted destination bytes, and encrypted queue suffix bytes."
       ],
       "accounts": [
         {
@@ -1110,10 +1045,6 @@
         {
           "name": "systemProgram",
           "address": "11111111111111111111111111111111"
-        },
-        {
-          "name": "destinationToken",
-          "writable": true
         },
         {
           "name": "mint"
@@ -1143,32 +1074,8 @@
           "type": "u32"
         },
         {
-          "name": "shuttleBump",
-          "type": "u8"
-        },
-        {
           "name": "amount",
           "type": "u64"
-        },
-        {
-          "name": "minDelayMs",
-          "type": "u64"
-        },
-        {
-          "name": "maxDelayMs",
-          "type": "u64"
-        },
-        {
-          "name": "split",
-          "type": "u32"
-        },
-        {
-          "name": "validator",
-          "type": {
-            "option": {
-              "array": ["u8", 32]
-            }
-          }
         }
       ]
     },
@@ -1176,8 +1083,8 @@
       "name": "withdrawThroughDelegatedShuttleWithMerge",
       "discriminator": [26],
       "docs": [
-        "Sponsors shuttle delegation and schedules an owner-to-shuttle transfer followed by shuttle cleanup.",
-        "Instruction data: [0..4] shuttle_id, [4] shuttle bump, [5..13] amount, plus an optional trailing 32-byte validator pubkey."
+        "Sponsors shuttle delegation, then schedules an owner-to-shuttle transfer followed by shuttle undelegation and cleanup.",
+        "Instruction data: [0..4] shuttle_id (u32 LE), [4..12] amount (u64 LE), with an optional trailing 32-byte validator pubkey."
       ],
       "accounts": [
         {
@@ -1249,20 +1156,8 @@
           "type": "u32"
         },
         {
-          "name": "shuttleBump",
-          "type": "u8"
-        },
-        {
           "name": "amount",
           "type": "u64"
-        },
-        {
-          "name": "validator",
-          "type": {
-            "option": {
-              "array": ["u8", 32]
-            }
-          }
         }
       ]
     },
@@ -1270,7 +1165,8 @@
       "name": "undelegationCallback",
       "discriminator": [196],
       "docs": [
-        "Delegation-program callback that restores account state after undelegation."
+        "Delegation-program callback that restores delegated account state after undelegation.",
+        "Instruction data is an opaque delegation-program callback payload; this program forwards the bytes after the undelegation header."
       ],
       "accounts": [
         {
@@ -1300,7 +1196,7 @@
       "name": "closeShuttleAtaIntent",
       "discriminator": [197],
       "docs": [
-        "Internal post-undelegation handler that withdraws any remaining shuttle balance and closes shuttle accounts.",
+        "Internal post-undelegation handler that withdraws any remaining shuttle balance through the vault flow and closes shuttle accounts.",
         "Instruction data: [0] escrow index."
       ],
       "accounts": [
@@ -1357,12 +1253,9 @@
       "discriminator": [198],
       "docs": [
         "Internal handler that settles one ready queued transfer from the global vault.",
-        "Instruction data: [0] escrow index, [1..9] amount (u64 LE)."
+        "Instruction data: [0] escrow index, [1..9] amount (u64 LE), [9] flags."
       ],
       "accounts": [
-        {
-          "name": "queue"
-        },
         {
           "name": "vault"
         },
@@ -1374,11 +1267,26 @@
           "writable": true
         },
         {
+          "name": "destinationOwner"
+        },
+        {
           "name": "destinationToken",
           "writable": true
         },
         {
+          "name": "rentPda",
+          "writable": true
+        },
+        {
           "name": "tokenProgram"
+        },
+        {
+          "name": "associatedTokenProgram",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
         },
         {
           "name": "escrowAuthority"
@@ -1396,6 +1304,10 @@
         {
           "name": "amount",
           "type": "u64"
+        },
+        {
+          "name": "flags",
+          "type": "u8"
         }
       ]
     },
@@ -1403,7 +1315,7 @@
       "name": "processTransferQueueTick",
       "discriminator": [199],
       "docs": [
-        "Internal recurring crank callback that checks the queue and schedules settlement."
+        "Internal recurring crank callback that checks a queue and schedules settlement."
       ],
       "accounts": [
         {
@@ -1425,7 +1337,7 @@
       "discriminator": [201],
       "docs": [
         "Internal post-delegation handler that commits shuttle withdrawal and schedules the final close/refund action.",
-        "Instruction data may be omitted, or contain a single escrow index byte."
+        "Instruction data: empty, or [0] escrow index. Omitting the byte uses the default escrow slot."
       ],
       "accounts": [
         {
@@ -1480,6 +1392,18 @@
     {
       "name": "GlobalVault",
       "discriminator": []
+    },
+    {
+      "name": "ShuttleMetadata",
+      "discriminator": []
+    },
+    {
+      "name": "FeesPda",
+      "discriminator": []
+    },
+    {
+      "name": "TransferQueue",
+      "discriminator": []
     }
   ],
   "types": [
@@ -1495,18 +1419,25 @@
         "fields": [
           {
             "name": "owner",
-            "docs": ["The owner of this ephemeral ATA"],
             "type": "pubkey"
           },
           {
             "name": "mint",
-            "docs": ["The SPL token mint associated with this ATA"],
             "type": "pubkey"
           },
           {
             "name": "amount",
-            "docs": ["The virtual token balance"],
             "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "_pad0",
+            "type": {
+              "array": ["u8", 7]
+            }
           }
         ]
       }
@@ -1514,8 +1445,8 @@
     {
       "name": "GlobalVault",
       "docs": [
-        "Global Vault for a specific mint.",
-        "Holds the actual SPL tokens backing all ephemeral ATAs for this mint.",
+        "Global vault for a specific mint.",
+        "Holds the SPL tokens backing all Ephemeral ATAs for that mint.",
         "PDA seeds: [mint]"
       ],
       "type": {
@@ -1523,13 +1454,165 @@
         "fields": [
           {
             "name": "mint",
-            "docs": ["The SPL token mint for this vault"],
             "type": "pubkey"
           },
           {
             "name": "tokenAccount",
-            "docs": ["The token account used by this vault"],
             "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ShuttleMetadata",
+      "docs": [
+        "Shuttle metadata account derived from [owner, mint, shuttle_id]."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "payer",
+            "type": "pubkey"
+          },
+          {
+            "name": "id",
+            "type": "u32"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "_pad0",
+            "type": {
+              "array": ["u8", 3]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "FeesPda",
+      "docs": [
+        "Validator-scoped FEES PDA derived from [\"FEES\", validator]."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "tag",
+            "type": {
+              "array": ["u8", 4]
+            }
+          },
+          {
+            "name": "validator",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TransferQueueHeader",
+      "docs": [
+        "Header stored at the start of a transfer queue account."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "version",
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "_pad0",
+            "type": {
+              "array": ["u8", 6]
+            }
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "length",
+            "type": "u32"
+          },
+          {
+            "name": "_pad1",
+            "type": {
+              "array": ["u8", 4]
+            }
+          },
+          {
+            "name": "nextTaskId",
+            "type": "u64"
+          },
+          {
+            "name": "crankTaskId",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "QueuedTransfer",
+      "docs": [
+        "One queued transfer entry stored in the queue heap."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "source",
+            "type": "pubkey"
+          },
+          {
+            "name": "destinationOwner",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "readyAt",
+            "type": "i64"
+          },
+          {
+            "name": "insertedAt",
+            "type": "i64"
+          },
+          {
+            "name": "taskId",
+            "type": "u64"
+          },
+          {
+            "name": "flags",
+            "type": "u8"
+          },
+          {
+            "name": "_pad0",
+            "type": {
+              "array": ["u8", 7]
+            }
           }
         ]
       }
@@ -1539,29 +1622,59 @@
     {
       "code": 0,
       "name": "InvalidInstruction",
-      "msg": "Invalid instruction data or discriminator"
+      "msg": "Error: Invalid instruction"
     },
     {
       "code": 1,
       "name": "AlreadyInUse",
-      "msg": "Account is already initialized or in use"
+      "msg": "Error: Account already in use"
     },
     {
       "code": 2,
       "name": "EphemeralAtaMismatch",
-      "msg": "Ephemeral ATA, Vault, Mint, or Owner mismatch"
+      "msg": "Error: Ephemeral ATA/Vault/Mint/Owner mismatch"
     }
   ],
   "constants": [
     {
       "name": "EPHEMERAL_ATA_SIZE",
       "type": "u64",
-      "value": "72"
+      "value": "80"
     },
     {
       "name": "GLOBAL_VAULT_SIZE",
       "type": "u64",
+      "value": "65"
+    },
+    {
+      "name": "SHUTTLE_METADATA_SIZE",
+      "type": "u64",
+      "value": "72"
+    },
+    {
+      "name": "FEES_PDA_SIZE",
+      "type": "u64",
+      "value": "37"
+    },
+    {
+      "name": "TRANSFER_QUEUE_HEADER_SIZE",
+      "type": "u64",
       "value": "64"
+    },
+    {
+      "name": "QUEUED_TRANSFER_SIZE",
+      "type": "u64",
+      "value": "104"
+    },
+    {
+      "name": "DEFAULT_TRANSFER_QUEUE_SIZE_BYTES",
+      "type": "u64",
+      "value": "9728"
+    },
+    {
+      "name": "TRANSFER_QUEUE_VERSION",
+      "type": "u8",
+      "value": "1"
     }
   ]
 }
