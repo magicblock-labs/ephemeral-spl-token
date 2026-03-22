@@ -44,10 +44,7 @@ pub fn process_undelegate_withdraw_and_close_shuttle_ephemeral_ata(
     }
 
     unsafe {
-        if shuttle_info
-            .owner()
-            .ne(&ephemeral_spl_api::program::id_address())
-        {
+        if shuttle_info.owner().ne(&ephemeral_spl_api::ID) {
             return Err(ProgramError::IllegalOwner);
         }
     }
@@ -190,7 +187,7 @@ fn undelegate_withdraw_and_close_shuttle_ephemeral_ata(
 ) -> ProgramResult {
     let (vault_info, _) = ephemeral_spl_api::Address::find_program_address(
         &[mint_info.address().as_ref()],
-        &ephemeral_spl_api::program::id_address(),
+        &ephemeral_spl_api::ID,
     );
     let vault_token_info = get_associated_token_address(
         &vault_info,
@@ -237,7 +234,7 @@ fn undelegate_withdraw_and_close_shuttle_ephemeral_ata(
         },
     ];
     let close_handler = [CallHandler {
-        destination_program: Address::new_from_array(crate::ID),
+        destination_program: crate::ID,
         escrow_authority: executor.clone(),
         args: ActionArgs::new(&close_handler_data).with_escrow_index(escrow_index),
         compute_units: CLOSE_SHUTTLE_ATA_COMPUTE_UNITS,

@@ -1,10 +1,10 @@
 use dlp_api::state::DelegationRecord;
 use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
 use ephemeral_spl_api::state::transfer_queue::{header_len, TransferQueueHeader, QUEUE_SEED};
 use ephemeral_spl_api::state::{load_mut_unchecked, Initializable};
+use ephemeral_spl_api::ID as PROGRAM;
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::rent::Rent;
@@ -19,7 +19,6 @@ use spl_token_interface::state::Account as SplAccount;
 mod common;
 mod utils;
 
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 const RENT_PDA_SEED: &[u8] = b"rent";
 const DECIMALS: u8 = 6;
 const STARTING_BALANCE: u64 = 1_000 * 10u64.pow(DECIMALS as u32);
@@ -175,10 +174,8 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
         .await
         .unwrap();
 
-    let (buffer_pda, _) = Pubkey::find_program_address(
-        &[b"buffer", shuttle_eata.as_ref()],
-        &ephemeral_spl_api::program::id().into(),
-    );
+    let (buffer_pda, _) =
+        Pubkey::find_program_address(&[b"buffer", shuttle_eata.as_ref()], &PROGRAM);
     let (queue_buffer_pda, _) =
         Pubkey::find_program_address(&[b"buffer", queue.as_ref()], &PROGRAM);
     let (queue_delegation_record_pda, _) = Pubkey::find_program_address(

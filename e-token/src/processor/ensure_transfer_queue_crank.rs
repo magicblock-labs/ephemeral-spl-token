@@ -42,7 +42,7 @@ pub fn process_ensure_transfer_queue_crank(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    let program_id = ephemeral_spl_api::program::id_address();
+    let program_id = ephemeral_spl_api::ID;
     let (mint, bump) = {
         let data = unsafe { queue_info.borrow_unchecked() };
         let (header, _) = queue_views_checked(data)?;
@@ -90,7 +90,7 @@ pub fn process_ensure_transfer_queue_crank(
         },
     ];
     let crank_instruction = [CrankInstruction::new(
-        ephemeral_spl_api::program::id_address(),
+        ephemeral_spl_api::ID,
         &tick_accounts,
         &tick_data,
     )];

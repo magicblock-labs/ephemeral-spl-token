@@ -43,10 +43,7 @@ pub fn process_undelegate_and_close_shuttle_ephemeral_ata(
     }
 
     unsafe {
-        if shuttle_info
-            .owner()
-            .ne(&ephemeral_spl_api::program::id_address())
-        {
+        if shuttle_info.owner().ne(&ephemeral_spl_api::ID) {
             return Err(ProgramError::IllegalOwner);
         }
     }
@@ -73,7 +70,7 @@ pub fn process_undelegate_and_close_shuttle_ephemeral_ata(
 
     let (derived_shuttle_ephemeral_ata, _) = ephemeral_spl_api::Address::find_program_address(
         &[shuttle_info.address().as_ref(), mint.as_ref()],
-        &ephemeral_spl_api::program::id_address(),
+        &ephemeral_spl_api::ID,
     );
     if derived_shuttle_ephemeral_ata != *shuttle_ephemeral_ata_info.address() {
         return Err(ProgramError::InvalidSeeds);
@@ -160,10 +157,8 @@ fn undelegate_and_close_shuttle_ephemeral_ata(
     magic_program: &AccountView,
     escrow_index: u8,
 ) -> ProgramResult {
-    let (vault_info, _) = ephemeral_spl_api::Address::find_program_address(
-        &[mint.as_ref()],
-        &ephemeral_spl_api::program::id_address(),
-    );
+    let (vault_info, _) =
+        ephemeral_spl_api::Address::find_program_address(&[mint.as_ref()], &ephemeral_spl_api::ID);
     let vault_token_info =
         get_associated_token_address(&vault_info, mint, token_program_info.address());
     // The close intent now always expects the expanded withdraw-capable shape.
@@ -207,7 +202,7 @@ fn undelegate_and_close_shuttle_ephemeral_ata(
         },
     ];
     let close_handler = [CallHandler {
-        destination_program: Address::new_from_array(crate::ID),
+        destination_program: crate::ID,
         escrow_authority: executor.clone(),
         args: ActionArgs::new(&close_handler_data).with_escrow_index(escrow_index),
         compute_units: CLOSE_SHUTTLE_ATA_COMPUTE_UNITS,

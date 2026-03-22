@@ -1,8 +1,8 @@
 use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::transfer_queue::{
     header_len, item_len, QueuedTransfer, TransferQueueHeader, QUEUE_SEED,
 };
+use ephemeral_spl_api::ID as PROGRAM;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::clock::Clock;
 use solana_program_pack::Pack;
@@ -17,8 +17,6 @@ use {
 
 mod common;
 mod utils;
-
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 
 const DECIMALS: u8 = 6;
 const STARTING_BALANCE: u64 = 10_000 * 10u64.pow(DECIMALS as u32);

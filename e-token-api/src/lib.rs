@@ -7,15 +7,10 @@ pub mod consts;
 pub mod error;
 pub mod state;
 pub mod program {
-    pinocchio_pubkey::declare_id!("SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2");
     pub use ephemeral_rollups_pinocchio::consts::DELEGATION_PROGRAM_ID;
-
-    /// Returns the program ID as an Address
-    #[inline(always)]
-    pub fn id_address() -> pinocchio::Address {
-        pinocchio::Address::new_from_array(ID)
-    }
 }
+
+solana_address::declare_id!("SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2");
 
 /// Re-exported `Address` type from solana-address for convenience.
 /// Used throughout the codebase for account address representations.

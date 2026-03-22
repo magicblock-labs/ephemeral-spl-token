@@ -53,7 +53,7 @@ pub fn process_undelegate_ephemeral_ata(
     // Derive PDA: seeds = [payer, mint], program id = e-token program id (ephemeral_spl_api::program::ID)
     let (derived_pda, _) = ephemeral_spl_api::Address::find_program_address(
         &[payer.address().as_ref(), mint.as_ref()],
-        &ephemeral_spl_api::program::id_address(),
+        &ephemeral_spl_api::ID,
     );
 
     if derived_pda != *ephemeral_ata_info.address() {

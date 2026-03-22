@@ -55,7 +55,7 @@ pub fn process_initialize_fees_pda(
         to: fees_pda_info,
         space: FeesPda::LEN as u64,
         lamports: Rent::get()?.try_minimum_balance(FeesPda::LEN)?,
-        owner: &ephemeral_spl_api::program::id_address(),
+        owner: &ephemeral_spl_api::ID,
     }
     .invoke_signed(&[signer])?;
 
@@ -96,7 +96,7 @@ pub fn process_delegate_fees_pda(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    let program_id = ephemeral_spl_api::program::id_address();
+    let program_id = ephemeral_spl_api::ID;
     let delegation_program = ephemeral_spl_api::program::DELEGATION_PROGRAM_ID;
     let (derived_fees_pda, bump) = derive_fees_pda(validator_info);
     if derived_fees_pda != *fees_pda_info.address() {
@@ -160,7 +160,7 @@ pub fn process_commit_fees_pda(accounts: &[AccountView], instruction_data: &[u8]
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    let program_id = ephemeral_spl_api::program::id_address();
+    let program_id = ephemeral_spl_api::ID;
     let delegation_program = ephemeral_spl_api::program::DELEGATION_PROGRAM_ID;
     let (derived_fees_pda, bump) = derive_fees_pda(validator_info);
     if derived_fees_pda != *fees_pda_info.address() {
@@ -185,7 +185,7 @@ pub fn process_commit_fees_pda(accounts: &[AccountView], instruction_data: &[u8]
 fn derive_fees_pda(validator_info: &AccountView) -> (ephemeral_spl_api::Address, u8) {
     ephemeral_spl_api::Address::find_program_address(
         &[FEES_PDA_SEED, validator_info.address().as_ref()],
-        &ephemeral_spl_api::program::id_address(),
+        &ephemeral_spl_api::ID,
     )
 }
 
@@ -195,7 +195,7 @@ fn is_valid_initialized_fees_pda(
     validator_info: &AccountView,
     bump: u8,
 ) -> bool {
-    let program_id = ephemeral_spl_api::program::id_address();
+    let program_id = ephemeral_spl_api::ID;
     let delegation_program = ephemeral_spl_api::program::DELEGATION_PROGRAM_ID;
     if !fees_pda_info.owned_by(&program_id) && !fees_pda_info.owned_by(&delegation_program) {
         return false;

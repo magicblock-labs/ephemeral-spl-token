@@ -1,8 +1,8 @@
-use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::transfer_queue::{
     capacity_from_data_len, header_len, item_len, TransferQueueHeader, QUEUE_SEED,
     TRANSFER_QUEUE_VERSION,
 };
+use ephemeral_spl_api::ID as PROGRAM;
 use solana_account::Account as SolanaAccount;
 use solana_instruction::Instruction;
 use {
@@ -12,8 +12,6 @@ use {
 
 mod common;
 mod utils;
-
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 
 fn read_header_unaligned(data: &[u8]) -> TransferQueueHeader {
     assert!(data.len() >= header_len());

@@ -38,7 +38,7 @@ pub fn process_initialize_transfer_queue(
         return Err(ProgramError::InvalidInstructionData);
     }
 
-    let program_id = ephemeral_spl_api::program::id_address();
+    let program_id = ephemeral_spl_api::ID;
     let (derived_queue, bump) = ephemeral_spl_api::Address::find_program_address(
         &[QUEUE_SEED, mint_info.address().as_ref()],
         &program_id,

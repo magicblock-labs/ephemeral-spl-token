@@ -63,10 +63,7 @@ pub(crate) fn withdraw_ephemeral_ata_tokens(
 
     // Validate EphemeralAta account (writable)
     unsafe {
-        if ephemeral_ata_info
-            .owner()
-            .ne(&ephemeral_spl_api::program::id_address())
-        {
+        if ephemeral_ata_info.owner().ne(&ephemeral_spl_api::ID) {
             return Err(ProgramError::IllegalOwner);
         }
     }
@@ -75,10 +72,7 @@ pub(crate) fn withdraw_ephemeral_ata_tokens(
 
     // Validate vault ownership before reading raw data.
     unsafe {
-        if vault_info
-            .owner()
-            .ne(&ephemeral_spl_api::program::id_address())
-        {
+        if vault_info.owner().ne(&ephemeral_spl_api::ID) {
             return Err(ProgramError::IllegalOwner);
         }
     }

@@ -27,7 +27,7 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    assert_owner(shuttle_info, &ephemeral_spl_api::program::id_address())?;
+    assert_owner(shuttle_info, &ephemeral_spl_api::ID)?;
     assert_owner(shuttle_wallet_ata_info, token_program_info.address())?;
     assert_owner(destination_token_info, token_program_info.address())?;
 
@@ -53,7 +53,7 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
             shuttle_id_seed.as_ref(),
             bump.as_ref(),
         ],
-        &ephemeral_spl_api::program::id_address(),
+        &ephemeral_spl_api::ID,
     )?;
     if derived_shuttle != *shuttle_info.address() {
         return Err(ProgramError::InvalidSeeds);

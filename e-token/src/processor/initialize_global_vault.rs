@@ -38,7 +38,7 @@ pub fn process_initialize_global_vault(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    let program_id = ephemeral_spl_api::program::id_address();
+    let program_id = ephemeral_spl_api::ID;
     let (vault_derived_pda, vault_bump) = ephemeral_spl_api::Address::find_program_address(
         &[mint_info.address().as_ref()],
         &program_id,

@@ -1,9 +1,9 @@
 use dlp_api::state::DelegationRecord;
 use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::transfer_queue::{
     header_len, TransferQueueHeader, QUEUE_SEED, TRANSFER_QUEUE_VERSION,
 };
+use ephemeral_spl_api::ID as PROGRAM;
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program_test::tokio;
@@ -13,8 +13,6 @@ use solana_transaction::Transaction;
 
 mod common;
 mod utils;
-
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 
 fn read_header_unaligned(data: &[u8]) -> TransferQueueHeader {
     assert!(data.len() >= header_len());

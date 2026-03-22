@@ -31,7 +31,7 @@ pub fn process_delegate_transfer_queue(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    let program_id = ephemeral_spl_api::program::id_address();
+    let program_id = ephemeral_spl_api::ID;
     let delegation_program = ephemeral_spl_api::program::DELEGATION_PROGRAM_ID;
     if !queue_info.owned_by(&program_id) && !queue_info.owned_by(&delegation_program) {
         return Err(ProgramError::IllegalOwner);

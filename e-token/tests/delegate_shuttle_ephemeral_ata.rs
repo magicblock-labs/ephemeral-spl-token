@@ -1,7 +1,7 @@
 use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::RawType;
+use ephemeral_spl_api::ID as PROGRAM;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program_test::tokio;
 use solana_pubkey::Pubkey;
@@ -10,8 +10,6 @@ use solana_transaction::Transaction;
 
 mod common;
 mod utils;
-
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 
 #[tokio::test]
 async fn delegate_shuttle_ephemeral_ata_succeeds() {
@@ -24,16 +22,9 @@ async fn delegate_shuttle_ephemeral_ata_succeeds() {
     let mint = mint_kp.pubkey();
     let shuttle_id = 9_u32;
 
-    let _setup = utils::setup_mint_and_token_accounts(
-        &mut context,
-        payer,
-        &payer_kp,
-        &mint_kp,
-        6,
-        1_000,
-        1,
-    )
-    .await;
+    let _setup =
+        utils::setup_mint_and_token_accounts(&mut context, payer, &payer_kp, &mint_kp, 6, 1_000, 1)
+            .await;
 
     let (shuttle_ephemeral_ata, _) =
         utils::derive_shuttle_ephemeral_ata(PROGRAM, owner, mint, shuttle_id);
@@ -89,10 +80,8 @@ async fn delegate_shuttle_ephemeral_ata_succeeds() {
         .expect("shuttle eata account must exist");
     assert_eq!(shuttle_eata_account.data.len(), EphemeralAta::LEN);
 
-    let (buffer_pda, _) = Pubkey::find_program_address(
-        &[b"buffer", shuttle_eata.as_ref()],
-        &ephemeral_spl_api::program::id().into(),
-    );
+    let (buffer_pda, _) =
+        Pubkey::find_program_address(&[b"buffer", shuttle_eata.as_ref()], &PROGRAM);
     let (delegation_record_pda, _) = Pubkey::find_program_address(
         &[b"delegation", shuttle_eata.as_ref()],
         &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,

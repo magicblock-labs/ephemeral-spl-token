@@ -1,6 +1,6 @@
 use dlp_api::pda::{fees_vault_pda, validator_fees_vault_pda_from_validator};
 use ephemeral_rollups_pinocchio::consts::DELEGATION_PROGRAM_ID;
-use ephemeral_spl_api::program::ID;
+use ephemeral_spl_api::ID as PROGRAM;
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::native_token::LAMPORTS_PER_SOL;
@@ -12,8 +12,6 @@ use solana_transaction::Transaction;
 
 mod common;
 mod utils;
-
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 
 #[tokio::test]
 async fn undelegate_ephemeral_ata_permission_callback() {

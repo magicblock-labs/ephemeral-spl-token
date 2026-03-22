@@ -46,7 +46,7 @@ pub(crate) fn initialize_ephemeral_ata_with_sponsor(
     // Validate PDA derivation up front, even for idempotent re-initialization.
     let (derived_pda, eata_bump) = ephemeral_spl_api::Address::find_program_address(
         &[user_info.address().as_ref(), mint_info.address().as_ref()],
-        &ephemeral_spl_api::program::id_address(),
+        &ephemeral_spl_api::ID,
     );
     if derived_pda != *ephemeral_ata_info.address() {
         return Err(ProgramError::InvalidSeeds);
@@ -120,7 +120,7 @@ pub(crate) fn initialize_ephemeral_ata_with_sponsor(
         to: ephemeral_ata_info,
         space: EphemeralAta::LEN as u64,
         lamports: Rent::get()?.try_minimum_balance(EphemeralAta::LEN)?,
-        owner: &ephemeral_spl_api::program::id_address(),
+        owner: &ephemeral_spl_api::ID,
     };
     if let Some(sponsor_signer) = sponsor_signer {
         let signers = [sponsor_signer, signer_seeds];

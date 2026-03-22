@@ -132,10 +132,7 @@ pub(crate) fn validate_vault_for_mint(
     vault_token_acc_info: &AccountView,
 ) -> Result<u8, ProgramError> {
     unsafe {
-        if vault_info
-            .owner()
-            .ne(&ephemeral_spl_api::program::id_address())
-        {
+        if vault_info.owner().ne(&ephemeral_spl_api::ID) {
             return Err(ProgramError::IllegalOwner);
         }
     }
@@ -143,7 +140,7 @@ pub(crate) fn validate_vault_for_mint(
     let vault = unsafe { load_unchecked::<GlobalVault>(vault_info.borrow_unchecked())? };
     let (derived_vault, bump) = ephemeral_spl_api::Address::find_program_address(
         &[mint_info.address().as_ref()],
-        &ephemeral_spl_api::program::id_address(),
+        &ephemeral_spl_api::ID,
     );
     if derived_vault != *vault_info.address()
         || vault.mint != *mint_info.address()

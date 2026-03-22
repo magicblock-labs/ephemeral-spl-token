@@ -68,7 +68,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
         );
     }
 
-    let program_id = ephemeral_spl_api::program::id_address();
+    let program_id = ephemeral_spl_api::ID;
     let (derived_queue, _) = ephemeral_spl_api::Address::find_program_address(
         &[QUEUE_SEED, common_accounts.mint_info.address().as_ref()],
         &program_id,
@@ -246,8 +246,8 @@ fn private_transfer_action_encrypted(
         inserted_non_signers: 0,
         signers: alloc::vec![common_accounts.owner_info.address().to_bytes()], // 0
         non_signers: alloc::vec![
-            MaybeEncryptedPubkey::ClearText(ephemeral_spl_api::program::ID), // 1
-            MaybeEncryptedPubkey::ClearText(queue_info.address().to_bytes()), // 2
+            MaybeEncryptedPubkey::ClearText(ephemeral_spl_api::ID.to_bytes()), // 1
+            MaybeEncryptedPubkey::ClearText(queue_info.address().to_bytes()),  // 2
             MaybeEncryptedPubkey::ClearText(common_accounts.global_vault_info.address().to_bytes()), // 3
             MaybeEncryptedPubkey::ClearText(common_accounts.mint_info.address().to_bytes()), // 4
             MaybeEncryptedPubkey::ClearText(

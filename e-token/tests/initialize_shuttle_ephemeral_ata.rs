@@ -1,23 +1,18 @@
 use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
 use ephemeral_spl_api::state::{load_mut_unchecked, Initializable, RawType};
+use ephemeral_spl_api::ID as PROGRAM;
 use solana_instruction::Instruction;
 use solana_program_pack::Pack;
 use spl_token_interface::state::Account;
 use {
-    solana_instruction::AccountMeta,
-    solana_program_test::tokio,
-    solana_pubkey::Pubkey,
-    solana_signer::Signer,
+    solana_instruction::AccountMeta, solana_program_test::tokio, solana_signer::Signer,
     solana_transaction::Transaction,
 };
 
 mod common;
 mod utils;
-
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 
 #[tokio::test]
 async fn initialize_shuttle_ephemeral_ata() {
@@ -30,16 +25,9 @@ async fn initialize_shuttle_ephemeral_ata() {
     let mint = mint_kp.pubkey();
     let shuttle_id = 7_u32;
 
-    let _setup = utils::setup_mint_and_token_accounts(
-        &mut context,
-        payer,
-        &payer_kp,
-        &mint_kp,
-        6,
-        1_000,
-        1,
-    )
-    .await;
+    let _setup =
+        utils::setup_mint_and_token_accounts(&mut context, payer, &payer_kp, &mint_kp, 6, 1_000, 1)
+            .await;
 
     let (shuttle_ephemeral_ata, _) =
         utils::derive_shuttle_ephemeral_ata(PROGRAM, owner, mint, shuttle_id);

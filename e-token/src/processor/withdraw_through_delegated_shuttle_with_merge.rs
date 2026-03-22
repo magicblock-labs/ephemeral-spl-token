@@ -193,7 +193,7 @@ fn undelegate_withdraw_and_close_shuttle_action(
     accounts: &WithdrawThroughDelegatedShuttleAccounts<'_>,
 ) -> Instruction {
     Instruction {
-        program_id: Pubkey::from(ephemeral_spl_api::program::ID),
+        program_id: ephemeral_spl_api::ID,
         accounts: alloc::vec![
             AccountMeta::new(pubkey(accounts.payer_info.address()), true),
             AccountMeta::new(pubkey(accounts.rent_pda_info.address()), false),

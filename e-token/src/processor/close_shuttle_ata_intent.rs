@@ -76,7 +76,7 @@ pub fn process_close_shuttle_ata_intent(
     let mut shuttle_id = 0u32;
     let mut shuttle_owner_opt = None;
     if shuttle_present {
-        if !shuttle_info.owned_by(&ephemeral_spl_api::program::id_address()) {
+        if !shuttle_info.owned_by(&ephemeral_spl_api::ID) {
             return Err(ProgramError::IllegalOwner);
         }
         let shuttle_data = shuttle_info.try_borrow()?;
@@ -134,7 +134,7 @@ pub fn process_close_shuttle_ata_intent(
                 mint.as_ref(),
                 shuttle_id_seed.as_ref(),
             ],
-            &ephemeral_spl_api::program::id_address(),
+            &ephemeral_spl_api::ID,
         );
         if derived_shuttle != *shuttle_info.address() {
             return Err(ProgramError::InvalidSeeds);
@@ -159,7 +159,7 @@ pub fn process_close_shuttle_ata_intent(
     }
 
     if shuttle_ephemeral_present {
-        if !shuttle_ephemeral_ata_info.owned_by(&ephemeral_spl_api::program::id_address()) {
+        if !shuttle_ephemeral_ata_info.owned_by(&ephemeral_spl_api::ID) {
             return Err(ProgramError::IllegalOwner);
         }
         if !shuttle_present {
@@ -210,7 +210,7 @@ pub fn process_close_shuttle_ata_intent(
                 mint.as_ref(),
                 shuttle_id_seed.as_ref(),
             ],
-            &ephemeral_spl_api::program::id_address(),
+            &ephemeral_spl_api::ID,
         );
         if derived_shuttle != *shuttle_info.address() {
             return Err(ProgramError::InvalidSeeds);
@@ -218,7 +218,7 @@ pub fn process_close_shuttle_ata_intent(
 
         let (derived_shuttle_ephemeral_ata, _) = ephemeral_spl_api::Address::find_program_address(
             &[shuttle_info.address().as_ref(), mint.as_ref()],
-            &ephemeral_spl_api::program::id_address(),
+            &ephemeral_spl_api::ID,
         );
         if derived_shuttle_ephemeral_ata != *shuttle_ephemeral_ata_info.address() {
             return Err(ProgramError::InvalidSeeds);

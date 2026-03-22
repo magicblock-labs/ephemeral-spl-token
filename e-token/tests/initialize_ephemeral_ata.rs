@@ -1,6 +1,6 @@
-use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::{load_mut_unchecked, Initializable, RawType};
+use ephemeral_spl_api::ID as PROGRAM;
 use solana_instruction::Instruction;
 use {
     ephemeral_spl_api::instruction, solana_instruction::AccountMeta, solana_program_test::tokio,
@@ -9,8 +9,6 @@ use {
 
 mod common;
 mod utils;
-
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 
 #[tokio::test]
 async fn initialize_ephemeral_ata() {

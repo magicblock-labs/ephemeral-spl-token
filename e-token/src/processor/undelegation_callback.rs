@@ -1,4 +1,4 @@
-use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
 /// Undelegation callback invoked by the delegation program.
 ///
@@ -18,7 +18,7 @@ pub fn process_undelegation_callback(
 
     ephemeral_rollups_pinocchio::instruction::undelegate(
         delegated_acc,
-        &Address::new_from_array(crate::ID),
+        &crate::ID,
         buffer_acc,
         payer,
         &instruction_data[7..],

@@ -331,10 +331,7 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
     }
 
     unsafe {
-        if shuttle_info
-            .owner()
-            .ne(&ephemeral_spl_api::program::id_address())
-        {
+        if shuttle_info.owner().ne(&ephemeral_spl_api::ID) {
             return Err(ProgramError::IllegalOwner);
         }
     }
@@ -348,10 +345,7 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
     }
 
     unsafe {
-        if shuttle_eata_info
-            .owner()
-            .ne(&ephemeral_spl_api::program::id_address())
-        {
+        if shuttle_eata_info.owner().ne(&ephemeral_spl_api::ID) {
             return Err(ProgramError::IllegalOwner);
         }
     }
@@ -386,28 +380,10 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    let derived_shuttle_eata = match ephemeral_spl_api::Address::create_program_address(
+    let derived_shuttle_eata = ephemeral_spl_api::Address::create_program_address(
         &[shuttle_info.address().as_ref(), mint.as_ref(), &bump],
-        &ephemeral_spl_api::program::id_address(),
-    ) {
-        Ok(address) => address,
-        Err(err) => {
-            #[cfg(feature = "logging")]
-            {
-                let shuttle = shuttle_info.address().to_string();
-                let shuttle_eata = shuttle_eata_info.address().to_string();
-                let mint = mint.to_string();
-                pinocchio_log::log!(
-                    "PrepareShuttleDelegation failed deriving shuttle_eata shuttle={} mint={} bump={} actual={}",
-                    shuttle.as_str(),
-                    mint.as_str(),
-                    bump[0],
-                    shuttle_eata.as_str(),
-                );
-            }
-            return Err(err.into());
-        }
-    };
+        &ephemeral_spl_api::ID,
+    )?;
     if derived_shuttle_eata != *shuttle_eata_info.address() {
         #[cfg(feature = "logging")]
         {
@@ -514,7 +490,7 @@ pub(crate) fn merge_shuttle_into_token_account_action(
     destination_token_info: &AccountView,
 ) -> Instruction {
     Instruction {
-        program_id: Pubkey::from(ephemeral_spl_api::program::ID),
+        program_id: Pubkey::from(ephemeral_spl_api::ID),
         accounts: alloc::vec![
             AccountMeta::new_readonly(pubkey(accounts.owner_info.address()), true),
             AccountMeta::new(pubkey(destination_token_info.address()), false),
@@ -531,7 +507,7 @@ pub(crate) fn undelegate_and_close_shuttle_action(
     accounts: &DepositAndDelegateShuttleAccounts<'_>,
 ) -> Instruction {
     Instruction {
-        program_id: Pubkey::from(ephemeral_spl_api::program::ID),
+        program_id: Pubkey::from(ephemeral_spl_api::ID),
         accounts: alloc::vec![
             AccountMeta::new(pubkey(accounts.payer_info.address()), true),
             AccountMeta::new(pubkey(accounts.rent_pda_info.address()), false),

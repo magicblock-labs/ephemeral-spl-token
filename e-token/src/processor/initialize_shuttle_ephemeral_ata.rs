@@ -78,17 +78,13 @@ pub(crate) fn initialize_shuttle_ephemeral_ata_with_sponsor(
             mint_info.address().as_ref(),
             shuttle_id_seed.as_ref(),
         ],
-        &ephemeral_spl_api::program::id_address(),
+        &ephemeral_spl_api::ID,
     );
     if derived_shuttle_pda != *shuttle_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
 
-    let shuttle_is_owned_by_program = unsafe {
-        shuttle_info
-            .owner()
-            .eq(&ephemeral_spl_api::program::id_address())
-    };
+    let shuttle_is_owned_by_program = unsafe { shuttle_info.owner().eq(&ephemeral_spl_api::ID) };
 
     if !shuttle_is_owned_by_program {
         let bump = [shuttle_bump];
@@ -105,7 +101,7 @@ pub(crate) fn initialize_shuttle_ephemeral_ata_with_sponsor(
             to: shuttle_info,
             space: ShuttleMetadata::LEN as u64,
             lamports: Rent::get()?.try_minimum_balance(ShuttleMetadata::LEN)?,
-            owner: &ephemeral_spl_api::program::id_address(),
+            owner: &ephemeral_spl_api::ID,
         };
         if let Some(sponsor_signer) = sponsor_signer.as_ref() {
             let signers = [sponsor_signer.clone(), shuttle_signer];

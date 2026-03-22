@@ -47,7 +47,7 @@ pub fn process_deposit_and_queue_transfer(
     )?;
 
     let split = args.split() as usize;
-    let program_id = ephemeral_spl_api::program::id_address();
+    let program_id = ephemeral_spl_api::ID;
     let (derived_queue, _) = ephemeral_spl_api::Address::find_program_address(
         &[QUEUE_SEED, mint_info.address().as_ref()],
         &program_id,

@@ -1,5 +1,5 @@
 use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::program::ID;
+use ephemeral_spl_api::ID as PROGRAM;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program_test::tokio;
 use solana_pubkey::Pubkey;
@@ -8,8 +8,6 @@ use solana_transaction::Transaction;
 
 mod common;
 mod utils;
-
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 
 fn find_member_flag(data: &[u8], member_pubkey: &Pubkey, expected: u8) -> Option<u8> {
     let key_bytes = member_pubkey.as_ref();

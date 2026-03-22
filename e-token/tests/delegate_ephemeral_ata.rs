@@ -1,6 +1,6 @@
 use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::RawType;
+use ephemeral_spl_api::ID as PROGRAM;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program_test::tokio;
 use solana_pubkey::Pubkey;
@@ -9,8 +9,6 @@ use solana_transaction::Transaction;
 
 mod common;
 mod utils;
-
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 
 #[tokio::test]
 async fn delegate_ephemeral_ata_succeeds() {
@@ -25,16 +23,9 @@ async fn delegate_ephemeral_ata_succeeds() {
 
     // Derive the PDAs for our program and setup token accounts
     let pdas = utils::derive_pdas(PROGRAM, user, mint);
-    let setup = utils::setup_mint_and_token_accounts(
-        &mut context,
-        payer,
-        &payer_kp,
-        &mint_kp,
-        6,
-        1_000,
-        1,
-    )
-    .await;
+    let setup =
+        utils::setup_mint_and_token_accounts(&mut context, payer, &payer_kp, &mint_kp, 6, 1_000, 1)
+            .await;
 
     // Initialize the Ephemeral ATA and Global Vault (required by the program state)
     let ix_init_ata = Instruction {
@@ -93,10 +84,8 @@ async fn delegate_ephemeral_ata_succeeds() {
     );
 
     // Derive required PDAs
-    let (buffer_pda, _) = Pubkey::find_program_address(
-        &[b"buffer", pdas.ephemeral_ata.as_ref()],
-        &ephemeral_spl_api::program::id().into(),
-    );
+    let (buffer_pda, _) =
+        Pubkey::find_program_address(&[b"buffer", pdas.ephemeral_ata.as_ref()], &PROGRAM);
     let (delegation_record_pda, _) = Pubkey::find_program_address(
         &[b"delegation", pdas.ephemeral_ata.as_ref()],
         &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,
@@ -220,16 +209,9 @@ async fn delegate_ephemeral_ata_non_owner_succeeds() {
     let mint = mint_kp.pubkey();
 
     let pdas = utils::derive_pdas(PROGRAM, user, mint);
-    let setup = utils::setup_mint_and_token_accounts(
-        &mut context,
-        payer,
-        &payer_kp,
-        &mint_kp,
-        6,
-        1_000,
-        1,
-    )
-    .await;
+    let setup =
+        utils::setup_mint_and_token_accounts(&mut context, payer, &payer_kp, &mint_kp, 6, 1_000, 1)
+            .await;
 
     let ix_init_ata = Instruction {
         program_id: PROGRAM,
@@ -274,10 +256,8 @@ async fn delegate_ephemeral_ata_non_owner_succeeds() {
         .await
         .unwrap();
 
-    let (buffer_pda, _) = Pubkey::find_program_address(
-        &[b"buffer", pdas.ephemeral_ata.as_ref()],
-        &ephemeral_spl_api::program::id().into(),
-    );
+    let (buffer_pda, _) =
+        Pubkey::find_program_address(&[b"buffer", pdas.ephemeral_ata.as_ref()], &PROGRAM);
     let (delegation_record_pda, _) = Pubkey::find_program_address(
         &[b"delegation", pdas.ephemeral_ata.as_ref()],
         &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,

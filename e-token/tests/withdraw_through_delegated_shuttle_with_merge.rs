@@ -5,10 +5,10 @@ use std::{
 
 use dlp_api::state::DelegationRecord;
 use ephemeral_spl_api::instruction::{self, internal};
-use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
 use ephemeral_spl_api::state::{load_mut_unchecked, Initializable, RawType};
+use ephemeral_spl_api::ID as PROGRAM;
 use magicblock_magic_program_api::{
     args::{MagicIntentBundleArgs, UndelegateTypeArgs},
     instruction::MagicBlockInstruction,
@@ -30,7 +30,6 @@ use spl_token_interface::state::Account as SplAccount;
 mod common;
 mod utils;
 
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 const RENT_PDA_SEED: &[u8] = b"rent";
 const DECIMALS: u8 = 6;
 const STARTING_BALANCE: u64 = 1_000 * 10u64.pow(DECIMALS as u32);
@@ -236,10 +235,8 @@ async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_clean
         .await
         .unwrap();
 
-    let (buffer_pda, _) = Pubkey::find_program_address(
-        &[b"buffer", shuttle_eata.as_ref()],
-        &ephemeral_spl_api::program::id().into(),
-    );
+    let (buffer_pda, _) =
+        Pubkey::find_program_address(&[b"buffer", shuttle_eata.as_ref()], &PROGRAM.into());
     let (delegation_record_pda, _) = Pubkey::find_program_address(
         &[b"delegation", shuttle_eata.as_ref()],
         &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,
