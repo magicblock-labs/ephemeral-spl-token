@@ -320,7 +320,10 @@ pub async fn setup_mint_and_token_accounts(
     let mut user_token_kps: Vec<Keypair> = vec![];
 
     for i in 0..user_accounts {
-        let kp = test_keypair(&format!("setup_mint_and_token_accounts::user_token_{i}"));
+        let kp = test_keypair(&format!(
+            "setup_mint_and_token_accounts::user_token_{i}_{}",
+            mint_kp.pubkey()
+        ));
         let pk = kp.pubkey();
         user_token_kps.push(kp);
         user_tokens.push(pk);
