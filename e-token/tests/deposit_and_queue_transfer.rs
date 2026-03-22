@@ -67,7 +67,7 @@ async fn setup_fixture(queue_size_bytes: Option<u32>) -> Fixture {
     let queue = Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref()], &PROGRAM).0;
     let vault = pdas.vault;
     let user_source_ata = setup.user_tokens[0];
-    let destination_ata = setup.user_tokens[1];
+    let destination_ata = utils::derive_associated_token_address(payer, mint);
     let (vault_eata, _) = Pubkey::find_program_address(&[vault.as_ref(), mint.as_ref()], &PROGRAM);
     let vault_ata = utils::derive_associated_token_address(vault, mint);
 
@@ -101,8 +101,21 @@ async fn setup_fixture(queue_size_bytes: Option<u32>) -> Fixture {
         data: queue_init_data,
     };
 
+    let ix_init_destination_ata = Instruction {
+        program_id: utils::associated_token_program_id(),
+        accounts: vec![
+            AccountMeta::new(payer, true),
+            AccountMeta::new(destination_ata, false),
+            AccountMeta::new_readonly(payer, false),
+            AccountMeta::new_readonly(mint, false),
+            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+            AccountMeta::new_readonly(spl_token_interface::ID, false),
+        ],
+        data: vec![1],
+    };
+
     let tx_init = Transaction::new_signed_with_payer(
-        &[ix_init_vault, ix_init_queue],
+        &[ix_init_vault, ix_init_queue, ix_init_destination_ata],
         Some(&payer),
         &[&context.payer],
         context.last_blockhash,
@@ -287,9 +300,10 @@ async fn deposit_and_queue_transfer_transfers_once_and_enqueues_split_items() {
         *queued_amount = queued.amount;
         assert_eq!(queued.source.as_array(), &fixture.payer.to_bytes());
         assert_eq!(
-            queued.destination.as_array(),
-            &fixture.destination_ata.to_bytes()
+            queued.destination_owner.as_array(),
+            &fixture.payer.to_bytes()
         );
+        assert_eq!(queued.flags, 0);
         assert_eq!(queued.ready_at - queued.inserted_at, min_delay_ms as i64);
         assert!(queued.inserted_at >= clock_before.unix_timestamp * 1_000);
         assert!(queued.inserted_at <= clock_after.unix_timestamp * 1_000);
@@ -470,9 +484,7 @@ async fn deposit_and_queue_transfer_uses_deterministic_split_delays_within_range
     }
 
     let mut expected_delays = (0..split as usize)
-        .map(|index| {
-            expected_split_delay_ms(&fixture.destination_ata, index, min_delay_ms, max_delay_ms)
-        })
+        .map(|index| expected_split_delay_ms(&fixture.payer, index, min_delay_ms, max_delay_ms))
         .collect::<Vec<_>>();
 
     actual_delays.sort_unstable();

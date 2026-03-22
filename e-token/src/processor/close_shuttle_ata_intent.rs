@@ -1,7 +1,6 @@
 use crate::processor::withdraw_spl_tokens::withdraw_ephemeral_ata_tokens;
 use ephemeral_spl_api::state::{
-    ephemeral_ata::read_ephemeral_ata_compat,
-    load, shuttle_ephemeral_ata::ShuttleMetadata,
+    ephemeral_ata::read_ephemeral_ata_compat, load, shuttle_ephemeral_ata::ShuttleMetadata,
 };
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};

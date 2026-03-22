@@ -113,18 +113,18 @@ pub mod instruction {
     ///      same setup/deposit/delegate flow as instruction 24, but instead of using instruction 24's
     ///      merge-to-destination behavior, the first post-delegation action restores the owner's
     ///      source token account by merging the shuttle balance back there, then a third post-delegation
-    ///      action schedules a private transfer of the same amount to the destination token account.
+    ///      action schedules a private transfer of the same amount to the destination owner's
+    ///      canonical ATA.
     ///      SDK callers must account for that queued private transfer when calculating required source
     ///      balances and expected destination credits; the destination does not hold the final funds
     ///      immediately after the merge/cleanup steps.
     ///      Instruction data:
-    ///      [0..4] shuttle_id (u32 LE)
-    ///      [4]    shuttle metadata bump
-    ///      [5..13] deposit amount (u64 LE)
-    ///      [13..21] min_delay_ms (u64 LE)
-    ///      [21..29] max_delay_ms (u64 LE)
-    ///      [29..33] split count (u32 LE)
-    ///      [33..65] optional validator pubkey
+    ///      [0..4]   shuttle_id (u32 LE)
+    ///      [4..12]  deposit amount (u64 LE)
+    ///      [12..]   len-prefixed optional validator pubkey bytes
+    ///      [...]    len-prefixed encrypted destination owner pubkey bytes
+    ///      [...]    len-prefixed encrypted packed suffix
+    ///               (min_delay_ms:u64, max_delay_ms:u64, split:u32, flags:u8)
     pub const DEPOSIT_AND_DELEGATE_SHUTTLE_EPHEMERAL_ATA_WITH_MERGE_AND_PRIVATE_TRANSFER: u8 = 25;
     /// 26 - WithdrawThroughDelegatedShuttleWithMerge: initialize shuttle metadata/EATA/wallet ATA,
     ///      sponsor delegation from the global rent PDA, then schedule a post-delegation transfer

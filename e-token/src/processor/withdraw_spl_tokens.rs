@@ -3,8 +3,7 @@ use ephemeral_spl_api::error::EphemeralSplError;
 use pinocchio::cpi::{Seed, Signer};
 use {
     ephemeral_spl_api::state::{
-        ephemeral_ata::load_ephemeral_ata_compat_mut,
-        global_vault::GlobalVault, load_unchecked,
+        ephemeral_ata::load_ephemeral_ata_compat_mut, global_vault::GlobalVault, load_unchecked,
     },
     pinocchio::{error::ProgramError, AccountView, ProgramResult},
     pinocchio_token_2022::state::Mint,

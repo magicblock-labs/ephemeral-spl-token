@@ -36,6 +36,7 @@ const DECIMALS: u8 = 6;
 const STARTING_BALANCE: u64 = 10_000 * 10u64.pow(DECIMALS as u32);
 const QUEUED_AMOUNT: u64 = 10;
 const EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX: u8 = 0;
+const RENT_PDA_SEED: &[u8] = b"rent";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct CapturedScheduleAccount {
@@ -273,7 +274,7 @@ async fn setup_fixture() -> Fixture {
     let queue = Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref()], &PROGRAM).0;
     let vault = pdas.vault;
     let source_ata = setup.user_tokens[0];
-    let destination_ata = setup.user_tokens[1];
+    let destination_ata = utils::derive_associated_token_address(payer, mint);
     let (vault_eata, _) = Pubkey::find_program_address(&[vault.as_ref(), mint.as_ref()], &PROGRAM);
     let vault_ata = utils::derive_associated_token_address(vault, mint);
 
@@ -303,8 +304,21 @@ async fn setup_fixture() -> Fixture {
         data: vec![instruction::INITIALIZE_TRANSFER_QUEUE],
     };
 
+    let ix_init_destination_ata = Instruction {
+        program_id: utils::associated_token_program_id(),
+        accounts: vec![
+            AccountMeta::new(payer, true),
+            AccountMeta::new(destination_ata, false),
+            AccountMeta::new_readonly(payer, false),
+            AccountMeta::new_readonly(mint, false),
+            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+            AccountMeta::new_readonly(spl_token_interface::ID, false),
+        ],
+        data: vec![1],
+    };
+
     let tx_init = Transaction::new_signed_with_payer(
-        &[ix_init_vault, ix_init_queue],
+        &[ix_init_vault, ix_init_queue, ix_init_destination_ata],
         Some(&payer),
         &[&context.payer],
         context.last_blockhash,
@@ -557,7 +571,7 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
         let queue = Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref()], &PROGRAM).0;
         let vault = pdas.vault;
         let source_ata = setup.user_tokens[0];
-        let destination_ata = setup.user_tokens[1];
+        let destination_ata = utils::derive_associated_token_address(payer, mint);
         let (vault_eata, _) =
             Pubkey::find_program_address(&[vault.as_ref(), mint.as_ref()], &PROGRAM);
         let vault_ata = utils::derive_associated_token_address(vault, mint);
@@ -588,8 +602,21 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
             data: vec![instruction::INITIALIZE_TRANSFER_QUEUE],
         };
 
+        let ix_init_destination_ata = Instruction {
+            program_id: utils::associated_token_program_id(),
+            accounts: vec![
+                AccountMeta::new(payer, true),
+                AccountMeta::new(destination_ata, false),
+                AccountMeta::new_readonly(payer, false),
+                AccountMeta::new_readonly(mint, false),
+                AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+                AccountMeta::new_readonly(spl_token_interface::ID, false),
+            ],
+            data: vec![1],
+        };
+
         let tx_init = Transaction::new_signed_with_payer(
-            &[ix_init_vault, ix_init_queue],
+            &[ix_init_vault, ix_init_queue, ix_init_destination_ata],
             Some(&payer),
             &[&context.payer],
             context.last_blockhash,
@@ -784,7 +811,7 @@ async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
         standalone_action.destination_program.to_bytes(),
         PROGRAM.to_bytes()
     );
-    assert_eq!(standalone_action.compute_units, 100_000);
+    assert_eq!(standalone_action.compute_units, 140_000);
     assert_eq!(
         captured_bundles[0].schedule_accounts[standalone_action.escrow_authority as usize],
         fixture.queue
@@ -798,23 +825,25 @@ async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
         EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
     ];
     expected_action_data.extend_from_slice(&expected_amount.to_le_bytes());
+    expected_action_data.push(0);
     assert_eq!(standalone_action.args.data, expected_action_data);
-    assert_eq!(standalone_action.accounts.len(), 6);
+    assert_eq!(standalone_action.accounts.len(), 9);
+    let rent_pda = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM).0;
     assert_eq!(
         standalone_action.accounts[0].pubkey.to_bytes(),
-        fixture.queue.to_bytes()
-    );
-    assert_eq!(
-        standalone_action.accounts[1].pubkey.to_bytes(),
         fixture.vault.to_bytes()
     );
     assert_eq!(
-        standalone_action.accounts[2].pubkey.to_bytes(),
+        standalone_action.accounts[1].pubkey.to_bytes(),
         fixture.mint.to_bytes()
     );
     assert_eq!(
-        standalone_action.accounts[3].pubkey.to_bytes(),
+        standalone_action.accounts[2].pubkey.to_bytes(),
         fixture.vault_ata.to_bytes()
+    );
+    assert_eq!(
+        standalone_action.accounts[3].pubkey.to_bytes(),
+        fixture.payer.to_bytes()
     );
     assert_eq!(
         standalone_action.accounts[4].pubkey.to_bytes(),
@@ -822,7 +851,19 @@ async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
     );
     assert_eq!(
         standalone_action.accounts[5].pubkey.to_bytes(),
+        rent_pda.to_bytes()
+    );
+    assert_eq!(
+        standalone_action.accounts[6].pubkey.to_bytes(),
         spl_token_interface::ID.to_bytes()
+    );
+    assert_eq!(
+        standalone_action.accounts[7].pubkey.to_bytes(),
+        utils::associated_token_program_id().to_bytes()
+    );
+    assert_eq!(
+        standalone_action.accounts[8].pubkey.to_bytes(),
+        solana_system_interface::program::ID.to_bytes()
     );
 
     let blockhash = latest_blockhash(&mut fixture.context).await;
