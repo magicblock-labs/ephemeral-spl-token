@@ -6,7 +6,7 @@
 #   make compare BASELINE=metrics/old.json CURRENT=metrics/new.json
 #   make compare COMPARE_ARGS='--title "CU diff"'
 
-.PHONY: help compare
+.PHONY: help compare test-current test-baseline
 
 BASELINE ?= metrics/baseline.json
 CURRENT ?= metrics/current.json
@@ -18,10 +18,10 @@ help:
 	@echo "  test-baseline   Run tests with baseline metrics path"
 
 test-current:
-	METRICS_PATH=metrics/current.json cargo test-sbf
+	METRICS_PATH=$(CURRENT) cargo test-sbf
 
 test-baseline:
-	METRICS_PATH=metrics/baseline.json cargo test-sbf
+	METRICS_PATH=$(BASELINE) cargo test-sbf
 
 compare:
 	cargo run -p compare-metrics -- $(COMPARE_ARGS) $(BASELINE) $(CURRENT)
