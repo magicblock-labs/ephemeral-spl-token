@@ -3,26 +3,23 @@ use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::{load_mut_unchecked, Initializable, RawType};
 use solana_instruction::Instruction;
 use {
-    ephemeral_spl_api::instruction,
-    solana_instruction::AccountMeta,
-    solana_program_test::{tokio, ProgramTest},
-    solana_pubkey::Pubkey,
-    solana_signer::Signer,
-    solana_transaction::Transaction,
+    ephemeral_spl_api::instruction, solana_instruction::AccountMeta, solana_program_test::tokio,
+    solana_pubkey::Pubkey, solana_signer::Signer, solana_transaction::Transaction,
 };
+
+mod common;
+mod utils;
 
 pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 
 #[tokio::test]
 async fn initialize_ephemeral_ata() {
-    let context = ProgramTest::new("ephemeral_token_program", PROGRAM, None)
-        .start_with_context()
-        .await;
+    let context = utils::start_program_test(PROGRAM).await;
 
-    // Derive arbitrary keys
-    let payer = context.payer.pubkey();
-    let user = Pubkey::new_unique();
-    let mint = Pubkey::new_unique();
+    let payer_kp = utils::fixed_payer_keypair();
+    let payer = payer_kp.pubkey();
+    let user = utils::test_pubkey("initialize_ephemeral_ata::user");
+    let mint = utils::test_pubkey("initialize_ephemeral_ata::mint");
 
     // Create the ephemeral ATA account owned by our program with proper space
     let (ephemeral_ata, _) = Pubkey::find_program_address(
@@ -45,11 +42,17 @@ async fn initialize_ephemeral_ata() {
 
     let tx = Transaction::new_signed_with_payer(
         &[ix],
-        Some(&context.payer.pubkey()),
-        &[&context.payer],
+        Some(&payer),
+        &[&payer_kp],
         context.last_blockhash,
     );
-    context.banks_client.process_transaction(tx).await.unwrap();
+    common::metrics::process_transaction_record_cu(
+        &context.banks_client,
+        tx,
+        "init_eata::init",
+    )
+    .await
+    .unwrap();
 
     // Read back the account and ensure it was zero-initialized
     let account = context

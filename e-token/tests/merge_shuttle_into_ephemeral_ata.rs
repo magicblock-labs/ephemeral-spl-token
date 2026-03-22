@@ -3,16 +3,16 @@ use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
 use ephemeral_spl_api::state::{load_mut_unchecked, RawType};
 use solana_instruction::{AccountMeta, Instruction};
-use solana_keypair::Keypair;
 use solana_program_pack::Pack;
 use spl_token_interface::state::Account;
 use {
-    solana_program_test::{tokio, ProgramTest},
+    solana_program_test::tokio,
     solana_pubkey::Pubkey,
     solana_signer::Signer,
     solana_transaction::Transaction,
 };
 
+mod common;
 mod utils;
 
 pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
@@ -22,15 +22,14 @@ const STARTING_BALANCE: u64 = 10_000 * 10u64.pow(DECIMALS as u32);
 
 #[tokio::test]
 async fn merge_shuttle_into_ephemeral_ata_transfers_from_shuttle_ata_to_destination() {
-    let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-    utils::add_associated_token_program(&mut pt);
-    let mut context = pt.start_with_context().await;
+    let mut context = utils::start_program_test(PROGRAM).await;
 
-    let payer = context.payer.pubkey();
+    let payer_kp = utils::fixed_payer_keypair();
+    let payer = payer_kp.pubkey();
     let owner = payer;
     let shuttle_id = 42_u32;
 
-    let mint_kp = Keypair::new();
+    let mint_kp = utils::test_keypair("merge_shuttle_into_ephemeral_ata::mint");
     let mint = mint_kp.pubkey();
 
     let (shuttle_ephemeral_ata, _) =
@@ -41,6 +40,7 @@ async fn merge_shuttle_into_ephemeral_ata_transfers_from_shuttle_ata_to_destinat
     let setup = utils::setup_mint_and_token_accounts(
         &mut context,
         payer,
+        &payer_kp,
         &mint_kp,
         DECIMALS,
         STARTING_BALANCE,
@@ -70,7 +70,7 @@ async fn merge_shuttle_into_ephemeral_ata_transfers_from_shuttle_ata_to_destinat
     let tx_init = Transaction::new_signed_with_payer(
         &[ix_init_shuttle],
         Some(&payer),
-        &[&context.payer],
+        &[&payer_kp],
         context.last_blockhash,
     );
     context
@@ -93,7 +93,7 @@ async fn merge_shuttle_into_ephemeral_ata_transfers_from_shuttle_ata_to_destinat
     let tx_fund_shuttle = Transaction::new_signed_with_payer(
         &[ix_fund_shuttle],
         Some(&payer),
-        &[&context.payer],
+        &[&payer_kp],
         context.last_blockhash,
     );
     context
@@ -136,14 +136,16 @@ async fn merge_shuttle_into_ephemeral_ata_transfers_from_shuttle_ata_to_destinat
     let tx_merge = Transaction::new_signed_with_payer(
         &[ix_merge],
         Some(&payer),
-        &[&context.payer],
+        &[&payer_kp],
         context.last_blockhash,
     );
-    context
-        .banks_client
-        .process_transaction(tx_merge)
-        .await
-        .unwrap();
+    common::metrics::process_transaction_record_cu(
+        &context.banks_client,
+        tx_merge,
+        "merge_shuttle::merge",
+    )
+    .await
+    .unwrap();
 
     let destination_after_merge = context
         .banks_client

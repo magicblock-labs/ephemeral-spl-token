@@ -1,31 +1,30 @@
 use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::program::ID;
 use solana_instruction::{AccountMeta, Instruction};
-use solana_keypair::Keypair;
 use {
-    solana_program_test::{tokio, ProgramTest},
-    solana_pubkey::Pubkey,
-    solana_signer::Signer,
-    solana_system_interface::instruction::create_account,
-    solana_transaction::Transaction,
+    solana_program_test::tokio, solana_pubkey::Pubkey, solana_signer::Signer,
+    solana_system_interface::instruction::create_account, solana_transaction::Transaction,
 };
+
+mod common;
+mod utils;
 
 pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 
 #[tokio::test]
 async fn close_ephemeral_ata_refunds_rent_and_closes_account() {
-    let context = ProgramTest::new("ephemeral_token_program", PROGRAM, None)
-        .start_with_context()
-        .await;
+    let context = utils::start_program_test(PROGRAM).await;
 
-    let payer = context.payer.pubkey();
+    let payer_kp = utils::fixed_payer_keypair();
+    let payer = payer_kp.pubkey();
     let user = payer;
-    let mint = Pubkey::new_unique();
+    let mint = utils::test_pubkey("close_ephemeral_ata_refunds_rent_and_closes_account::mint");
 
     let (ephemeral_ata, _) =
         Pubkey::find_program_address(&[user.as_ref(), mint.as_ref()], &PROGRAM);
 
-    let recipient_kp = Keypair::new();
+    let recipient_kp =
+        utils::test_keypair("close_ephemeral_ata_refunds_rent_and_closes_account::recipient");
     let recipient = recipient_kp.pubkey();
 
     let rent = context.banks_client.get_rent().await.unwrap();
@@ -52,7 +51,7 @@ async fn close_ephemeral_ata_refunds_rent_and_closes_account() {
     let tx_init = Transaction::new_signed_with_payer(
         &[ix_create_recipient, ix_init],
         Some(&payer),
-        &[&context.payer, &recipient_kp],
+        &[&payer_kp, &recipient_kp],
         context.last_blockhash,
     );
     context
@@ -91,14 +90,16 @@ async fn close_ephemeral_ata_refunds_rent_and_closes_account() {
     let tx_close = Transaction::new_signed_with_payer(
         &[ix_close],
         Some(&payer),
-        &[&context.payer],
+        &[&payer_kp],
         context.last_blockhash,
     );
-    context
-        .banks_client
-        .process_transaction(tx_close)
-        .await
-        .unwrap();
+    common::metrics::process_transaction_record_cu(
+        &context.banks_client,
+        tx_close,
+        "close_eata::close",
+    )
+    .await
+    .unwrap();
 
     let recipient_after = context
         .banks_client

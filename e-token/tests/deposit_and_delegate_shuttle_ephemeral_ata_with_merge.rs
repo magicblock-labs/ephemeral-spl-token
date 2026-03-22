@@ -6,16 +6,16 @@ use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
 use ephemeral_spl_api::state::{load_mut_unchecked, Initializable};
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
-use solana_keypair::Keypair;
-use solana_program::{bpf_loader, rent::Rent};
+use solana_program::rent::Rent;
 use solana_program_pack::Pack;
-use solana_program_test::{read_file, tokio, ProgramTest};
+use solana_program_test::tokio;
 use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use solana_system_interface::instruction::transfer;
 use solana_transaction::Transaction;
 use spl_token_interface::state::Account as SplAccount;
 
+mod common;
 mod utils;
 
 pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
@@ -27,47 +27,38 @@ const DEPOSIT_AMOUNT: u64 = 100 * 10u64.pow(DECIMALS as u32);
 #[tokio::test]
 async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_deposits_and_stores_post_delegation_action(
 ) {
-    let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-    utils::add_associated_token_program(&mut pt);
-    pt.prefer_bpf(true);
+    let owner = utils::test_keypair("deposit_and_delegate_shuttle_ephemeral_ata_with_merge::owner");
+    let owner_token =
+        utils::test_keypair("deposit_and_delegate_shuttle_ephemeral_ata_with_merge::owner_token");
 
-    let data = read_file("tests/fixtures/dlp.so");
-    pt.add_account(
-        ephemeral_rollups_pinocchio::ID,
-        Account {
-            lamports: Rent::default().minimum_balance(data.len()).max(1),
-            data,
-            owner: bpf_loader::id(),
-            executable: true,
-            rent_epoch: 0,
-        },
-    );
+    let mut context = utils::start_program_test_with(PROGRAM, |pt| {
+        pt.add_account(
+            owner.pubkey(),
+            Account {
+                lamports: Rent::default().minimum_balance(0).max(1),
+                data: vec![],
+                owner: solana_system_interface::program::ID,
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+    })
+    .await;
 
-    let owner = Keypair::new();
-    let owner_token = Keypair::new();
-    pt.add_account(
-        owner.pubkey(),
-        Account {
-            lamports: Rent::default().minimum_balance(0).max(1),
-            data: vec![],
-            owner: solana_system_interface::program::ID,
-            executable: false,
-            rent_epoch: 0,
-        },
-    );
-
-    let mut context = pt.start_with_context().await;
-
-    let payer = context.payer.pubkey();
-    let mint_kp = Keypair::new();
+    let payer_kp = utils::fixed_payer_keypair();
+    let payer = payer_kp.pubkey();
+    let mint_kp =
+        utils::test_keypair("deposit_and_delegate_shuttle_ephemeral_ata_with_merge::mint");
     let mint = mint_kp.pubkey();
     let shuttle_id = 9_u32;
-    let validator = Pubkey::new_unique();
+    let validator =
+        utils::test_pubkey("deposit_and_delegate_shuttle_ephemeral_ata_with_merge::validator");
     let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
 
     let setup = utils::setup_mint_and_token_accounts(
         &mut context,
         payer,
+        &payer_kp,
         &mint_kp,
         DECIMALS,
         STARTING_BALANCE,
@@ -147,7 +138,7 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_deposits_and_stor
             ix_mint_owner_source,
         ],
         Some(&payer),
-        &[&context.payer, &owner_token],
+        &[&payer_kp, &owner_token],
         context.last_blockhash,
     );
     context
@@ -203,14 +194,16 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_deposits_and_stor
     let tx_delegate = Transaction::new_signed_with_payer(
         &[ix_delegate],
         Some(&payer),
-        &[&context.payer, &owner],
+        &[&payer_kp, &owner],
         context.banks_client.get_latest_blockhash().await.unwrap(),
     );
-    context
-        .banks_client
-        .process_transaction(tx_delegate)
-        .await
-        .unwrap();
+    common::metrics::process_transaction_record_cu(
+        &context.banks_client,
+        tx_delegate,
+        "del_shuttle_merge::delegate",
+    )
+    .await
+    .unwrap();
 
     let shuttle_account = context
         .banks_client

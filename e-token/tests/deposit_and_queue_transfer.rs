@@ -4,17 +4,18 @@ use ephemeral_spl_api::state::transfer_queue::{
     header_len, item_len, QueuedTransfer, TransferQueueHeader, QUEUE_SEED,
 };
 use solana_instruction::{AccountMeta, Instruction};
-use solana_keypair::Keypair;
 use solana_program::clock::Clock;
 use solana_program_pack::Pack;
 use spl_token_interface::state::Account;
 use {
-    solana_program_test::{tokio, ProgramTest, ProgramTestContext},
+    solana_keypair::Keypair,
+    solana_program_test::{tokio, ProgramTestContext},
     solana_pubkey::Pubkey,
     solana_signer::Signer,
     solana_transaction::{InstructionError, Transaction, TransactionError},
 };
 
+mod common;
 mod utils;
 
 pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
@@ -24,6 +25,7 @@ const STARTING_BALANCE: u64 = 10_000 * 10u64.pow(DECIMALS as u32);
 
 struct Fixture {
     context: ProgramTestContext,
+    payer_kp: Keypair,
     payer: Pubkey,
     mint: Pubkey,
     queue: Pubkey,
@@ -45,18 +47,18 @@ fn read_item_unaligned(data: &[u8], index: usize) -> QueuedTransfer {
 }
 
 async fn setup_fixture(queue_size_bytes: Option<u32>) -> Fixture {
-    let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-    utils::add_associated_token_program(&mut pt);
-    let mut context = pt.start_with_context().await;
+    let mut context = utils::start_program_test(PROGRAM).await;
 
-    let payer = context.payer.pubkey();
-    let mint_kp = Keypair::new();
+    let payer_kp = utils::fixed_payer_keypair();
+    let payer = payer_kp.pubkey();
+    let mint_kp = utils::test_keypair("deposit_and_queue_transfer::mint");
     let mint = mint_kp.pubkey();
 
     let pdas = utils::derive_pdas(PROGRAM, payer, mint);
     let setup = utils::setup_mint_and_token_accounts(
         &mut context,
         payer,
+        &payer_kp,
         &mint_kp,
         DECIMALS,
         STARTING_BALANCE,
@@ -117,7 +119,7 @@ async fn setup_fixture(queue_size_bytes: Option<u32>) -> Fixture {
     let tx_init = Transaction::new_signed_with_payer(
         &[ix_init_vault, ix_init_queue, ix_init_destination_ata],
         Some(&payer),
-        &[&context.payer],
+        &[&payer_kp],
         context.last_blockhash,
     );
     context
@@ -128,6 +130,7 @@ async fn setup_fixture(queue_size_bytes: Option<u32>) -> Fixture {
 
     Fixture {
         context,
+        payer_kp,
         payer,
         mint,
         queue,
@@ -246,15 +249,16 @@ async fn deposit_and_queue_transfer_transfers_once_and_enqueues_split_items() {
     let tx = Transaction::new_signed_with_payer(
         &[ix],
         Some(&fixture.payer),
-        &[&fixture.context.payer],
+        &[&fixture.payer_kp],
         blockhash,
     );
-    fixture
-        .context
-        .banks_client
-        .process_transaction(tx)
-        .await
-        .unwrap();
+    common::metrics::process_transaction_record_cu(
+        &fixture.context.banks_client,
+        tx,
+        "dep_queue::once_split",
+    )
+    .await
+    .unwrap();
 
     let clock_after = fixture
         .context
@@ -327,17 +331,18 @@ async fn deposit_and_queue_transfer_rejects_zero_split() {
     let tx = Transaction::new_signed_with_payer(
         &[ix],
         Some(&fixture.payer),
-        &[&fixture.context.payer],
+        &[&fixture.payer_kp],
         blockhash,
     );
+    let r = common::metrics::process_transaction_with_metadata_recorded(
+        &fixture.context.banks_client,
+        tx,
+        "dep_queue::reject_zero_split",
+    )
+    .await
+    .unwrap();
     assert_eq!(
-        fixture
-            .context
-            .banks_client
-            .process_transaction(tx)
-            .await
-            .unwrap_err()
-            .unwrap(),
+        r.result.unwrap_err(),
         TransactionError::InstructionError(0, InstructionError::InvalidInstructionData)
     );
 
@@ -358,17 +363,18 @@ async fn deposit_and_queue_transfer_rejects_split_greater_than_amount() {
     let tx = Transaction::new_signed_with_payer(
         &[ix],
         Some(&fixture.payer),
-        &[&fixture.context.payer],
+        &[&fixture.payer_kp],
         blockhash,
     );
+    let r = common::metrics::process_transaction_with_metadata_recorded(
+        &fixture.context.banks_client,
+        tx,
+        "dep_queue::reject_split_gt_amt",
+    )
+    .await
+    .unwrap();
     assert_eq!(
-        fixture
-            .context
-            .banks_client
-            .process_transaction(tx)
-            .await
-            .unwrap_err()
-            .unwrap(),
+        r.result.unwrap_err(),
         TransactionError::InstructionError(0, InstructionError::InvalidInstructionData)
     );
 
@@ -390,17 +396,18 @@ async fn deposit_and_queue_transfer_rejects_when_queue_is_full() {
     let tx = Transaction::new_signed_with_payer(
         &[ix],
         Some(&fixture.payer),
-        &[&fixture.context.payer],
+        &[&fixture.payer_kp],
         blockhash,
     );
+    let r = common::metrics::process_transaction_with_metadata_recorded(
+        &fixture.context.banks_client,
+        tx,
+        "dep_queue::reject_queue_full",
+    )
+    .await
+    .unwrap();
     assert_eq!(
-        fixture
-            .context
-            .banks_client
-            .process_transaction(tx)
-            .await
-            .unwrap_err()
-            .unwrap(),
+        r.result.unwrap_err(),
         TransactionError::InstructionError(0, InstructionError::AccountDataTooSmall)
     );
 
@@ -421,17 +428,18 @@ async fn deposit_and_queue_transfer_rejects_invalid_delay_range() {
     let tx = Transaction::new_signed_with_payer(
         &[ix],
         Some(&fixture.payer),
-        &[&fixture.context.payer],
+        &[&fixture.payer_kp],
         blockhash,
     );
+    let r = common::metrics::process_transaction_with_metadata_recorded(
+        &fixture.context.banks_client,
+        tx,
+        "dep_queue::reject_delay_range",
+    )
+    .await
+    .unwrap();
     assert_eq!(
-        fixture
-            .context
-            .banks_client
-            .process_transaction(tx)
-            .await
-            .unwrap_err()
-            .unwrap(),
+        r.result.unwrap_err(),
         TransactionError::InstructionError(0, InstructionError::InvalidInstructionData)
     );
 
@@ -456,15 +464,16 @@ async fn deposit_and_queue_transfer_uses_deterministic_split_delays_within_range
     let tx = Transaction::new_signed_with_payer(
         &[ix],
         Some(&fixture.payer),
-        &[&fixture.context.payer],
+        &[&fixture.payer_kp],
         blockhash,
     );
-    fixture
-        .context
-        .banks_client
-        .process_transaction(tx)
-        .await
-        .unwrap();
+    common::metrics::process_transaction_record_cu(
+        &fixture.context.banks_client,
+        tx,
+        "dep_queue::deterministic_delays",
+    )
+    .await
+    .unwrap();
 
     let queue_account = fixture
         .context
@@ -508,15 +517,16 @@ async fn deposit_and_queue_transfer_prefers_multiples_of_five_for_four_way_split
     let tx = Transaction::new_signed_with_payer(
         &[ix],
         Some(&fixture.payer),
-        &[&fixture.context.payer],
+        &[&fixture.payer_kp],
         blockhash,
     );
-    fixture
-        .context
-        .banks_client
-        .process_transaction(tx)
-        .await
-        .unwrap();
+    common::metrics::process_transaction_record_cu(
+        &fixture.context.banks_client,
+        tx,
+        "dep_queue::split4_mod5",
+    )
+    .await
+    .unwrap();
 
     let queue_account = fixture
         .context
@@ -552,15 +562,16 @@ async fn deposit_and_queue_transfer_prefers_multiples_of_five_for_three_way_spli
     let tx = Transaction::new_signed_with_payer(
         &[ix],
         Some(&fixture.payer),
-        &[&fixture.context.payer],
+        &[&fixture.payer_kp],
         blockhash,
     );
-    fixture
-        .context
-        .banks_client
-        .process_transaction(tx)
-        .await
-        .unwrap();
+    common::metrics::process_transaction_record_cu(
+        &fixture.context.banks_client,
+        tx,
+        "dep_queue::split3_mod5",
+    )
+    .await
+    .unwrap();
 
     let queue_account = fixture
         .context

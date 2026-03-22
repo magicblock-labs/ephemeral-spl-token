@@ -1,12 +1,13 @@
 use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::program::ID;
 use solana_instruction::{AccountMeta, Instruction};
-use solana_program::bpf_loader;
-use solana_program::pubkey::Pubkey;
-use solana_program::rent::Rent;
-use solana_program_test::{read_file, tokio, ProgramTest};
+use solana_program_test::tokio;
+use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use solana_transaction::Transaction;
+
+mod common;
+mod utils;
 
 pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 
@@ -30,31 +31,14 @@ fn find_member_flag(data: &[u8], member_pubkey: &Pubkey, expected: u8) -> Option
 
 #[tokio::test]
 async fn reset_ephemeral_ata_permission() {
-    let permission_program_bytes: [u8; 32] =
-        ephemeral_rollups_pinocchio::acl::consts::PERMISSION_PROGRAM_ID
-            .as_ref()
-            .try_into()
-            .unwrap();
-    let permission_program_id = Pubkey::new_from_array(permission_program_bytes);
+    let permission_program_id = utils::permission_program_id();
 
-    let mut program_test = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-    program_test.prefer_bpf(true);
-    let data = read_file("tests/fixtures/acl.so");
-    program_test.add_account(
-        permission_program_id,
-        solana_account::Account {
-            lamports: Rent::default().minimum_balance(data.len()).max(1),
-            data,
-            owner: bpf_loader::id(),
-            executable: true,
-            rent_epoch: 0,
-        },
-    );
-    let context = program_test.start_with_context().await;
+    let context = utils::start_program_test(PROGRAM).await;
 
-    let payer = context.payer.pubkey();
+    let payer_kp = utils::fixed_payer_keypair();
+    let payer = payer_kp.pubkey();
     let user = payer;
-    let mint = Pubkey::new_unique();
+    let mint = utils::test_pubkey("reset_ephemeral_ata_permission::mint");
 
     let (ephemeral_ata, _) =
         Pubkey::find_program_address(&[user.as_ref(), mint.as_ref()], &PROGRAM);
@@ -105,11 +89,17 @@ async fn reset_ephemeral_ata_permission() {
 
     let tx = Transaction::new_signed_with_payer(
         &[ix_init, ix_create_permission, ix_reset_permission],
-        Some(&context.payer.pubkey()),
-        &[&context.payer],
+        Some(&payer),
+        &[&payer_kp],
         context.last_blockhash,
     );
-    context.banks_client.process_transaction(tx).await.unwrap();
+    common::metrics::process_transaction_record_cu(
+        &context.banks_client,
+        tx,
+        "reset_eata_perm::reset",
+    )
+    .await
+    .unwrap();
 
     let permission_account = context
         .banks_client

@@ -6,12 +6,15 @@ use ephemeral_spl_api::state::{Initializable, RawType};
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::{
-    account_info::AccountInfo, entrypoint::ProgramResult, program_error::ProgramError, rent::Rent,
+    account_info::AccountInfo, entrypoint::ProgramResult, program_error::ProgramError,
 };
-use solana_program_test::{processor, tokio, ProgramTest};
+use solana_program_test::{processor, tokio};
 use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use solana_transaction::Transaction;
+
+mod common;
+mod utils;
 
 pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 const MAGIC_PROGRAM: Pubkey = Pubkey::new_from_array([7; 32]);
@@ -19,100 +22,6 @@ const MAGIC_PROGRAM: Pubkey = Pubkey::new_from_array([7; 32]);
 fn read_fees_pda(data: &[u8]) -> FeesPda {
     assert_eq!(data.len(), FeesPda::LEN);
     unsafe { core::ptr::read_unaligned(data.as_ptr() as *const FeesPda) }
-}
-
-fn parse_delegate_validator(data: &[u8]) -> Result<(u32, Option<[u8; 32]>), ProgramError> {
-    if data.len() < 8 {
-        return Err(ProgramError::InvalidInstructionData);
-    }
-
-    let commit_frequency_ms = u32::from_le_bytes(
-        data[0..4]
-            .try_into()
-            .map_err(|_| ProgramError::InvalidInstructionData)?,
-    );
-    let seeds_len = u32::from_le_bytes(
-        data[4..8]
-            .try_into()
-            .map_err(|_| ProgramError::InvalidInstructionData)?,
-    ) as usize;
-
-    let mut offset = 8;
-    for _ in 0..seeds_len {
-        let seed_len = u32::from_le_bytes(
-            data[offset..offset + 4]
-                .try_into()
-                .map_err(|_| ProgramError::InvalidInstructionData)?,
-        ) as usize;
-        offset += 4 + seed_len;
-        if offset > data.len() {
-            return Err(ProgramError::InvalidInstructionData);
-        }
-    }
-
-    let has_validator = *data
-        .get(offset)
-        .ok_or(ProgramError::InvalidInstructionData)?;
-    offset += 1;
-
-    let validator = match has_validator {
-        0 => None,
-        1 => {
-            let mut validator = [0_u8; 32];
-            validator.copy_from_slice(
-                data.get(offset..offset + 32)
-                    .ok_or(ProgramError::InvalidInstructionData)?,
-            );
-            Some(validator)
-        }
-        _ => return Err(ProgramError::InvalidInstructionData),
-    };
-
-    Ok((commit_frequency_ms, validator))
-}
-
-fn process_delegation_program_mock(
-    _program_id: &Pubkey,
-    accounts: &[AccountInfo],
-    instruction_data: &[u8],
-) -> ProgramResult {
-    let [_payer, delegated_account, owner_program, buffer, delegation_record, _delegation_metadata, system_program, ..] =
-        accounts
-    else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
-
-    if instruction_data.len() < 8 || instruction_data[0] != 19 {
-        return Err(ProgramError::InvalidInstructionData);
-    }
-    if *system_program.key != solana_system_interface::program::ID {
-        return Err(ProgramError::IncorrectProgramId);
-    }
-
-    let (commit_frequency_ms, validator) = parse_delegate_validator(&instruction_data[8..])?;
-    let validator = validator.ok_or(ProgramError::InvalidInstructionData)?;
-
-    {
-        let buffer_data = buffer.try_borrow_data()?;
-        let mut delegated_data = delegated_account.try_borrow_mut_data()?;
-        if delegated_data.len() != buffer_data.len() {
-            return Err(ProgramError::InvalidAccountData);
-        }
-        delegated_data.copy_from_slice(&buffer_data);
-    }
-
-    let record = DelegationRecord {
-        authority: validator.into(),
-        owner: owner_program.key.to_bytes().into(),
-        delegation_slot: 0,
-        lamports: delegated_account.lamports(),
-        commit_frequency_ms: commit_frequency_ms as u64,
-    };
-    record
-        .to_bytes_with_discriminator(&mut delegation_record.try_borrow_mut_data()?)
-        .map_err(|_| ProgramError::InvalidAccountData)?;
-
-    Ok(())
 }
 
 fn process_magic_program_mock(
@@ -140,10 +49,10 @@ fn process_magic_program_mock(
 
 #[tokio::test]
 async fn initialize_fees_pda_is_idempotent() {
-    let pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-    let context = pt.start_with_context().await;
-    let payer = context.payer.pubkey();
-    let validator = Pubkey::new_unique();
+    let context = utils::start_program_test(PROGRAM).await;
+    let payer_kp = utils::fixed_payer_keypair();
+    let payer = payer_kp.pubkey();
+    let validator = utils::test_pubkey("initialize_fees_pda_is_idempotent::validator");
     let (fees_pda, bump) =
         Pubkey::find_program_address(&[FEES_PDA_SEED, validator.as_ref()], &PROGRAM);
 
@@ -161,23 +70,27 @@ async fn initialize_fees_pda_is_idempotent() {
     let tx = Transaction::new_signed_with_payer(
         &[ix.clone()],
         Some(&payer),
-        &[&context.payer],
+        &[&payer_kp],
         context.last_blockhash,
     );
-    context.banks_client.process_transaction(tx).await.unwrap();
+    common::metrics::process_transaction_record_cu(
+        &context.banks_client,
+        tx,
+        "fees_pda::init",
+    )
+    .await
+    .unwrap();
 
     let second_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
-    let tx_reinit = Transaction::new_signed_with_payer(
-        &[ix],
-        Some(&payer),
-        &[&context.payer],
-        second_blockhash,
-    );
-    context
-        .banks_client
-        .process_transaction(tx_reinit)
-        .await
-        .unwrap();
+    let tx_reinit =
+        Transaction::new_signed_with_payer(&[ix], Some(&payer), &[&payer_kp], second_blockhash);
+    common::metrics::process_transaction_record_cu(
+        &context.banks_client,
+        tx_reinit,
+        "fees_pda::reinit",
+    )
+    .await
+    .unwrap();
 
     let fees_pda_account = context
         .banks_client
@@ -198,18 +111,10 @@ async fn initialize_fees_pda_is_idempotent() {
 
 #[tokio::test]
 async fn delegate_fees_pda_is_idempotent() {
-    let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-    pt.prefer_bpf(false);
-    pt.add_program(
-        "delegation_program_mock",
-        ephemeral_rollups_pinocchio::ID,
-        processor!(process_delegation_program_mock),
-    );
-    pt.prefer_bpf(true);
-
-    let mut context = pt.start_with_context().await;
-    let payer = context.payer.pubkey();
-    let validator = Pubkey::new_unique();
+    let context = utils::start_program_test(PROGRAM).await;
+    let payer_kp = utils::fixed_payer_keypair();
+    let payer = payer_kp.pubkey();
+    let validator = utils::test_pubkey("delegate_fees_pda_is_idempotent::validator");
     let (fees_pda, bump) =
         Pubkey::find_program_address(&[FEES_PDA_SEED, validator.as_ref()], &PROGRAM);
 
@@ -227,7 +132,7 @@ async fn delegate_fees_pda_is_idempotent() {
     let tx_init = Transaction::new_signed_with_payer(
         &[ix_init],
         Some(&payer),
-        &[&context.payer],
+        &[&payer_kp],
         context.last_blockhash,
     );
     context
@@ -244,31 +149,6 @@ async fn delegate_fees_pda_is_idempotent() {
     let (delegation_metadata_pda, _) = Pubkey::find_program_address(
         &[b"delegation-metadata", fees_pda.as_ref()],
         &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,
-    );
-
-    context.set_account(
-        &delegation_record_pda,
-        &Account {
-            lamports: Rent::default()
-                .minimum_balance(DelegationRecord::size_with_discriminator())
-                .max(1),
-            data: vec![0; DelegationRecord::size_with_discriminator()],
-            owner: ephemeral_rollups_pinocchio::ID,
-            executable: false,
-            rent_epoch: 0,
-        }
-        .into(),
-    );
-    context.set_account(
-        &delegation_metadata_pda,
-        &Account {
-            lamports: 1,
-            data: vec![],
-            owner: ephemeral_rollups_pinocchio::ID,
-            executable: false,
-            rent_epoch: 0,
-        }
-        .into(),
     );
 
     let ix_delegate = Instruction {
@@ -290,27 +170,31 @@ async fn delegate_fees_pda_is_idempotent() {
     let tx_delegate = Transaction::new_signed_with_payer(
         &[ix_delegate.clone()],
         Some(&payer),
-        &[&context.payer],
+        &[&payer_kp],
         context.last_blockhash,
     );
-    context
-        .banks_client
-        .process_transaction(tx_delegate)
-        .await
-        .unwrap();
+    common::metrics::process_transaction_record_cu(
+        &context.banks_client,
+        tx_delegate,
+        "fees_pda::delegate",
+    )
+    .await
+    .unwrap();
 
     let redelegate_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
     let tx_redelegate = Transaction::new_signed_with_payer(
         &[ix_delegate],
         Some(&payer),
-        &[&context.payer],
+        &[&payer_kp],
         redelegate_blockhash,
     );
-    context
-        .banks_client
-        .process_transaction(tx_redelegate)
-        .await
-        .unwrap();
+    common::metrics::process_transaction_record_cu(
+        &context.banks_client,
+        tx_redelegate,
+        "fees_pda::redelegate",
+    )
+    .await
+    .unwrap();
 
     let fees_pda_account = context
         .banks_client
@@ -343,21 +227,23 @@ async fn delegate_fees_pda_is_idempotent() {
 
 #[tokio::test]
 async fn commit_fees_pda_schedules_commit() {
-    let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-    pt.prefer_bpf(false);
-    pt.add_program(
-        "magic_program_mock",
-        MAGIC_PROGRAM,
-        processor!(process_magic_program_mock),
-    );
-    pt.prefer_bpf(true);
+    let mut context = utils::start_program_test_with(PROGRAM, |pt| {
+        pt.prefer_bpf(false);
+        pt.add_program(
+            "magic_program_mock",
+            MAGIC_PROGRAM,
+            processor!(process_magic_program_mock),
+        );
+        pt.prefer_bpf(true);
+    })
+    .await;
 
-    let mut context = pt.start_with_context().await;
-    let payer = context.payer.pubkey();
-    let validator = Pubkey::new_unique();
+    let payer_kp = utils::fixed_payer_keypair();
+    let payer = payer_kp.pubkey();
+    let validator = utils::test_pubkey("commit_fees_pda_schedules_commit::validator");
     let (fees_pda, _) =
         Pubkey::find_program_address(&[FEES_PDA_SEED, validator.as_ref()], &PROGRAM);
-    let magic_context = Pubkey::new_unique();
+    let magic_context = utils::test_pubkey("commit_fees_pda_schedules_commit::magic_context");
 
     let ix_init = Instruction {
         program_id: PROGRAM,
@@ -373,7 +259,7 @@ async fn commit_fees_pda_schedules_commit() {
     let tx_init = Transaction::new_signed_with_payer(
         &[ix_init],
         Some(&payer),
-        &[&context.payer],
+        &[&payer_kp],
         context.last_blockhash,
     );
     context
@@ -410,14 +296,16 @@ async fn commit_fees_pda_schedules_commit() {
     let tx_commit = Transaction::new_signed_with_payer(
         &[ix_commit],
         Some(&payer),
-        &[&context.payer],
+        &[&payer_kp],
         commit_blockhash,
     );
-    context
-        .banks_client
-        .process_transaction(tx_commit)
-        .await
-        .unwrap();
+    common::metrics::process_transaction_record_cu(
+        &context.banks_client,
+        tx_commit,
+        "fees_pda::commit",
+    )
+    .await
+    .unwrap();
 
     let magic_context_account = context
         .banks_client

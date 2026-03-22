@@ -1,0 +1,179 @@
+{
+  "fees_pda::init": {
+    "compute_units_consumed": 3199
+  },
+  "del_shuttle_priv::shuttle": {
+    "compute_units_consumed": 125810
+  },
+  "del_shuttle_eata::redelegate": {
+    "compute_units_consumed": 150
+  },
+  "dep_queue::deterministic_delays": {
+    "compute_units_consumed": 17021
+  },
+  "init_tq::custom": {
+    "compute_units_consumed": 4811
+  },
+  "dep_queue::reject_queue_full": {
+    "compute_units_consumed": 4877
+  },
+  "fees_pda::redelegate": {
+    "compute_units_consumed": 1746
+  },
+  "del_eata::delegate": {
+    "compute_units_consumed": 42689
+  },
+  "del_shuttle_merge::delegate": {
+    "compute_units_consumed": 81859
+  },
+  "ud_wd_close::undelegate": {
+    "compute_units_consumed": 9267
+  },
+  "tq_auto::crank_bad_magic": {
+    "compute_units_consumed": 205
+  },
+  "del_eata::non_owner": {
+    "compute_units_consumed": 29189
+  },
+  "wd_shuttle::withdraw": {
+    "compute_units_consumed": 67069
+  },
+  "dep_queue::reject_delay_range": {
+    "compute_units_consumed": 244
+  },
+  "fees_pda::reinit": {
+    "compute_units_consumed": 1684
+  },
+  "dep_shuttle::deposit": {
+    "compute_units_consumed": 7810
+  },
+  "init_eata::init": {
+    "compute_units_consumed": 4732
+  },
+  "tq_auto::tick_after_bundle": {
+    "compute_units_consumed": 6447
+  },
+  "fees_pda::delegate": {
+    "compute_units_consumed": 35391
+  },
+  "ud_wd_close::wallet_ata": {
+    "compute_units_consumed": 4509
+  },
+  "dep_queue::split4_mod5": {
+    "compute_units_consumed": 17210
+  },
+  "undel_eata_cb::undelegate": {
+    "compute_units_consumed": 36861
+  },
+  "del_eata_perm::non_owner": {
+    "compute_units_consumed": 52980
+  },
+  "tq_auto::schedule": {
+    "compute_units_consumed": 3587
+  },
+  "del_eata_perm::delegate": {
+    "compute_units_consumed": 48480
+  },
+  "init_gvault::migrate": {
+    "compute_units_consumed": 14567
+  },
+  "merge_shuttle::merge": {
+    "compute_units_consumed": 9466
+  },
+  "close_eata::close": {
+    "compute_units_consumed": 3224
+  },
+  "dep_queue::once_split": {
+    "compute_units_consumed": 16654
+  },
+  "del_shuttle_priv::queue": {
+    "compute_units_consumed": 31136
+  },
+  "tq_auto::tick_empty": {
+    "compute_units_consumed": 6447
+  },
+  "tq_auto::tick_not_ready": {
+    "compute_units_consumed": 6501
+  },
+  "tq_auto::enqueue_ready": {
+    "compute_units_consumed": 16169
+  },
+  "dep_queue::split3_mod5": {
+    "compute_units_consumed": 16856
+  },
+  "fees_pda::commit": {
+    "compute_units_consumed": 6068
+  },
+  "tq_auto::run_scheduled_tick": {
+    "compute_units_consumed": 23892
+  },
+  "dep_spl::deposit": {
+    "compute_units_consumed": 7810
+  },
+  "tq_auto::enqueue_delayed": {
+    "compute_units_consumed": 16169
+  },
+  "init_gvault::init": {
+    "compute_units_consumed": 20489
+  },
+  "del_eata::reinit": {
+    "compute_units_consumed": 7717
+  },
+  "wd_spl::withdraw": {
+    "compute_units_consumed": 7830
+  },
+  "tq_auto::crank_1": {
+    "compute_units_consumed": 3587
+  },
+  "create_eata_perm::default": {
+    "compute_units_consumed": 13697
+  },
+  "tq_auto::crank_2": {
+    "compute_units_consumed": 1790
+  },
+  "rent_pda::reinit": {
+    "compute_units_consumed": 3267
+  },
+  "dep_queue::reject_zero_split": {
+    "compute_units_consumed": 239
+  },
+  "reset_eata_perm::reset": {
+    "compute_units_consumed": 32547
+  },
+  "rent_pda::init": {
+    "compute_units_consumed": 4660
+  },
+  "undel_perm_cb::undelegate": {
+    "compute_units_consumed": 34444
+  },
+  "create_eata_perm::permissionless": {
+    "compute_units_consumed": 24186
+  },
+  "init_tq::default": {
+    "compute_units_consumed": 3307
+  },
+  "init_tq::noop": {
+    "compute_units_consumed": 3256
+  },
+  "dep_queue::reject_split_gt_amt": {
+    "compute_units_consumed": 241
+  },
+  "del_tq::delegate": {
+    "compute_units_consumed": 28136
+  },
+  "del_eata_perm::redelegate": {
+    "compute_units_consumed": 169
+  },
+  "del_eata::redelegate": {
+    "compute_units_consumed": 147
+  },
+  "del_shuttle_eata::delegate": {
+    "compute_units_consumed": 24806
+  },
+  "del_tq::redelegate": {
+    "compute_units_consumed": 1796
+  },
+  "init_shuttle::init": {
+    "compute_units_consumed": 19007
+  }
+}
