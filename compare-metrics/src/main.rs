@@ -55,7 +55,7 @@ fn parse_args() -> Args {
     }
 }
 
-fn load_object_map(path: &Path) -> std::collections::HashMap<String, Value> {
+fn load_object_map(path: &PathBuf) -> std::collections::HashMap<String, Value> {
     let s = fs::read_to_string(path).unwrap_or_else(|e| {
         eprintln!("compare-metrics: read {}: {e}", path.display());
         process::exit(1);
@@ -65,7 +65,23 @@ fn load_object_map(path: &Path) -> std::collections::HashMap<String, Value> {
         process::exit(1);
     });
     match v {
-        Value::Object(o) => o.into_iter().collect(),
+        Value::Object(o) => {
+            for (k, v) in &o {
+                let valid = v
+                    .as_object()
+                    .and_then(|m| m.get("compute_units_consumed"))
+                    .and_then(Value::as_u64)
+                    .is_some();
+                if !valid {
+                    eprintln!(
+                        "compare-metrics: {}: key {k:?} is missing numeric `compute_units_consumed`",
+                        path.display()
+                    );
+                    process::exit(1);
+                }
+            }
+            o.into_iter().collect()
+        }
         _ => {
             eprintln!(
                 "compare-metrics: {}: expected JSON object at root",
@@ -77,8 +93,7 @@ fn load_object_map(path: &Path) -> std::collections::HashMap<String, Value> {
 }
 
 fn cu(entry: Option<&Value>) -> Option<u64> {
-    let e = entry?.as_object()?;
-    e.get("compute_units_consumed")?.as_u64()
+    entry?.get("compute_units_consumed")?.as_u64()
 }
 
 fn fmt_u64(v: Option<u64>) -> String {
