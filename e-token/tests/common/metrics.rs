@@ -72,8 +72,8 @@ pub fn record_compute_units(entry_key: &str, compute_units_consumed: u64) {
     with_file_lock(|| {
         let path = metrics_json_path();
         let mut map: HashMap<String, CuEntry> = if path.exists() {
-            let s = fs::read_to_string(&path).unwrap_or_else(|_| "{}".to_string());
-            serde_json::from_str(&s).unwrap_or_default()
+            let s = fs::read_to_string(&path).expect("metrics JSON read");
+            serde_json::from_str(&s).expect("metrics JSON parse")
         } else {
             HashMap::new()
         };
