@@ -379,34 +379,4 @@ fn main() {
     let use_color = stdout.is_terminal() && !args.force_no_color && !no_color_requested();
 
     print_terminal_table(&args.title, &args.baseline, &args.current, &rows, use_color);
-
-    let a_keys: BTreeSet<_> = a.keys().cloned().collect();
-    let b_keys: BTreeSet<_> = b.keys().cloned().collect();
-    let only_a: Vec<_> = a_keys.difference(&b_keys).cloned().collect();
-    let only_b: Vec<_> = b_keys.difference(&a_keys).cloned().collect();
-
-    if !only_a.is_empty() {
-        let h = if use_color {
-            format!("{}{}{}", ansi::BOLD, "Keys only in baseline", ansi::RESET)
-        } else {
-            "Keys only in baseline".to_string()
-        };
-        println!("{h}");
-        for k in only_a {
-            println!("  • {k}");
-        }
-        println!();
-    }
-    if !only_b.is_empty() {
-        let h = if use_color {
-            format!("{}{}{}", ansi::BOLD, "Keys only in current", ansi::RESET)
-        } else {
-            "Keys only in current".to_string()
-        };
-        println!("{h}");
-        for k in only_b {
-            println!("  • {k}");
-        }
-        println!();
-    }
 }
