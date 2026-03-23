@@ -48,12 +48,12 @@ impl FeesPda {
 
     #[inline(always)]
     pub fn seeds<'a>(validator: &'a Address) -> [&'a [u8]; 2] {
-        [&FEES_PDA_SEED, validator.as_ref()]
+        [FEES_PDA_SEED, validator.as_ref()]
     }
 
     #[inline(always)]
     pub fn seeds_with_bump<'a>(validator: &'a Address, bump: &'a [u8]) -> [&'a [u8]; 3] {
-        [&FEES_PDA_SEED, validator.as_ref(), &bump]
+        [FEES_PDA_SEED, validator.as_ref(), bump]
     }
 
     #[inline(always)]

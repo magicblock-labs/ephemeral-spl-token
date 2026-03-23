@@ -56,12 +56,12 @@ impl TransferQueue {
 
     #[inline(always)]
     pub fn seeds<'a>(mint: &'a Address) -> [&'a [u8]; 2] {
-        [&QUEUE_SEED, mint.as_ref()]
+        [QUEUE_SEED, mint.as_ref()]
     }
 
     #[inline(always)]
     pub fn seeds_with_bump<'a>(mint: &'a Address, bump: &'a [u8]) -> [&'a [u8]; 3] {
-        [&QUEUE_SEED, mint.as_ref(), &bump]
+        [QUEUE_SEED, mint.as_ref(), bump]
     }
 
     #[inline(always)]

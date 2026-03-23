@@ -44,7 +44,7 @@ impl GlobalVault {
 
     #[inline(always)]
     pub fn seeds_with_bump<'a>(mint: &'a Address, bump: &'a [u8]) -> [&'a [u8]; 2] {
-        [&mint.as_ref(), &bump]
+        [mint.as_ref(), bump]
     }
 
     #[inline(always)]

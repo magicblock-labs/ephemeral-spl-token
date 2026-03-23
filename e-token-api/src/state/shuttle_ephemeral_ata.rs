@@ -53,7 +53,7 @@ impl ShuttleMetadata {
 
     #[inline(always)]
     pub fn seeds<'a>(owner: &'a Address, payer: &'a Address, id_bytes: &'a [u8]) -> [&'a [u8]; 3] {
-        [&owner.as_ref(), &payer.as_ref(), id_bytes]
+        [owner.as_ref(), payer.as_ref(), id_bytes]
     }
 
     #[inline(always)]
@@ -63,7 +63,7 @@ impl ShuttleMetadata {
         id_bytes: &'a [u8],
         bump: &'a [u8],
     ) -> [&'a [u8]; 4] {
-        [&owner.as_ref(), &payer.as_ref(), id_bytes, &bump]
+        [owner.as_ref(), payer.as_ref(), id_bytes, bump]
     }
 
     #[inline(always)]

@@ -29,6 +29,54 @@ impl Initializable for EphemeralAta {
     }
 }
 
+impl EphemeralAta {
+    #[inline(always)]
+    pub fn create_pda(
+        owner: &Address,
+        mint: &Address,
+        bump_seed: u8,
+    ) -> Result<Address, ProgramError> {
+        let bump_seed = [bump_seed];
+        let pda = Address::create_program_address(
+            &[owner.as_ref(), mint.as_ref(), &bump_seed],
+            &crate::ID,
+        )?;
+        Ok(pda)
+    }
+
+    #[inline(always)]
+    pub fn find_pda(owner: &Address, mint: &Address) -> (Address, u8) {
+        Address::find_program_address(&[owner.as_ref(), mint.as_ref()], &crate::ID)
+    }
+
+    #[inline(always)]
+    pub fn seeds<'a>(owner: &'a Address, mint: &'a Address) -> [&'a [u8]; 2] {
+        [owner.as_ref(), mint.as_ref()]
+    }
+
+    #[inline(always)]
+    pub fn seeds_with_bump<'a>(
+        owner: &'a Address,
+        mint: &'a Address,
+        bump: &'a [u8],
+    ) -> [&'a [u8]; 3] {
+        [owner.as_ref(), mint.as_ref(), bump]
+    }
+
+    #[inline(always)]
+    pub fn signer_seeds<'a>(
+        owner: &'a Address,
+        mint: &'a Address,
+        bump: &'a [u8],
+    ) -> [Seed<'a>; 3] {
+        [
+            Seed::from(owner.as_ref()),
+            Seed::from(mint.as_ref()),
+            Seed::from(bump),
+        ]
+    }
+}
+
 // Temporary compatibility shim for legacy 72-byte EphemeralAta accounts.
 // Some undelegation flows can still restore old snapshots without the stored bump.
 // Keep it self-contained here so it can be removed cleanly once those snapshots are gone.
@@ -134,51 +182,4 @@ pub fn load_ephemeral_ata_compat_mut(
     }
 
     Err(ProgramError::InvalidAccountData)
-}
-impl EphemeralAta {
-    #[inline(always)]
-    pub fn create_pda(
-        owner: &Address,
-        mint: &Address,
-        bump_seed: u8,
-    ) -> Result<Address, ProgramError> {
-        let bump_seed = [bump_seed];
-        let pda = Address::create_program_address(
-            &[owner.as_ref(), mint.as_ref(), &bump_seed],
-            &crate::ID,
-        )?;
-        Ok(pda)
-    }
-
-    #[inline(always)]
-    pub fn find_pda(owner: &Address, mint: &Address) -> (Address, u8) {
-        Address::find_program_address(&[owner.as_ref(), mint.as_ref()], &crate::ID)
-    }
-
-    #[inline(always)]
-    pub fn seeds<'a>(owner: &'a Address, mint: &'a Address) -> [&'a [u8]; 2] {
-        [&owner.as_ref(), &mint.as_ref()]
-    }
-
-    #[inline(always)]
-    pub fn seeds_with_bump<'a>(
-        owner: &'a Address,
-        mint: &'a Address,
-        bump: &'a [u8],
-    ) -> [&'a [u8]; 3] {
-        [&owner.as_ref(), &mint.as_ref(), &bump]
-    }
-
-    #[inline(always)]
-    pub fn signer_seeds<'a>(
-        owner: &'a Address,
-        mint: &'a Address,
-        bump: &'a [u8],
-    ) -> [Seed<'a>; 3] {
-        [
-            Seed::from(owner.as_ref()),
-            Seed::from(mint.as_ref()),
-            Seed::from(bump),
-        ]
-    }
 }
