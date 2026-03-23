@@ -56,7 +56,11 @@ fn with_file_lock<F, R>(f: F) -> R
 where
     F: FnOnce() -> R,
 {
-    let mut lock = LockFile::open(&lock_path()).expect("metrics lock file open");
+    let path = lock_path();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).expect("metrics lock dir create");
+    }
+    let mut lock = LockFile::open(&path).expect("metrics lock file open");
     lock.lock().expect("metrics file lock");
     let out = f();
     lock.unlock().expect("metrics file unlock");
