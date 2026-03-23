@@ -55,7 +55,7 @@ fn parse_args() -> Args {
     }
 }
 
-fn load_object_map(path: &PathBuf) -> std::collections::HashMap<String, Value> {
+fn load_object_map(path: &Path) -> std::collections::HashMap<String, Value> {
     let s = fs::read_to_string(path).unwrap_or_else(|e| {
         eprintln!("compare-metrics: read {}: {e}", path.display());
         process::exit(1);
