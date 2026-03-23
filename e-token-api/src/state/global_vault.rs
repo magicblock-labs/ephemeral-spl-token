@@ -38,7 +38,7 @@ impl GlobalVault {
     }
 
     #[inline(always)]
-    pub fn seeds<'a>(mint: &'a Address) -> [&'a [u8]; 1] {
+    pub fn seeds(mint: &Address) -> [&[u8]; 1] {
         [mint.as_ref()]
     }
 

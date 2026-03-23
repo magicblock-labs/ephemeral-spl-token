@@ -186,7 +186,7 @@ fn undelegate_withdraw_and_close_shuttle_ephemeral_ata(
     magic_program: &AccountView,
     escrow_index: u8,
 ) -> ProgramResult {
-    let (vault_info, _) = GlobalVault::find_pda(&mint_info.address());
+    let (vault_info, _) = GlobalVault::find_pda(mint_info.address());
     let vault_token_info = get_associated_token_address(
         &vault_info,
         mint_info.address(),

@@ -55,7 +55,7 @@ impl TransferQueue {
     }
 
     #[inline(always)]
-    pub fn seeds<'a>(mint: &'a Address) -> [&'a [u8]; 2] {
+    pub fn seeds(mint: &Address) -> [&[u8]; 2] {
         [QUEUE_SEED, mint.as_ref()]
     }
 

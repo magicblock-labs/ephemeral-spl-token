@@ -473,7 +473,7 @@ pub(crate) fn merge_shuttle_into_token_account_action(
     destination_token_info: &AccountView,
 ) -> Instruction {
     Instruction {
-        program_id: Pubkey::from(ephemeral_spl_api::ID),
+        program_id: crate::ID,
         accounts: alloc::vec![
             AccountMeta::new_readonly(pubkey(accounts.owner_info.address()), true),
             AccountMeta::new(pubkey(destination_token_info.address()), false),
@@ -490,7 +490,7 @@ pub(crate) fn undelegate_and_close_shuttle_action(
     accounts: &DepositAndDelegateShuttleAccounts<'_>,
 ) -> Instruction {
     Instruction {
-        program_id: Pubkey::from(ephemeral_spl_api::ID),
+        program_id: crate::ID,
         accounts: alloc::vec![
             AccountMeta::new(pubkey(accounts.payer_info.address()), true),
             AccountMeta::new(pubkey(accounts.rent_pda_info.address()), false),

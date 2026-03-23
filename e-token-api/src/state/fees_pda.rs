@@ -45,7 +45,7 @@ impl FeesPda {
     }
 
     #[inline(always)]
-    pub fn seeds<'a>(validator: &'a Address) -> [&'a [u8]; 2] {
+    pub fn seeds(validator: &Address) -> [&[u8]; 2] {
         [FEES_PDA_SEED, validator.as_ref()]
     }
 

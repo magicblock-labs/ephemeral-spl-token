@@ -70,7 +70,7 @@ pub fn process_undelegate_and_close_shuttle_ephemeral_ata(
     };
 
     let derived_shuttle_ephemeral_ata =
-        EphemeralAta::create_pda(&shuttle_info.address(), &mint, bump)?;
+        EphemeralAta::create_pda(shuttle_info.address(), &mint, bump)?;
     if derived_shuttle_ephemeral_ata != *shuttle_ephemeral_ata_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
@@ -156,7 +156,7 @@ fn undelegate_and_close_shuttle_ephemeral_ata(
     magic_program: &AccountView,
     escrow_index: u8,
 ) -> ProgramResult {
-    let (vault_info, _) = GlobalVault::find_pda(&mint);
+    let (vault_info, _) = GlobalVault::find_pda(mint);
     let vault_token_info =
         get_associated_token_address(&vault_info, mint, token_program_info.address());
     // The close intent now always expects the expanded withdraw-capable shape.
