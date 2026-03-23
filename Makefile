@@ -1,5 +1,5 @@
 # CU metrics: compare two JSON files from integration tests (aligned table on stdout).
-# ANSI colors when stdout is a terminal; NO_COLOR or --no-color disables colors.
+# compare-metrics always emits ANSI colors.
 #
 # Examples:
 #   make compare

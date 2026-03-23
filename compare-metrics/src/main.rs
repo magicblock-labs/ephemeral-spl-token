@@ -1,9 +1,8 @@
-//! Compare two CU metrics JSON files and print an aligned terminal-style table to stdout.
+//! Compare two CU metrics JSON files and print an aligned table with ANSI colors.
 
 use std::collections::BTreeSet;
 use std::env;
 use std::fs;
-use std::io::{self, IsTerminal};
 use std::path::{Path, PathBuf};
 use std::process;
 
@@ -11,11 +10,10 @@ use serde_json::Value;
 
 fn usage() -> ! {
     eprintln!(
-        "Usage: compare-metrics [--title TITLE] [--no-color] <baseline.json> <current.json>\n\
+        "Usage: compare-metrics [--title TITLE] <baseline.json> <current.json>\n\
          Compare compute-unit metrics emitted by integration tests.\n\
          \n\
-         Prints an aligned table. ANSI colors are used when stdout is a terminal unless\n\
-         NO_COLOR is set or --no-color is passed."
+         Prints an aligned table with ANSI colors."
     );
     process::exit(2);
 }
@@ -24,13 +22,11 @@ struct Args {
     baseline: PathBuf,
     current: PathBuf,
     title: String,
-    force_no_color: bool,
 }
 
 fn parse_args() -> Args {
     let mut args = env::args().skip(1);
     let mut title = "CU metrics comparison".to_string();
-    let mut force_no_color = false;
     let mut positional: Vec<String> = Vec::new();
     while let Some(a) = args.next() {
         match a.as_str() {
@@ -40,7 +36,6 @@ fn parse_args() -> Args {
                     process::exit(2);
                 });
             }
-            "--no-color" => force_no_color = true,
             s if s.starts_with("--") || s.starts_with('-') => {
                 eprintln!("compare-metrics: unknown option: {s}");
                 process::exit(2);
@@ -55,7 +50,6 @@ fn parse_args() -> Args {
         baseline: PathBuf::from(&positional[0]),
         current: PathBuf::from(&positional[1]),
         title,
-        force_no_color,
     }
 }
 
@@ -160,11 +154,6 @@ fn truncate_chars(s: &str, max_chars: usize) -> String {
     out
 }
 
-// https://no-color.org/
-fn no_color_requested() -> bool {
-    env::var_os("NO_COLOR").is_some()
-}
-
 #[derive(Clone, Copy)]
 enum DeltaKind {
     Improved,
@@ -235,10 +224,7 @@ mod ansi {
     pub const WHITE: &str = "\x1b[97m";
 }
 
-fn style_cell(s: String, color: &str, use_color: bool) -> String {
-    if !use_color {
-        return s;
-    }
+fn style_cell(s: String, color: &str) -> String {
     format!("{color}{s}{}", ansi::RESET)
 }
 
@@ -253,12 +239,11 @@ fn color_for_delta(kind: DeltaKind) -> &'static str {
     }
 }
 
-fn print_terminal_table(
+fn print_table(
     title: &str,
     baseline_path: &Path,
     current_path: &Path,
     rows: &[TableRow],
-    use_color: bool,
 ) {
     const KEY_MAX: usize = 56;
     let hdr_key = "Key";
@@ -284,49 +269,30 @@ fn print_terminal_table(
 
     let sep_width = w_key + w_b + w_c + w_d + w_p + 4;
 
-    let title_line = if use_color {
-        format!("{}{}{}{}", ansi::BOLD, ansi::CYAN, title, ansi::RESET)
-    } else {
-        title.to_string()
-    };
+    let title_line = format!("{}{}{}{}", ansi::BOLD, ansi::CYAN, title, ansi::RESET);
     println!("{title_line}");
     println!();
 
-    let base_line = if use_color {
-        format!(
-            "{}{}Baseline:{} {}",
-            ansi::BOLD,
-            ansi::WHITE,
-            ansi::RESET,
-            baseline_path.display()
-        )
-    } else {
-        format!("Baseline: {}", baseline_path.display())
-    };
-    let cur_line = if use_color {
-        format!(
-            "{}{}Current:{} {}",
-            ansi::BOLD,
-            ansi::WHITE,
-            ansi::RESET,
-            current_path.display()
-        )
-    } else {
-        format!("Current: {}", current_path.display())
-    };
+    let base_line = format!(
+        "{}{}Baseline:{} {}",
+        ansi::BOLD,
+        ansi::WHITE,
+        ansi::RESET,
+        baseline_path.display()
+    );
+    let cur_line = format!(
+        "{}{}Current:{} {}",
+        ansi::BOLD,
+        ansi::WHITE,
+        ansi::RESET,
+        current_path.display()
+    );
     println!("{base_line}");
     println!("{cur_line}");
     println!();
 
     let sep: String = "─".repeat(sep_width);
-    println!(
-        "{}",
-        if use_color {
-            format!("{}{}{}", ansi::DIM, sep, ansi::RESET)
-        } else {
-            sep
-        }
-    );
+    println!("{}{}{}", ansi::DIM, sep, ansi::RESET);
 
     let head = format!(
         "{} {} {} {} {}",
@@ -336,53 +302,24 @@ fn print_terminal_table(
         pad_left(hdr_d, w_d),
         pad_left(hdr_p, w_p)
     );
-    println!(
-        "{}",
-        if use_color {
-            format!("{}{}{}", ansi::BOLD, head, ansi::RESET)
-        } else {
-            head
-        }
-    );
+    println!("{}{}{}", ansi::BOLD, head, ansi::RESET);
 
     let sep2: String = "─".repeat(sep_width);
-    println!(
-        "{}",
-        if use_color {
-            format!("{}{}{}", ansi::DIM, sep2, ansi::RESET)
-        } else {
-            sep2
-        }
-    );
+    println!("{}{}{}", ansi::DIM, sep2, ansi::RESET);
 
     for row in rows {
         let key_disp = truncate_chars(&row.key, w_key);
         let key_cell = pad_right(&key_disp, w_key);
         let b_cell = pad_left(&row.baseline, w_b);
         let c_cell = pad_left(&row.current, w_c);
-        let d_cell = style_cell(
-            pad_left(&row.delta, w_d),
-            color_for_delta(row.kind),
-            use_color,
-        );
-        let p_cell = style_cell(
-            pad_left(&row.pct, w_p),
-            color_for_delta(row.kind),
-            use_color,
-        );
+        let d_cell = style_cell(pad_left(&row.delta, w_d), color_for_delta(row.kind));
+        let p_cell = style_cell(pad_left(&row.pct, w_p), color_for_delta(row.kind));
 
         println!("{key_cell} {b_cell} {c_cell} {d_cell} {p_cell}");
     }
 
     let sep3: String = "─".repeat(sep_width);
-    println!(
-        "{}",
-        if use_color {
-            format!("{}{}{}", ansi::DIM, sep3, ansi::RESET)
-        } else {
-            sep3
-        }
-    );
+    println!("{}{}{}", ansi::DIM, sep3, ansi::RESET);
     println!();
 }
 
@@ -394,8 +331,5 @@ fn main() {
     let keys: BTreeSet<_> = a.keys().chain(b.keys()).cloned().collect();
     let rows = build_rows(&a, &b, &keys);
 
-    let stdout = io::stdout();
-    let use_color = stdout.is_terminal() && !args.force_no_color && !no_color_requested();
-
-    print_terminal_table(&args.title, &args.baseline, &args.current, &rows, use_color);
+    print_table(&args.title, &args.baseline, &args.current, &rows);
 }
