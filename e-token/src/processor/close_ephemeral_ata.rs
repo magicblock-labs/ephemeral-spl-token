@@ -18,10 +18,8 @@ pub fn process_close_ephemeral_ata(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    unsafe {
-        if ephemeral_ata_info.owner().ne(&ephemeral_spl_api::ID) {
-            return Err(ProgramError::IllegalOwner);
-        }
+    if ephemeral_ata_info.owned_by(&ephemeral_spl_api::ID) {
+        return Err(ProgramError::IllegalOwner);
     }
 
     let (mint, lamports_to_refund, bump) = {
