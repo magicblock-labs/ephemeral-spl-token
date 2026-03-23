@@ -24,8 +24,7 @@ async fn delegate_ephemeral_ata_succeeds() {
     // Derive the PDAs for our program and setup token accounts
     let pdas = utils::derive_pdas(PROGRAM, user, mint);
     let setup =
-        utils::setup_mint_and_token_accounts(&mut context, payer, &payer_kp, &mint_kp, 6, 1_000, 1)
-            .await;
+        utils::setup_mint_and_token_accounts(&mut context, &payer_kp, &mint_kp, 6, 1_000, 1).await;
 
     // Initialize the Ephemeral ATA and Global Vault (required by the program state)
     let ix_init_ata = Instruction {
@@ -210,8 +209,7 @@ async fn delegate_ephemeral_ata_non_owner_succeeds() {
 
     let pdas = utils::derive_pdas(PROGRAM, user, mint);
     let setup =
-        utils::setup_mint_and_token_accounts(&mut context, payer, &payer_kp, &mint_kp, 6, 1_000, 1)
-            .await;
+        utils::setup_mint_and_token_accounts(&mut context, &payer_kp, &mint_kp, 6, 1_000, 1).await;
 
     let ix_init_ata = Instruction {
         program_id: PROGRAM,

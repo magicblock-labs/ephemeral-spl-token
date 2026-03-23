@@ -56,7 +56,6 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_deposits_and_stor
 
     let setup = utils::setup_mint_and_token_accounts(
         &mut context,
-        payer,
         &payer_kp,
         &mint_kp,
         DECIMALS,

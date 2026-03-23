@@ -32,7 +32,6 @@ async fn merge_shuttle_into_ephemeral_ata_transfers_from_shuttle_ata_to_destinat
 
     let setup = utils::setup_mint_and_token_accounts(
         &mut context,
-        payer,
         &payer_kp,
         &mint_kp,
         DECIMALS,

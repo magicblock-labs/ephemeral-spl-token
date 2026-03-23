@@ -55,7 +55,6 @@ async fn setup_fixture(queue_size_bytes: Option<u32>) -> Fixture {
     let pdas = utils::derive_pdas(PROGRAM, payer, mint);
     let setup = utils::setup_mint_and_token_accounts(
         &mut context,
-        payer,
         &payer_kp,
         &mint_kp,
         DECIMALS,

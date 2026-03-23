@@ -23,8 +23,7 @@ async fn delegate_shuttle_ephemeral_ata_succeeds() {
     let shuttle_id = 9_u32;
 
     let _setup =
-        utils::setup_mint_and_token_accounts(&mut context, payer, &payer_kp, &mint_kp, 6, 1_000, 1)
-            .await;
+        utils::setup_mint_and_token_accounts(&mut context, &payer_kp, &mint_kp, 6, 1_000, 1).await;
 
     let (shuttle_ephemeral_ata, _) =
         utils::derive_shuttle_ephemeral_ata(PROGRAM, owner, mint, shuttle_id);

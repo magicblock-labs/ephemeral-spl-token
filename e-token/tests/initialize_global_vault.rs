@@ -28,7 +28,6 @@ async fn initialize_global_vault() {
     let pdas = utils::derive_pdas(PROGRAM, user, mint);
     let _setup = utils::setup_mint_and_token_accounts(
         &mut context,
-        payer,
         &payer_kp,
         &mint_kp,
         DECIMALS,
@@ -131,7 +130,6 @@ async fn initialize_global_vault_migrates_legacy_layout() {
 
     let _setup = utils::setup_mint_and_token_accounts(
         &mut context,
-        payer,
         &payer_kp,
         &mint_kp,
         DECIMALS,

@@ -198,7 +198,6 @@ async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_clean
     ix_init_owner_source.program_id = spl_token_interface::ID;
     let _setup = utils::setup_mint_and_token_accounts(
         &mut context,
-        payer,
         &payer_kp,
         &mint_kp,
         DECIMALS,
@@ -432,7 +431,6 @@ async fn undelegate_withdraw_and_close_shuttle_ephemeral_ata_schedules_close_act
 
     let setup = utils::setup_mint_and_token_accounts(
         &mut context,
-        payer,
         &payer_kp,
         &mint_kp,
         DECIMALS,

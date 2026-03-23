@@ -271,7 +271,6 @@ async fn setup_fixture() -> Fixture {
     let pdas = utils::derive_pdas(PROGRAM, payer, mint);
     let setup = utils::setup_mint_and_token_accounts(
         &mut context,
-        payer,
         &payer_kp,
         &mint_kp,
         DECIMALS,
@@ -572,7 +571,6 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
         let pdas = utils::derive_pdas(PROGRAM, payer, mint);
         let setup = utils::setup_mint_and_token_accounts(
             &mut context,
-            payer,
             &payer_kp,
             &mint_kp,
             DECIMALS,

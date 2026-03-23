@@ -31,7 +31,6 @@ async fn deposit_spl_tokens_increments_ephemeral_amount() {
     let pdas = utils::derive_pdas(PROGRAM, user, mint);
     let setup = utils::setup_mint_and_token_accounts(
         &mut context,
-        payer,
         &payer_kp,
         &mint_kp,
         DECIMALS,

@@ -270,7 +270,6 @@ pub fn derive_shuttle_eata(program: Pubkey, shuttle: Pubkey, mint: Pubkey) -> (P
 // Submits a single transaction for all instructions.
 pub async fn setup_mint_and_token_accounts(
     context: &mut ProgramTestContext,
-    payer: Pubkey,
     payer_signer: &Keypair,
     mint_kp: &Keypair,
     decimals: u8,
@@ -282,6 +281,7 @@ pub async fn setup_mint_and_token_accounts(
         "at least one user token account required"
     );
 
+    let payer = payer_signer.pubkey();
     let mint = mint_kp.pubkey();
 
     let rent = context.banks_client.get_rent().await.unwrap();
