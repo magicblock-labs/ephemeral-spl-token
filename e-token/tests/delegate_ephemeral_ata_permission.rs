@@ -128,13 +128,12 @@ async fn delegate_ephemeral_ata_permission_succeeds() {
     .await
     .unwrap();
 
-    context.get_new_latest_blockhash().await.unwrap();
-
+    let blockhash = context.get_new_latest_blockhash().await.unwrap();
     let tx_redelegate = Transaction::new_signed_with_payer(
         &[ix_delegate_permission],
         Some(&payer),
         &[&payer_kp],
-        context.last_blockhash,
+        blockhash,
     );
     common::metrics::process_transaction_record_cu(
         &context.banks_client,
