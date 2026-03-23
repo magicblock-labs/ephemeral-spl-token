@@ -18,7 +18,7 @@ pub fn process_close_ephemeral_ata(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    if ephemeral_ata_info.owned_by(&ephemeral_spl_api::ID) {
+    if !ephemeral_ata_info.owned_by(&ephemeral_spl_api::ID) {
         return Err(ProgramError::IllegalOwner);
     }
 
