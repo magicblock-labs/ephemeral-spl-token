@@ -37,7 +37,7 @@ impl ShuttleMetadata {
     ) -> Result<Address, ProgramError> {
         let bump = [bump_seed];
         let pda = Address::create_program_address(
-            &[owner.as_ref(), payer.as_ref(), &id.to_le_bytes(), &bump],
+            &Self::seeds_with_bump(owner, payer, &id.to_le_bytes(), &bump),
             &crate::ID,
         )?;
         Ok(pda)
@@ -45,10 +45,7 @@ impl ShuttleMetadata {
 
     #[inline(always)]
     pub fn find_pda(owner: &Address, payer: &Address, id: u32) -> (Address, u8) {
-        Address::find_program_address(
-            &[owner.as_ref(), payer.as_ref(), &id.to_le_bytes()],
-            &crate::ID,
-        )
+        Address::find_program_address(&Self::seeds(owner, payer, &id.to_le_bytes()), &crate::ID)
     }
 
     #[inline(always)]

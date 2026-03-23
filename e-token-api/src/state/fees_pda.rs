@@ -34,16 +34,14 @@ impl FeesPda {
     #[inline(always)]
     pub fn create_pda(validator: &Address, bump_seed: u8) -> Result<Address, ProgramError> {
         let bump = [bump_seed];
-        let pda = Address::create_program_address(
-            &[FEES_PDA_SEED, validator.as_ref(), &bump],
-            &crate::ID,
-        )?;
+        let pda =
+            Address::create_program_address(&Self::seeds_with_bump(validator, &bump), &crate::ID)?;
         Ok(pda)
     }
 
     #[inline(always)]
     pub fn find_pda(validator: &Address) -> (Address, u8) {
-        Address::find_program_address(&[FEES_PDA_SEED, validator.as_ref()], &crate::ID)
+        Address::find_program_address(&Self::seeds(validator), &crate::ID)
     }
 
     #[inline(always)]

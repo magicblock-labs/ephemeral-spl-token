@@ -28,13 +28,13 @@ impl GlobalVault {
     #[inline(always)]
     pub fn create_pda(mint: &Address, bump_seed: u8) -> Result<Address, ProgramError> {
         let bump = [bump_seed];
-        let pda = Address::create_program_address(&[mint.as_ref(), &bump], &crate::ID)?;
+        let pda = Address::create_program_address(&Self::seeds_with_bump(mint, &bump), &crate::ID)?;
         Ok(pda)
     }
 
     #[inline(always)]
     pub fn find_pda(mint: &Address) -> (Address, u8) {
-        Address::find_program_address(&[mint.as_ref()], &crate::ID)
+        Address::find_program_address(&Self::seeds(mint), &crate::ID)
     }
 
     #[inline(always)]

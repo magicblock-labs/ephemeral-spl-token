@@ -38,7 +38,7 @@ impl EphemeralAta {
     ) -> Result<Address, ProgramError> {
         let bump_seed = [bump_seed];
         let pda = Address::create_program_address(
-            &[owner.as_ref(), mint.as_ref(), &bump_seed],
+            &Self::seeds_with_bump(owner, mint, &bump_seed),
             &crate::ID,
         )?;
         Ok(pda)
@@ -46,7 +46,7 @@ impl EphemeralAta {
 
     #[inline(always)]
     pub fn find_pda(owner: &Address, mint: &Address) -> (Address, u8) {
-        Address::find_program_address(&[owner.as_ref(), mint.as_ref()], &crate::ID)
+        Address::find_program_address(&Self::seeds(owner, mint), &crate::ID)
     }
 
     #[inline(always)]
