@@ -41,6 +41,10 @@ fn parse_args() -> Args {
                 });
             }
             "--no-color" => force_no_color = true,
+            s if s.starts_with("--") || s.starts_with('-') => {
+                eprintln!("compare-metrics: unknown option: {s}");
+                process::exit(2);
+            }
             _ => positional.push(a),
         }
     }
