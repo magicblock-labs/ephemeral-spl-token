@@ -60,7 +60,7 @@ export const optionalBigIntStringSchema = z
 
 export const clusterSchema = z.string().openapi({
   example: "mainnet",
-  description: "Optional. Use `mainnet` for BASE_RPC_URL and EPHEMERAL_RPC_URL, `devnet` for BASE_DEVNET_RPC_URL and EPHEMERAL_DEVNET_RPC_URL, or provide a custom http(s) RPC URL to use for both base and ephemeral RPCs.",
+  description: "Optional. Use `mainnet` for BASE_RPC_URL and EPHEMERAL_RPC_URL, `devnet` for BASE_DEVNET_RPC_URL and EPHEMERAL_DEVNET_RPC_URL, or provide a custom http(s) RPC URL to override the base RPC while keeping the configured ephemeral RPC.",
 });
 
 export const visibilitySchema = z.enum(["public", "private"]).openapi("TransferVisibility");
@@ -98,7 +98,7 @@ export const depositRequestSchema = z.object({
   amount: depositAmountSchema,
   validator: publicKeySchema.openapi({
     example: DEFAULT_DEPOSIT_VALIDATOR,
-    description: `Optional. Defaults to ${DEFAULT_DEPOSIT_VALIDATOR} on mainnet. On devnet or a custom RPC URL, defaults to VALIDATOR_PUBKEY when set, otherwise the selected ephemeral RPC identity.`,
+    description: "Optional. Defaults to the selected ephemeral RPC identity resolved via `getIdentity`.",
   }).optional(),
   initIfMissing: z.boolean().optional(),
   initVaultIfMissing: z.boolean().optional(),
@@ -127,11 +127,10 @@ export const withdrawRequestSchema = z.object({
   amount: withdrawAmountSchema,
   validator: publicKeySchema.openapi({
     example: DEFAULT_DEPOSIT_VALIDATOR,
-    description: "Optional. Defaults to VALIDATOR_PUBKEY when set, otherwise the ephemeral RPC identity.",
+    description: "Optional. Defaults to the selected ephemeral RPC identity resolved via `getIdentity`.",
   }).optional(),
   initIfMissing: z.boolean().optional(),
   initAtasIfMissing: z.boolean().optional(),
-  shuttleId: z.int().nonnegative().optional(),
   escrowIndex: z.int().nonnegative().optional(),
   idempotent: z.boolean().optional(),
 }).openapi("WithdrawRequest", {
@@ -152,11 +151,17 @@ export const transferRequestSchema = z.object({
   visibility: visibilitySchema,
   fromBalance: balanceLocationSchema,
   toBalance: balanceLocationSchema,
-  validator: publicKeySchema.optional(),
+  validator: publicKeySchema.openapi({
+    example: DEFAULT_DEPOSIT_VALIDATOR,
+    description: "Optional. When this transfer route needs a validator and none is provided, the API resolves it from the selected ephemeral RPC via `getIdentity`.",
+  }).optional(),
   initIfMissing: z.boolean().optional(),
   initAtasIfMissing: z.boolean().optional(),
   initVaultIfMissing: z.boolean().optional(),
-  shuttleId: z.int().nonnegative().optional(),
+  memo: z.string().openapi({
+    example: "Order #1042",
+    description: "Optional. Appends a final Memo Program instruction with this UTF-8 message.",
+  }).optional(),
   minDelayMs: optionalBigIntStringSchema.openapi({
     example: "0",
     description: "Optional. Private transfer only. Defaults to 0.",
@@ -181,6 +186,7 @@ export const transferRequestSchema = z.object({
     initIfMissing: true,
     initAtasIfMissing: true,
     initVaultIfMissing: true,
+    memo: "Order #1042",
     minDelayMs: "0",
     maxDelayMs: "0",
     split: 1,

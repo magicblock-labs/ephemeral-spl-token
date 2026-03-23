@@ -3,5 +3,3 @@ EPHEMERAL_RPC_URL=https://as.magicblock.app
 BASE_DEVNET_RPC_URL=https://rpc.magicblock.app/devnet
 EPHEMERAL_DEVNET_RPC_URL=https://devnet.magicblock.app
 CORS_ORIGIN=*
-# Optional: if omitted, the API resolves the validator from the ephemeral RPC via getIdentity.
-VALIDATOR_PUBKEY=

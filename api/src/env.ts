@@ -20,7 +20,6 @@ export const envSchema = z.object({
   BASE_DEVNET_RPC_URL: optionalString,
   EPHEMERAL_DEVNET_RPC_URL: optionalString,
   CORS_ORIGIN: optionalString,
-  VALIDATOR_PUBKEY: optionalString,
 });
 
 export type AppBindings = {
@@ -29,7 +28,6 @@ export type AppBindings = {
   BASE_DEVNET_RPC_URL?: string;
   EPHEMERAL_DEVNET_RPC_URL?: string;
   CORS_ORIGIN?: string;
-  VALIDATOR_PUBKEY?: string;
 };
 
 export type AppEnv = z.infer<typeof envSchema>;

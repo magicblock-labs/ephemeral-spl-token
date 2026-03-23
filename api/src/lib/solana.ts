@@ -24,8 +24,10 @@ const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey(
 const NOOP_PROGRAM_ID = new PublicKey(
   "noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV",
 );
+const MEMO_PROGRAM_ID = new PublicKey(
+  "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
+);
 
-const DEFAULT_DEPOSIT_VALIDATOR = "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57";
 const DEFAULT_DEPOSIT_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
 const connectionCache = new Map<string, Connection>();
@@ -42,7 +44,6 @@ type RpcConfig = {
   baseRpcUrl: string;
   ephemeralRpcUrl: string;
   cluster: "mainnet" | "devnet" | "custom";
-  validatorPubkey?: string;
 };
 
 type TransactionResponse = {
@@ -77,7 +78,6 @@ type WithdrawInput = {
   validator?: string;
   initIfMissing?: boolean;
   initAtasIfMissing?: boolean;
-  shuttleId?: number;
   escrowIndex?: number;
   idempotent?: boolean;
 };
@@ -95,7 +95,7 @@ type TransferInput = {
   initIfMissing?: boolean;
   initAtasIfMissing?: boolean;
   initVaultIfMissing?: boolean;
-  shuttleId?: number;
+  memo?: string;
   minDelayMs?: string;
   maxDelayMs?: string;
   split?: number;
@@ -167,7 +167,6 @@ function resolveRpcConfig(env: AppEnv, cluster?: string): RpcConfig {
       baseRpcUrl: env.BASE_RPC_URL,
       ephemeralRpcUrl: env.EPHEMERAL_RPC_URL,
       cluster: "mainnet",
-      validatorPubkey: env.VALIDATOR_PUBKEY,
     };
   }
 
@@ -185,7 +184,6 @@ function resolveRpcConfig(env: AppEnv, cluster?: string): RpcConfig {
       baseRpcUrl: env.BASE_DEVNET_RPC_URL!,
       ephemeralRpcUrl: env.EPHEMERAL_DEVNET_RPC_URL!,
       cluster: "devnet",
-      validatorPubkey: env.VALIDATOR_PUBKEY,
     };
   }
 
@@ -198,9 +196,8 @@ function resolveRpcConfig(env: AppEnv, cluster?: string): RpcConfig {
 
     return {
       baseRpcUrl: url.toString(),
-      ephemeralRpcUrl: url.toString(),
+      ephemeralRpcUrl: env.EPHEMERAL_RPC_URL,
       cluster: "custom",
-      validatorPubkey: env.VALIDATOR_PUBKEY,
     };
   }
   catch {
@@ -295,6 +292,14 @@ function createNoopInstruction() {
   });
 }
 
+function createMemoInstruction(memo: string) {
+  return new TransactionInstruction({
+    programId: MEMO_PROGRAM_ID,
+    keys: [],
+    data: Buffer.from(memo, "utf8"),
+  });
+}
+
 function createRandomShuttleId() {
   return crypto.getRandomValues(new Uint32Array(1))[0] & 0x7fffffff;
 }
@@ -348,23 +353,11 @@ async function resolveValidator(config: RpcConfig, explicitValidator?: string) {
     return parsePublicKey(explicitValidator, "validator");
   }
 
-  if (config.validatorPubkey) {
-    return parsePublicKey(config.validatorPubkey, "VALIDATOR_PUBKEY");
-  }
-
   return getValidatorFromRpc(config.ephemeralRpcUrl);
 }
 
 async function resolveDepositValidator(config: RpcConfig, explicitValidator?: string) {
-  if (explicitValidator) {
-    return parsePublicKey(explicitValidator, "validator");
-  }
-
-  if (config.cluster === "mainnet") {
-    return parsePublicKey(DEFAULT_DEPOSIT_VALIDATOR, "validator");
-  }
-
-  return resolveValidator(config);
+  return resolveValidator(config, explicitValidator);
 }
 
 async function getBlockhash(config: RpcConfig, source: SendTarget): Promise<BlockhashResult> {
@@ -475,7 +468,7 @@ export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawInput
     validator,
     initIfMissing: input.initIfMissing,
     initAtasIfMissing: input.initAtasIfMissing,
-    shuttleId: input.shuttleId,
+    shuttleId: createRandomShuttleId(),
     escrowIndex: input.escrowIndex,
     idempotent: input.idempotent,
   });
@@ -540,9 +533,9 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
   const blockhash = await getBlockhash(config, sendTo);
 
   try {
-    const instructions = [
-      createNoopInstruction(),
-      ...(await transferSpl(from, to, mint, amount, {
+      const instructions = [
+        createNoopInstruction(),
+        ...(await transferSpl(from, to, mint, amount, {
         visibility: input.visibility,
         fromBalance: input.fromBalance,
         toBalance: input.toBalance,
@@ -551,7 +544,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
         initIfMissing: input.initIfMissing,
         initAtasIfMissing: input.initAtasIfMissing,
         initVaultIfMissing: input.initVaultIfMissing,
-        shuttleId: input.shuttleId,
+        shuttleId: createRandomShuttleId(),
         privateTransfer: input.minDelayMs !== undefined || input.maxDelayMs !== undefined || input.split !== undefined
           ? {
               minDelayMs,
@@ -560,6 +553,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
             }
           : undefined,
       })),
+      ...(input.memo !== undefined ? [createMemoInstruction(input.memo)] : []),
     ];
 
     return serializeTransaction(

@@ -36,14 +36,15 @@ Transaction endpoints return an unsigned serialized legacy Solana transaction as
 Important behavior:
 
 - `deposit` is a REST wrapper around the SDK `delegateSpl(...)` flow
-- `deposit` defaults `validator` to `MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57` on mainnet
-- `deposit` generates `shuttleId` server-side and always uses `escrowIndex = 0`
+- when a route needs `validator` and it is omitted, the API resolves it from the selected ephemeral RPC via `getIdentity`
+- `deposit`, `withdraw`, and `transfer` generate `shuttleId` server-side
+- `deposit` always uses `escrowIndex = 0`
 - `withdraw` uses `withdrawSpl(...)`
 - `transfer` uses `transferSpl(...)`
 - every SPL endpoint accepts an optional `cluster` parameter
 - `cluster=mainnet` uses `BASE_RPC_URL` and `EPHEMERAL_RPC_URL`
 - `cluster=devnet` uses `BASE_DEVNET_RPC_URL` and `EPHEMERAL_DEVNET_RPC_URL`
-- any other valid `cluster` value is treated as a custom RPC URL and used for both base and ephemeral RPCs
+- any other valid `cluster` value is treated as a custom RPC URL and used only for the base RPC, while the configured ephemeral RPC is kept
 - the API fetches the recent blockhash itself
 - if `fromBalance` is `"base"`, the blockhash is fetched from the base RPC
 - if `fromBalance` is `"ephemeral"`, the blockhash is fetched from the ephemeral RPC
@@ -89,9 +90,6 @@ Variables:
 - `BASE_DEVNET_RPC_URL`: devnet base Solana RPC used when `cluster=devnet`
 - `EPHEMERAL_DEVNET_RPC_URL`: devnet ephemeral RPC used when `cluster=devnet`
 - `CORS_ORIGIN`: CORS origin, `*` by default
-- `VALIDATOR_PUBKEY`: optional validator pubkey override for routes that do not pin their own default
-
-If `VALIDATOR_PUBKEY` is omitted, non-deposit flows resolve it from the ephemeral RPC using `getIdentity`.
 
 Example:
 
@@ -101,7 +99,6 @@ EPHEMERAL_RPC_URL=https://mainnet.magicblock.app
 BASE_DEVNET_RPC_URL=https://rpc.magicblock.app/devnet
 EPHEMERAL_DEVNET_RPC_URL=https://devnet.magicblock.app
 CORS_ORIGIN=*
-VALIDATOR_PUBKEY=
 ```
 
 ## Run Locally
@@ -417,7 +414,7 @@ http://127.0.0.1:6274
 - `cluster` is optional:
   - omit it or use `mainnet` to use `BASE_RPC_URL` and `EPHEMERAL_RPC_URL`
   - use `devnet` to use `BASE_DEVNET_RPC_URL` and `EPHEMERAL_DEVNET_RPC_URL`
-  - use any other valid http(s) URL to use that URL for both base and ephemeral RPCs
+  - use any other valid http(s) URL to override only the base RPC and keep the configured ephemeral RPC
 - amount encoding depends on the route:
   - deposit, withdraw, and transfer: integer JSON values with minimum `1`, for example `1` or `1000000`
 - do not send UI-decimal token strings like `"1.5"`
@@ -479,7 +476,7 @@ Notes:
 - if `cluster` is omitted, the API uses `mainnet`
 - if `mint` is omitted, the API uses Solana USDC: `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`
 - `amount` is an integer JSON value with minimum `1`, not a string
-- if `validator` is omitted, the API uses `MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57` on mainnet; on devnet or a custom RPC URL it uses `VALIDATOR_PUBKEY` when set, otherwise the selected ephemeral RPC identity
+- if `validator` is omitted, the API resolves it from the selected ephemeral RPC via `getIdentity`
 - `shuttleId` is generated internally
 - `escrowIndex` is fixed to `0` and is not part of the public request body
 
@@ -521,7 +518,6 @@ Relevant fields:
 - `validator`
 - `initIfMissing`
 - `initAtasIfMissing`
-- `shuttleId`
 - `escrowIndex`
 - `idempotent`
 
@@ -555,6 +551,7 @@ curl -X POST http://127.0.0.1:8787/v1/spl/transfer \
     "initIfMissing": true,
     "initAtasIfMissing": true,
     "initVaultIfMissing": true,
+    "memo": "Order #1042",
     "minDelayMs": "0",
     "maxDelayMs": "0",
     "split": 1
@@ -599,7 +596,7 @@ Relevant fields:
 - `initIfMissing`
 - `initAtasIfMissing`
 - `initVaultIfMissing`
-- `shuttleId`
+- `memo`
 - `minDelayMs`
 - `maxDelayMs`
 - `split`

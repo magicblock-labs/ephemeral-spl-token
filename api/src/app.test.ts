@@ -16,12 +16,12 @@ const env = {
   EPHEMERAL_RPC_URL: "https://ephemeral.rpc.test",
   BASE_DEVNET_RPC_URL: "https://base.devnet.rpc.test",
   EPHEMERAL_DEVNET_RPC_URL: "https://ephemeral.devnet.rpc.test",
-  VALIDATOR_PUBKEY: "11111111111111111111111111111111",
   CORS_ORIGIN: "*",
 };
 
 const owner = Keypair.generate().publicKey.toBase58();
 const destination = Keypair.generate().publicKey.toBase58();
+const resolvedValidator = Keypair.generate().publicKey.toBase58();
 
 function createMcpFetch() {
   return (input: RequestInfo | URL, init?: RequestInit) => {
@@ -47,6 +47,19 @@ function createAccountInfo(amount: bigint): AccountInfo<Buffer> {
     owner: TOKEN_PROGRAM_ID,
     rentEpoch: 0,
   };
+}
+
+function createIdentityResponse(identity: string) {
+  return new Response(JSON.stringify({
+    result: {
+      identity,
+    },
+  }), {
+    status: 200,
+    headers: {
+      "content-type": "application/json",
+    },
+  });
 }
 
 describe("app", () => {
@@ -161,9 +174,18 @@ describe("app", () => {
   });
 
   it("builds an unsigned deposit transaction", async () => {
+    const depositEnv = {
+      ...env,
+      EPHEMERAL_RPC_URL: "https://ephemeral.deposit.rpc.test",
+    };
+
     vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
       blockhash: "11111111111111111111111111111111",
       lastValidBlockHeight: 123,
+    });
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(depositEnv.EPHEMERAL_RPC_URL);
+      return createIdentityResponse(resolvedValidator);
     });
 
     const response = await app.request("/v1/spl/deposit", {
@@ -179,7 +201,7 @@ describe("app", () => {
         initAtasIfMissing: true,
         initVaultIfMissing: true,
       }),
-    }, env);
+    }, depositEnv);
 
     expect(response.status).toBe(200);
 
@@ -192,13 +214,18 @@ describe("app", () => {
 
     expect(json.sendTo).toBe("base");
     expect(json.recentBlockhash).toBe("11111111111111111111111111111111");
-    expect(json.validator).toBe("MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57");
+    expect(json.validator).toBe(resolvedValidator);
 
     const transaction = Transaction.from(Buffer.from(json.transactionBase64, "base64"));
     expect(transaction.instructions.length).toBeGreaterThan(0);
   });
 
   it("uses the devnet RPC endpoints when cluster=devnet", async () => {
+    const devnetEnv = {
+      ...env,
+      EPHEMERAL_DEVNET_RPC_URL: "https://ephemeral.deposit.devnet.rpc.test",
+    };
+
     vi.spyOn(Connection.prototype, "getLatestBlockhash").mockImplementation(async function getLatestBlockhash(this: Connection & { _rpcEndpoint: string }) {
       const endpoint = (this as Connection & { _rpcEndpoint: string })._rpcEndpoint;
       return endpoint.includes("base.devnet.rpc.test")
@@ -211,6 +238,10 @@ describe("app", () => {
             lastValidBlockHeight: 123,
           };
     });
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(devnetEnv.EPHEMERAL_DEVNET_RPC_URL);
+      return createIdentityResponse(resolvedValidator);
+    });
 
     const response = await app.request("/v1/spl/deposit", {
       method: "POST",
@@ -222,21 +253,32 @@ describe("app", () => {
         amount: 1,
         cluster: "devnet",
       }),
-    }, env);
+    }, devnetEnv);
 
     expect(response.status).toBe(200);
 
     const json = await response.json() as {
       recentBlockhash: string;
+      validator: string;
     };
 
     expect(json.recentBlockhash).toBe("So11111111111111111111111111111111111111112");
+    expect(json.validator).toBe(resolvedValidator);
   });
 
   it("builds an unsigned withdraw transaction with integer amount", async () => {
+    const withdrawEnv = {
+      ...env,
+      EPHEMERAL_RPC_URL: "https://ephemeral.withdraw.rpc.test",
+    };
+
     vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
       blockhash: "11111111111111111111111111111111",
       lastValidBlockHeight: 123,
+    });
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(withdrawEnv.EPHEMERAL_RPC_URL);
+      return createIdentityResponse(resolvedValidator);
     });
 
     const response = await app.request("/v1/spl/withdraw", {
@@ -250,7 +292,7 @@ describe("app", () => {
         amount: 1,
         idempotent: true,
       }),
-    }, env);
+    }, withdrawEnv);
 
     expect(response.status).toBe(200);
 
@@ -263,7 +305,7 @@ describe("app", () => {
 
     expect(json.sendTo).toBe("base");
     expect(json.recentBlockhash).toBe("11111111111111111111111111111111");
-    expect(json.validator).toBe("11111111111111111111111111111111");
+    expect(json.validator).toBe(resolvedValidator);
 
     const transaction = Transaction.from(Buffer.from(json.transactionBase64, "base64"));
     expect(transaction.instructions.length).toBeGreaterThan(0);
@@ -381,9 +423,18 @@ describe("app", () => {
   });
 
   it("builds a private transfer with top-level split and delay options", async () => {
+    const transferEnv = {
+      ...env,
+      EPHEMERAL_RPC_URL: "https://ephemeral.transfer.rpc.test",
+    };
+
     vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
       blockhash: "11111111111111111111111111111111",
       lastValidBlockHeight: 123,
+    });
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(transferEnv.EPHEMERAL_RPC_URL);
+      return createIdentityResponse(resolvedValidator);
     });
 
     const response = await app.request("/v1/spl/transfer", {
@@ -403,23 +454,81 @@ describe("app", () => {
         maxDelayMs: "0",
         split: 1,
       }),
-    }, env);
+    }, transferEnv);
 
     expect(response.status).toBe(200);
 
     const json = await response.json() as {
       sendTo: string;
       recentBlockhash: string;
+      validator: string;
     };
 
     expect(json.sendTo).toBe("base");
     expect(json.recentBlockhash).toBe("11111111111111111111111111111111");
+    expect(json.validator).toBe(resolvedValidator);
   });
 
-  it("returns a 400 for unsupported transfer combinations", async () => {
+  it("appends a memo instruction to transfers when memo is provided", async () => {
+    const transferEnv = {
+      ...env,
+      EPHEMERAL_RPC_URL: "https://ephemeral.memo.rpc.test",
+    };
+    const memo = "hello from memo";
+
     vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
       blockhash: "11111111111111111111111111111111",
       lastValidBlockHeight: 123,
+    });
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(transferEnv.EPHEMERAL_RPC_URL);
+      return createIdentityResponse(resolvedValidator);
+    });
+
+    const response = await app.request("/v1/spl/transfer", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        from: owner,
+        to: destination,
+        mint: "So11111111111111111111111111111111111111112",
+        amount: 1,
+        visibility: "public",
+        fromBalance: "base",
+        toBalance: "base",
+        memo,
+      }),
+    }, transferEnv);
+
+    expect(response.status).toBe(200);
+
+    const json = await response.json() as {
+      instructionCount: number;
+      transactionBase64: string;
+    };
+    const transaction = Transaction.from(Buffer.from(json.transactionBase64, "base64"));
+    const memoInstruction = transaction.instructions.at(-1);
+
+    expect(json.instructionCount).toBe(3);
+    expect(memoInstruction?.programId.toBase58()).toBe("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
+    expect(memoInstruction?.data.toString("utf8")).toBe(memo);
+  });
+
+  it("returns a 400 for unsupported transfer combinations", async () => {
+    const unsupportedTransferEnv = {
+      ...env,
+      EPHEMERAL_RPC_URL: "https://ephemeral.unsupported-transfer.rpc.test",
+    };
+
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123,
+    });
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(unsupportedTransferEnv.EPHEMERAL_RPC_URL);
+      return createIdentityResponse(resolvedValidator);
     });
 
     const response = await app.request("/v1/spl/transfer", {
@@ -436,7 +545,7 @@ describe("app", () => {
         fromBalance: "base",
         toBalance: "ephemeral",
       }),
-    }, env);
+    }, unsupportedTransferEnv);
 
     expect(response.status).toBe(400);
 
@@ -475,25 +584,36 @@ describe("app", () => {
     expect(privateJson.balance).toBe("9");
   });
 
-  it("uses a custom RPC URL when cluster is a URL", async () => {
+  it("uses a custom RPC URL only for base RPC calls when cluster is a URL", async () => {
     vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(async function getAccountInfo(this: Connection & { _rpcEndpoint: string }) {
       const endpoint = (this as Connection & { _rpcEndpoint: string })._rpcEndpoint;
       return endpoint.includes("custom.rpc.test")
         ? createAccountInfo(7n)
-        : createAccountInfo(0n);
+        : endpoint.includes("ephemeral")
+          ? createAccountInfo(9n)
+          : createAccountInfo(0n);
     });
 
-    const response = await app.request(
+    const baseResponse = await app.request(
+      `/v1/spl/balance?address=${owner}&mint=So11111111111111111111111111111111111111112&cluster=${encodeURIComponent("https://custom.rpc.test")}`,
+      {},
+      env,
+    );
+    const privateResponse = await app.request(
       `/v1/spl/private-balance?address=${owner}&mint=So11111111111111111111111111111111111111112&cluster=${encodeURIComponent("https://custom.rpc.test")}`,
       {},
       env,
     );
 
-    expect(response.status).toBe(200);
+    expect(baseResponse.status).toBe(200);
+    expect(privateResponse.status).toBe(200);
 
-    const json = await response.json() as { location: string; balance: string };
+    const baseJson = await baseResponse.json() as { location: string; balance: string };
+    const privateJson = await privateResponse.json() as { location: string; balance: string };
 
-    expect(json.location).toBe("ephemeral");
-    expect(json.balance).toBe("7");
+    expect(baseJson.location).toBe("base");
+    expect(baseJson.balance).toBe("7");
+    expect(privateJson.location).toBe("ephemeral");
+    expect(privateJson.balance).toBe("9");
   });
 });
