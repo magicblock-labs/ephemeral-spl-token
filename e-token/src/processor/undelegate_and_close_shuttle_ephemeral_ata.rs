@@ -1,8 +1,8 @@
 use ephemeral_rollups_pinocchio::intent_bundle::{
     ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
 };
-use ephemeral_rollups_pinocchio::spl::GlobalVault;
 use ephemeral_spl_api::instruction::internal::CLOSE_SHUTTLE_ATA_INTENT;
+use ephemeral_spl_api::state::global_vault::GlobalVault;
 use ephemeral_spl_api::state::{
     ephemeral_ata::EphemeralAta, load_unchecked, shuttle_ephemeral_ata::ShuttleMetadata,
     Initializable,
