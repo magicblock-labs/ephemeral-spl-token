@@ -1,0 +1,5 @@
+BASE_RPC_URL=https://rpc.magicblock.app/mainnet
+EPHEMERAL_RPC_URL=https://as.magicblock.app
+BASE_DEVNET_RPC_URL=https://rpc.magicblock.app/devnet
+EPHEMERAL_DEVNET_RPC_URL=https://devnet.magicblock.app
+CORS_ORIGIN=*
