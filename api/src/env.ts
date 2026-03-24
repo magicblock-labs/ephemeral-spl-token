@@ -14,11 +14,13 @@ const optionalString = z
     return trimmed.length > 0 ? trimmed : undefined;
   });
 
+const optionalUrl = optionalString.pipe(z.string().url().optional());
+
 export const envSchema = z.object({
   BASE_RPC_URL: z.string().url(),
   EPHEMERAL_RPC_URL: z.string().url(),
-  BASE_DEVNET_RPC_URL: optionalString,
-  EPHEMERAL_DEVNET_RPC_URL: optionalString,
+  BASE_DEVNET_RPC_URL: optionalUrl,
+  EPHEMERAL_DEVNET_RPC_URL: optionalUrl,
   CORS_ORIGIN: optionalString,
 });
 

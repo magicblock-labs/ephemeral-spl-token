@@ -150,7 +150,7 @@ curl http://127.0.0.1:8787/reference
 - `yarn build`: TypeScript check
 - `yarn typecheck`: TypeScript check
 - `yarn test`: run Vitest suite
-- `yarn deploy`: deploy with Wrangler, uploading Worker secrets from `.dev.vars`
+- `yarn deploy`: deploy with Wrangler, uploading Worker secrets from `.prod.vars`
 
 ## API Documentation
 
@@ -305,7 +305,7 @@ curl -X POST http://127.0.0.1:8787/mcp \
 }
 ```
 
-2. Send `notifications/initialized`:
+1. Send `notifications/initialized`:
 
 ```bash
 curl -i -X POST http://127.0.0.1:8787/mcp \
@@ -320,7 +320,7 @@ curl -i -X POST http://127.0.0.1:8787/mcp \
 
 This returns `HTTP 202` with no body.
 
-3. Call a tool:
+1. Call a tool:
 
 ```bash
 curl -X POST http://127.0.0.1:8787/mcp \
@@ -383,24 +383,24 @@ You can test this server with the official MCP Inspector.
 yarn dev
 ```
 
-2. In another terminal, start Inspector:
+1. In another terminal, start Inspector:
 
 ```bash
 npx @modelcontextprotocol/inspector
 ```
 
-3. Open the Inspector UI, usually at:
+1. Open the Inspector UI, usually at:
 
 ```text
 http://127.0.0.1:6274
 ```
 
-4. Use these connection settings:
+1. Use these connection settings:
 
 - Transport: `Streamable HTTP`
 - URL: `http://127.0.0.1:8787/mcp`
 
-5. Connect, then use `tools/list` or call:
+1. Connect, then use `tools/list` or call:
 
 - `spl.deposit`
 - `spl.withdraw`
@@ -474,7 +474,7 @@ curl -X POST http://127.0.0.1:8787/v1/spl/deposit \
 Notes:
 
 - if `cluster` is omitted, the API uses `mainnet`
-- if `mint` is omitted, the API uses Solana USDC: `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`
+- if `mint` is omitted, the API uses Solana USDC on mainnet: `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`; on devnet it uses devnet USDC: `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`
 - `amount` is an integer JSON value with minimum `1`, not a string
 - if `validator` is omitted, the API resolves it from the selected ephemeral RPC via `getIdentity`
 - `shuttleId` is generated internally
@@ -578,7 +578,7 @@ Private transfer validation:
 - `split` defaults to `1`
 - `minDelayMs` must be an integer string
 - `maxDelayMs` must be an integer string
-- `split` must be a positive integer
+- `split` must be an integer between `1` and `15`
 - `split` cannot exceed `amount`
 - if both delays are present, `maxDelayMs >= minDelayMs`
 

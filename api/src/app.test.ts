@@ -19,6 +19,7 @@ const env = {
   CORS_ORIGIN: "*",
 };
 
+const DEVNET_USDC_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
 const owner = Keypair.generate().publicKey.toBase58();
 const destination = Keypair.generate().publicKey.toBase58();
 const resolvedValidator = Keypair.generate().publicKey.toBase58();
@@ -220,6 +221,60 @@ describe("app", () => {
     expect(transaction.instructions.length).toBeGreaterThan(0);
   });
 
+  it("retries validator resolution after a transient RPC failure", async () => {
+    const retryEnv = {
+      ...env,
+      EPHEMERAL_RPC_URL: "https://ephemeral.retry.rpc.test",
+    };
+    let fetchCalls = 0;
+
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123,
+    });
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(retryEnv.EPHEMERAL_RPC_URL);
+      fetchCalls += 1;
+
+      return fetchCalls === 1
+        ? new Response("upstream error", { status: 502 })
+        : createIdentityResponse(resolvedValidator);
+    });
+
+    const firstResponse = await app.request("/v1/spl/deposit", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        owner,
+        amount: 1,
+      }),
+    }, retryEnv);
+
+    expect(firstResponse.status).toBe(502);
+
+    const secondResponse = await app.request("/v1/spl/deposit", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        owner,
+        amount: 1,
+      }),
+    }, retryEnv);
+
+    expect(secondResponse.status).toBe(200);
+    expect(fetchCalls).toBe(2);
+
+    const json = await secondResponse.json() as {
+      validator: string;
+    };
+
+    expect(json.validator).toBe(resolvedValidator);
+  });
+
   it("uses the devnet RPC endpoints when cluster=devnet", async () => {
     const devnetEnv = {
       ...env,
@@ -260,10 +315,16 @@ describe("app", () => {
     const json = await response.json() as {
       recentBlockhash: string;
       validator: string;
+      transactionBase64: string;
     };
 
     expect(json.recentBlockhash).toBe("So11111111111111111111111111111111111111112");
     expect(json.validator).toBe(resolvedValidator);
+
+    const transaction = Transaction.from(Buffer.from(json.transactionBase64, "base64"));
+    expect(transaction.instructions.some((instruction) =>
+      instruction.keys.some((key) => key.pubkey.toBase58() === DEVNET_USDC_MINT)
+    )).toBe(true);
   });
 
   it("builds an unsigned withdraw transaction with integer amount", async () => {
@@ -338,6 +399,42 @@ describe("app", () => {
 
     expect(json.error.code).toBe("CONFIG_ERROR");
     expect(json.error.details?.hint).toContain(".dev.vars");
+  });
+
+  it("returns a config error when devnet RPC env vars are invalid URLs", async () => {
+    const response = await app.request("/v1/spl/deposit", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        owner,
+        amount: 1,
+      }),
+    }, {
+      ...env,
+      BASE_DEVNET_RPC_URL: "not-a-url",
+      EPHEMERAL_DEVNET_RPC_URL: "still-not-a-url",
+    });
+
+    expect(response.status).toBe(500);
+
+    const json = await response.json() as {
+      error: {
+        code: string;
+        details?: {
+          issues?: Array<{
+            path?: string[];
+          }>;
+        };
+      };
+    };
+
+    expect(json.error.code).toBe("CONFIG_ERROR");
+    expect(json.error.details?.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: ["BASE_DEVNET_RPC_URL"] }),
+      expect.objectContaining({ path: ["EPHEMERAL_DEVNET_RPC_URL"] }),
+    ]));
   });
 
   it("exposes the SPL tools over MCP", async () => {
@@ -467,6 +564,27 @@ describe("app", () => {
     expect(json.sendTo).toBe("base");
     expect(json.recentBlockhash).toBe("11111111111111111111111111111111");
     expect(json.validator).toBe(resolvedValidator);
+  });
+
+  it("rejects split values above 15", async () => {
+    const response = await app.request("/v1/spl/transfer", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        from: owner,
+        to: destination,
+        mint: "So11111111111111111111111111111111111111112",
+        amount: 2,
+        visibility: "private",
+        fromBalance: "base",
+        toBalance: "base",
+        split: 16,
+      }),
+    }, env);
+
+    expect(response.status).toBe(400);
   });
 
   it("appends a memo instruction to transfers when memo is provided", async () => {

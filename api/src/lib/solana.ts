@@ -29,6 +29,7 @@ const MEMO_PROGRAM_ID = new PublicKey(
 );
 
 const DEFAULT_DEPOSIT_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+const DEFAULT_DEPOSIT_DEVNET_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
 
 const connectionCache = new Map<string, Connection>();
 const validatorCache = new Map<string, Promise<PublicKey | undefined>>();
@@ -340,7 +341,13 @@ async function getValidatorFromRpc(endpoint: string) {
       return payload.result?.identity
         ? new PublicKey(payload.result.identity)
         : undefined;
-    })();
+    })().catch((error) => {
+      if (validatorCache.get(endpoint) === request) {
+        validatorCache.delete(endpoint);
+      }
+
+      throw error;
+    });
 
     validatorCache.set(endpoint, request);
   }
@@ -425,7 +432,10 @@ function serializeTransaction(
 export async function buildDepositTransaction(env: AppEnv, input: DepositInput) {
   const config = resolveRpcConfig(env, input.cluster);
   const owner = parsePublicKey(input.owner, "owner");
-  const mint = parsePublicKey(input.mint ?? DEFAULT_DEPOSIT_MINT, "mint");
+  const mint = parsePublicKey(
+    input.mint ?? (config.cluster === "devnet" ? DEFAULT_DEPOSIT_DEVNET_MINT : DEFAULT_DEPOSIT_MINT),
+    "mint",
+  );
   const amount = parseAmount(input.amount, "amount");
   const payer = owner;
   const feePayer = owner;
@@ -512,8 +522,11 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
     throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "maxDelayMs must be greater than or equal to minDelayMs");
   }
 
-  if (split !== undefined && split <= 0) {
-    throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "split must be a positive integer");
+  if (
+    split !== undefined
+    && (!Number.isSafeInteger(split) || split <= 0 || split > 15)
+  ) {
+    throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "split must be an integer between 1 and 15");
   }
 
   if (split !== undefined && BigInt(split) > amount) {

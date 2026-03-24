@@ -3,6 +3,7 @@ import { PublicKey } from "@solana/web3.js";
 
 const DEFAULT_DEPOSIT_VALIDATOR = "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57";
 const DEFAULT_DEPOSIT_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+const DEFAULT_DEPOSIT_DEVNET_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
 const DEPOSIT_EXAMPLE_OWNER = "3rXKwQ1kpjBd5tdcco32qsvqUh1BnZjcYnS5kYrP7AYE";
 const TRANSFER_EXAMPLE_TO = "Bt9oNR5cCtnfuMmXgWELd6q5i974PdEMQDUE55nBC57L";
 const BALANCE_EXAMPLE_ADDRESS = "Bt9oNR5cCtnfuMmXgWELd6q5i974PdEMQDUE55nBC57L";
@@ -27,6 +28,7 @@ export const publicKeySchema = z
 export const amountSchema = z
   .number()
   .int()
+  .safe()
   .min(1)
   .openapi({
     example: 1000000,
@@ -36,6 +38,7 @@ export const amountSchema = z
 export const depositAmountSchema = z
   .number()
   .int()
+  .safe()
   .min(1)
   .openapi({
     example: 1,
@@ -45,6 +48,7 @@ export const depositAmountSchema = z
 export const withdrawAmountSchema = z
   .number()
   .int()
+  .safe()
   .min(1)
   .openapi({
     example: 1000000,
@@ -58,7 +62,12 @@ export const optionalBigIntStringSchema = z
     example: "0",
   });
 
-export const clusterSchema = z.string().openapi({
+export const clusterSchema = z.union([
+  z.enum(["mainnet", "devnet"]),
+  z.string().refine((value) => /^https?:\/\//.test(value), {
+    message: "must be a http(s) URL",
+  }),
+]).openapi({
   example: "mainnet",
   description: "Optional. Use `mainnet` for BASE_RPC_URL and EPHEMERAL_RPC_URL, `devnet` for BASE_DEVNET_RPC_URL and EPHEMERAL_DEVNET_RPC_URL, or provide a custom http(s) RPC URL to override the base RPC while keeping the configured ephemeral RPC.",
 });
@@ -93,7 +102,7 @@ export const depositRequestSchema = z.object({
   cluster: clusterSchema.optional(),
   mint: publicKeySchema.openapi({
     example: DEFAULT_DEPOSIT_MINT,
-    description: `Optional. Defaults to Solana USDC: ${DEFAULT_DEPOSIT_MINT}.`,
+    description: `Optional. Defaults to Solana USDC on mainnet: ${DEFAULT_DEPOSIT_MINT}. On devnet it defaults to devnet USDC: ${DEFAULT_DEPOSIT_DEVNET_MINT}.`,
   }).optional(),
   amount: depositAmountSchema,
   validator: publicKeySchema.openapi({
@@ -170,9 +179,9 @@ export const transferRequestSchema = z.object({
     example: "0",
     description: "Optional. Private transfer only. Defaults to 0 when omitted, or to minDelayMs when minDelayMs is set.",
   }).optional(),
-  split: z.int().positive().openapi({
+  split: z.int().positive().max(15).openapi({
     example: 1,
-    description: "Optional. Private transfer only. Defaults to 1.",
+    description: "Optional. Private transfer only. Defaults to 1. Must be between 1 and 15.",
   }).optional(),
 }).openapi("TransferRequest", {
   example: {
