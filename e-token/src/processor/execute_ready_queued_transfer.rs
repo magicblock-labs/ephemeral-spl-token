@@ -6,7 +6,6 @@ use {
         global_vault::GlobalVault, transfer_queue::QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
     },
     pinocchio::{error::ProgramError, AccountView, ProgramResult},
-    pinocchio_token_2022::state::Mint,
 };
 
 use ephemeral_spl_api::state::load_initialized;
@@ -15,7 +14,10 @@ use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
 
 use crate::{
     assert_owner,
-    processor::rent_pda::{derive_rent_pda, RENT_PDA_SEED},
+    processor::{
+        rent_pda::{derive_rent_pda, RENT_PDA_SEED},
+        utils::read_mint_decimals,
+    },
 };
 
 #[inline(always)]
@@ -66,11 +68,11 @@ pub fn process_execute_ready_queued_transfer(
     }
 
     if args.should_create_destination_ata_idempotent() {
+        assert_owner!(rent_pda_info, &SYSTEM_PROGRAM_ID);
         let (derived_rent_pda, rent_bump) = derive_rent_pda();
         if derived_rent_pda != *rent_pda_info.address() {
             return Err(ProgramError::InvalidSeeds);
         }
-        assert_owner!(rent_pda_info, &SYSTEM_PROGRAM_ID);
         if rent_pda_info.data_len() != 0 {
             return Err(ProgramError::InvalidAccountData);
         }
@@ -96,17 +98,7 @@ pub fn process_execute_ready_queued_transfer(
     }
 
     let vault_bump = validate_vault_for_mint(vault_info, mint_info, vault_token_acc_info)?;
-    let decimals = {
-        let mint_data = unsafe { mint_info.borrow_unchecked() };
-        if mint_data.len() < Mint::BASE_LEN {
-            return Err(ProgramError::InvalidAccountData);
-        }
-        let mint = unsafe { Mint::from_bytes_unchecked(mint_data) };
-        if !mint.is_initialized() {
-            return Err(ProgramError::UninitializedAccount);
-        }
-        mint.decimals()
-    };
+    let decimals = read_mint_decimals(mint_info, token_program_info)?;
 
     let vault_bump = [vault_bump];
     let signer_seeds = [
@@ -142,9 +134,10 @@ pub(crate) fn validate_vault_for_mint(
         &[mint_info.address().as_ref()],
         &ephemeral_spl_api::program::id_address(),
     );
-    if derived_vault != *vault_info.address()
-        || vault.mint != *mint_info.address()
-        || vault.token_account != *vault_token_acc_info.address()
+    if derived_vault != *vault_info.address() {
+        return Err(ProgramError::InvalidSeeds);
+    }
+    if vault.mint != *mint_info.address() || vault.token_account != *vault_token_acc_info.address()
     {
         return Err(ProgramError::InvalidAccountData);
     }
