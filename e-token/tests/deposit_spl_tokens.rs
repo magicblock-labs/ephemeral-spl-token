@@ -168,7 +168,7 @@ async fn deposit_spl_tokens_increments_ephemeral_amount() {
     assert_eq!(account.owner, PROGRAM);
     assert_eq!(account.data.len(), EphemeralAta::LEN);
 
-    let mut mut_acc = account.data.clone();
-    let ata_data = load::<EphemeralAta>(mut_acc.as_mut_slice()).unwrap();
+    let mut_acc = account.data.clone();
+    let ata_data = load::<EphemeralAta>(mut_acc.as_slice()).unwrap();
     assert_eq!(ata_data.amount, amount);
 }
