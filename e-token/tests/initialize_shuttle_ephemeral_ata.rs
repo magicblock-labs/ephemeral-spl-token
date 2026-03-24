@@ -2,7 +2,7 @@ use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
-use ephemeral_spl_api::state::{load, Initializable, RawType};
+use ephemeral_spl_api::state::{load_initialized, RawType};
 use solana_instruction::Instruction;
 use solana_keypair::Keypair;
 use solana_program_pack::Pack;
@@ -77,8 +77,7 @@ async fn initialize_shuttle_ephemeral_ata() {
     assert_eq!(account.data.len(), ShuttleMetadata::LEN);
 
     let mut mut_acc = account.data.clone();
-    let shuttle = load::<ShuttleMetadata>(mut_acc.as_mut_slice()).unwrap();
-    assert!(shuttle.is_initialized());
+    let shuttle = load_initialized::<ShuttleMetadata>(mut_acc.as_mut_slice()).unwrap();
     assert_eq!(shuttle.owner.as_array(), &owner.to_bytes());
     assert_eq!(shuttle.payer.as_array(), &payer.to_bytes());
     assert_eq!(shuttle.id, shuttle_id);
@@ -93,7 +92,7 @@ async fn initialize_shuttle_ephemeral_ata() {
     assert_eq!(shuttle_eata_account.data.len(), EphemeralAta::LEN);
 
     let mut mut_eata_acc = shuttle_eata_account.data.clone();
-    let shuttle_eata_data = load::<EphemeralAta>(mut_eata_acc.as_mut_slice()).unwrap();
+    let shuttle_eata_data = load_initialized::<EphemeralAta>(mut_eata_acc.as_mut_slice()).unwrap();
     assert_eq!(
         shuttle_eata_data.owner.as_array(),
         &shuttle_ephemeral_ata.to_bytes()

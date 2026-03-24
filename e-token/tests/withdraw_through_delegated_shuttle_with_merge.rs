@@ -4,7 +4,6 @@ use std::{
 };
 
 use dlp_api::state::DelegationRecord;
-use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
 use ephemeral_spl_api::state::{load, Initializable, RawType};
@@ -12,6 +11,7 @@ use ephemeral_spl_api::{
     instruction::{self, internal},
     state::load_mut,
 };
+use ephemeral_spl_api::{program::ID, state::load_initialized};
 use magicblock_magic_program_api::{
     args::{MagicIntentBundleArgs, UndelegateTypeArgs},
     instruction::MagicBlockInstruction,
@@ -320,7 +320,8 @@ async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_clean
         ephemeral_spl_api::program::DELEGATION_PROGRAM_ID
     );
     let mut shuttle_eata_data = shuttle_eata_account.data.clone();
-    let shuttle_eata_state = load::<EphemeralAta>(shuttle_eata_data.as_mut_slice()).unwrap();
+    let shuttle_eata_state =
+        load_initialized::<EphemeralAta>(shuttle_eata_data.as_mut_slice()).unwrap();
     assert_eq!(shuttle_eata_state.amount, 0);
 
     let owner_source_account = context
