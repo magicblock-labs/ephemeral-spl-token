@@ -3,6 +3,8 @@ use ephemeral_rollups_pinocchio::types::DelegateConfig;
 use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, QUEUE_SEED};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
+use crate::assert_signer;
+
 pub fn process_delegate_transfer_queue(
     accounts: &[AccountView],
     instruction_data: &[u8],
@@ -27,9 +29,7 @@ pub fn process_delegate_transfer_queue(
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
-    if !payer_info.is_signer() {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
+    assert_signer!(payer_info);
 
     let program_id = ephemeral_spl_api::program::id_address();
     let delegation_program = ephemeral_spl_api::program::DELEGATION_PROGRAM_ID;

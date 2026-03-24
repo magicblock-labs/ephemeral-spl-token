@@ -3,17 +3,20 @@ use core::marker::PhantomData;
 use {
     ephemeral_rollups_pinocchio::pda::ephemeral_balance_pda_from_payer,
     ephemeral_spl_api::state::{
-        global_vault::GlobalVault, load_unchecked,
-        transfer_queue::QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
+        global_vault::GlobalVault, transfer_queue::QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
     },
     pinocchio::{error::ProgramError, AccountView, ProgramResult},
     pinocchio_token_2022::state::Mint,
 };
 
+use ephemeral_spl_api::state::load_initialized;
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
 
-use crate::processor::rent_pda::{derive_rent_pda, RENT_PDA_SEED};
+use crate::{
+    assert_owner,
+    processor::rent_pda::{derive_rent_pda, RENT_PDA_SEED},
+};
 
 #[inline(always)]
 pub fn process_execute_ready_queued_transfer(
@@ -67,7 +70,8 @@ pub fn process_execute_ready_queued_transfer(
         if derived_rent_pda != *rent_pda_info.address() {
             return Err(ProgramError::InvalidSeeds);
         }
-        if !rent_pda_info.owned_by(&SYSTEM_PROGRAM_ID) || rent_pda_info.data_len() != 0 {
+        assert_owner!(rent_pda_info, &SYSTEM_PROGRAM_ID);
+        if rent_pda_info.data_len() != 0 {
             return Err(ProgramError::InvalidAccountData);
         }
         if associated_token_program_info.address() != &pinocchio_associated_token_account::ID
@@ -131,16 +135,9 @@ pub(crate) fn validate_vault_for_mint(
     mint_info: &AccountView,
     vault_token_acc_info: &AccountView,
 ) -> Result<u8, ProgramError> {
-    unsafe {
-        if vault_info
-            .owner()
-            .ne(&ephemeral_spl_api::program::id_address())
-        {
-            return Err(ProgramError::IllegalOwner);
-        }
-    }
+    assert_owner!(vault_info, &ephemeral_spl_api::program::id_address());
 
-    let vault = unsafe { load_unchecked::<GlobalVault>(vault_info.borrow_unchecked())? };
+    let vault = load_initialized::<GlobalVault>(unsafe { vault_info.borrow_unchecked() })?;
     let (derived_vault, bump) = ephemeral_spl_api::Address::find_program_address(
         &[mint_info.address().as_ref()],
         &ephemeral_spl_api::program::id_address(),

@@ -4,11 +4,14 @@ use std::{
 };
 
 use dlp_api::state::DelegationRecord;
-use ephemeral_spl_api::instruction::{self, internal};
 use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
-use ephemeral_spl_api::state::{load_mut_unchecked, Initializable, RawType};
+use ephemeral_spl_api::state::{load, Initializable, RawType};
+use ephemeral_spl_api::{
+    instruction::{self, internal},
+    state::load_mut,
+};
 use magicblock_magic_program_api::{
     args::{MagicIntentBundleArgs, UndelegateTypeArgs},
     instruction::MagicBlockInstruction,
@@ -301,8 +304,7 @@ async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_clean
         .unwrap()
         .expect("shuttle metadata must exist");
     let mut shuttle_data = shuttle_account.data.clone();
-    let shuttle =
-        unsafe { load_mut_unchecked::<ShuttleMetadata>(shuttle_data.as_mut_slice()).unwrap() };
+    let shuttle = load::<ShuttleMetadata>(shuttle_data.as_mut_slice()).unwrap();
     assert!(shuttle.is_initialized());
     assert_eq!(shuttle.owner.as_array(), &owner.pubkey().to_bytes());
     assert_eq!(shuttle.payer.as_array(), &rent_pda.to_bytes());
@@ -318,8 +320,7 @@ async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_clean
         ephemeral_spl_api::program::DELEGATION_PROGRAM_ID
     );
     let mut shuttle_eata_data = shuttle_eata_account.data.clone();
-    let shuttle_eata_state =
-        unsafe { load_mut_unchecked::<EphemeralAta>(shuttle_eata_data.as_mut_slice()).unwrap() };
+    let shuttle_eata_state = load::<EphemeralAta>(shuttle_eata_data.as_mut_slice()).unwrap();
     assert_eq!(shuttle_eata_state.amount, 0);
 
     let owner_source_account = context
@@ -371,15 +372,13 @@ async fn undelegate_withdraw_and_close_shuttle_ephemeral_ata_schedules_close_act
     let shuttle_wallet_ata = utils::derive_associated_token_address(shuttle_metadata, mint);
 
     let mut shuttle_data = vec![0u8; ShuttleMetadata::LEN];
-    let shuttle_state =
-        unsafe { load_mut_unchecked::<ShuttleMetadata>(shuttle_data.as_mut_slice()).unwrap() };
+    let shuttle_state = load_mut::<ShuttleMetadata>(shuttle_data.as_mut_slice()).unwrap();
     shuttle_state.owner = owner.pubkey();
     shuttle_state.payer = rent_pda;
     shuttle_state.id = shuttle_id;
 
     let mut shuttle_eata_data = vec![0u8; EphemeralAta::LEN];
-    let shuttle_eata_state =
-        unsafe { load_mut_unchecked::<EphemeralAta>(shuttle_eata_data.as_mut_slice()).unwrap() };
+    let shuttle_eata_state = load_mut::<EphemeralAta>(shuttle_eata_data.as_mut_slice()).unwrap();
     shuttle_eata_state.owner = shuttle_metadata;
     shuttle_eata_state.mint = mint;
     shuttle_eata_state.amount = 0;

@@ -1,11 +1,10 @@
-use ephemeral_spl_api::state::{Initializable, RawType};
+use ephemeral_spl_api::state::{load_initialized, load_mut, RawType};
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
 use pinocchio_system::instructions::{CreateAccount, Transfer};
 use {
     ephemeral_spl_api::state::ephemeral_ata::EphemeralAta,
-    ephemeral_spl_api::state::{load_mut_unchecked, load_unchecked},
     pinocchio::{error::ProgramError, AccountView, ProgramResult},
 };
 
@@ -54,11 +53,9 @@ pub(crate) fn initialize_ephemeral_ata_with_sponsor(
 
     // Make init idempotent even if the account is currently delegated (owner changed).
     if let Ok(ephemeral_ata) =
-        unsafe { load_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked()) }
+        load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })
     {
-        if ephemeral_ata.is_initialized()
-            && ephemeral_ata.owner == *user_info.address()
-            && ephemeral_ata.mint == *mint_info.address()
+        if ephemeral_ata.owner == *user_info.address() && ephemeral_ata.mint == *mint_info.address()
         {
             return Ok(());
         }
@@ -92,9 +89,8 @@ pub(crate) fn initialize_ephemeral_ata_with_sponsor(
 
         ephemeral_ata_info.resize(EphemeralAta::LEN)?;
 
-        let ephemeral_ata = unsafe {
-            load_mut_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked_mut())?
-        };
+        let ephemeral_ata =
+            load_mut::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked_mut() })?;
 
         // Set the missing bump
         ephemeral_ata.bump = eata_bump;
@@ -132,7 +128,7 @@ pub(crate) fn initialize_ephemeral_ata_with_sponsor(
 
     // Ensure account data has the expected size
     let ephemeral_ata =
-        unsafe { load_mut_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked_mut())? };
+        load_mut::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked_mut() })?;
 
     // Initialize the ephemeral ATA
     // Set the owner to the provided user; payer only funds account creation

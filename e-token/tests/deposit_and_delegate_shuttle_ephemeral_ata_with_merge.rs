@@ -3,7 +3,7 @@ use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
-use ephemeral_spl_api::state::{load_mut_unchecked, Initializable};
+use ephemeral_spl_api::state::{load, Initializable};
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
@@ -220,8 +220,7 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_deposits_and_stor
         .expect("shuttle metadata must exist");
     assert_eq!(shuttle_account.owner, PROGRAM);
     let mut shuttle_data = shuttle_account.data.clone();
-    let shuttle =
-        unsafe { load_mut_unchecked::<ShuttleMetadata>(shuttle_data.as_mut_slice()).unwrap() };
+    let shuttle = load::<ShuttleMetadata>(shuttle_data.as_mut_slice()).unwrap();
     assert!(shuttle.is_initialized());
     assert_eq!(shuttle.owner.as_array(), &owner.pubkey().to_bytes());
     assert_eq!(shuttle.payer.as_array(), &rent_pda.to_bytes());
@@ -238,8 +237,7 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_deposits_and_stor
         ephemeral_spl_api::program::DELEGATION_PROGRAM_ID
     );
     let mut shuttle_eata_data = shuttle_eata_account.data.clone();
-    let shuttle_eata_state =
-        unsafe { load_mut_unchecked::<EphemeralAta>(shuttle_eata_data.as_mut_slice()).unwrap() };
+    let shuttle_eata_state = load::<EphemeralAta>(shuttle_eata_data.as_mut_slice()).unwrap();
     assert_eq!(shuttle_eata_state.amount, DEPOSIT_AMOUNT);
 
     let shuttle_wallet_account = context

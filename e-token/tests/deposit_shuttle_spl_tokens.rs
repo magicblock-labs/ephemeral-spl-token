@@ -2,7 +2,7 @@ use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
-use ephemeral_spl_api::state::{load_mut_unchecked, RawType};
+use ephemeral_spl_api::state::{load, RawType};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
 use solana_program_pack::Pack;
@@ -155,7 +155,7 @@ async fn deposit_spl_tokens_increments_shuttle_amount() {
     assert_eq!(account.data.len(), ShuttleMetadata::LEN);
 
     let mut mut_acc = account.data.clone();
-    let shuttle = unsafe { load_mut_unchecked::<ShuttleMetadata>(mut_acc.as_mut_slice()).unwrap() };
+    let shuttle = load::<ShuttleMetadata>(mut_acc.as_mut_slice()).unwrap();
     assert_eq!(shuttle.id, shuttle_id);
     assert_eq!(shuttle.owner.as_array(), &owner.to_bytes());
     assert_eq!(shuttle.payer.as_array(), &payer.to_bytes());
@@ -168,8 +168,7 @@ async fn deposit_spl_tokens_increments_shuttle_amount() {
         .expect("shuttle eata must exist");
     assert_eq!(shuttle_eata_account.data.len(), EphemeralAta::LEN);
     let mut mut_shuttle_eata = shuttle_eata_account.data.clone();
-    let shuttle_eata_data =
-        unsafe { load_mut_unchecked::<EphemeralAta>(mut_shuttle_eata.as_mut_slice()).unwrap() };
+    let shuttle_eata_data = load::<EphemeralAta>(mut_shuttle_eata.as_mut_slice()).unwrap();
     assert_eq!(shuttle_eata_data.amount, amount);
     assert_eq!(
         shuttle_eata_data.owner.as_array(),

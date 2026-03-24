@@ -1,6 +1,8 @@
 use core::{convert::TryFrom, marker::PhantomData};
 
 use crate::processor::deposit_spl_tokens::transfer_to_vault_for_mint;
+use crate::processor::utils::{read_mint_decimals, validate_token_account};
+use crate::{assert_associated_token_address, assert_owner, assert_signer};
 use ephemeral_spl_api::state::transfer_queue::{
     queue_len_for_mint_with_capacity, queue_push_from_data, QueuedTransfer,
     QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA, QUEUE_SEED,
@@ -8,7 +10,6 @@ use ephemeral_spl_api::state::transfer_queue::{
 use pinocchio::sysvars::clock::Clock;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
-use pinocchio_token_2022::state::{Mint, TokenAccount};
 
 const MILLIS_PER_SECOND: u64 = 1_000;
 
@@ -34,9 +35,8 @@ pub fn process_deposit_and_queue_transfer(
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
-    if !user_authority.is_signer() {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
+    assert_signer!(user_authority);
+    assert_owner!(queue_info, &ephemeral_spl_api::program::id_address());
 
     let amount = args.amount();
     validate_deposit_and_queue_transfer_params(
@@ -55,9 +55,6 @@ pub fn process_deposit_and_queue_transfer(
     if derived_queue != *queue_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
-    if !queue_info.owned_by(&program_id) {
-        return Err(ProgramError::IllegalOwner);
-    }
 
     let queue_len_before = {
         let data = unsafe { queue_info.borrow_unchecked() };
@@ -66,7 +63,7 @@ pub fn process_deposit_and_queue_transfer(
     #[cfg(not(feature = "logging"))]
     let _ = queue_len_before;
 
-    let decimals = read_mint_decimals(mint_info)?;
+    let decimals = read_mint_decimals(mint_info, token_program_info)?;
     let inserted_at = queue_timestamp_now()?;
 
     transfer_to_vault_for_mint(
@@ -84,11 +81,19 @@ pub fn process_deposit_and_queue_transfer(
     let destination_owner = if args.should_create_destination_ata_idempotent() {
         *destination_token_acc.address()
     } else {
-        resolve_destination_owner_from_token_account(
+        let (_, owner, _) = validate_token_account(
             destination_token_acc,
-            token_program_info,
-            mint_info,
-        )?
+            mint_info.address(),
+            None,
+            Some(token_program_info.address()),
+        )?;
+        assert_associated_token_address!(
+            destination_token_acc.address(),
+            mint_info.address(),
+            &owner,
+            token_program_info.address()
+        );
+        owner
     };
     let split_plan = build_split_plan(amount, split, decimals)?;
 
@@ -144,54 +149,6 @@ pub fn process_deposit_and_queue_transfer(
     );
 
     Ok(())
-}
-
-#[inline(always)]
-fn resolve_destination_owner_from_token_account(
-    destination_token_acc: &AccountView,
-    token_program_info: &AccountView,
-    mint_info: &AccountView,
-) -> Result<ephemeral_spl_api::Address, ProgramError> {
-    if !destination_token_acc.owned_by(token_program_info.address()) {
-        return Err(ProgramError::IllegalOwner);
-    }
-
-    let destination_token_data = unsafe { destination_token_acc.borrow_unchecked() };
-    if destination_token_data.len() < TokenAccount::BASE_LEN {
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    let destination_token = unsafe { TokenAccount::from_bytes_unchecked(destination_token_data) };
-    if !destination_token.is_initialized() || destination_token.mint() != mint_info.address() {
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    let destination_owner = *destination_token.owner();
-    let expected_destination = derive_associated_token_address(
-        &destination_owner,
-        token_program_info.address(),
-        mint_info.address(),
-    );
-    if expected_destination != *destination_token_acc.address() {
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    Ok(destination_owner)
-}
-
-#[inline(always)]
-fn read_mint_decimals(mint_info: &AccountView) -> Result<u8, ProgramError> {
-    let mint_data = unsafe { mint_info.borrow_unchecked() };
-    if mint_data.len() < Mint::BASE_LEN {
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    let mint = unsafe { Mint::from_bytes_unchecked(mint_data) };
-    if !mint.is_initialized() {
-        return Err(ProgramError::UninitializedAccount);
-    }
-
-    Ok(mint.decimals())
 }
 
 pub struct DepositAndQueueTransferArgs<'a> {
@@ -456,17 +413,4 @@ fn hash_delay_seed(destination: &ephemeral_spl_api::Address, queue_position: u64
     hash ^= queue_position;
     hash = hash.wrapping_mul(0x100_0000_01b3);
     hash ^ (hash >> 32)
-}
-
-#[inline(always)]
-fn derive_associated_token_address(
-    wallet: &ephemeral_spl_api::Address,
-    token_program: &ephemeral_spl_api::Address,
-    mint: &ephemeral_spl_api::Address,
-) -> ephemeral_spl_api::Address {
-    ephemeral_spl_api::Address::find_program_address(
-        &[wallet.as_ref(), token_program.as_ref(), mint.as_ref()],
-        &pinocchio_associated_token_account::ID,
-    )
-    .0
 }

@@ -12,7 +12,7 @@ pub mod program {
 
     /// Returns the program ID as an Address
     #[inline(always)]
-    pub fn id_address() -> pinocchio::Address {
+    pub const fn id_address() -> pinocchio::Address {
         pinocchio::Address::new_from_array(ID)
     }
 }

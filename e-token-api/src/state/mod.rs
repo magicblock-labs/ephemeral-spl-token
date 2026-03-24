@@ -20,8 +20,8 @@ pub trait Initializable {
 /// a valid representation of `T`. The length and initialization checks below do
 /// not prove either property.
 #[inline(always)]
-pub unsafe fn load<T: Initializable + RawType>(bytes: &[u8]) -> Result<&T, ProgramError> {
-    load_unchecked(bytes).and_then(|t: &T| {
+pub fn load_initialized<T: Initializable + RawType>(bytes: &[u8]) -> Result<&T, ProgramError> {
+    load(bytes).and_then(|t: &T| {
         // checks if the data is initialized
         if t.is_initialized() {
             Ok(t)
@@ -41,11 +41,11 @@ pub unsafe fn load<T: Initializable + RawType>(bytes: &[u8]) -> Result<&T, Progr
 /// a valid representation of `T`. The length check below does not prove either
 /// property.
 #[inline(always)]
-pub unsafe fn load_unchecked<T: RawType>(bytes: &[u8]) -> Result<&T, ProgramError> {
+pub fn load<T: RawType>(bytes: &[u8]) -> Result<&T, ProgramError> {
     if bytes.len() != T::LEN {
         return Err(ProgramError::InvalidAccountData);
     }
-    Ok(&*(bytes.as_ptr() as *const T))
+    Ok(unsafe { &*(bytes.as_ptr() as *const T) })
 }
 
 /// Return a mutable reference for an initialized `T` from the given bytes.
@@ -56,10 +56,10 @@ pub unsafe fn load_unchecked<T: RawType>(bytes: &[u8]) -> Result<&T, ProgramErro
 /// a valid representation of `T`. The length and initialization checks below do
 /// not prove either property.
 #[inline(always)]
-pub unsafe fn load_mut<T: Initializable + RawType>(
+pub fn load_mut_initialized<T: Initializable + RawType>(
     bytes: &mut [u8],
 ) -> Result<&mut T, ProgramError> {
-    load_mut_unchecked(bytes).and_then(|t: &mut T| {
+    load_mut(bytes).and_then(|t: &mut T| {
         // checks if the data is initialized
         if t.is_initialized() {
             Ok(t)
@@ -67,6 +67,23 @@ pub unsafe fn load_mut<T: Initializable + RawType>(
             Err(ProgramError::UninitializedAccount)
         }
     })
+}
+
+/// Return a mutable `T` reference from the given bytes.
+///
+/// This function does not check if the data is initialized.
+///
+/// # Safety
+///
+/// The caller must ensure that `bytes` is properly aligned for `T` and contains
+/// a valid representation of `T`. The length check below does not prove either
+/// property.
+#[inline(always)]
+pub fn load_mut<T: RawType>(bytes: &mut [u8]) -> Result<&mut T, ProgramError> {
+    if bytes.len() != T::LEN {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    Ok(unsafe { &mut *(bytes.as_mut_ptr() as *mut T) })
 }
 
 /// Type alias for fields represented as `COption`.
@@ -81,21 +98,4 @@ pub trait RawType {
     ///
     /// This must be equal to the size of each individual field in the type.
     const LEN: usize;
-}
-
-/// Return a mutable `T` reference from the given bytes.
-///
-/// This function does not check if the data is initialized.
-///
-/// # Safety
-///
-/// The caller must ensure that `bytes` is properly aligned for `T` and contains
-/// a valid representation of `T`. The length check below does not prove either
-/// property.
-#[inline(always)]
-pub unsafe fn load_mut_unchecked<T: RawType>(bytes: &mut [u8]) -> Result<&mut T, ProgramError> {
-    if bytes.len() != T::LEN {
-        return Err(ProgramError::InvalidAccountData);
-    }
-    Ok(&mut *(bytes.as_mut_ptr() as *mut T))
 }
