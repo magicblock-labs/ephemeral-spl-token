@@ -36,7 +36,7 @@ pub fn process_delegate_shuttle_ephemeral_ata(
 
     assert_owner!(shuttle_info, &ephemeral_spl_api::program::id_address());
 
-    // Check initialization
+    // Loading the account to check if the shuttle is correctly initialized
     load_initialized::<ShuttleMetadata>(unsafe { shuttle_info.borrow_unchecked() })?;
 
     assert_owner!(
