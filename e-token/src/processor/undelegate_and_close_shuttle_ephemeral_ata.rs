@@ -6,9 +6,8 @@ use ephemeral_spl_api::state::{
     ephemeral_ata::EphemeralAta, load_initialized, shuttle_ephemeral_ata::ShuttleMetadata,
 };
 use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
-use pinocchio_token_2022::state::TokenAccount;
 
-use crate::processor::utils::get_associated_token_address;
+use crate::processor::utils::{get_associated_token_address, validate_token_account};
 
 const DEFAULT_ESCROW_INDEX: u8 = u8::MAX;
 const INTENT_BUNDLE_DATA_BUF_SIZE: usize = 1280;
@@ -83,28 +82,12 @@ pub fn process_undelegate_and_close_shuttle_ephemeral_ata(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    {
-        let shuttle_wallet_data = unsafe { shuttle_wallet_ata_info.borrow_unchecked() };
-        if shuttle_wallet_data.len() < TokenAccount::BASE_LEN {
-            return Err(ProgramError::InvalidAccountData);
-        }
-        let shuttle_wallet = unsafe { TokenAccount::from_bytes_unchecked(shuttle_wallet_data) };
-        if !shuttle_wallet.is_initialized() {
-            return Err(ProgramError::UninitializedAccount);
-        }
-        if shuttle_wallet.owner() != shuttle_info.address() || shuttle_wallet.mint() != &mint {
-            return Err(ProgramError::InvalidAccountData);
-        }
-    }
-
-    unsafe {
-        if shuttle_wallet_ata_info
-            .owner()
-            .ne(token_program_info.address())
-        {
-            return Err(ProgramError::IllegalOwner);
-        }
-    }
+    validate_token_account(
+        shuttle_wallet_ata_info,
+        &mint,
+        Some(shuttle_info.address()),
+        Some(token_program_info.address()),
+    )?;
 
     undelegate_and_close_shuttle_ephemeral_ata(
         executor,

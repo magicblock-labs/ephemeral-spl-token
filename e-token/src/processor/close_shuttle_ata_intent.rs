@@ -1,3 +1,4 @@
+use crate::processor::utils::validate_token_account;
 use crate::processor::withdraw_spl_tokens::withdraw_ephemeral_ata_tokens;
 use crate::{assert_owner, assert_signer};
 use ephemeral_spl_api::state::{
@@ -7,7 +8,6 @@ use ephemeral_spl_api::state::{
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_token_2022::instructions::CloseAccount;
-use pinocchio_token_2022::state::TokenAccount;
 const DLP_EPHEMERAL_BALANCE_TAG: &[u8] = b"balance";
 
 /// Post-undelegate handler that first withdraws any remaining shuttle EATA
@@ -98,16 +98,13 @@ pub fn process_close_shuttle_ata_intent(
             .as_ref()
             .ok_or(ProgramError::InvalidAccountData)?;
         let (mint, shuttle_wallet_amount) = {
-            let shuttle_wallet =
-                unsafe { TokenAccount::from_account_view_unchecked(shuttle_wallet_ata_info)? };
-            if !shuttle_wallet.is_initialized() {
-                return Err(ProgramError::UninitializedAccount);
-            }
-            if shuttle_wallet.owner() != shuttle_info.address() {
-                return Err(ProgramError::InvalidAccountData);
-            }
-            let mint = *shuttle_wallet.mint();
-            (mint, shuttle_wallet.amount())
+            let token_account = validate_token_account(
+                shuttle_wallet_ata_info,
+                &mint_info.address(),
+                Some(shuttle_info.address()),
+                Some(token_program_info.address()),
+            )?;
+            (token_account.mint(), token_account.amount())
         };
 
         if shuttle_wallet_amount != 0 {
