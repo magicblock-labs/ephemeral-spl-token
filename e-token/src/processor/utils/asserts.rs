@@ -26,7 +26,7 @@ macro_rules! assert_associated_token_address {
             $ata,
             &$crate::processor::utils::get_associated_token_address($wallet, $mint, $token_program),
         ) {
-            return Err(ProgramError::InvalidAccountData);
+            return Err(pinocchio::error::ProgramError::InvalidAccountData);
         }
     };
 }
