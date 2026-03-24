@@ -73,15 +73,15 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
     }
 
     validate_token_account(
-        &accounts.owner_token_info,
+        accounts.owner_token_info,
         &prepared.mint,
-        Some(&accounts.owner_info.address()),
+        Some(accounts.owner_info.address()),
         Some(accounts.token_program_info.address()),
     )?;
     validate_token_account(
-        &accounts.shuttle_wallet_ata_info,
+        accounts.shuttle_wallet_ata_info,
         &prepared.mint,
-        Some(&accounts.shuttle_info.address()),
+        Some(accounts.shuttle_info.address()),
         Some(accounts.token_program_info.address()),
     )?;
 

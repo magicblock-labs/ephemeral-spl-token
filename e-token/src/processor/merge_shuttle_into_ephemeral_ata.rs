@@ -59,8 +59,8 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
 
     let (_, _, shuttle_amount) = validate_token_account(
         shuttle_wallet_ata_info,
-        &mint_info.address(),
-        Some(&shuttle_info.address()),
+        mint_info.address(),
+        Some(shuttle_info.address()),
         Some(token_program_info.address()),
     )?;
 
@@ -70,7 +70,7 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
 
     validate_token_account(
         destination_token_info,
-        &mint_info.address(),
+        mint_info.address(),
         None,
         Some(token_program_info.address()),
     )?;

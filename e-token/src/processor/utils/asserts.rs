@@ -1,6 +1,7 @@
 #[macro_export]
 macro_rules! assert_owner {
     ($account:expr, $expected_owner:expr) => {
+        #[allow(clippy::macro_metavars_in_unsafe)]
         unsafe {
             if !pinocchio::address::address_eq($account.owner(), $expected_owner) {
                 return Err(pinocchio::error::ProgramError::InvalidAccountOwner);
@@ -21,13 +22,10 @@ macro_rules! assert_signer {
 #[macro_export]
 macro_rules! assert_associated_token_address {
     ($ata:expr, $mint:expr, $wallet:expr, $token_program:expr) => {
-        if $ata
-            != &crate::processor::utils::get_associated_token_address(
-                $wallet,
-                $mint,
-                $token_program,
-            )
-        {
+        if !pinocchio::address::address_eq(
+            $ata,
+            &$crate::processor::utils::get_associated_token_address($wallet, $mint, $token_program),
+        ) {
             return Err(ProgramError::InvalidAccountData);
         }
     };

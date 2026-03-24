@@ -66,7 +66,7 @@ pub fn process_undelegate_withdraw_and_close_shuttle_ephemeral_ata(
 
     validate_token_account(
         shuttle_wallet_ata_info,
-        &mint_info.address(),
+        mint_info.address(),
         Some(shuttle_info.address()),
         Some(token_program_info.address()),
     )?;
