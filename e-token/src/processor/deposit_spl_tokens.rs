@@ -1,4 +1,4 @@
-use ephemeral_spl_api::state::{load, load_initialized, load_mut_initialized};
+use ephemeral_spl_api::state::{load_initialized, load_mut_initialized};
 
 use core::marker::PhantomData;
 
@@ -78,7 +78,7 @@ pub(crate) fn transfer_to_vault_for_mint(
 ) -> ProgramResult {
     assert_owner!(vault_info, &ephemeral_spl_api::program::id_address());
 
-    let vault = load::<GlobalVault>(unsafe { vault_info.borrow_unchecked() })?;
+    let vault = load_initialized::<GlobalVault>(unsafe { vault_info.borrow_unchecked() })?;
     if vault.mint != *mint_info.address()
         || vault.token_account != *vault_token_acc.address()
         || vault.mint != *expected_mint
