@@ -57,23 +57,28 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
         return Err(ProgramError::InvalidSeeds);
     }
 
-    let (_, _, shuttle_amount) = validate_token_account(
-        shuttle_wallet_ata_info,
-        mint_info.address(),
-        Some(shuttle_info.address()),
-        Some(token_program_info.address()),
-    )?;
+    let shuttle_amount = {
+        let shuttle_ata = validate_token_account(
+            shuttle_wallet_ata_info,
+            mint_info.address(),
+            Some(shuttle_info.address()),
+            Some(token_program_info.address()),
+        )?;
 
-    if shuttle_amount == 0 {
-        return Ok(());
-    }
+        let amount = shuttle_ata.amount();
+        if amount == 0 {
+            return Ok(());
+        }
 
-    validate_token_account(
-        destination_token_info,
-        mint_info.address(),
-        None,
-        Some(token_program_info.address()),
-    )?;
+        validate_token_account(
+            destination_token_info,
+            mint_info.address(),
+            None,
+            Some(token_program_info.address()),
+        )?;
+
+        amount
+    };
 
     let decimals = read_mint_decimals(mint_info, token_program_info)?;
 

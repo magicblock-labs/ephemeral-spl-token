@@ -81,7 +81,7 @@ pub fn process_deposit_and_queue_transfer(
     let destination_owner = if args.should_create_destination_ata_idempotent() {
         *destination_token_acc.address()
     } else {
-        let (_, owner, _) = validate_token_account(
+        let token = validate_token_account(
             destination_token_acc,
             mint_info.address(),
             None,
@@ -90,10 +90,10 @@ pub fn process_deposit_and_queue_transfer(
         assert_associated_token_address!(
             destination_token_acc.address(),
             mint_info.address(),
-            &owner,
+            token.owner(),
             token_program_info.address()
         );
-        owner
+        *token.owner()
     };
     let split_plan = build_split_plan(amount, split, decimals)?;
 

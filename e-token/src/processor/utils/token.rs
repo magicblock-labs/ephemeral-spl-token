@@ -3,8 +3,6 @@ use pinocchio_token_2022::state::{Mint, TokenAccount};
 
 use crate::assert_owner;
 
-pub type ReadTokenAccount = (Address, Address, u64);
-
 #[inline(always)]
 pub(crate) fn read_mint_decimals(
     mint_info: &AccountView,
@@ -25,7 +23,7 @@ pub(crate) fn read_mint_decimals(
 }
 
 #[inline(always)]
-pub fn read_token_account(account: &AccountView) -> Result<ReadTokenAccount, ProgramError> {
+pub fn read_token_account(account: &AccountView) -> Result<&TokenAccount, ProgramError> {
     let token_data = unsafe { account.borrow_unchecked() };
     if token_data.len() < TokenAccount::BASE_LEN {
         return Err(ProgramError::InvalidAccountData);
@@ -36,31 +34,31 @@ pub fn read_token_account(account: &AccountView) -> Result<ReadTokenAccount, Pro
         return Err(ProgramError::UninitializedAccount);
     }
 
-    Ok((*token.mint(), *token.owner(), token.amount()))
+    Ok(token)
 }
 
 #[inline(always)]
-pub(crate) fn validate_token_account(
-    ata_info: &AccountView,
+pub(crate) fn validate_token_account<'a>(
+    ata_info: &'a AccountView,
     expected_mint: &Address,
     expected_owner: Option<&Address>,
     expected_token_program: Option<&Address>,
-) -> Result<ReadTokenAccount, ProgramError> {
+) -> Result<&'a TokenAccount, ProgramError> {
     if let Some(token_program) = expected_token_program {
         assert_owner!(ata_info, token_program);
     }
 
-    let (mint, owner, amount) = read_token_account(ata_info)?;
-    if !address_eq(&mint, expected_mint) {
+    let token = read_token_account(ata_info)?;
+    if !address_eq(token.mint(), expected_mint) {
         return Err(ProgramError::InvalidAccountData);
     }
     if let Some(expected_owner) = expected_owner {
-        if !address_eq(&owner, expected_owner) {
+        if !address_eq(token.owner(), expected_owner) {
             return Err(ProgramError::IllegalOwner);
         }
     }
 
-    Ok((mint, owner, amount))
+    Ok(token)
 }
 
 #[inline(always)]
