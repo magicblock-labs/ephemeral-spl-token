@@ -32,7 +32,7 @@ pub fn process_delegate_ephemeral_ata(
 
     // Load Ephemeral ATA account
     let ephemeral_ata =
-        load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked_mut() })?;
+        load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
 
     let config = DelegateConfig {
         validator: args.validator().map(Address::new_from_array),
