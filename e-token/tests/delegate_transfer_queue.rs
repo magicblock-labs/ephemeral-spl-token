@@ -6,7 +6,6 @@ use ephemeral_spl_api::state::transfer_queue::{
 };
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
-use solana_keypair::Keypair;
 use solana_program::{
     account_info::AccountInfo, entrypoint::ProgramResult, program_error::ProgramError, rent::Rent,
 };
@@ -16,6 +15,7 @@ use solana_signer::Signer;
 use solana_transaction::Transaction;
 
 pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
+pub const VALIDATOR: Pubkey = Pubkey::new_from_array([77; 32]);
 
 fn read_header_unaligned(data: &[u8]) -> TransferQueueHeader {
     assert!(data.len() >= header_len());
@@ -91,7 +91,10 @@ fn process_delegation_program_mock(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    let (commit_frequency_ms, _) = parse_delegate_validator(&instruction_data[8..])?;
+    let (commit_frequency_ms, validator) = parse_delegate_validator(&instruction_data[8..])?;
+    if validator != Some(VALIDATOR.to_bytes()) {
+        return Err(ProgramError::InvalidInstructionData);
+    }
 
     {
         let buffer_data = buffer.try_borrow_data()?;
@@ -141,9 +144,8 @@ async fn delegate_transfer_queue_succeeds_and_is_idempotent() {
 
     let context = &mut pt.start_with_context().await;
     let payer = context.payer.pubkey();
-    let validator = Keypair::new().pubkey();
     let (queue, bump) =
-        Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref(), validator.as_ref()], &PROGRAM);
+        Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref(), VALIDATOR.as_ref()], &PROGRAM);
 
     let ix_init_queue = Instruction {
         program_id: PROGRAM,
@@ -151,7 +153,7 @@ async fn delegate_transfer_queue_succeeds_and_is_idempotent() {
             AccountMeta::new(payer, true),
             AccountMeta::new(queue, false),
             AccountMeta::new_readonly(mint, false),
-            AccountMeta::new_readonly(validator, false),
+            AccountMeta::new_readonly(VALIDATOR, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
         data: vec![instruction::INITIALIZE_TRANSFER_QUEUE],
