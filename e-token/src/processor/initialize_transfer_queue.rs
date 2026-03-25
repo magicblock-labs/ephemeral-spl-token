@@ -6,7 +6,7 @@ use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
-use pinocchio_system::instructions::CreateAccount;
+use pinocchio_system::instructions::{CreateAccount, Transfer};
 
 pub const DEFAULT_TRANSFER_QUEUE_ITEMS: u32 = 92;
 /// Default queue size in bytes. (HEADER_LEN + ITEM_LEN * DEFAULT_TRANSFER_QUEUE_ITEMS)
@@ -56,6 +56,7 @@ pub fn process_initialize_transfer_queue(
         return Err(ProgramError::InvalidSeeds);
     }
 
+    let rent = Rent::get()?;
     if !queue_info.owned_by(&program_id) {
         if queue_info.lamports() > 0 {
             return Err(ProgramError::IllegalOwner);
@@ -79,14 +80,22 @@ pub fn process_initialize_transfer_queue(
             from: payer_info,
             to: queue_info,
             space: (queue_size as u64).min(DEFAULT_TRANSFER_QUEUE_SIZE_BYTES),
-            lamports: Rent::get()?.try_minimum_balance(queue_size)?,
+            lamports: rent.try_minimum_balance(queue_size)?,
             owner: &program_id,
         }
         .invoke_signed(&[signer])?;
+    } else if queue_info.lamports() < rent.try_minimum_balance(queue_size)? {
+        // Transfer missing lamports
+        Transfer {
+            from: payer_info,
+            to: queue_info,
+            lamports: rent.try_minimum_balance(queue_size)? - queue_info.lamports(),
+        }
+        .invoke()?;
     }
 
     let data_len = queue_info.data_len();
-    if data_len < header_len() || capacity_from_data_len(data_len) == 0 {
+    if capacity_from_data_len(data_len) == 0 {
         return Err(ProgramError::InvalidAccountData);
     }
 
