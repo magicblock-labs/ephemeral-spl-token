@@ -39,7 +39,7 @@ pub fn process_transfer_queue_tick(
 
     let program_id = ephemeral_spl_api::program::id_address();
     let clock = Clock::get()?;
-    let (mint, queue_bump, queue_len, queued_transfer) = {
+    let (mint, queue_bump, queue_len, queued_transfer, validator) = {
         let data = unsafe { queue_info.borrow_unchecked() };
         let (header, _) = queue_views_checked(data)?;
         let mint = header.mint;
@@ -50,7 +50,7 @@ pub fn process_transfer_queue_tick(
             .ok_or(ProgramError::InvalidInstructionData)?;
 
         let (derived_queue, queue_bump) = ephemeral_spl_api::Address::find_program_address(
-            &[QUEUE_SEED, mint.as_ref()],
+            &[QUEUE_SEED, mint.as_ref(), header.validator.as_ref()],
             &program_id,
         );
         if derived_queue != *queue_info.address() {
@@ -80,7 +80,7 @@ pub fn process_transfer_queue_tick(
             queue_len
         );
 
-        (mint, queue_bump, queue_len, next)
+        (mint, queue_bump, queue_len, next, header.validator)
     };
     #[cfg(not(feature = "logging"))]
     let _ = queue_len;
@@ -147,6 +147,7 @@ pub fn process_transfer_queue_tick(
     let signer_seeds = [
         Seed::from(QUEUE_SEED),
         Seed::from(mint.as_ref()),
+        Seed::from(validator.as_ref()),
         Seed::from(&queue_bump_seed),
     ];
     let signer = Signer::from(&signer_seeds);

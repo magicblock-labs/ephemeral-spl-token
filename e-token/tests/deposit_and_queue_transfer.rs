@@ -44,7 +44,7 @@ fn read_item_unaligned(data: &[u8], index: usize) -> QueuedTransfer {
     unsafe { core::ptr::read_unaligned(data[offset..].as_ptr() as *const QueuedTransfer) }
 }
 
-async fn setup_fixture(queue_size_bytes: Option<u32>) -> Fixture {
+async fn setup_fixture(items: Option<u32>) -> Fixture {
     let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
     utils::add_associated_token_program(&mut pt);
     let mut context = pt.start_with_context().await;
@@ -52,6 +52,7 @@ async fn setup_fixture(queue_size_bytes: Option<u32>) -> Fixture {
     let payer = context.payer.pubkey();
     let mint_kp = Keypair::new();
     let mint = mint_kp.pubkey();
+    let validator = Keypair::new().pubkey();
 
     let pdas = utils::derive_pdas(PROGRAM, payer, mint);
     let setup = utils::setup_mint_and_token_accounts(
@@ -64,7 +65,8 @@ async fn setup_fixture(queue_size_bytes: Option<u32>) -> Fixture {
     )
     .await;
 
-    let queue = Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref()], &PROGRAM).0;
+    let queue =
+        Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref(), validator.as_ref()], &PROGRAM).0;
     let vault = pdas.vault;
     let user_source_ata = setup.user_tokens[0];
     let destination_ata = utils::derive_associated_token_address(payer, mint);
@@ -87,8 +89,8 @@ async fn setup_fixture(queue_size_bytes: Option<u32>) -> Fixture {
     };
 
     let mut queue_init_data = vec![instruction::INITIALIZE_TRANSFER_QUEUE];
-    if let Some(queue_size_bytes) = queue_size_bytes {
-        queue_init_data.extend_from_slice(&queue_size_bytes.to_le_bytes());
+    if let Some(items) = items {
+        queue_init_data.extend_from_slice(&items.to_le_bytes());
     }
     let ix_init_queue = Instruction {
         program_id: PROGRAM,
@@ -96,6 +98,7 @@ async fn setup_fixture(queue_size_bytes: Option<u32>) -> Fixture {
             AccountMeta::new(payer, true),
             AccountMeta::new(queue, false),
             AccountMeta::new_readonly(mint, false),
+            AccountMeta::new_readonly(validator, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
         data: queue_init_data,
@@ -377,8 +380,8 @@ async fn deposit_and_queue_transfer_rejects_split_greater_than_amount() {
 
 #[tokio::test]
 async fn deposit_and_queue_transfer_rejects_when_queue_is_full() {
-    let queue_size_bytes = (header_len() + (item_len() * 2)) as u32;
-    let fixture = setup_fixture(Some(queue_size_bytes)).await;
+    let items = 2;
+    let fixture = setup_fixture(Some(items)).await;
     let ix = build_deposit_and_queue_ix(&fixture, 6, 0, 0, 3);
     let blockhash = fixture
         .context

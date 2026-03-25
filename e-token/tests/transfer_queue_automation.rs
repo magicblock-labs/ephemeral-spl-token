@@ -259,6 +259,7 @@ async fn setup_fixture() -> Fixture {
     let payer = context.payer.pubkey();
     let mint_kp = Keypair::new();
     let mint = mint_kp.pubkey();
+    let validator = Keypair::new().pubkey();
 
     let pdas = utils::derive_pdas(PROGRAM, payer, mint);
     let setup = utils::setup_mint_and_token_accounts(
@@ -271,7 +272,8 @@ async fn setup_fixture() -> Fixture {
     )
     .await;
 
-    let queue = Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref()], &PROGRAM).0;
+    let queue =
+        Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref(), validator.as_ref()], &PROGRAM).0;
     let vault = pdas.vault;
     let source_ata = setup.user_tokens[0];
     let destination_ata = utils::derive_associated_token_address(payer, mint);
@@ -299,6 +301,7 @@ async fn setup_fixture() -> Fixture {
             AccountMeta::new(payer, true),
             AccountMeta::new(queue, false),
             AccountMeta::new_readonly(mint, false),
+            AccountMeta::new_readonly(validator, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
         data: vec![instruction::INITIALIZE_TRANSFER_QUEUE],
@@ -556,6 +559,7 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
         let payer = context.payer.pubkey();
         let mint_kp = Keypair::new();
         let mint = mint_kp.pubkey();
+        let validator = Keypair::new().pubkey();
 
         let pdas = utils::derive_pdas(PROGRAM, payer, mint);
         let setup = utils::setup_mint_and_token_accounts(
@@ -568,7 +572,11 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
         )
         .await;
 
-        let queue = Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref()], &PROGRAM).0;
+        let queue = Pubkey::find_program_address(
+            &[QUEUE_SEED, mint.as_ref(), validator.as_ref()],
+            &PROGRAM,
+        )
+        .0;
         let vault = pdas.vault;
         let source_ata = setup.user_tokens[0];
         let destination_ata = utils::derive_associated_token_address(payer, mint);
@@ -597,6 +605,7 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
                 AccountMeta::new(payer, true),
                 AccountMeta::new(queue, false),
                 AccountMeta::new_readonly(mint, false),
+                AccountMeta::new_readonly(validator, false),
                 AccountMeta::new_readonly(solana_system_interface::program::ID, false),
             ],
             data: vec![instruction::INITIALIZE_TRANSFER_QUEUE],

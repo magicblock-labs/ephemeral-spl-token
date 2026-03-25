@@ -19,7 +19,7 @@ pub fn process_deposit_and_queue_transfer(
     instruction_data: &[u8],
 ) -> ProgramResult {
     // Expected accounts:
-    // 0. [writable] Transfer queue PDA derived from [QUEUE_SEED, mint]
+    // 0. [writable] Transfer queue PDA derived from [QUEUE_SEED, mint, validator]
     // 1. []         Global vault PDA derived from [mint]
     // 2. []         Mint account
     // 3. [writable] User source token account
@@ -47,19 +47,20 @@ pub fn process_deposit_and_queue_transfer(
     )?;
 
     let split = args.split() as usize;
+    let (queue_len_before, validator) = {
+        let data = unsafe { queue_info.borrow_unchecked() };
+        queue_len_for_mint_with_capacity(data, mint_info.address(), split)?
+    };
+
     let program_id = ephemeral_spl_api::program::id_address();
     let (derived_queue, _) = ephemeral_spl_api::Address::find_program_address(
-        &[QUEUE_SEED, mint_info.address().as_ref()],
+        &[QUEUE_SEED, mint_info.address().as_ref(), validator.as_ref()],
         &program_id,
     );
     if derived_queue != *queue_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
 
-    let queue_len_before = {
-        let data = unsafe { queue_info.borrow_unchecked() };
-        queue_len_for_mint_with_capacity(data, mint_info.address(), split)?
-    };
     #[cfg(not(feature = "logging"))]
     let _ = queue_len_before;
 

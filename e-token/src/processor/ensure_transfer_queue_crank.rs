@@ -30,7 +30,7 @@ pub fn process_ensure_transfer_queue_crank(
 
     // Expected accounts:
     // 0. [writable, signer] Payer for the recurring crank
-    // 1. [writable] Transfer queue PDA derived from [QUEUE_SEED, mint]
+    // 1. [writable] Transfer queue PDA derived from [QUEUE_SEED, mint, validator]
     // 2. [writable] Magic context account
     // 3. []         Magic program
     let [payer_info, queue_info, magic_context_info, magic_program_info, ..] = accounts else {
@@ -45,15 +45,20 @@ pub fn process_ensure_transfer_queue_crank(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    let (mint, bump) = {
+    let (mint, bump, validator) = {
         let data = unsafe { queue_info.borrow_unchecked() };
         let (header, _) = queue_views_checked(data)?;
-        (header.mint, header.bump)
+        (header.mint, header.bump, header.validator)
     };
 
     let bump_seed = [bump];
     let derived_queue = ephemeral_spl_api::Address::create_program_address(
-        &[QUEUE_SEED, mint.as_ref(), bump_seed.as_ref()],
+        &[
+            QUEUE_SEED,
+            mint.as_ref(),
+            validator.as_ref(),
+            bump_seed.as_ref(),
+        ],
         &program_id,
     )
     .map_err(|_| ProgramError::InvalidAccountData)?;
