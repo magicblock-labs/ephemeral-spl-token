@@ -2,12 +2,14 @@ use ephemeral_rollups_pinocchio::intent_bundle::{
     ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
 };
 use ephemeral_spl_api::instruction::internal::CLOSE_SHUTTLE_ATA_INTENT;
+use ephemeral_spl_api::state::load_initialized;
 use ephemeral_spl_api::state::{
-    ephemeral_ata::EphemeralAta, load_unchecked, shuttle_ephemeral_ata::ShuttleMetadata,
-    Initializable,
+    ephemeral_ata::EphemeralAta, shuttle_ephemeral_ata::ShuttleMetadata,
 };
 use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
-use pinocchio_token_2022::state::TokenAccount;
+
+use crate::processor::utils::{get_associated_token_address, validate_token_account};
+use crate::{assert_associated_token_address, assert_owner, assert_signer};
 
 const DEFAULT_ESCROW_INDEX: u8 = u8::MAX;
 const INTENT_BUNDLE_DATA_BUF_SIZE: usize = 1536;
@@ -39,52 +41,41 @@ pub fn process_undelegate_withdraw_and_close_shuttle_ephemeral_ata(
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
-    if !executor.is_signer() {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
+    assert_signer!(executor);
+    assert_owner!(shuttle_info, &ephemeral_spl_api::program::id_address());
 
-    unsafe {
-        if shuttle_info
-            .owner()
-            .ne(&ephemeral_spl_api::program::id_address())
-        {
-            return Err(ProgramError::IllegalOwner);
-        }
-    }
-
-    let shuttle = unsafe { load_unchecked::<ShuttleMetadata>(shuttle_info.borrow_unchecked())? };
-    if !shuttle.is_initialized() {
-        return Err(ProgramError::InvalidAccountData);
-    }
+    let shuttle = load_initialized::<ShuttleMetadata>(unsafe { shuttle_info.borrow_unchecked() })?;
     if shuttle.payer != *rent_reimbursement.address() {
         return Err(ProgramError::IncorrectAuthority);
     }
 
     let shuttle_ephemeral_ata =
-        unsafe { load_unchecked::<EphemeralAta>(shuttle_ephemeral_ata_info.borrow_unchecked())? };
-    if !shuttle_ephemeral_ata.is_initialized()
-        || shuttle_ephemeral_ata.owner != *shuttle_info.address()
+        load_initialized::<EphemeralAta>(unsafe { shuttle_ephemeral_ata_info.borrow_unchecked() })?;
+    if shuttle_ephemeral_ata.owner != *shuttle_info.address()
         || shuttle_ephemeral_ata.mint != *mint_info.address()
     {
         return Err(ProgramError::InvalidAccountData);
     }
 
-    let expected_shuttle_wallet_ata = get_associated_token_address(
-        shuttle_info.address(),
+    assert_associated_token_address!(
+        shuttle_wallet_ata_info.address(),
         mint_info.address(),
-        token_program_info.address(),
+        shuttle_info.address(),
+        token_program_info.address()
     );
-    if expected_shuttle_wallet_ata != *shuttle_wallet_ata_info.address() {
-        return Err(ProgramError::InvalidSeeds);
-    }
 
     validate_token_account(
         shuttle_wallet_ata_info,
-        token_program_info,
-        mint_info,
-        shuttle_info,
+        mint_info.address(),
+        Some(shuttle_info.address()),
+        Some(token_program_info.address()),
     )?;
-    validate_destination_token_account(destination_token_info, token_program_info, mint_info)?;
+    validate_token_account(
+        destination_token_info,
+        mint_info.address(),
+        None,
+        Some(token_program_info.address()),
+    )?;
 
     undelegate_withdraw_and_close_shuttle_ephemeral_ata(
         executor,
@@ -110,67 +101,6 @@ fn parse_escrow_index(instruction_data: &[u8]) -> Result<u8, ProgramError> {
         return Err(ProgramError::InvalidInstructionData);
     }
     Ok(instruction_data[0])
-}
-
-#[inline(always)]
-fn get_associated_token_address(
-    wallet: &Address,
-    mint: &Address,
-    token_program: &Address,
-) -> Address {
-    ephemeral_spl_api::Address::find_program_address(
-        &[wallet.as_ref(), token_program.as_ref(), mint.as_ref()],
-        &pinocchio_associated_token_account::id(),
-    )
-    .0
-}
-
-#[inline(always)]
-fn validate_token_account(
-    account_info: &AccountView,
-    token_program_info: &AccountView,
-    mint_info: &AccountView,
-    owner_info: &AccountView,
-) -> ProgramResult {
-    if !account_info.owned_by(token_program_info.address()) {
-        return Err(ProgramError::IllegalOwner);
-    }
-
-    let account_data = unsafe { account_info.borrow_unchecked() };
-    if account_data.len() < TokenAccount::BASE_LEN {
-        return Err(ProgramError::InvalidAccountData);
-    }
-    let token = unsafe { TokenAccount::from_bytes_unchecked(account_data) };
-    if !token.is_initialized()
-        || token.owner() != owner_info.address()
-        || token.mint() != mint_info.address()
-    {
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    Ok(())
-}
-
-#[inline(always)]
-fn validate_destination_token_account(
-    destination_token_info: &AccountView,
-    token_program_info: &AccountView,
-    mint_info: &AccountView,
-) -> ProgramResult {
-    if !destination_token_info.owned_by(token_program_info.address()) {
-        return Err(ProgramError::IllegalOwner);
-    }
-
-    let destination_data = unsafe { destination_token_info.borrow_unchecked() };
-    if destination_data.len() < TokenAccount::BASE_LEN {
-        return Err(ProgramError::InvalidAccountData);
-    }
-    let destination = unsafe { TokenAccount::from_bytes_unchecked(destination_data) };
-    if !destination.is_initialized() || destination.mint() != mint_info.address() {
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    Ok(())
 }
 
 #[inline(never)]

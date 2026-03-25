@@ -1,11 +1,13 @@
+use crate::processor::utils::validate_token_account;
 use crate::processor::withdraw_spl_tokens::withdraw_ephemeral_ata_tokens;
+use crate::{assert_owner, assert_signer};
 use ephemeral_spl_api::state::{
-    ephemeral_ata::read_ephemeral_ata_compat, load, shuttle_ephemeral_ata::ShuttleMetadata,
+    ephemeral_ata::read_ephemeral_ata_compat, load_initialized,
+    shuttle_ephemeral_ata::ShuttleMetadata,
 };
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_token_2022::instructions::CloseAccount;
-use pinocchio_token_2022::state::TokenAccount;
 const DLP_EPHEMERAL_BALANCE_TAG: &[u8] = b"balance";
 
 /// Post-undelegate handler that first withdraws any remaining shuttle EATA
@@ -52,9 +54,7 @@ pub fn process_close_shuttle_ata_intent(
     let escrow_authority = &accounts[accounts.len() - 2];
     let escrow_signer = &accounts[accounts.len() - 1];
 
-    if !escrow_signer.is_signer() {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
+    assert_signer!(escrow_signer);
 
     let escrow_index_seed = [*escrow_index];
     let (expected_escrow, _) = ephemeral_spl_api::Address::find_program_address(
@@ -76,17 +76,10 @@ pub fn process_close_shuttle_ata_intent(
     let mut shuttle_id = 0u32;
     let mut shuttle_owner_opt = None;
     if shuttle_present {
-        if !shuttle_info.owned_by(&ephemeral_spl_api::program::id_address()) {
-            return Err(ProgramError::IllegalOwner);
-        }
-        let shuttle_data = shuttle_info.try_borrow()?;
-        let shuttle = unsafe { load::<ShuttleMetadata>(&shuttle_data) }.map_err(|err| {
-            if err == ProgramError::UninitializedAccount {
-                ProgramError::InvalidAccountData
-            } else {
-                err
-            }
-        })?;
+        assert_owner!(shuttle_info, &ephemeral_spl_api::program::id_address());
+
+        let shuttle =
+            load_initialized::<ShuttleMetadata>(unsafe { shuttle_info.borrow_unchecked() })?;
         if shuttle.payer != *rent_reimbursement_info.address() {
             return Err(ProgramError::IncorrectAuthority);
         }
@@ -96,9 +89,7 @@ pub fn process_close_shuttle_ata_intent(
     }
 
     if shuttle_wallet_present {
-        if !shuttle_wallet_ata_info.owned_by(token_program_info.address()) {
-            return Err(ProgramError::IllegalOwner);
-        }
+        assert_owner!(shuttle_wallet_ata_info, token_program_info.address());
         if !shuttle_present {
             return Err(ProgramError::InvalidAccountData);
         }
@@ -107,20 +98,13 @@ pub fn process_close_shuttle_ata_intent(
             .as_ref()
             .ok_or(ProgramError::InvalidAccountData)?;
         let (mint, shuttle_wallet_amount) = {
-            let shuttle_wallet_data = shuttle_wallet_ata_info.try_borrow()?;
-            if shuttle_wallet_data.len() < TokenAccount::BASE_LEN {
-                return Err(ProgramError::InvalidAccountData);
-            }
-            let shuttle_wallet =
-                unsafe { TokenAccount::from_bytes_unchecked(&shuttle_wallet_data) };
-            if !shuttle_wallet.is_initialized() {
-                return Err(ProgramError::UninitializedAccount);
-            }
-            if shuttle_wallet.owner() != shuttle_info.address() {
-                return Err(ProgramError::InvalidAccountData);
-            }
-            let mint = *shuttle_wallet.mint();
-            (mint, shuttle_wallet.amount())
+            let token_account = validate_token_account(
+                shuttle_wallet_ata_info,
+                &mint_info.address(),
+                Some(shuttle_info.address()),
+                Some(token_program_info.address()),
+            )?;
+            (token_account.mint(), token_account.amount())
         };
 
         if shuttle_wallet_amount != 0 {
@@ -159,9 +143,10 @@ pub fn process_close_shuttle_ata_intent(
     }
 
     if shuttle_ephemeral_present {
-        if !shuttle_ephemeral_ata_info.owned_by(&ephemeral_spl_api::program::id_address()) {
-            return Err(ProgramError::IllegalOwner);
-        }
+        assert_owner!(
+            shuttle_ephemeral_ata_info,
+            &ephemeral_spl_api::program::id_address()
+        );
         if !shuttle_present {
             return Err(ProgramError::InvalidAccountData);
         }

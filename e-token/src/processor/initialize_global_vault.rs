@@ -6,7 +6,7 @@ use pinocchio::sysvars::Sysvar;
 use pinocchio_system::instructions::{CreateAccount, Transfer};
 use {
     ephemeral_spl_api::state::global_vault::GlobalVault,
-    ephemeral_spl_api::state::load_mut_unchecked,
+    ephemeral_spl_api::state::load_mut,
     pinocchio::{error::ProgramError, AccountView, ProgramResult},
 };
 
@@ -122,7 +122,7 @@ pub fn process_initialize_global_vault(
     .invoke()?;
 
     // Ensure account data has the expected size.
-    let vault = unsafe { load_mut_unchecked::<GlobalVault>(vault_info.borrow_unchecked_mut())? };
+    let vault = load_mut::<GlobalVault>(unsafe { vault_info.borrow_unchecked_mut() })?;
 
     // Initialize the vault
     vault.mint = *mint_info.address();

@@ -1,5 +1,7 @@
-use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_unchecked, Initializable};
+use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_initialized};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+
+use crate::{assert_owner, assert_signer};
 
 #[inline(always)]
 pub fn process_close_ephemeral_ata(
@@ -14,31 +16,18 @@ pub fn process_close_ephemeral_ata(
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
-    if !owner_info.is_signer() {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
-
-    unsafe {
-        if ephemeral_ata_info
-            .owner()
-            .ne(&ephemeral_spl_api::program::id_address())
-        {
-            return Err(ProgramError::IllegalOwner);
-        }
-    }
+    assert_signer!(owner_info);
+    assert_owner!(
+        ephemeral_ata_info,
+        &ephemeral_spl_api::program::id_address()
+    );
 
     let (mint, lamports_to_refund) = {
         let ephemeral_ata =
-            unsafe { load_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked())? };
-
-        if !ephemeral_ata.is_initialized() {
-            return Err(ProgramError::InvalidAccountData);
-        }
-
+            load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
         if ephemeral_ata.owner != *owner_info.address() {
             return Err(ProgramError::IncorrectAuthority);
         }
-
         if ephemeral_ata.amount != 0 {
             return Err(ProgramError::InvalidArgument);
         }

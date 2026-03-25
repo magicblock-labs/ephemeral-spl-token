@@ -1,6 +1,6 @@
 use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
-use ephemeral_spl_api::state::{load_mut_unchecked, Initializable, RawType};
+use ephemeral_spl_api::state::{load_initialized, Initializable, RawType};
 use solana_instruction::Instruction;
 use {
     ephemeral_spl_api::instruction,
@@ -63,8 +63,7 @@ async fn initialize_ephemeral_ata() {
     assert_eq!(account.data.len(), EphemeralAta::LEN);
 
     let mut mut_acc = account.data.clone();
-    let ephemeral_ata =
-        unsafe { load_mut_unchecked::<EphemeralAta>(mut_acc.as_mut_slice()).unwrap() };
+    let ephemeral_ata = load_initialized::<EphemeralAta>(mut_acc.as_mut_slice()).unwrap();
     assert!(ephemeral_ata.is_initialized());
     assert_eq!(ephemeral_ata.amount, 0);
     assert_eq!(ephemeral_ata.owner.as_array(), &user.to_bytes());

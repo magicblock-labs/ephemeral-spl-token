@@ -1,10 +1,11 @@
 use ephemeral_rollups_pinocchio::instruction::DelegateAccountCpiBuilder;
 use ephemeral_rollups_pinocchio::types::DelegateConfig;
 use ephemeral_spl_api::state::{
-    ephemeral_ata::EphemeralAta, load_unchecked, shuttle_ephemeral_ata::ShuttleMetadata,
-    Initializable,
+    ephemeral_ata::EphemeralAta, load_initialized, shuttle_ephemeral_ata::ShuttleMetadata,
 };
 use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
+
+use crate::assert_owner;
 
 pub fn process_delegate_shuttle_ephemeral_ata(
     accounts: &[AccountView],
@@ -33,35 +34,19 @@ pub fn process_delegate_shuttle_ephemeral_ata(
         return Ok(());
     }
 
-    unsafe {
-        if shuttle_info
-            .owner()
-            .ne(&ephemeral_spl_api::program::id_address())
-        {
-            return Err(ProgramError::IllegalOwner);
-        }
-    }
+    assert_owner!(shuttle_info, &ephemeral_spl_api::program::id_address());
 
-    let shuttle = unsafe { load_unchecked::<ShuttleMetadata>(shuttle_info.borrow_unchecked())? };
-    if !shuttle.is_initialized() {
-        return Err(ProgramError::InvalidAccountData);
-    }
+    // Loading the account to check if the shuttle is correctly initialized
+    load_initialized::<ShuttleMetadata>(unsafe { shuttle_info.borrow_unchecked() })?;
 
-    unsafe {
-        if ephemeral_ata_info
-            .owner()
-            .ne(&ephemeral_spl_api::program::id_address())
-        {
-            return Err(ProgramError::IllegalOwner);
-        }
-    }
+    assert_owner!(
+        ephemeral_ata_info,
+        &ephemeral_spl_api::program::id_address()
+    );
 
     let (mint, eata_bump) = {
         let ephemeral_ata =
-            unsafe { load_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked())? };
-        if !ephemeral_ata.is_initialized() {
-            return Err(ProgramError::UninitializedAccount);
-        }
+            load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
         if ephemeral_ata.owner != *shuttle_info.address() {
             return Err(ProgramError::InvalidAccountData);
         }

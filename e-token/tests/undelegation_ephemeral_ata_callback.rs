@@ -2,7 +2,7 @@ use dlp_api::pda::{fees_vault_pda, validator_fees_vault_pda_from_validator};
 use ephemeral_rollups_pinocchio::consts::DELEGATION_PROGRAM_ID;
 use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
-use ephemeral_spl_api::state::{load_mut_unchecked, RawType};
+use ephemeral_spl_api::state::{load_mut, RawType};
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
@@ -62,7 +62,7 @@ async fn undelegation_callback_restores_ephemeral_ata() {
 
     // Setup the delegated PDA
     let mut data = vec![0u8; EphemeralAta::LEN];
-    let ephemeral_ata = unsafe { load_mut_unchecked::<EphemeralAta>(data.as_mut_slice()).unwrap() };
+    let ephemeral_ata = load_mut::<EphemeralAta>(data.as_mut_slice()).unwrap();
     ephemeral_ata.mint = pinocchio::Address::new_from_array(mint.to_bytes());
     ephemeral_ata.amount = 500;
     pt.add_account(

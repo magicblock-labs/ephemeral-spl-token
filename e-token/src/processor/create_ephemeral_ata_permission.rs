@@ -5,8 +5,10 @@ use ephemeral_rollups_pinocchio::acl::{
     pda::permission_pda_from_permissioned_account,
     types::{Member, MemberFlags, MembersArgs},
 };
-use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_unchecked, Initializable};
+use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_initialized};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+
+use crate::assert_signer;
 
 #[inline(always)]
 pub fn process_create_ephemeral_ata_permission(
@@ -31,20 +33,15 @@ pub fn process_create_ephemeral_ata_permission(
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
-    if !payer_info.is_signer() {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
+    assert_signer!(payer_info);
 
     if *permission_program.address() != PERMISSION_PROGRAM_ID {
         return Err(ProgramError::InvalidAccountData);
     }
 
     let ephemeral_ata =
-        unsafe { load_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked())? };
+        load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
 
-    if !ephemeral_ata.is_initialized() {
-        return Err(ProgramError::InvalidAccountData);
-    }
     let flag_byte = args.flag_byte();
 
     // Valid in 2 cases:

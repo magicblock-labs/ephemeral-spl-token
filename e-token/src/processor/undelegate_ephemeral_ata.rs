@@ -1,6 +1,7 @@
-use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_unchecked};
+use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_initialized};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
-use pinocchio_token_2022::state::TokenAccount;
+
+use crate::processor::utils::validate_token_account;
 
 fn commit_and_undelegate_accounts(
     payer: &AccountView,
@@ -44,7 +45,7 @@ pub fn process_undelegate_ephemeral_ata(
     // Scope the borrow so it's released before any CPI.
     let mint = {
         let eata_data =
-            unsafe { load_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked())? };
+            load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
         #[allow(clippy::clone_on_copy)]
         let mint = eata_data.mint.clone();
         mint
@@ -61,20 +62,7 @@ pub fn process_undelegate_ephemeral_ata(
     }
 
     // Validate that the provided ATA account is a valid SPL token account for [payer, mint].
-    {
-        let token_data = unsafe { ata_info.borrow_unchecked() };
-        if token_data.len() < TokenAccount::BASE_LEN {
-            return Err(ProgramError::InvalidAccountData);
-        }
-        let token_acc = unsafe { TokenAccount::from_bytes_unchecked(token_data) };
-        if !token_acc.is_initialized() {
-            return Err(ProgramError::UninitializedAccount);
-        }
-
-        if token_acc.mint() != &mint || token_acc.owner() != payer.address() {
-            return Err(ProgramError::InvalidAccountData);
-        }
-    }
+    validate_token_account(ata_info, &mint, Some(payer.address()), None)?;
 
     // Commit and undelegate with the user's ATA and the ephemeral ATA as the account set
     commit_and_undelegate_accounts(payer, &[ata_info.clone()], magic_context, magic_program)
