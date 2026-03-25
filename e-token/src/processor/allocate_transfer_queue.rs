@@ -47,8 +47,6 @@ pub fn process_allocate_transfer_queue(
         current_items.min(MAX_ITEMS_PER_REALLOC as u64) as usize * item_len()
     };
 
-    pinocchio_log::log!("Reallocating transfer queue to size: {}", realloc_size);
-
     queue_info.resize(queue_info.data_len() + realloc_size)?;
 
     Ok(())
