@@ -38,7 +38,7 @@ pub fn process_transfer_queue_tick(
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
-    let program_id = ephemeral_spl_api::ID;
+    let program_id = crate::ID;
     let clock = Clock::get()?;
     let (mint, queue_bump, queue_len, queued_transfer) = {
         let data = unsafe { queue_info.borrow_unchecked() };
@@ -132,7 +132,7 @@ pub fn process_transfer_queue_tick(
         },
     ];
     let standalone_actions = [CallHandler {
-        destination_program: ephemeral_spl_api::ID,
+        destination_program: crate::ID,
         escrow_authority: queue_info.clone(),
         args: ActionArgs::new(&execute_data)
             .with_escrow_index(EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX),

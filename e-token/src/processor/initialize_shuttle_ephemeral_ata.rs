@@ -1,6 +1,6 @@
 use crate::processor::initialize_ephemeral_ata::initialize_ephemeral_ata_with_sponsor;
 use core::marker::PhantomData;
-use ephemeral_spl_api::state::{load_mut_unchecked, load_unchecked, Initializable, RawType};
+use ephemeral_spl_api::state::{load_initialized, load_mut, RawType};
 use pinocchio::cpi::Signer;
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
@@ -78,7 +78,7 @@ pub(crate) fn initialize_shuttle_ephemeral_ata_with_sponsor(
         return Err(ProgramError::InvalidSeeds);
     }
 
-    let shuttle_is_owned_by_program = unsafe { shuttle_info.owner().eq(&ephemeral_spl_api::ID) };
+    let shuttle_is_owned_by_program = unsafe { shuttle_info.owner().eq(&crate::ID) };
 
     if !shuttle_is_owned_by_program {
         let bump = [shuttle_bump];
@@ -95,7 +95,7 @@ pub(crate) fn initialize_shuttle_ephemeral_ata_with_sponsor(
             to: shuttle_info,
             space: ShuttleMetadata::LEN as u64,
             lamports: Rent::get()?.try_minimum_balance(ShuttleMetadata::LEN)?,
-            owner: &ephemeral_spl_api::ID,
+            owner: &crate::ID,
         };
         if let Some(sponsor_signer) = sponsor_signer.as_ref() {
             let signers = [sponsor_signer.clone(), shuttle_signer];
@@ -105,8 +105,7 @@ pub(crate) fn initialize_shuttle_ephemeral_ata_with_sponsor(
             create_shuttle.invoke_signed(&signers)?;
         }
 
-        let shuttle =
-            unsafe { load_mut_unchecked::<ShuttleMetadata>(shuttle_info.borrow_unchecked_mut())? };
+        let shuttle = unsafe { load_mut::<ShuttleMetadata>(shuttle_info.borrow_unchecked_mut())? };
 
         shuttle.owner = *owner_info.address();
         shuttle.payer = *refund_recipient_info.address();
@@ -136,16 +135,14 @@ pub(crate) fn initialize_shuttle_ephemeral_ata_with_sponsor(
                 }
             }
             shuttle_info.resize(ShuttleMetadata::LEN)?;
-            let shuttle = unsafe {
-                load_mut_unchecked::<ShuttleMetadata>(shuttle_info.borrow_unchecked_mut())?
-            };
+            let shuttle =
+                load_mut::<ShuttleMetadata>(unsafe { shuttle_info.borrow_unchecked_mut() })?;
             shuttle.bump = shuttle_bump;
         }
 
         let shuttle =
-            unsafe { load_unchecked::<ShuttleMetadata>(shuttle_info.borrow_unchecked())? };
-        if !shuttle.is_initialized()
-            || shuttle.id != shuttle_id
+            load_initialized::<ShuttleMetadata>(unsafe { shuttle_info.borrow_unchecked() })?;
+        if shuttle.id != shuttle_id
             || shuttle.owner != *owner_info.address()
             || shuttle.payer != *refund_recipient_info.address()
         {

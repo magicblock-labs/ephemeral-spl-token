@@ -15,6 +15,7 @@ use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
 use dlp_api::{args::PostDelegationActions, compact::ClearTextWithInsertable};
 
+use crate::assert_owner;
 use crate::processor::deposit_and_delegate_shuttle_ephemeral_ata_with_merge::undelegate_and_close_shuttle_action;
 use crate::processor::deposit_and_delegate_shuttle_ephemeral_ata_with_merge::{
     merge_shuttle_into_token_account_action,
@@ -39,6 +40,11 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
 
     let (common_accounts, queue_info) =
         parse_deposit_and_delegate_shuttle_private_transfer_accounts(accounts)?;
+
+    assert_owner!(
+        queue_info,
+        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID
+    );
 
     #[cfg(feature = "logging")]
     {
@@ -68,9 +74,6 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
         );
     }
 
-    if !queue_info.owned_by(&ephemeral_spl_api::program::DELEGATION_PROGRAM_ID) {
-        return Err(ProgramError::IllegalOwner);
-    }
     let bump = {
         let data = unsafe { queue_info.borrow_unchecked() };
         let (header, _) = queue_views(data)?;
@@ -237,8 +240,8 @@ fn private_transfer_action_encrypted(
         inserted_non_signers: 0,
         signers: alloc::vec![common_accounts.owner_info.address().to_bytes()], // 0
         non_signers: alloc::vec![
-            MaybeEncryptedPubkey::ClearText(ephemeral_spl_api::ID.to_bytes()), // 1
-            MaybeEncryptedPubkey::ClearText(queue_info.address().to_bytes()),  // 2
+            MaybeEncryptedPubkey::ClearText(crate::ID.to_bytes()), // 1
+            MaybeEncryptedPubkey::ClearText(queue_info.address().to_bytes()), // 2
             MaybeEncryptedPubkey::ClearText(common_accounts.global_vault_info.address().to_bytes()), // 3
             MaybeEncryptedPubkey::ClearText(common_accounts.mint_info.address().to_bytes()), // 4
             MaybeEncryptedPubkey::ClearText(

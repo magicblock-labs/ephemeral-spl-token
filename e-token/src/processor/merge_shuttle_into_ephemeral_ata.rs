@@ -1,9 +1,10 @@
-use ephemeral_spl_api::state::{
-    load_unchecked, shuttle_ephemeral_ata::ShuttleMetadata, Initializable,
-};
+use ephemeral_spl_api::state::load_initialized;
+use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
 use pinocchio::cpi::Signer;
-use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
-use pinocchio_token_2022::state::{Mint, TokenAccount};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+
+use crate::assert_owner;
+use crate::processor::utils::{read_mint_decimals, validate_token_account};
 
 #[inline(always)]
 pub fn process_merge_shuttle_into_ephemeral_ata(
@@ -27,16 +28,13 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    assert_owner(shuttle_info, &ephemeral_spl_api::ID)?;
-    assert_owner(shuttle_wallet_ata_info, token_program_info.address())?;
-    assert_owner(destination_token_info, token_program_info.address())?;
+    assert_owner!(shuttle_info, &crate::ID);
+    assert_owner!(shuttle_wallet_ata_info, token_program_info.address());
+    assert_owner!(destination_token_info, token_program_info.address());
 
     let (shuttle_owner, shuttle_id, bump) = {
         let shuttle =
-            unsafe { load_unchecked::<ShuttleMetadata>(shuttle_info.borrow_unchecked())? };
-        if !shuttle.is_initialized() {
-            return Err(ProgramError::InvalidAccountData);
-        }
+            load_initialized::<ShuttleMetadata>(unsafe { shuttle_info.borrow_unchecked() })?;
         if shuttle.owner != *owner_info.address() {
             return Err(ProgramError::IncorrectAuthority);
         }
@@ -52,23 +50,30 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
         return Err(ProgramError::InvalidSeeds);
     }
 
-    let (shuttle_mint, shuttle_wallet_owner, shuttle_amount) =
-        read_token_account(shuttle_wallet_ata_info)?;
-    if shuttle_wallet_owner != *shuttle_info.address() || shuttle_mint != *mint_info.address() {
-        return Err(ProgramError::InvalidAccountData);
-    }
+    let shuttle_amount = {
+        let shuttle_ata = validate_token_account(
+            shuttle_wallet_ata_info,
+            mint_info.address(),
+            Some(shuttle_info.address()),
+            Some(token_program_info.address()),
+        )?;
 
-    let (destination_mint, _destination_owner, _destination_amount) =
-        read_token_account(destination_token_info)?;
-    if destination_mint != *mint_info.address() {
-        return Err(ProgramError::InvalidAccountData);
-    }
+        let amount = shuttle_ata.amount();
+        if amount == 0 {
+            return Ok(());
+        }
 
-    if shuttle_amount == 0 {
-        return Ok(());
-    }
+        validate_token_account(
+            destination_token_info,
+            mint_info.address(),
+            None,
+            Some(token_program_info.address()),
+        )?;
 
-    let decimals = read_mint_decimals(mint_info)?;
+        amount
+    };
+
+    let decimals = read_mint_decimals(mint_info, token_program_info)?;
 
     let bump_seed = [bump];
     let seeds = ShuttleMetadata::signer_seeds(
@@ -91,48 +96,4 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
     .invoke_signed(&[signer])?;
 
     Ok(())
-}
-
-#[inline(always)]
-fn assert_owner(account: &AccountView, expected_owner: &Address) -> ProgramResult {
-    unsafe {
-        if account.owner().ne(expected_owner) {
-            return Err(ProgramError::IllegalOwner);
-        }
-    }
-    Ok(())
-}
-
-#[inline(always)]
-fn read_token_account(account: &AccountView) -> Result<(Address, Address, u64), ProgramError> {
-    let token_data = unsafe { account.borrow_unchecked() };
-    if token_data.len() < TokenAccount::BASE_LEN {
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    let token = unsafe { TokenAccount::from_bytes_unchecked(token_data) };
-    if !token.is_initialized() {
-        return Err(ProgramError::UninitializedAccount);
-    }
-
-    #[allow(clippy::clone_on_copy)]
-    let mint = token.mint().clone();
-    #[allow(clippy::clone_on_copy)]
-    let owner = token.owner().clone();
-    Ok((mint, owner, token.amount()))
-}
-
-#[inline(always)]
-fn read_mint_decimals(mint_info: &AccountView) -> Result<u8, ProgramError> {
-    let mint_data = unsafe { mint_info.borrow_unchecked() };
-    if mint_data.len() < Mint::BASE_LEN {
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    let mint = unsafe { Mint::from_bytes_unchecked(mint_data) };
-    if !mint.is_initialized() {
-        return Err(ProgramError::UninitializedAccount);
-    }
-
-    Ok(mint.decimals())
 }

@@ -25,6 +25,7 @@ pub mod undelegate_ephemeral_ata;
 pub mod undelegate_ephemeral_ata_permission;
 pub mod undelegate_withdraw_and_close_shuttle_ephemeral_ata;
 pub mod undelegation_callback;
+pub(crate) mod utils;
 pub mod withdraw_spl_tokens;
 pub mod withdraw_through_delegated_shuttle_with_merge;
 

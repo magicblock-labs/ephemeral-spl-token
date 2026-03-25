@@ -39,7 +39,7 @@ pub fn process_initialize_transfer_queue(
         return Err(ProgramError::InvalidInstructionData);
     }
 
-    let program_id = ephemeral_spl_api::ID;
+    let program_id = crate::ID;
     let (derived_queue, bump) = TransferQueue::find_pda(mint_info.address());
     if derived_queue != *queue_info.address() {
         return Err(ProgramError::InvalidSeeds);

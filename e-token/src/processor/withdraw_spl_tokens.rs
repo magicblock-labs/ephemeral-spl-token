@@ -1,12 +1,13 @@
+use crate::{assert_owner, assert_signer, processor::utils::read_mint_decimals};
 use core::marker::PhantomData;
-use ephemeral_spl_api::error::EphemeralSplError;
+use ephemeral_spl_api::{error::EphemeralSplError, state::load_initialized};
 use pinocchio::cpi::Signer;
+
 use {
     ephemeral_spl_api::state::{
-        ephemeral_ata::load_ephemeral_ata_compat_mut, global_vault::GlobalVault, load_unchecked,
+        ephemeral_ata::load_ephemeral_ata_compat_mut, global_vault::GlobalVault,
     },
     pinocchio::{error::ProgramError, AccountView, ProgramResult},
-    pinocchio_token_2022::state::Mint,
 };
 
 #[inline(always)]
@@ -57,28 +58,20 @@ pub(crate) fn withdraw_ephemeral_ata_tokens(
     token_program_info: &AccountView,
     amount: u64,
 ) -> ProgramResult {
-    if require_owner_signature && !owner.is_signer() {
-        return Err(ProgramError::MissingRequiredSignature);
+    if require_owner_signature {
+        assert_signer!(owner);
     }
 
     // Validate EphemeralAta account (writable)
-    unsafe {
-        if ephemeral_ata_info.owner().ne(&ephemeral_spl_api::ID) {
-            return Err(ProgramError::IllegalOwner);
-        }
-    }
+    assert_owner!(ephemeral_ata_info, &crate::ID);
     let mut ephemeral_ata =
         load_ephemeral_ata_compat_mut(unsafe { ephemeral_ata_info.borrow_unchecked_mut() })?;
 
     // Validate vault ownership before reading raw data.
-    unsafe {
-        if vault_info.owner().ne(&ephemeral_spl_api::ID) {
-            return Err(ProgramError::IllegalOwner);
-        }
-    }
+    assert_owner!(vault_info, &crate::ID);
 
     // Validate Vault data account
-    let vault = unsafe { load_unchecked::<GlobalVault>(vault_info.borrow_unchecked())? };
+    let vault = load_initialized::<GlobalVault>(unsafe { vault_info.borrow_unchecked() })?;
 
     // Check eata consistency
     if ephemeral_ata.mint() != mint_info.address()
@@ -90,17 +83,7 @@ pub(crate) fn withdraw_ephemeral_ata_tokens(
     }
 
     // Parse the base mint layout shared by both legacy SPL Token and Token-2022.
-    let decimals = {
-        let mint_data = unsafe { mint_info.borrow_unchecked() };
-        if mint_data.len() < Mint::BASE_LEN {
-            return Err(ProgramError::InvalidAccountData);
-        }
-        let mint = unsafe { Mint::from_bytes_unchecked(mint_data) };
-        if !mint.is_initialized() {
-            return Err(ProgramError::UninitializedAccount);
-        }
-        mint.decimals()
-    };
+    let decimals = read_mint_decimals(mint_info, token_program_info)?;
 
     // Perform transfer from vault token account to user destination, signed by vault PDA
     let bump = [vault.bump];

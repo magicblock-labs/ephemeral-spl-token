@@ -1,12 +1,14 @@
 use ephemeral_rollups_pinocchio::instruction::{commit_accounts, DelegateAccountCpiBuilder};
 use ephemeral_rollups_pinocchio::types::DelegateConfig;
 use ephemeral_spl_api::state::fees_pda::{FeesPda, FEES_PDA_SEED, FEES_PDA_TAG};
-use ephemeral_spl_api::state::{load_mut_unchecked, load_unchecked, Initializable, RawType};
+use ephemeral_spl_api::state::{load_initialized, load_mut, RawType};
 use pinocchio::cpi::Signer;
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_system::instructions::CreateAccount;
+
+use crate::assert_signer;
 
 #[inline(always)]
 pub fn process_initialize_fees_pda(
@@ -51,11 +53,11 @@ pub fn process_initialize_fees_pda(
         to: fees_pda_info,
         space: FeesPda::LEN as u64,
         lamports: Rent::get()?.try_minimum_balance(FeesPda::LEN)?,
-        owner: &ephemeral_spl_api::ID,
+        owner: &crate::ID,
     }
     .invoke_signed(&[signer])?;
 
-    let fees_pda = unsafe { load_mut_unchecked::<FeesPda>(fees_pda_info.borrow_unchecked_mut())? };
+    let fees_pda = load_mut::<FeesPda>(unsafe { fees_pda_info.borrow_unchecked_mut() })?;
     fees_pda.tag = FEES_PDA_TAG;
     fees_pda.validator = *validator_info.address();
     fees_pda.bump = bump;
@@ -88,9 +90,7 @@ pub fn process_delegate_fees_pda(
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
-    if !payer_info.is_signer() {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
+    assert_signer!(payer_info);
 
     let delegation_program = ephemeral_spl_api::program::DELEGATION_PROGRAM_ID;
 
@@ -156,7 +156,7 @@ pub fn process_commit_fees_pda(accounts: &[AccountView], instruction_data: &[u8]
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    let program_id = ephemeral_spl_api::ID;
+    let program_id = crate::ID;
     let delegation_program = ephemeral_spl_api::program::DELEGATION_PROGRAM_ID;
 
     if !fees_pda_info.owned_by(&program_id) && !fees_pda_info.owned_by(&delegation_program) {
@@ -185,20 +185,18 @@ fn is_valid_initialized_fees_pda(
     validator_info: &AccountView,
     bump: u8,
 ) -> bool {
-    let program_id = ephemeral_spl_api::ID;
+    let program_id = crate::ID;
     let delegation_program = ephemeral_spl_api::program::DELEGATION_PROGRAM_ID;
     if !fees_pda_info.owned_by(&program_id) && !fees_pda_info.owned_by(&delegation_program) {
         return false;
     }
 
-    let fees_pda = match unsafe { load_unchecked::<FeesPda>(fees_pda_info.borrow_unchecked()) } {
+    let fees_pda = match load_initialized::<FeesPda>(unsafe { fees_pda_info.borrow_unchecked() }) {
         Ok(fees_pda) => fees_pda,
         Err(_) => return false,
     };
 
-    fees_pda.is_initialized()
-        && fees_pda.validator == *validator_info.address()
-        && fees_pda.bump == bump
+    fees_pda.validator == *validator_info.address() && fees_pda.bump == bump
 }
 
 #[inline(always)]
@@ -206,8 +204,8 @@ fn validate_fees_pda(
     fees_pda_info: &AccountView,
     validator_info: &AccountView,
 ) -> Result<u8, ProgramError> {
-    let fees_pda = unsafe { load_unchecked::<FeesPda>(fees_pda_info.borrow_unchecked())? };
-    if !fees_pda.is_initialized() || fees_pda.validator != *validator_info.address() {
+    let fees_pda = load_initialized::<FeesPda>(unsafe { fees_pda_info.borrow_unchecked() })?;
+    if fees_pda.validator != *validator_info.address() {
         return Err(ProgramError::InvalidAccountData);
     }
     Ok(fees_pda.bump)

@@ -14,8 +14,8 @@ use ephemeral_rollups_pinocchio::{
     utils::{close_pda_acc, make_seed_buf},
 };
 use ephemeral_spl_api::state::{
-    ephemeral_ata::EphemeralAta, load_mut_unchecked, load_unchecked,
-    shuttle_ephemeral_ata::ShuttleMetadata, Initializable,
+    ephemeral_ata::EphemeralAta, load_initialized, load_mut_initialized,
+    shuttle_ephemeral_ata::ShuttleMetadata,
 };
 use pinocchio::{
     cpi::{invoke_signed_with_bounds, Seed, Signer},
@@ -24,14 +24,16 @@ use pinocchio::{
     AccountView, Address, ProgramResult,
 };
 use pinocchio_system::instructions::{Assign, CreateAccount, Transfer};
-use pinocchio_token_2022::state::Mint;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_pubkey::Pubkey;
 
-use crate::processor::{
-    deposit_spl_tokens::transfer_to_vault_for_mint,
-    initialize_shuttle_ephemeral_ata::initialize_shuttle_ephemeral_ata_with_sponsor,
-    rent_pda::derive_rent_pda,
+use crate::{
+    assert_owner,
+    processor::{
+        deposit_spl_tokens::transfer_to_vault_for_mint,
+        initialize_shuttle_ephemeral_ata::initialize_shuttle_ephemeral_ata_with_sponsor,
+        rent_pda::derive_rent_pda,
+    },
 };
 
 pub(crate) struct DepositAndDelegateShuttleAccounts<'a> {
@@ -221,9 +223,9 @@ pub(crate) fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actio
         args.amount,
     )?;
 
-    let shuttle_eata = unsafe {
-        load_mut_unchecked::<EphemeralAta>(accounts.shuttle_eata_info.borrow_unchecked_mut())?
-    };
+    let shuttle_eata = load_mut_initialized::<EphemeralAta>(unsafe {
+        accounts.shuttle_eata_info.borrow_unchecked_mut()
+    })?;
     shuttle_eata.amount = shuttle_eata
         .amount
         .checked_add(args.amount)
@@ -265,6 +267,8 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
+    assert_owner!(rent_pda_info, &pinocchio_system::ID);
+
     #[cfg(feature = "logging")]
     {
         let shuttle = shuttle_info.address().to_string();
@@ -289,7 +293,7 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
     if derived_rent_pda != *rent_pda_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
-    if !rent_pda_info.owned_by(&pinocchio_system::ID) || rent_pda_info.data_len() != 0 {
+    if rent_pda_info.data_len() != 0 {
         return Err(ProgramError::InvalidAccountData);
     }
 
@@ -330,32 +334,17 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
         });
     }
 
-    unsafe {
-        if shuttle_info.owner().ne(&ephemeral_spl_api::ID) {
-            return Err(ProgramError::IllegalOwner);
-        }
-    }
+    assert_owner!(shuttle_info, &crate::ID);
+    assert_owner!(shuttle_eata_info, &crate::ID);
 
-    let shuttle = unsafe { load_unchecked::<ShuttleMetadata>(shuttle_info.borrow_unchecked())? };
-    if !shuttle.is_initialized() {
-        return Err(ProgramError::InvalidAccountData);
-    }
+    let shuttle = load_initialized::<ShuttleMetadata>(unsafe { shuttle_info.borrow_unchecked() })?;
     if shuttle.owner != *owner_info.address() || shuttle.payer != *rent_pda_info.address() {
         return Err(ProgramError::IncorrectAuthority);
     }
 
-    unsafe {
-        if shuttle_eata_info.owner().ne(&ephemeral_spl_api::ID) {
-            return Err(ProgramError::IllegalOwner);
-        }
-    }
-
     let (mint, bump) = {
         let shuttle_eata =
-            unsafe { load_unchecked::<EphemeralAta>(shuttle_eata_info.borrow_unchecked())? };
-        if !shuttle_eata.is_initialized() {
-            return Err(ProgramError::UninitializedAccount);
-        }
+            load_initialized::<EphemeralAta>(unsafe { shuttle_eata_info.borrow_unchecked() })?;
         if shuttle_eata.owner != *shuttle_info.address() {
             return Err(ProgramError::InvalidAccountData);
         }
@@ -447,21 +436,6 @@ pub(crate) fn delegate_sponsored_shuttle_with_post_actions(
     )
 }
 
-#[inline(always)]
-pub(crate) fn read_mint_decimals(mint_info: &AccountView) -> Result<u8, ProgramError> {
-    let mint_data = unsafe { mint_info.borrow_unchecked() };
-    if mint_data.len() < Mint::BASE_LEN {
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    let mint = unsafe { Mint::from_bytes_unchecked(mint_data) };
-    if !mint.is_initialized() {
-        return Err(ProgramError::UninitializedAccount);
-    }
-
-    Ok(mint.decimals())
-}
-
 fn merge_shuttle_into_destination_action(
     accounts: &DepositAndDelegateShuttleWithMergeAccounts<'_>,
 ) -> Instruction {
@@ -475,12 +449,12 @@ pub(crate) fn merge_shuttle_into_token_account_action(
     Instruction {
         program_id: crate::ID,
         accounts: alloc::vec![
-            AccountMeta::new_readonly(pubkey(accounts.owner_info.address()), true),
-            AccountMeta::new(pubkey(destination_token_info.address()), false),
-            AccountMeta::new_readonly(pubkey(accounts.shuttle_info.address()), false),
-            AccountMeta::new(pubkey(accounts.shuttle_wallet_ata_info.address()), false),
-            AccountMeta::new_readonly(pubkey(accounts.mint_info.address()), false),
-            AccountMeta::new_readonly(pubkey(accounts.token_program_info.address()), false),
+            AccountMeta::new_readonly(*accounts.owner_info.address(), true),
+            AccountMeta::new(*destination_token_info.address(), false),
+            AccountMeta::new_readonly(*accounts.shuttle_info.address(), false),
+            AccountMeta::new(*accounts.shuttle_wallet_ata_info.address(), false),
+            AccountMeta::new_readonly(*accounts.mint_info.address(), false),
+            AccountMeta::new_readonly(*accounts.token_program_info.address(), false),
         ],
         data: alloc::vec![ephemeral_spl_api::instruction::MERGE_SHUTTLE_INTO_EPHEMERAL_ATA],
     }
@@ -492,12 +466,12 @@ pub(crate) fn undelegate_and_close_shuttle_action(
     Instruction {
         program_id: crate::ID,
         accounts: alloc::vec![
-            AccountMeta::new(pubkey(accounts.payer_info.address()), true),
-            AccountMeta::new(pubkey(accounts.rent_pda_info.address()), false),
-            AccountMeta::new_readonly(pubkey(accounts.shuttle_info.address()), false),
-            AccountMeta::new_readonly(pubkey(accounts.shuttle_eata_info.address()), false),
-            AccountMeta::new(pubkey(accounts.shuttle_wallet_ata_info.address()), false),
-            AccountMeta::new_readonly(pubkey(accounts.token_program_info.address()), false),
+            AccountMeta::new(*accounts.payer_info.address(), true),
+            AccountMeta::new(*accounts.rent_pda_info.address(), false),
+            AccountMeta::new_readonly(*accounts.shuttle_info.address(), false),
+            AccountMeta::new_readonly(*accounts.shuttle_eata_info.address(), false),
+            AccountMeta::new(*accounts.shuttle_wallet_ata_info.address(), false),
+            AccountMeta::new_readonly(*accounts.token_program_info.address(), false),
             AccountMeta::new(Pubkey::from(MAGIC_CONTEXT_ID.to_bytes()), false),
             AccountMeta::new_readonly(Pubkey::from(MAGIC_PROGRAM_ID.to_bytes()), false),
         ],
@@ -717,8 +691,4 @@ fn cpi_delegate_with_actions_from_sponsor(
     )?;
 
     Ok(())
-}
-#[inline]
-pub(crate) fn pubkey(address: &Address) -> Pubkey {
-    Pubkey::from(address.to_bytes())
 }

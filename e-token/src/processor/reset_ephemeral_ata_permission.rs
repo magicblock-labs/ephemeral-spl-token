@@ -4,7 +4,7 @@ use ephemeral_rollups_pinocchio::acl::{
     instruction::UpdatePermissionCpiBuilder,
     types::{Member, MemberFlags, MembersArgs},
 };
-use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_unchecked, Initializable};
+use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_initialized};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
 #[inline(always)]
@@ -35,11 +35,7 @@ pub fn process_reset_ephemeral_ata_permission(
     }
 
     let ephemeral_ata =
-        unsafe { load_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked())? };
-
-    if !ephemeral_ata.is_initialized() {
-        return Err(ProgramError::InvalidAccountData);
-    }
+        load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
 
     if ephemeral_ata.owner != *owner_info.address() {
         return Err(ProgramError::IncorrectAuthority);

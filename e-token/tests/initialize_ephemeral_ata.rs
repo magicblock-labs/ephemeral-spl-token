@@ -1,5 +1,5 @@
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
-use ephemeral_spl_api::state::{load_mut_unchecked, Initializable, RawType};
+use ephemeral_spl_api::state::{load_initialized, Initializable, RawType};
 use ephemeral_spl_api::ID as PROGRAM;
 use solana_instruction::Instruction;
 use {
@@ -44,13 +44,9 @@ async fn initialize_ephemeral_ata() {
         &[&payer_kp],
         context.last_blockhash,
     );
-    common::metrics::process_transaction_record_cu(
-        &context.banks_client,
-        tx,
-        "init_eata::init",
-    )
-    .await
-    .unwrap();
+    common::metrics::process_transaction_record_cu(&context.banks_client, tx, "init_eata::init")
+        .await
+        .unwrap();
 
     // Read back the account and ensure it was zero-initialized
     let account = context
@@ -64,8 +60,7 @@ async fn initialize_ephemeral_ata() {
     assert_eq!(account.data.len(), EphemeralAta::LEN);
 
     let mut mut_acc = account.data.clone();
-    let ephemeral_ata =
-        unsafe { load_mut_unchecked::<EphemeralAta>(mut_acc.as_mut_slice()).unwrap() };
+    let ephemeral_ata = load_initialized::<EphemeralAta>(mut_acc.as_mut_slice()).unwrap();
     assert!(ephemeral_ata.is_initialized());
     assert_eq!(ephemeral_ata.amount, 0);
     assert_eq!(ephemeral_ata.owner.as_array(), &user.to_bytes());

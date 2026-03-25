@@ -1,6 +1,8 @@
 use pinocchio::{cpi::Seed, error::ProgramError, Address};
 
-use super::{load, load_mut_unchecked, load_unchecked, Initializable, RawType};
+use crate::state::load_mut;
+
+use super::{load, load_initialized, Initializable, RawType};
 
 const LEGACY_EPHEMERAL_ATA_LEN: usize = 72;
 
@@ -137,7 +139,7 @@ pub fn read_ephemeral_ata_compat(
     bytes: &[u8],
 ) -> Result<(Address, Address, u64, u8), ProgramError> {
     if bytes.len() == EphemeralAta::LEN {
-        let ephemeral_ata = unsafe { load::<EphemeralAta>(bytes)? };
+        let ephemeral_ata = load_initialized::<EphemeralAta>(bytes)?;
         #[allow(clippy::clone_on_copy)]
         let owner = ephemeral_ata.owner.clone();
         #[allow(clippy::clone_on_copy)]
@@ -146,7 +148,7 @@ pub fn read_ephemeral_ata_compat(
     }
 
     if bytes.len() == LEGACY_EPHEMERAL_ATA_LEN {
-        let ephemeral_ata = unsafe { load_unchecked::<LegacyEphemeralAta>(bytes)? };
+        let ephemeral_ata = load::<LegacyEphemeralAta>(bytes)?;
         if ephemeral_ata.mint == Address::default() {
             return Err(ProgramError::UninitializedAccount);
         }
@@ -171,13 +173,13 @@ pub fn load_ephemeral_ata_compat_mut(
 ) -> Result<EphemeralAtaCompatMut<'_>, ProgramError> {
     if bytes.len() == EphemeralAta::LEN {
         return Ok(EphemeralAtaCompatMut(EphemeralAtaCompatMutInner::Current(
-            unsafe { load_mut_unchecked::<EphemeralAta>(bytes)? },
+            load_mut::<EphemeralAta>(bytes)?,
         )));
     }
 
     if bytes.len() == LEGACY_EPHEMERAL_ATA_LEN {
         return Ok(EphemeralAtaCompatMut(EphemeralAtaCompatMutInner::Legacy(
-            unsafe { load_mut_unchecked::<LegacyEphemeralAta>(bytes)? },
+            load_mut::<LegacyEphemeralAta>(bytes)?,
         )));
     }
 

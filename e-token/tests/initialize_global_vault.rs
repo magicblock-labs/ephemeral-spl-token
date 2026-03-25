@@ -1,6 +1,6 @@
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::global_vault::GlobalVault;
-use ephemeral_spl_api::state::{load_mut_unchecked, Initializable, RawType};
+use ephemeral_spl_api::state::{load_initialized, RawType};
 use ephemeral_spl_api::ID as PROGRAM;
 use solana_account::Account as SolanaAccount;
 use solana_instruction::Instruction;
@@ -62,13 +62,9 @@ async fn initialize_global_vault() {
         &[&payer_kp],
         context.last_blockhash,
     );
-    common::metrics::process_transaction_record_cu(
-        &context.banks_client,
-        tx,
-        "init_gvault::init",
-    )
-    .await
-    .unwrap();
+    common::metrics::process_transaction_record_cu(&context.banks_client, tx, "init_gvault::init")
+        .await
+        .unwrap();
 
     // Verify account
     let account = context
@@ -82,8 +78,8 @@ async fn initialize_global_vault() {
     assert_eq!(account.data.len(), GlobalVault::LEN);
 
     let mut mut_acc = account.data.clone();
-    let vault_data = unsafe { load_mut_unchecked::<GlobalVault>(mut_acc.as_mut_slice()).unwrap() };
-    assert!(vault_data.is_initialized());
+    let vault_data = load_initialized::<GlobalVault>(mut_acc.as_mut_slice()).unwrap();
+    assert_eq!(vault_data.mint, mint);
 
     let vault_token_acc_state = context
         .banks_client
@@ -183,7 +179,7 @@ async fn initialize_global_vault_migrates_legacy_layout() {
     assert!(account.lamports >= rent.minimum_balance(GlobalVault::LEN));
 
     let mut mut_acc = account.data.clone();
-    let vault_data = unsafe { load_mut_unchecked::<GlobalVault>(mut_acc.as_mut_slice()).unwrap() };
+    let vault_data = load_initialized::<GlobalVault>(mut_acc.as_mut_slice()).unwrap();
     assert_eq!(
         vault_data.mint,
         ephemeral_spl_api::Address::new_from_array(mint.to_bytes())

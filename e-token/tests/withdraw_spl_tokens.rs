@@ -1,6 +1,6 @@
 use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
-use ephemeral_spl_api::state::{load_mut_unchecked, RawType};
+use ephemeral_spl_api::state::{load, RawType};
 use ephemeral_spl_api::ID as PROGRAM;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program_pack::Pack;
@@ -180,6 +180,6 @@ async fn withdraw_spl_tokens_decrements_ephemeral_amount() {
     assert_eq!(account.data.len(), EphemeralAta::LEN);
 
     let mut mut_acc = account.data.clone();
-    let ata_data = unsafe { load_mut_unchecked::<EphemeralAta>(mut_acc.as_mut_slice()).unwrap() };
+    let ata_data = load::<EphemeralAta>(mut_acc.as_mut_slice()).unwrap();
     assert_eq!(ata_data.amount, deposit_amount - withdraw_amount);
 }

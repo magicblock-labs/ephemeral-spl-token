@@ -2,10 +2,9 @@ use dlp_api::compact::ClearText;
 use ephemeral_rollups_pinocchio::consts::{MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID};
 use ephemeral_spl_api::{
     instruction::internal,
-    state::{ephemeral_ata::EphemeralAta, load_unchecked},
+    state::{ephemeral_ata::EphemeralAta, load},
 };
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
-use pinocchio_token_2022::state::TokenAccount;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_pubkey::Pubkey;
 
@@ -14,9 +13,12 @@ const TRANSFER_CHECKED_DISCRIMINATOR: u8 = 12;
 #[cfg(feature = "logging")]
 use crate::alloc::string::ToString;
 
-use crate::processor::deposit_and_delegate_shuttle_ephemeral_ata_with_merge::{
-    delegate_sponsored_shuttle_with_post_actions, prepare_sponsored_shuttle_delegation,
-    read_mint_decimals, DepositAndDelegateShuttleArgs,
+use crate::processor::{
+    deposit_and_delegate_shuttle_ephemeral_ata_with_merge::{
+        delegate_sponsored_shuttle_with_post_actions, prepare_sponsored_shuttle_delegation,
+        DepositAndDelegateShuttleArgs,
+    },
+    utils::{read_mint_decimals, validate_token_account},
 };
 
 pub(crate) struct WithdrawThroughDelegatedShuttleAccounts<'a> {
@@ -70,16 +72,28 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
         return Ok(());
     }
 
-    validate_token_accounts(&accounts, &prepared.mint)?;
+    validate_token_account(
+        accounts.owner_token_info,
+        &prepared.mint,
+        Some(accounts.owner_info.address()),
+        Some(accounts.token_program_info.address()),
+    )?;
+    validate_token_account(
+        accounts.shuttle_wallet_ata_info,
+        &prepared.mint,
+        Some(accounts.shuttle_info.address()),
+        Some(accounts.token_program_info.address()),
+    )?;
 
-    let decimals = read_mint_decimals(accounts.mint_info)?;
+    let decimals = read_mint_decimals(accounts.mint_info, accounts.token_program_info)?;
     let post_actions = alloc::vec![
         transfer_owner_tokens_into_shuttle_action(&accounts, args.amount(), decimals)?,
         undelegate_withdraw_and_close_shuttle_action(&accounts),
     ];
 
+    // Shuttle has been initialized above
     let shuttle_eata =
-        unsafe { load_unchecked::<EphemeralAta>(accounts.shuttle_eata_info.borrow_unchecked())? };
+        load::<EphemeralAta>(unsafe { accounts.shuttle_eata_info.borrow_unchecked() })?;
 
     delegate_sponsored_shuttle_with_post_actions(
         accounts.payer_info,
@@ -127,47 +141,6 @@ fn parse_withdraw_through_delegated_shuttle_accounts(
     })
 }
 
-fn validate_token_accounts(
-    accounts: &WithdrawThroughDelegatedShuttleAccounts<'_>,
-    expected_mint: &ephemeral_spl_api::Address,
-) -> ProgramResult {
-    if !accounts
-        .owner_token_info
-        .owned_by(accounts.token_program_info.address())
-        || !accounts
-            .shuttle_wallet_ata_info
-            .owned_by(accounts.token_program_info.address())
-    {
-        return Err(ProgramError::IllegalOwner);
-    }
-
-    let owner_token_data = unsafe { accounts.owner_token_info.borrow_unchecked() };
-    if owner_token_data.len() < TokenAccount::BASE_LEN {
-        return Err(ProgramError::InvalidAccountData);
-    }
-    let owner_token = unsafe { TokenAccount::from_bytes_unchecked(owner_token_data) };
-    if !owner_token.is_initialized()
-        || owner_token.owner() != accounts.owner_info.address()
-        || owner_token.mint() != expected_mint
-    {
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    let shuttle_wallet_data = unsafe { accounts.shuttle_wallet_ata_info.borrow_unchecked() };
-    if shuttle_wallet_data.len() < TokenAccount::BASE_LEN {
-        return Err(ProgramError::InvalidAccountData);
-    }
-    let shuttle_wallet = unsafe { TokenAccount::from_bytes_unchecked(shuttle_wallet_data) };
-    if !shuttle_wallet.is_initialized()
-        || shuttle_wallet.owner() != accounts.shuttle_info.address()
-        || shuttle_wallet.mint() != expected_mint
-    {
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    Ok(())
-}
-
 fn transfer_owner_tokens_into_shuttle_action(
     accounts: &WithdrawThroughDelegatedShuttleAccounts<'_>,
     amount: u64,
@@ -180,10 +153,10 @@ fn transfer_owner_tokens_into_shuttle_action(
     Ok(Instruction {
         program_id: *accounts.token_program_info.address(),
         accounts: alloc::vec![
-            AccountMeta::new(pubkey(accounts.owner_token_info.address()), false),
-            AccountMeta::new_readonly(pubkey(accounts.mint_info.address()), false),
-            AccountMeta::new(pubkey(accounts.shuttle_wallet_ata_info.address()), false),
-            AccountMeta::new_readonly(pubkey(accounts.owner_info.address()), true),
+            AccountMeta::new(*accounts.owner_token_info.address(), false),
+            AccountMeta::new_readonly(*accounts.mint_info.address(), false),
+            AccountMeta::new(*accounts.shuttle_wallet_ata_info.address(), false),
+            AccountMeta::new_readonly(*accounts.owner_info.address(), true),
         ],
         data,
     })
@@ -193,24 +166,19 @@ fn undelegate_withdraw_and_close_shuttle_action(
     accounts: &WithdrawThroughDelegatedShuttleAccounts<'_>,
 ) -> Instruction {
     Instruction {
-        program_id: ephemeral_spl_api::ID,
+        program_id: crate::ID,
         accounts: alloc::vec![
-            AccountMeta::new(pubkey(accounts.payer_info.address()), true),
-            AccountMeta::new(pubkey(accounts.rent_pda_info.address()), false),
-            AccountMeta::new_readonly(pubkey(accounts.shuttle_info.address()), false),
-            AccountMeta::new_readonly(pubkey(accounts.shuttle_eata_info.address()), false),
-            AccountMeta::new(pubkey(accounts.shuttle_wallet_ata_info.address()), false),
-            AccountMeta::new(pubkey(accounts.owner_token_info.address()), false),
-            AccountMeta::new_readonly(pubkey(accounts.mint_info.address()), false),
-            AccountMeta::new_readonly(pubkey(accounts.token_program_info.address()), false),
+            AccountMeta::new(*accounts.payer_info.address(), true),
+            AccountMeta::new(*accounts.rent_pda_info.address(), false),
+            AccountMeta::new_readonly(*accounts.shuttle_info.address(), false),
+            AccountMeta::new_readonly(*accounts.shuttle_eata_info.address(), false),
+            AccountMeta::new(*accounts.shuttle_wallet_ata_info.address(), false),
+            AccountMeta::new(*accounts.owner_token_info.address(), false),
+            AccountMeta::new_readonly(*accounts.mint_info.address(), false),
+            AccountMeta::new_readonly(*accounts.token_program_info.address(), false),
             AccountMeta::new(Pubkey::from(MAGIC_CONTEXT_ID.to_bytes()), false),
             AccountMeta::new_readonly(Pubkey::from(MAGIC_PROGRAM_ID.to_bytes()), false),
         ],
         data: alloc::vec![internal::UNDELEGATE_WITHDRAW_AND_CLOSE_SHUTTLE_EPHEMERAL_ATA],
     }
-}
-
-#[inline(always)]
-fn pubkey(address: &ephemeral_spl_api::Address) -> Pubkey {
-    *address
 }

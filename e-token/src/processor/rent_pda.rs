@@ -58,7 +58,7 @@ pub fn process_initialize_rent_pda(
 
 #[inline(always)]
 pub fn derive_rent_pda() -> (ephemeral_spl_api::Address, u8) {
-    ephemeral_spl_api::Address::find_program_address(&[RENT_PDA_SEED], &ephemeral_spl_api::ID)
+    ephemeral_spl_api::Address::find_program_address(&[RENT_PDA_SEED], &crate::ID)
 }
 
 #[inline(always)]

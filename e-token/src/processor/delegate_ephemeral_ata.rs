@@ -1,7 +1,6 @@
 use ephemeral_rollups_pinocchio::instruction::DelegateAccountCpiBuilder;
 use ephemeral_rollups_pinocchio::types::DelegateConfig;
-use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
-use ephemeral_spl_api::state::load_mut_unchecked;
+use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_initialized};
 use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
 
 pub fn process_delegate_ephemeral_ata(
@@ -33,7 +32,7 @@ pub fn process_delegate_ephemeral_ata(
 
     // Load Ephemeral ATA account
     let ephemeral_ata =
-        unsafe { load_mut_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked_mut())? };
+        load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
 
     let config = DelegateConfig {
         validator: args.validator().map(Address::new_from_array),

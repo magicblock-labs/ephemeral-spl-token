@@ -1,10 +1,12 @@
+use ephemeral_spl_api::state::{load_initialized, load_mut_initialized};
+
 use core::marker::PhantomData;
+
+use crate::{assert_owner, processor::utils::read_mint_decimals};
+
 use {
-    ephemeral_spl_api::state::{
-        ephemeral_ata::EphemeralAta, global_vault::GlobalVault, load_mut_unchecked, load_unchecked,
-    },
+    ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, global_vault::GlobalVault},
     pinocchio::{error::ProgramError, AccountView, Address, ProgramResult},
-    pinocchio_token_2022::state::Mint,
 };
 
 #[inline(always)]
@@ -30,18 +32,12 @@ pub fn process_deposit_spl_tokens(
     };
 
     // Validate EphemeralAta ownership first, before reading raw data.
-    unsafe {
-        if ephemeral_ata_info.owner().ne(&ephemeral_spl_api::ID) {
-            return Err(ProgramError::IllegalOwner);
-        }
-    }
+    assert_owner!(ephemeral_ata_info, &crate::ID);
 
     let ephemeral_ata_mint = {
         let ephemeral_ata =
-            unsafe { load_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked())? };
-        #[allow(clippy::clone_on_copy)]
-        let mint = ephemeral_ata.mint.clone();
-        mint
+            load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
+        ephemeral_ata.mint
     };
 
     transfer_to_vault_for_mint(
@@ -56,7 +52,7 @@ pub fn process_deposit_spl_tokens(
     )?;
 
     let ephemeral_ata =
-        unsafe { load_mut_unchecked::<EphemeralAta>(ephemeral_ata_info.borrow_unchecked_mut())? };
+        load_mut_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked_mut() })?;
     ephemeral_ata.amount = ephemeral_ata
         .amount
         .checked_add(args.amount())
@@ -77,13 +73,9 @@ pub(crate) fn transfer_to_vault_for_mint(
     expected_mint: &Address,
     amount: u64,
 ) -> ProgramResult {
-    unsafe {
-        if vault_info.owner().ne(&ephemeral_spl_api::ID) {
-            return Err(ProgramError::IllegalOwner);
-        }
-    }
+    assert_owner!(vault_info, &crate::ID);
 
-    let vault = unsafe { load_unchecked::<GlobalVault>(vault_info.borrow_unchecked())? };
+    let vault = load_initialized::<GlobalVault>(unsafe { vault_info.borrow_unchecked() })?;
     if vault.mint != *mint_info.address()
         || vault.token_account != *vault_token_acc.address()
         || vault.mint != *expected_mint
@@ -91,17 +83,7 @@ pub(crate) fn transfer_to_vault_for_mint(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    let decimals = {
-        let mint_data = unsafe { mint_info.borrow_unchecked() };
-        if mint_data.len() < Mint::BASE_LEN {
-            return Err(ProgramError::InvalidAccountData);
-        }
-        let mint = unsafe { Mint::from_bytes_unchecked(mint_data) };
-        if !mint.is_initialized() {
-            return Err(ProgramError::UninitializedAccount);
-        }
-        mint.decimals()
-    };
+    let decimals = read_mint_decimals(mint_info, token_program_info)?;
 
     pinocchio_token_2022::instructions::TransferChecked {
         mint: mint_info,

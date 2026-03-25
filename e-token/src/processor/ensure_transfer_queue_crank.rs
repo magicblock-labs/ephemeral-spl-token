@@ -10,6 +10,8 @@ use pinocchio::cpi::invoke_with_bounds;
 use pinocchio::instruction::{InstructionAccount, InstructionView};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
+use crate::{assert_owner, assert_signer};
+
 pub const CRANK_EXECUTION_INTERVAL_MILLIS: i64 = 500;
 
 const PROCESS_QUEUE_TICK_CRANK_ACCOUNTS: usize = 3;
@@ -35,14 +37,13 @@ pub fn process_ensure_transfer_queue_crank(
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
-    if !payer_info.is_signer() {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
+    assert_signer!(payer_info);
+    assert_owner!(queue_info, &crate::ID);
+
     if magic_program_info.address() != &ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID {
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    let program_id = ephemeral_spl_api::ID;
     let (mint, bump) = {
         let data = unsafe { queue_info.borrow_unchecked() };
         let (header, _) = queue_views_checked(data)?;
@@ -52,9 +53,6 @@ pub fn process_ensure_transfer_queue_crank(
     let derived_queue = TransferQueue::create_pda(&mint, bump)?;
     if derived_queue != *queue_info.address() {
         return Err(ProgramError::InvalidSeeds);
-    }
-    if !queue_info.owned_by(&program_id) {
-        return Err(ProgramError::IllegalOwner);
     }
 
     let crank_task_id = derive_queue_crank_task_id(queue_info.address());
@@ -84,11 +82,7 @@ pub fn process_ensure_transfer_queue_crank(
             is_writable: false,
         },
     ];
-    let crank_instruction = [CrankInstruction::new(
-        ephemeral_spl_api::ID,
-        &tick_accounts,
-        &tick_data,
-    )];
+    let crank_instruction = [CrankInstruction::new(crate::ID, &tick_accounts, &tick_data)];
     let mut crank_data = [0_u8; SCHEDULE_CRANK_DATA_LEN];
     let schedule_cpi = ScheduleCrankCpi::new(
         payer_info.clone(),
