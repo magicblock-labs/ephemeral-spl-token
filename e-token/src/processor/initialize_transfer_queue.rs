@@ -10,7 +10,8 @@ use pinocchio_system::instructions::CreateAccount;
 
 pub const DEFAULT_TRANSFER_QUEUE_ITEMS: u32 = 92;
 /// Default queue size in bytes. (HEADER_LEN + ITEM_LEN * DEFAULT_TRANSFER_QUEUE_ITEMS)
-pub const DEFAULT_TRANSFER_QUEUE_SIZE_BYTES: u64 = 96 + 104 * DEFAULT_TRANSFER_QUEUE_ITEMS as u64;
+pub const DEFAULT_TRANSFER_QUEUE_SIZE_BYTES: u64 =
+    (header_len() + item_len() * DEFAULT_TRANSFER_QUEUE_ITEMS as usize) as u64;
 
 #[inline(always)]
 pub fn process_initialize_transfer_queue(
