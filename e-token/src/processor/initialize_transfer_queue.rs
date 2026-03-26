@@ -1,4 +1,8 @@
 use core::marker::PhantomData;
+use ephemeral_rollups_pinocchio::acl::{
+    consts::PERMISSION_PROGRAM_ID, instruction::CreatePermissionCpiBuilder,
+    pda::permission_pda_from_permissioned_account, types::MembersArgs,
+};
 use ephemeral_spl_api::state::transfer_queue::{
     capacity_from_data_len, header_len, init_queue, item_len, queue_views_mut_checked, QUEUE_SEED,
 };
@@ -21,12 +25,15 @@ pub fn process_initialize_transfer_queue(
     // Expected accounts:
     // 0. [signer]   Payer (funds account creation)
     // 1. [writable] Transfer queue account (PDA derived from [QUEUE_SEED, mint, validator])
-    // 2. []         Mint account (seed)
-    // 3. []         Validator
-    // 4. []         System program
+    // 2. [writable] Transfer queue permission account
+    // 3. []         Mint account (seed)
+    // 4. []         Validator
+    // 5. []         System program
+    // 6. []         Permission program (ACL)
     let args = InitializeTransferQueueArgs::try_from_bytes(instruction_data)?;
 
-    let [payer_info, queue_info, mint_info, validator_info, _system_program_info, ..] = accounts
+    let [payer_info, queue_info, queue_permission_info, mint_info, validator_info, system_program_info, permission_program_info, ..] =
+        accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
@@ -53,6 +60,14 @@ pub fn process_initialize_transfer_queue(
         &program_id,
     );
     if derived_queue != *queue_info.address() {
+        return Err(ProgramError::InvalidSeeds);
+    }
+
+    if *permission_program_info.address() != PERMISSION_PROGRAM_ID {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    let expected_permission = permission_pda_from_permissioned_account(queue_info.address());
+    if expected_permission != *queue_permission_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
 
@@ -87,6 +102,27 @@ pub fn process_initialize_transfer_queue(
             owner: &program_id,
         }
         .invoke_signed(&[signer])?;
+    }
+
+    if queue_permission_info.lamports() == 0 {
+        if !payer_info.is_signer() {
+            return Err(ProgramError::MissingRequiredSignature);
+        }
+        CreatePermissionCpiBuilder::new(
+            queue_info,
+            queue_permission_info,
+            payer_info,
+            system_program_info,
+            &PERMISSION_PROGRAM_ID,
+        )
+        .members(MembersArgs { members: Some(&[]) })
+        .seeds(&[
+            QUEUE_SEED,
+            mint_info.address().as_ref(),
+            validator_info.address().as_ref(),
+        ])
+        .bump(bump)
+        .invoke()?;
     }
 
     let shortfall = target_lamports.saturating_sub(queue_info.lamports());

@@ -3,7 +3,11 @@ use std::{
     sync::{Mutex, OnceLock},
 };
 
+use crate::utils::add_permission_program;
 use dlp_api::pda::magic_fee_vault_pda_from_validator;
+use ephemeral_rollups_pinocchio::acl::{
+    permission_pda_from_permissioned_account, PERMISSION_PROGRAM_ID,
+};
 use ephemeral_spl_api::instruction::{self, internal};
 use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::transfer_queue::{
@@ -22,6 +26,7 @@ use solana_program::{
 };
 use solana_program_pack::Pack;
 use spl_token_interface::state::Account;
+
 use {
     solana_program_test::{processor, tokio, ProgramTest, ProgramTestContext},
     solana_pubkey::Pubkey,
@@ -254,6 +259,7 @@ async fn setup_fixture() -> Fixture {
     clear_captured_intent_bundles(magic_program);
 
     let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
+    add_permission_program(&mut pt);
     utils::add_associated_token_program(&mut pt);
     add_magic_program_mock(&mut pt, magic_program);
     pt.add_account(
@@ -298,6 +304,7 @@ async fn setup_fixture() -> Fixture {
         }
         .into(),
     );
+    let queue_permission = permission_pda_from_permissioned_account(&queue);
     let vault = pdas.vault;
     let source_ata = setup.user_tokens[0];
     let destination_ata = utils::derive_associated_token_address(payer, mint);
@@ -324,9 +331,11 @@ async fn setup_fixture() -> Fixture {
         accounts: vec![
             AccountMeta::new(payer, true),
             AccountMeta::new(queue, false),
+            AccountMeta::new(queue_permission, false),
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new_readonly(validator, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+            AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
         ],
         data: vec![instruction::INITIALIZE_TRANSFER_QUEUE],
     };
@@ -589,6 +598,7 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
         utils::add_associated_token_program(&mut pt);
         add_magic_program_mock(&mut pt, magic_program);
         add_noop_program_mock(&mut pt, fake_magic_program);
+        add_permission_program(&mut pt);
         pt.add_account(
             magic_context,
             SolanaAccount {
@@ -634,6 +644,7 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
             }
             .into(),
         );
+        let queue_permission = permission_pda_from_permissioned_account(&queue);
         let vault = pdas.vault;
         let source_ata = setup.user_tokens[0];
         let destination_ata = utils::derive_associated_token_address(payer, mint);
@@ -661,9 +672,11 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
             accounts: vec![
                 AccountMeta::new(payer, true),
                 AccountMeta::new(queue, false),
+                AccountMeta::new(queue_permission, false),
                 AccountMeta::new_readonly(mint, false),
                 AccountMeta::new_readonly(validator, false),
                 AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+                AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
             ],
             data: vec![instruction::INITIALIZE_TRANSFER_QUEUE],
         };
@@ -791,6 +804,7 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
         utils::add_associated_token_program(&mut pt);
         add_magic_program_mock(&mut pt, magic_program);
         add_noop_program_mock(&mut pt, fake_magic_program);
+        add_permission_program(&mut pt);
         pt.add_account(
             magic_context,
             SolanaAccount {
@@ -824,6 +838,7 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
             &PROGRAM,
         )
         .0;
+        let queue_permission = permission_pda_from_permissioned_account(&queue);
         let magic_fee_vault = magic_fee_vault(&validator);
         context.set_account(
             &magic_fee_vault,
@@ -863,9 +878,11 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
             accounts: vec![
                 AccountMeta::new(payer, true),
                 AccountMeta::new(queue, false),
+                AccountMeta::new(queue_permission, false),
                 AccountMeta::new_readonly(mint, false),
                 AccountMeta::new_readonly(validator, false),
                 AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+                AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
             ],
             data: vec![instruction::INITIALIZE_TRANSFER_QUEUE],
         };

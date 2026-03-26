@@ -1,12 +1,14 @@
 use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::program::ID;
 use solana_instruction::{AccountMeta, Instruction};
-use solana_program::bpf_loader;
 use solana_program::pubkey::Pubkey;
-use solana_program::rent::Rent;
-use solana_program_test::{read_file, tokio, ProgramTest};
+use solana_program_test::{tokio, ProgramTest};
 use solana_signer::Signer;
 use solana_transaction::Transaction;
+
+mod utils;
+
+use crate::utils::add_permission_program;
 
 pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 
@@ -39,17 +41,8 @@ async fn reset_ephemeral_ata_permission() {
 
     let mut program_test = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
     program_test.prefer_bpf(true);
-    let data = read_file("tests/fixtures/acl.so");
-    program_test.add_account(
-        permission_program_id,
-        solana_account::Account {
-            lamports: Rent::default().minimum_balance(data.len()).max(1),
-            data,
-            owner: bpf_loader::id(),
-            executable: true,
-            rent_epoch: 0,
-        },
-    );
+    add_permission_program(&mut program_test);
+
     let context = program_test.start_with_context().await;
 
     let payer = context.payer.pubkey();
