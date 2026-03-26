@@ -49,7 +49,15 @@ pub fn process_deposit_and_queue_transfer(
     let split = args.split() as usize;
     let (queue_len_before, validator) = {
         let data = unsafe { queue_info.borrow_unchecked() };
-        queue_len_for_mint_with_capacity(data, mint_info.address(), split)?
+        match queue_len_for_mint_with_capacity(data, mint_info.address(), split) {
+            Ok(result) => result,
+            Err(ProgramError::AccountDataTooSmall) => {
+                #[cfg(feature = "logging")]
+                pinocchio_log::log!("Queue is full, skipping transfer");
+                return Ok(());
+            }
+            Err(e) => return Err(e),
+        }
     };
 
     let program_id = ephemeral_spl_api::program::id_address();

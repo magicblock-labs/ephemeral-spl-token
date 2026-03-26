@@ -405,16 +405,12 @@ async fn deposit_and_queue_transfer_rejects_when_queue_is_full() {
         &[&fixture.context.payer],
         blockhash,
     );
-    assert_eq!(
-        fixture
-            .context
-            .banks_client
-            .process_transaction(tx)
-            .await
-            .unwrap_err()
-            .unwrap(),
-        TransactionError::InstructionError(0, InstructionError::AccountDataTooSmall)
-    );
+    fixture
+        .context
+        .banks_client
+        .process_transaction(tx)
+        .await
+        .unwrap();
 
     assert_empty_state(&fixture).await;
 }

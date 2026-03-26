@@ -111,7 +111,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
             ),
             undelegate_and_close_shuttle_action(&common_accounts),
         ]
-        .cleartext_with_insertable(private_transfer, 10)
+        .cleartext_with_insertable(private_transfer, 1)
     };
 
     process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions(
