@@ -1,10 +1,11 @@
 use ephemeral_rollups_pinocchio::acl::{
     permission_pda_from_permissioned_account, PERMISSION_PROGRAM_ID,
 };
+use bytemuck::Zeroable;
 use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::transfer_queue::{
-    header_len, item_len, QueuedTransfer, TransferQueueHeader, QUEUE_SEED,
+    header_len, item_len, queue_views_checked, QueuedTransfer, TransferQueueHeader, QUEUE_SEED,
 };
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
@@ -583,4 +584,115 @@ async fn deposit_and_queue_transfer_prefers_multiples_of_five_for_three_way_spli
         .collect::<Vec<_>>();
     queued_amounts.sort_unstable();
     assert_eq!(queued_amounts, vec![3_500_000, 15_000_000, 15_000_000]);
+}
+
+#[tokio::test]
+async fn deposit_and_queue_transfer_return_to_shuttle() {
+    let fixture = setup_fixture(None).await;
+
+    let shuttle_id = 42_u32;
+    let (shuttle_ephemeral_ata, _) =
+        utils::derive_shuttle_ephemeral_ata(PROGRAM, fixture.payer, fixture.mint, shuttle_id);
+    let (_shuttle_eata, _) =
+        utils::derive_shuttle_eata(PROGRAM, shuttle_ephemeral_ata, fixture.mint);
+    let shuttle_wallet_ata =
+        utils::derive_associated_token_address(shuttle_ephemeral_ata, fixture.mint);
+    let ix_init_ata = Instruction {
+        program_id: utils::associated_token_program_id(),
+        accounts: vec![
+            AccountMeta::new(fixture.payer, true),
+            AccountMeta::new(shuttle_wallet_ata, false),
+            AccountMeta::new_readonly(shuttle_ephemeral_ata, false),
+            AccountMeta::new_readonly(fixture.mint, false),
+            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+            AccountMeta::new_readonly(spl_token_interface::ID, false),
+        ],
+        data: vec![1],
+    };
+
+    let blockhash = fixture
+        .context
+        .banks_client
+        .get_latest_blockhash()
+        .await
+        .unwrap();
+    let tx_init_ata = Transaction::new_signed_with_payer(
+        &[ix_init_ata],
+        Some(&fixture.payer),
+        &[&fixture.context.payer],
+        blockhash,
+    );
+    fixture
+        .context
+        .banks_client
+        .process_transaction(tx_init_ata)
+        .await
+        .unwrap();
+
+    let amount: u64 = 33_500_000;
+    let split: u32 = 1000;
+    let ix = {
+        let mut data = vec![instruction::DEPOSIT_AND_QUEUE_TRANSFER];
+        data.extend_from_slice(&amount.to_le_bytes());
+        data.extend_from_slice(&0_u64.to_le_bytes());
+        data.extend_from_slice(&0_u64.to_le_bytes());
+        data.extend_from_slice(&split.to_le_bytes());
+
+        Instruction {
+            program_id: PROGRAM,
+            accounts: vec![
+                AccountMeta::new(fixture.queue, false),
+                AccountMeta::new_readonly(fixture.vault, false),
+                AccountMeta::new_readonly(fixture.mint, false),
+                AccountMeta::new(fixture.user_source_ata, false),
+                AccountMeta::new(fixture.vault_ata, false),
+                AccountMeta::new_readonly(fixture.destination_ata, false),
+                AccountMeta::new_readonly(fixture.payer, true),
+                AccountMeta::new_readonly(spl_token_interface::ID, false),
+                AccountMeta::new(shuttle_wallet_ata, false),
+            ],
+            data,
+        }
+    };
+    let blockhash = fixture
+        .context
+        .banks_client
+        .get_latest_blockhash()
+        .await
+        .unwrap();
+
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&fixture.payer),
+        &[&fixture.context.payer],
+        blockhash,
+    );
+    fixture
+        .context
+        .banks_client
+        .process_transaction(tx)
+        .await
+        .unwrap();
+
+    let queue_account = fixture
+        .context
+        .banks_client
+        .get_account(fixture.queue)
+        .await
+        .unwrap()
+        .expect("queue account must exist");
+
+    let (header, items) = queue_views_checked(&queue_account.data).unwrap();
+    assert_eq!(header.length, 0);
+    assert!(items.iter().all(|item| item == &QueuedTransfer::zeroed()));
+
+    let shuttle_token_acc = fixture
+        .context
+        .banks_client
+        .get_account(shuttle_wallet_ata)
+        .await
+        .unwrap()
+        .expect("shuttle token account must exist");
+    let shuttle_token_state = Account::unpack(&shuttle_token_acc.data).unwrap();
+    assert_eq!(shuttle_token_state.amount, amount);
 }

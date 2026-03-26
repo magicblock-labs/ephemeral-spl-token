@@ -7,10 +7,11 @@ use ephemeral_spl_api::state::transfer_queue::{
     queue_len_for_mint_with_capacity, queue_push_from_data, QueuedTransfer,
     QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA, QUEUE_SEED,
 };
-use pinocchio::cpi::set_return_data;
+use pinocchio::address::address_eq;
 use pinocchio::sysvars::clock::Clock;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use pinocchio_token_2022::instructions::TransferChecked;
 
 const MILLIS_PER_SECOND: u64 = 1_000;
 
@@ -30,7 +31,7 @@ pub fn process_deposit_and_queue_transfer(
     // 7. []         Token program
     let args = DepositAndQueueTransferArgs::try_from_bytes(instruction_data)?;
 
-    let [queue_info, vault_info, mint_info, user_source_token_acc, vault_token_acc, destination_token_acc, user_authority, token_program_info, ..] =
+    let [queue_info, vault_info, mint_info, user_source_token_acc, vault_token_acc, destination_token_acc, user_authority, token_program_info, remaining_accounts @ ..] =
         accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
@@ -48,15 +49,31 @@ pub fn process_deposit_and_queue_transfer(
     )?;
 
     let split = args.split() as usize;
+    let decimals = read_mint_decimals(mint_info, token_program_info)?;
+
     let (queue_len_before, validator) = {
         let data = unsafe { queue_info.borrow_unchecked() };
         match queue_len_for_mint_with_capacity(data, mint_info.address(), split) {
             Ok(result) => result,
             Err(ProgramError::AccountDataTooSmall) => {
                 #[cfg(feature = "logging")]
-                pinocchio_log::log!("Queue is full, skipping transfer");
-                // Can be used to indicate to the caller that the queue is full.
-                set_return_data(b"queue_full");
+                pinocchio_log::log!("Queue is full, return fund to shuttle");
+                let Some(shuttle_wallet_ata) = remaining_accounts
+                    .first()
+                    .filter(|acc| !address_eq(acc.address(), &crate::ID.into()))
+                else {
+                    return Ok(());
+                };
+                TransferChecked {
+                    mint: mint_info,
+                    from: user_source_token_acc,
+                    to: shuttle_wallet_ata,
+                    authority: user_authority,
+                    token_program: token_program_info.address(),
+                    amount: amount,
+                    decimals: decimals,
+                }
+                .invoke()?;
                 return Ok(());
             }
             Err(e) => return Err(e),
@@ -75,7 +92,6 @@ pub fn process_deposit_and_queue_transfer(
     #[cfg(not(feature = "logging"))]
     let _ = queue_len_before;
 
-    let decimals = read_mint_decimals(mint_info, token_program_info)?;
     let inserted_at = queue_timestamp_now()?;
 
     transfer_to_vault_for_mint(
