@@ -7,6 +7,7 @@ use ephemeral_spl_api::state::transfer_queue::{
     queue_len_for_mint_with_capacity, queue_push_from_data, QueuedTransfer,
     QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA, QUEUE_SEED,
 };
+use pinocchio::cpi::set_return_data;
 use pinocchio::sysvars::clock::Clock;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
@@ -54,6 +55,8 @@ pub fn process_deposit_and_queue_transfer(
             Err(ProgramError::AccountDataTooSmall) => {
                 #[cfg(feature = "logging")]
                 pinocchio_log::log!("Queue is full, skipping transfer");
+                // Can be used to indicate to the caller that the queue is full.
+                set_return_data(b"queue_full");
                 return Ok(());
             }
             Err(e) => return Err(e),
