@@ -1,4 +1,5 @@
 use crate::processor::rent_pda::derive_rent_pda;
+use dlp_api::pda::magic_fee_vault_pda_from_validator;
 use ephemeral_rollups_pinocchio::intent_bundle::{
     ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
 };
@@ -31,9 +32,11 @@ pub fn process_transfer_queue_tick(
 
     // Expected accounts:
     // 0. [writable] Transfer queue PDA, used as the scheduled-action authority
-    // 1. [writable] Magic context account
-    // 2. []         Magic program
-    let [queue_info, magic_context_info, magic_program_info, ..] = accounts else {
+    // 1. [writable] Validator magic fee vault PDA derived from ["magic-fee-vault", validator]
+    // 2. [writable] Magic context account
+    // 3. []         Magic program
+    let [queue_info, magic_fee_vault_info, magic_context_info, magic_program_info, ..] = accounts
+    else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
@@ -151,12 +154,17 @@ pub fn process_transfer_queue_tick(
         Seed::from(&queue_bump_seed),
     ];
     let signer = Signer::from(&signer_seeds);
+    let derived_magic_fee_vault = magic_fee_vault_pda_from_validator(&validator.to_bytes().into());
+    if derived_magic_fee_vault.to_bytes() != magic_fee_vault_info.address().to_bytes() {
+        return Err(ProgramError::InvalidSeeds);
+    }
 
     MagicIntentBundleBuilder::new(
         queue_info.clone(),
         magic_context_info.clone(),
         magic_program_info.clone(),
     )
+    .magic_fee_vault(magic_fee_vault_info.clone())
     .set_standalone_actions(&standalone_actions)
     .build_and_invoke_signed(&mut intent_bundle_data, &[signer])?;
 

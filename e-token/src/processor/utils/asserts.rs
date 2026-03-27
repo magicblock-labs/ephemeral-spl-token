@@ -1,7 +1,10 @@
 #[macro_export]
 macro_rules! assert_owner {
     ($account:expr, $expected_owner:expr) => {
-        if !pinocchio::address::address_eq(unsafe { $account.owner() }, $expected_owner) {
+        let account = $account;
+        let expected_owner = $expected_owner;
+        let actual_owner = unsafe { account.owner() };
+        if !pinocchio::address::address_eq(actual_owner, expected_owner) {
             return Err(pinocchio::error::ProgramError::InvalidAccountOwner);
         }
     };

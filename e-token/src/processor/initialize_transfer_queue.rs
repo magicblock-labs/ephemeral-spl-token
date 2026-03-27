@@ -57,11 +57,15 @@ pub fn process_initialize_transfer_queue(
     }
 
     let rent = Rent::get()?;
+    let target_lamports = rent
+        .try_minimum_balance(queue_size)?
+        .checked_add(1_000_000_000) // Cover for 10_000 commits (0.0001 SOL each)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+
     if !queue_info.owned_by(&program_id) {
         if queue_info.lamports() > 0 {
             return Err(ProgramError::IllegalOwner);
         }
-
         if !payer_info.is_signer() {
             return Err(ProgramError::MissingRequiredSignature);
         }
@@ -75,21 +79,22 @@ pub fn process_initialize_transfer_queue(
         ];
         let signer = Signer::from(&signer_seeds);
 
-        // Allocate the default space but fund the desired size's rent.
         CreateAccount {
             from: payer_info,
             to: queue_info,
             space: (queue_size as u64).min(DEFAULT_TRANSFER_QUEUE_SIZE_BYTES),
-            lamports: rent.try_minimum_balance(queue_size)?,
+            lamports: target_lamports,
             owner: &program_id,
         }
         .invoke_signed(&[signer])?;
-    } else if queue_info.lamports() < rent.try_minimum_balance(queue_size)? {
-        // Transfer missing lamports
+    }
+
+    let shortfall = target_lamports.saturating_sub(queue_info.lamports());
+    if shortfall > 0 {
         Transfer {
             from: payer_info,
             to: queue_info,
-            lamports: rent.try_minimum_balance(queue_size)? - queue_info.lamports(),
+            lamports: shortfall,
         }
         .invoke()?;
     }
