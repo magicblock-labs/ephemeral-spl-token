@@ -1,5 +1,6 @@
 use core::mem::MaybeUninit;
 
+use dlp_api::pda::magic_fee_vault_pda_from_validator;
 use ephemeral_rollups_pinocchio::crank::{CrankInstruction, ScheduleCrankArgs, ScheduleCrankCpi};
 use ephemeral_spl_api::instruction::internal::PROCESS_TRANSFER_QUEUE_TICK;
 use ephemeral_spl_api::state::transfer_queue::{
@@ -14,8 +15,8 @@ use crate::{assert_owner, assert_signer};
 
 pub const CRANK_EXECUTION_INTERVAL_MILLIS: i64 = 500;
 
-const PROCESS_QUEUE_TICK_CRANK_ACCOUNTS: usize = 3;
-const SCHEDULE_CRANK_CPI_ACCOUNTS: usize = 4;
+const PROCESS_QUEUE_TICK_CRANK_ACCOUNTS: usize = 4;
+const SCHEDULE_CRANK_CPI_ACCOUNTS: usize = 5;
 const SCHEDULE_CRANK_DATA_LEN: usize =
     4 + 8 + 8 + 8 + 8 + 32 + 8 + (PROCESS_QUEUE_TICK_CRANK_ACCOUNTS * 34) + 8 + 1;
 
@@ -30,10 +31,13 @@ pub fn process_ensure_transfer_queue_crank(
 
     // Expected accounts:
     // 0. [writable, signer] Payer for the recurring crank
-    // 1. [writable] Transfer queue PDA derived from [QUEUE_SEED, mint]
-    // 2. [writable] Magic context account
-    // 3. []         Magic program
-    let [payer_info, queue_info, magic_context_info, magic_program_info, ..] = accounts else {
+    // 1. [writable] Transfer queue PDA derived from [QUEUE_SEED, mint, validator]
+    // 2. [writable] Validator magic fee vault PDA derived from ["magic-fee-vault", validator]
+    // 3. [writable] Magic context account
+    // 4. []         Magic program
+    let [payer_info, queue_info, magic_fee_vault_info, magic_context_info, magic_program_info, ..] =
+        accounts
+    else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
@@ -45,19 +49,28 @@ pub fn process_ensure_transfer_queue_crank(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    let (mint, bump) = {
+    let (mint, bump, validator) = {
         let data = unsafe { queue_info.borrow_unchecked() };
         let (header, _) = queue_views_checked(data)?;
-        (header.mint, header.bump)
+        (header.mint, header.bump, header.validator)
     };
 
     let bump_seed = [bump];
     let derived_queue = ephemeral_spl_api::Address::create_program_address(
-        &[QUEUE_SEED, mint.as_ref(), bump_seed.as_ref()],
+        &[
+            QUEUE_SEED,
+            mint.as_ref(),
+            validator.as_ref(),
+            bump_seed.as_ref(),
+        ],
         &program_id,
     )
     .map_err(|_| ProgramError::InvalidAccountData)?;
     if derived_queue != *queue_info.address() {
+        return Err(ProgramError::InvalidSeeds);
+    }
+    let derived_magic_fee_vault = magic_fee_vault_pda_from_validator(&validator.to_bytes().into());
+    if derived_magic_fee_vault.to_bytes() != magic_fee_vault_info.address().to_bytes() {
         return Err(ProgramError::InvalidSeeds);
     }
 
@@ -74,6 +87,11 @@ pub fn process_ensure_transfer_queue_crank(
     let tick_accounts = [
         InstructionAccount {
             address: queue_info.address(),
+            is_signer: false,
+            is_writable: true,
+        },
+        InstructionAccount {
+            address: magic_fee_vault_info.address(),
             is_signer: false,
             is_writable: true,
         },
@@ -115,9 +133,12 @@ pub fn process_ensure_transfer_queue_crank(
             .write(InstructionAccount::readonly(queue_info.address()));
         schedule_accounts
             .get_unchecked_mut(2)
-            .write(InstructionAccount::readonly(magic_context_info.address()));
+            .write(InstructionAccount::readonly(magic_fee_vault_info.address()));
         schedule_accounts
             .get_unchecked_mut(3)
+            .write(InstructionAccount::readonly(magic_context_info.address()));
+        schedule_accounts
+            .get_unchecked_mut(4)
             .write(InstructionAccount::readonly(magic_program_info.address()));
     }
 
@@ -134,6 +155,7 @@ pub fn process_ensure_transfer_queue_crank(
     let schedule_account_refs = [
         payer_info,
         queue_info,
+        magic_fee_vault_info,
         magic_context_info,
         magic_program_info,
     ];

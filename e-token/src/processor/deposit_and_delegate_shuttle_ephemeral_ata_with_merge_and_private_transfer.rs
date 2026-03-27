@@ -9,6 +9,7 @@ use dlp_api::args::{
     MaybeEncryptedPubkey,
 };
 use dlp_api::compact::{self};
+use dlp_api::consts::DEFAULT_VALIDATOR_IDENTITY;
 
 use ephemeral_spl_api::state::transfer_queue::QUEUE_SEED;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
@@ -31,7 +32,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
     // Expected accounts:
     // 0..17 Same as DepositAndDelegateShuttleEphemeralAtaWithMerge, except there is no
     //        cleartext destination ATA account in this outer instruction.
-    // 18. [writable] Transfer queue PDA derived from [QUEUE_SEED, mint]
+    // 18. [writable] Transfer queue PDA derived from [QUEUE_SEED, mint, validator]
     //
     let args = DepositAndDelegateShuttleWithPrivateTransferArgs::try_from_bytes(instruction_data)?;
     if args.amount() == 0 {
@@ -76,7 +77,13 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
 
     let program_id = ephemeral_spl_api::program::id_address();
     let (derived_queue, _) = ephemeral_spl_api::Address::find_program_address(
-        &[QUEUE_SEED, common_accounts.mint_info.address().as_ref()],
+        &[
+            QUEUE_SEED,
+            common_accounts.mint_info.address().as_ref(),
+            args.validator()?
+                .unwrap_or(DEFAULT_VALIDATOR_IDENTITY.to_bytes())
+                .as_ref(),
+        ],
         &program_id,
     );
     if derived_queue != *queue_info.address() {

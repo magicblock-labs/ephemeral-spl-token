@@ -95,7 +95,8 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
     let (vault_eata, _) = Pubkey::find_program_address(&[vault.as_ref(), mint.as_ref()], &PROGRAM);
     let vault_ata = utils::derive_associated_token_address(vault, mint);
     let owner_source_ata = owner_token.pubkey();
-    let queue = Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref()], &PROGRAM).0;
+    let queue =
+        Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref(), validator.as_ref()], &PROGRAM).0;
 
     let ix_init_rent = Instruction {
         program_id: PROGRAM,
@@ -127,6 +128,7 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
             AccountMeta::new(payer, true),
             AccountMeta::new(queue, false),
             AccountMeta::new_readonly(mint, false),
+            AccountMeta::new_readonly(validator, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
         data: vec![instruction::INITIALIZE_TRANSFER_QUEUE],

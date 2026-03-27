@@ -15,6 +15,7 @@ use solana_signer::Signer;
 use solana_transaction::Transaction;
 
 pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
+pub const VALIDATOR: Pubkey = Pubkey::new_from_array([77; 32]);
 
 fn read_header_unaligned(data: &[u8]) -> TransferQueueHeader {
     assert!(data.len() >= header_len());
@@ -91,7 +92,7 @@ fn process_delegation_program_mock(
     }
 
     let (commit_frequency_ms, validator) = parse_delegate_validator(&instruction_data[8..])?;
-    if validator != Some(solana_system_interface::program::ID.to_bytes()) {
+    if validator != Some(VALIDATOR.to_bytes()) {
         return Err(ProgramError::InvalidInstructionData);
     }
 
@@ -143,7 +144,8 @@ async fn delegate_transfer_queue_succeeds_and_is_idempotent() {
 
     let context = &mut pt.start_with_context().await;
     let payer = context.payer.pubkey();
-    let (queue, bump) = Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref()], &PROGRAM);
+    let (queue, bump) =
+        Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref(), VALIDATOR.as_ref()], &PROGRAM);
 
     let ix_init_queue = Instruction {
         program_id: PROGRAM,
@@ -151,6 +153,7 @@ async fn delegate_transfer_queue_succeeds_and_is_idempotent() {
             AccountMeta::new(payer, true),
             AccountMeta::new(queue, false),
             AccountMeta::new_readonly(mint, false),
+            AccountMeta::new_readonly(VALIDATOR, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
         data: vec![instruction::INITIALIZE_TRANSFER_QUEUE],

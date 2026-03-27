@@ -6,9 +6,12 @@ use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
-use pinocchio_system::instructions::CreateAccount;
+use pinocchio_system::instructions::{CreateAccount, Transfer};
 
-pub const DEFAULT_TRANSFER_QUEUE_SIZE_BYTES: usize = 9_728;
+pub const DEFAULT_TRANSFER_QUEUE_ITEMS: u32 = 92;
+/// Default queue size in bytes. (HEADER_LEN + ITEM_LEN * DEFAULT_TRANSFER_QUEUE_ITEMS)
+pub const DEFAULT_TRANSFER_QUEUE_SIZE_BYTES: u64 =
+    (header_len() + item_len() * DEFAULT_TRANSFER_QUEUE_ITEMS as usize) as u64;
 
 #[inline(always)]
 pub fn process_initialize_transfer_queue(
@@ -17,41 +20,52 @@ pub fn process_initialize_transfer_queue(
 ) -> ProgramResult {
     // Expected accounts:
     // 0. [signer]   Payer (funds account creation)
-    // 1. [writable] Transfer queue account (PDA derived from [QUEUE_SEED, mint])
+    // 1. [writable] Transfer queue account (PDA derived from [QUEUE_SEED, mint, validator])
     // 2. []         Mint account (seed)
-    // 3. []         System program
+    // 3. []         Validator
+    // 4. []         System program
     let args = InitializeTransferQueueArgs::try_from_bytes(instruction_data)?;
 
-    let [payer_info, queue_info, mint_info, _system_program_info, ..] = accounts else {
+    let [payer_info, queue_info, mint_info, validator_info, _system_program_info, ..] = accounts
+    else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
-    let requested_size = args.size_bytes() as usize;
-    let queue_size = if requested_size == 0 {
-        DEFAULT_TRANSFER_QUEUE_SIZE_BYTES
+    let (requested_items, queue_size) = if let Some(items) = args.requested_items() {
+        (items, header_len() + item_len() * items as usize)
     } else {
-        requested_size
+        (
+            DEFAULT_TRANSFER_QUEUE_ITEMS,
+            DEFAULT_TRANSFER_QUEUE_SIZE_BYTES as usize,
+        )
     };
-
-    let min_size = header_len() + item_len();
-    if queue_size < min_size {
+    if requested_items == 0 {
         return Err(ProgramError::InvalidInstructionData);
-    }
+    };
 
     let program_id = ephemeral_spl_api::program::id_address();
     let (derived_queue, bump) = ephemeral_spl_api::Address::find_program_address(
-        &[QUEUE_SEED, mint_info.address().as_ref()],
+        &[
+            QUEUE_SEED,
+            mint_info.address().as_ref(),
+            validator_info.address().as_ref(),
+        ],
         &program_id,
     );
     if derived_queue != *queue_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
 
+    let rent = Rent::get()?;
+    let target_lamports = rent
+        .try_minimum_balance(queue_size)?
+        .checked_add(1_000_000_000) // Cover for 10_000 commits (0.0001 SOL each)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+
     if !queue_info.owned_by(&program_id) {
         if queue_info.lamports() > 0 {
             return Err(ProgramError::IllegalOwner);
         }
-
         if !payer_info.is_signer() {
             return Err(ProgramError::MissingRequiredSignature);
         }
@@ -60,6 +74,7 @@ pub fn process_initialize_transfer_queue(
         let signer_seeds = [
             Seed::from(QUEUE_SEED),
             Seed::from(mint_info.address().as_ref()),
+            Seed::from(validator_info.address().as_ref()),
             Seed::from(&bump_seed),
         ];
         let signer = Signer::from(&signer_seeds);
@@ -67,23 +82,36 @@ pub fn process_initialize_transfer_queue(
         CreateAccount {
             from: payer_info,
             to: queue_info,
-            space: queue_size as u64,
-            lamports: Rent::get()?.try_minimum_balance(queue_size)?,
+            space: (queue_size as u64).min(DEFAULT_TRANSFER_QUEUE_SIZE_BYTES),
+            lamports: target_lamports,
             owner: &program_id,
         }
         .invoke_signed(&[signer])?;
     }
 
+    let shortfall = target_lamports.saturating_sub(queue_info.lamports());
+    if shortfall > 0 {
+        Transfer {
+            from: payer_info,
+            to: queue_info,
+            lamports: shortfall,
+        }
+        .invoke()?;
+    }
+
     let data_len = queue_info.data_len();
-    if data_len < header_len() || capacity_from_data_len(data_len) == 0 {
+    if capacity_from_data_len(data_len) == 0 {
         return Err(ProgramError::InvalidAccountData);
     }
 
     let data = unsafe { queue_info.borrow_unchecked_mut() };
-    init_queue(data, bump, *mint_info.address())?;
+    init_queue(data, bump, *mint_info.address(), *validator_info.address())?;
 
     let (header, _) = queue_views_mut_checked(data)?;
-    if header.bump != bump || header.mint != *mint_info.address() {
+    if header.bump != bump
+        || header.mint != *mint_info.address()
+        || header.validator != *validator_info.address()
+    {
         return Err(ProgramError::InvalidAccountData);
     }
 
@@ -111,15 +139,15 @@ impl InitializeTransferQueueArgs<'_> {
     }
 
     #[inline]
-    pub fn size_bytes(&self) -> u32 {
+    pub fn requested_items(&self) -> Option<u32> {
         if self.len == 0 {
-            0
+            None
         } else {
             let mut buf = [0u8; 4];
             unsafe {
                 core::ptr::copy_nonoverlapping(self.raw, buf.as_mut_ptr(), 4);
             }
-            u32::from_le_bytes(buf)
+            Some(u32::from_le_bytes(buf))
         }
     }
 }

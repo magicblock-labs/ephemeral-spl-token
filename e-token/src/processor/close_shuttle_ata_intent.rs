@@ -100,7 +100,7 @@ pub fn process_close_shuttle_ata_intent(
         let (mint, shuttle_wallet_amount) = {
             let token_account = validate_token_account(
                 shuttle_wallet_ata_info,
-                &mint_info.address(),
+                mint_info.address(),
                 Some(shuttle_info.address()),
                 Some(token_program_info.address()),
             )?;

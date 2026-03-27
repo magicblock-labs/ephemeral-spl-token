@@ -5,6 +5,7 @@ use ephemeral_spl_api::state::transfer_queue::{
 };
 use solana_account::Account as SolanaAccount;
 use solana_instruction::Instruction;
+use solana_keypair::Keypair;
 use {
     ephemeral_spl_api::instruction,
     solana_instruction::AccountMeta,
@@ -38,8 +39,10 @@ async fn initialize_transfer_queue_default_size() {
 
     let context = &mut pt.start_with_context().await;
     let payer = context.payer.pubkey();
+    let validator = Keypair::new().pubkey();
 
-    let (queue, bump) = Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref()], &PROGRAM);
+    let (queue, bump) =
+        Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref(), validator.as_ref()], &PROGRAM);
 
     let ix = Instruction {
         program_id: PROGRAM,
@@ -47,6 +50,7 @@ async fn initialize_transfer_queue_default_size() {
             AccountMeta::new(payer, true),
             AccountMeta::new(queue, false),
             AccountMeta::new_readonly(mint, false),
+            AccountMeta::new_readonly(validator, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
         data: vec![instruction::INITIALIZE_TRANSFER_QUEUE],
@@ -68,7 +72,7 @@ async fn initialize_transfer_queue_default_size() {
         .expect("queue account must exist");
 
     assert_eq!(queue_account.owner, PROGRAM);
-    assert_eq!(queue_account.data.len(), 9_728);
+    assert_eq!(queue_account.data.len(), 9_664);
     assert!(capacity_from_data_len(queue_account.data.len()) >= 1);
 
     let header = read_header_unaligned(&queue_account.data);
@@ -98,11 +102,13 @@ async fn initialize_transfer_queue_custom_size_is_idempotent() {
 
     let context = &mut pt.start_with_context().await;
     let payer = context.payer.pubkey();
-    let (queue, bump) = Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref()], &PROGRAM);
+    let validator = Keypair::new().pubkey();
+    let (queue, bump) =
+        Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref(), validator.as_ref()], &PROGRAM);
 
-    let custom_size = (header_len() + (item_len() * 4)) as u32;
+    let items = 4_u32;
     let mut data = vec![instruction::INITIALIZE_TRANSFER_QUEUE];
-    data.extend_from_slice(&custom_size.to_le_bytes());
+    data.extend_from_slice(&items.to_le_bytes());
 
     let ix_init_custom = Instruction {
         program_id: PROGRAM,
@@ -110,6 +116,7 @@ async fn initialize_transfer_queue_custom_size_is_idempotent() {
             AccountMeta::new(payer, true),
             AccountMeta::new(queue, false),
             AccountMeta::new_readonly(mint, false),
+            AccountMeta::new_readonly(validator, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
         data,
@@ -134,6 +141,7 @@ async fn initialize_transfer_queue_custom_size_is_idempotent() {
             AccountMeta::new(payer, true),
             AccountMeta::new(queue, false),
             AccountMeta::new_readonly(mint, false),
+            AccountMeta::new_readonly(validator, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
         data: vec![instruction::INITIALIZE_TRANSFER_QUEUE],
@@ -157,7 +165,10 @@ async fn initialize_transfer_queue_custom_size_is_idempotent() {
         .unwrap()
         .expect("queue account must exist after idempotent init");
 
-    assert_eq!(queue_account.data.len(), custom_size as usize);
+    assert_eq!(
+        queue_account.data.len(),
+        header_len() + item_len() * items as usize
+    );
     assert!(capacity_from_data_len(queue_account.data.len()) >= 1);
 
     let header = read_header_unaligned(&queue_account.data);
