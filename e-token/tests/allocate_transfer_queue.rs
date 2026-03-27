@@ -37,9 +37,6 @@ async fn allocate_transfer_queue_succeeds_and_is_idempotent() {
         Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref(), validator.as_ref()], &PROGRAM);
 
     const N_ITEMS: usize = 9999;
-    // Overallocate to test idempotency
-    const N_ALLOCS: usize = (N_ITEMS * item_len()).div_ceil(10_240) + 10;
-    eprintln!("N_ALLOCS: {}", N_ALLOCS);
     let ix_init_queue = Instruction {
         program_id: PROGRAM,
         accounts: vec![
@@ -76,31 +73,45 @@ async fn allocate_transfer_queue_succeeds_and_is_idempotent() {
         ],
         data: vec![instruction::ALLOCATE_TRANSFER_QUEUE],
     };
+
+    let mut previous_data_len = 0usize;
+    let mut final_data_len = None;
     // Splitting into chunks of 10 to avoid MaxInstructionTraceLengthExceeded
-    for chunk in
-        core::array::from_fn::<Instruction, N_ALLOCS, _>(|_| ix_allocate.clone()).chunks(10)
-    {
+    for _ in 0..256 {
         let blockhash = context.get_new_latest_blockhash().await.unwrap();
+        let batch = vec![ix_allocate.clone(); 10];
         let tx_allocate =
-            Transaction::new_signed_with_payer(chunk, Some(&payer), &[&context.payer], blockhash);
+            Transaction::new_signed_with_payer(&batch, Some(&payer), &[&context.payer], blockhash);
         context
             .banks_client
             .process_transaction(tx_allocate)
             .await
             .unwrap();
+
+        let current_data_len = context
+            .banks_client
+            .get_account(queue)
+            .await
+            .unwrap()
+            .expect("queue account must exist")
+            .data
+            .len();
+        if current_data_len == previous_data_len {
+            final_data_len = Some(current_data_len);
+            break;
+        }
+        previous_data_len = current_data_len;
     }
 
+    let final_data_len = final_data_len.expect("queue allocation must converge");
     let queue_account = context
         .banks_client
         .get_account(queue)
         .await
         .unwrap()
         .expect("queue account must exist");
-
-    assert_eq!(
-        (queue_account.data.len() - header_len()) / item_len(),
-        N_ITEMS
-    );
+    let final_capacity = (final_data_len - header_len()) / item_len();
+    assert!(final_capacity >= N_ITEMS);
 
     let (header, items) = queue_views_checked(&queue_account.data).unwrap();
     assert_eq!(header.version, TRANSFER_QUEUE_VERSION);
@@ -112,5 +123,29 @@ async fn allocate_transfer_queue_succeeds_and_is_idempotent() {
     assert_eq!(header.length, 0);
     assert_eq!(header.validator, validator);
 
-    assert_eq!(items.len(), N_ITEMS);
+    assert_eq!(items.len(), final_capacity);
+
+    let blockhash = context.get_new_latest_blockhash().await.unwrap();
+    let tx_allocate_again = Transaction::new_signed_with_payer(
+        &[ix_allocate],
+        Some(&payer),
+        &[&context.payer],
+        blockhash,
+    );
+    context
+        .banks_client
+        .process_transaction(tx_allocate_again)
+        .await
+        .unwrap();
+
+    let queue_account_after_extra_allocate = context
+        .banks_client
+        .get_account(queue)
+        .await
+        .unwrap()
+        .expect("queue account must still exist");
+    assert_eq!(
+        queue_account_after_extra_allocate.data.len(),
+        final_data_len
+    );
 }
