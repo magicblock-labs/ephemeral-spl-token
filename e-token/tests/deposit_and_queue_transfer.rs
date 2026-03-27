@@ -175,6 +175,7 @@ fn build_deposit_and_queue_ix(
             AccountMeta::new_readonly(fixture.destination_ata, false),
             AccountMeta::new_readonly(fixture.payer, true),
             AccountMeta::new_readonly(spl_token_interface::ID, false),
+            AccountMeta::new_readonly(PROGRAM, false),
         ],
         data,
     }

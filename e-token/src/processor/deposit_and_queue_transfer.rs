@@ -21,17 +21,18 @@ pub fn process_deposit_and_queue_transfer(
     instruction_data: &[u8],
 ) -> ProgramResult {
     // Expected accounts:
-    // 0. [writable] Transfer queue PDA derived from [QUEUE_SEED, mint, validator]
-    // 1. []         Global vault PDA derived from [mint]
-    // 2. []         Mint account
-    // 3. [writable] User source token account
-    // 4. [writable] Vault destination token account
-    // 5. []         Destination token account (default) or destination owner (flagged)
-    // 6. [signer]   Sender authority
-    // 7. []         Token program
+    // 0. [writable]            Transfer queue PDA derived from [QUEUE_SEED, mint, validator]
+    // 1. []                    Global vault PDA derived from [mint]
+    // 2. []                    Mint account
+    // 3. [writable]            User source token account
+    // 4. [writable]            Vault destination token account
+    // 5. []                    Destination token account (default) or destination owner (flagged)
+    // 6. [signer]              Sender authority
+    // 7. []                    Token program
+    // 8. [writable, optional]  Shuttle wallet token account
     let args = DepositAndQueueTransferArgs::try_from_bytes(instruction_data)?;
 
-    let [queue_info, vault_info, mint_info, user_source_token_acc, vault_token_acc, destination_token_acc, user_authority, token_program_info, remaining_accounts @ ..] =
+    let [queue_info, vault_info, mint_info, user_source_token_acc, vault_token_acc, destination_token_acc, user_authority, token_program_info, shuttle_wallet_ata_info, ..] =
         accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
@@ -57,23 +58,19 @@ pub fn process_deposit_and_queue_transfer(
             Ok(result) => result,
             Err(ProgramError::AccountDataTooSmall) => {
                 #[cfg(feature = "logging")]
-                pinocchio_log::log!("Queue is full, return fund to shuttle");
-                let Some(shuttle_wallet_ata) = remaining_accounts
-                    .first()
-                    .filter(|acc| !address_eq(acc.address(), &crate::ID.into()))
-                else {
-                    return Ok(());
-                };
-                TransferChecked {
-                    mint: mint_info,
-                    from: user_source_token_acc,
-                    to: shuttle_wallet_ata,
-                    authority: user_authority,
-                    token_program: token_program_info.address(),
-                    amount: amount,
-                    decimals: decimals,
+                pinocchio_log::log!("Queue is full");
+                if !address_eq(shuttle_wallet_ata_info.address(), &crate::ID.into()) {
+                    TransferChecked {
+                        mint: mint_info,
+                        from: user_source_token_acc,
+                        to: shuttle_wallet_ata_info,
+                        authority: user_authority,
+                        token_program: token_program_info.address(),
+                        amount,
+                        decimals,
+                    }
+                    .invoke()?;
                 }
-                .invoke()?;
                 return Ok(());
             }
             Err(e) => return Err(e),

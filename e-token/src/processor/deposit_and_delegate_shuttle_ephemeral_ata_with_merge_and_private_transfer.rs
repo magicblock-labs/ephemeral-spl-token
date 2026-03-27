@@ -270,6 +270,9 @@ fn private_transfer_action_encrypted(
             MaybeEncryptedPubkey::ClearText(
                 common_accounts.token_program_info.address().to_bytes()
             ), // 8
+            MaybeEncryptedPubkey::ClearText(
+                common_accounts.shuttle_wallet_ata_info.address().to_bytes()
+            ), // 9
         ],
         instructions: alloc::vec![MaybeEncryptedInstruction {
             program_id: 1,
@@ -282,6 +285,7 @@ fn private_transfer_action_encrypted(
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(7, false)), // destination_owner_info
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(0, true)), // owner_info
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(8, false)), // token_program_info
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(9, false)), // shuttle_wallet_ata_info
             ],
             data: MaybeEncryptedIxData {
                 prefix: {
