@@ -116,10 +116,7 @@ async fn allocate_transfer_queue_succeeds_and_is_idempotent() {
     let (header, items) = queue_views_checked(&queue_account.data).unwrap();
     assert_eq!(header.version, TRANSFER_QUEUE_VERSION);
     assert_eq!(header.bump, bump);
-    assert_eq!(
-        header.mint,
-        ephemeral_spl_api::Address::new_from_array(mint.to_bytes())
-    );
+    assert_eq!(header.mint, mint);
     assert_eq!(header.length, 0);
     assert_eq!(header.validator, validator);
 

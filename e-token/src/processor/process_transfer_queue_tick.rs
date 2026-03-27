@@ -39,6 +39,9 @@ pub fn process_transfer_queue_tick(
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
+    if magic_program_info.address() != &ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID {
+        return Err(ProgramError::IncorrectProgramId);
+    }
 
     let program_id = ephemeral_spl_api::program::id_address();
     let clock = Clock::get()?;
