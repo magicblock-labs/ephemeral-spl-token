@@ -29,6 +29,8 @@ fn read_header_unaligned(data: &[u8]) -> TransferQueueHeader {
     unsafe { core::ptr::read_unaligned(data.as_ptr() as *const TransferQueueHeader) }
 }
 
+const DEFAULT_TRANSFER_QUEUE_ITEMS: usize = 100;
+
 #[tokio::test]
 async fn initialize_transfer_queue_default_size() {
     let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
@@ -83,8 +85,14 @@ async fn initialize_transfer_queue_default_size() {
         .expect("queue account must exist");
 
     assert_eq!(queue_account.owner, PROGRAM);
-    assert_eq!(queue_account.data.len(), 9_664);
-    assert!(capacity_from_data_len(queue_account.data.len()) >= 1);
+    assert_eq!(
+        queue_account.data.len(),
+        header_len() + item_len() * DEFAULT_TRANSFER_QUEUE_ITEMS
+    );
+    assert_eq!(
+        capacity_from_data_len(queue_account.data.len()),
+        DEFAULT_TRANSFER_QUEUE_ITEMS
+    );
 
     let header = read_header_unaligned(&queue_account.data);
     assert_eq!(header.version, TRANSFER_QUEUE_VERSION);

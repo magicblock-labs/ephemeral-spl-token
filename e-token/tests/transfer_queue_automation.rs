@@ -58,6 +58,12 @@ struct CapturedScheduleTask {
 }
 
 #[derive(Clone)]
+struct CapturedCancelTask {
+    cancel_accounts: Vec<CapturedScheduleAccount>,
+    task_id: i64,
+}
+
+#[derive(Clone)]
 struct CapturedIntentBundle {
     schedule_accounts: Vec<Pubkey>,
     args: MagicIntentBundleArgs,
@@ -68,9 +74,14 @@ fn captured_schedules() -> &'static Mutex<HashMap<Pubkey, Vec<CapturedScheduleTa
     CAPTURED.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn test_lock() -> &'static tokio::sync::Mutex<()> {
-    static LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
+fn captured_cancels() -> &'static Mutex<HashMap<Pubkey, Vec<CapturedCancelTask>>> {
+    static CAPTURED: OnceLock<Mutex<HashMap<Pubkey, Vec<CapturedCancelTask>>>> = OnceLock::new();
+    CAPTURED.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn test_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
 }
 
 fn captured_intent_bundles() -> &'static Mutex<HashMap<Pubkey, Vec<CapturedIntentBundle>>> {
@@ -82,6 +93,10 @@ fn clear_captured_schedules(magic_program: Pubkey) {
     captured_schedules().lock().unwrap().remove(&magic_program);
 }
 
+fn clear_captured_cancels(magic_program: Pubkey) {
+    captured_cancels().lock().unwrap().remove(&magic_program);
+}
+
 fn clear_captured_intent_bundles(magic_program: Pubkey) {
     captured_intent_bundles()
         .lock()
@@ -91,6 +106,14 @@ fn clear_captured_intent_bundles(magic_program: Pubkey) {
 
 fn take_captured_schedules(magic_program: Pubkey) -> Vec<CapturedScheduleTask> {
     captured_schedules()
+        .lock()
+        .unwrap()
+        .remove(&magic_program)
+        .unwrap_or_default()
+}
+
+fn take_captured_cancels(magic_program: Pubkey) -> Vec<CapturedCancelTask> {
+    captured_cancels()
         .lock()
         .unwrap()
         .remove(&magic_program)
@@ -145,6 +168,31 @@ fn process_magic_program_mock(
                         })
                         .collect(),
                     args,
+                });
+        }
+        MagicBlockInstruction::CancelTask { task_id } => {
+            let Some(authority) = accounts.first() else {
+                return Err(ProgramError::NotEnoughAccountKeys);
+            };
+            if !authority.is_signer {
+                return Err(ProgramError::MissingRequiredSignature);
+            }
+
+            captured_cancels()
+                .lock()
+                .unwrap()
+                .entry(*program_id)
+                .or_default()
+                .push(CapturedCancelTask {
+                    cancel_accounts: accounts
+                        .iter()
+                        .map(|account| CapturedScheduleAccount {
+                            pubkey: *account.key,
+                            is_signer: account.is_signer,
+                            is_writable: account.is_writable,
+                        })
+                        .collect(),
+                    task_id,
                 });
         }
         MagicBlockInstruction::ScheduleIntentBundle(args) => {
@@ -247,7 +295,7 @@ struct Fixture {
 }
 
 async fn latest_blockhash(context: &mut ProgramTestContext) -> solana_program::hash::Hash {
-    context.banks_client.get_latest_blockhash().await.unwrap()
+    context.get_new_latest_blockhash().await.unwrap()
 }
 
 async fn setup_fixture() -> Fixture {
@@ -256,6 +304,7 @@ async fn setup_fixture() -> Fixture {
     );
     let magic_context = convert_magic_pubkey(MAGIC_CONTEXT_PUBKEY);
     clear_captured_schedules(magic_program);
+    clear_captured_cancels(magic_program);
     clear_captured_intent_bundles(magic_program);
 
     let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
@@ -278,6 +327,7 @@ async fn setup_fixture() -> Fixture {
     let mint_kp = Keypair::new();
     let mint = mint_kp.pubkey();
     let validator = Keypair::new().pubkey();
+    let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
 
     let pdas = utils::derive_pdas(PROGRAM, payer, mint);
     let setup = utils::setup_mint_and_token_accounts(
@@ -311,6 +361,17 @@ async fn setup_fixture() -> Fixture {
     let (vault_eata, _) = Pubkey::find_program_address(&[vault.as_ref(), mint.as_ref()], &PROGRAM);
     let vault_ata = utils::derive_associated_token_address(vault, mint);
 
+    let ix_init_rent = Instruction {
+        program_id: PROGRAM,
+        accounts: vec![
+            AccountMeta::new(payer, true),
+            AccountMeta::new(rent_pda, false),
+            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+        ],
+        data: vec![instruction::INITIALIZE_RENT_PDA],
+    };
+    let ix_fund_rent =
+        solana_system_interface::instruction::transfer(&payer, &rent_pda, 100_000_000);
     let ix_init_vault = Instruction {
         program_id: PROGRAM,
         accounts: vec![
@@ -354,7 +415,13 @@ async fn setup_fixture() -> Fixture {
     };
 
     let tx_init = Transaction::new_signed_with_payer(
-        &[ix_init_vault, ix_init_queue, ix_init_destination_ata],
+        &[
+            ix_init_rent,
+            ix_fund_rent,
+            ix_init_vault,
+            ix_init_queue,
+            ix_init_destination_ata,
+        ],
         Some(&payer),
         &[&context.payer],
         context.last_blockhash,
@@ -480,7 +547,7 @@ async fn queue_account(context: &mut ProgramTestContext, queue: Pubkey) -> Solan
 
 #[tokio::test(flavor = "current_thread")]
 async fn ensure_transfer_queue_crank_schedules_one_recurring_queue_crank() {
-    let _test_guard = test_lock().lock().await;
+    let _test_guard = test_lock().lock().unwrap();
     let mut fixture = setup_fixture().await;
 
     let blockhash = latest_blockhash(&mut fixture.context).await;
@@ -498,19 +565,21 @@ async fn ensure_transfer_queue_crank_schedules_one_recurring_queue_crank() {
         .unwrap();
 
     let captured = take_captured_schedules(fixture.magic_program);
+    let cancels = take_captured_cancels(fixture.magic_program);
     assert_eq!(captured.len(), 1);
+    assert!(cancels.is_empty());
     assert_eq!(
         captured[0].schedule_accounts,
         vec![
             CapturedScheduleAccount {
-                pubkey: fixture.payer,
+                pubkey: fixture.queue,
                 is_signer: true,
                 is_writable: true,
             },
             CapturedScheduleAccount {
                 pubkey: fixture.queue,
-                is_signer: false,
-                is_writable: false,
+                is_signer: true,
+                is_writable: true,
             },
             CapturedScheduleAccount {
                 pubkey: fixture.magic_fee_vault,
@@ -565,6 +634,12 @@ async fn ensure_transfer_queue_crank_schedules_one_recurring_queue_crank() {
         captured[0].args.instructions[0].data,
         vec![internal::PROCESS_TRANSFER_QUEUE_TICK]
     );
+    let queue_after_first_ensure = queue_account(&mut fixture.context, fixture.queue).await;
+    let header_after_first_ensure = read_header_unaligned(&queue_after_first_ensure.data);
+    assert_eq!(
+        header_after_first_ensure.crank_task_id,
+        captured[0].args.task_id
+    );
 
     let blockhash = latest_blockhash(&mut fixture.context).await;
     let tx = Transaction::new_signed_with_payer(
@@ -579,12 +654,35 @@ async fn ensure_transfer_queue_crank_schedules_one_recurring_queue_crank() {
         .process_transaction(tx)
         .await
         .unwrap();
-    assert!(take_captured_schedules(fixture.magic_program).is_empty());
+    let cancels = take_captured_cancels(fixture.magic_program);
+    assert_eq!(cancels.len(), 1);
+    assert_eq!(cancels[0].task_id, header_after_first_ensure.crank_task_id);
+    assert_eq!(
+        cancels[0].cancel_accounts,
+        vec![
+            CapturedScheduleAccount {
+                pubkey: fixture.queue,
+                is_signer: true,
+                is_writable: true,
+            },
+            CapturedScheduleAccount {
+                pubkey: fixture.queue,
+                is_signer: true,
+                is_writable: true,
+            },
+        ]
+    );
+    let rescheduled = take_captured_schedules(fixture.magic_program);
+    assert_eq!(rescheduled.len(), 1);
+    assert_eq!(
+        rescheduled[0].args.task_id,
+        header_after_first_ensure.crank_task_id
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
-    let _test_guard = test_lock().lock().await;
+    let _test_guard = test_lock().lock().unwrap();
     let fake_magic_program = Pubkey::new_unique();
 
     let mut fixture = {
@@ -593,6 +691,7 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
         );
         let magic_context = convert_magic_pubkey(MAGIC_CONTEXT_PUBKEY);
         clear_captured_schedules(magic_program);
+        clear_captured_cancels(magic_program);
         clear_captured_intent_bundles(magic_program);
 
         let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
@@ -616,6 +715,7 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
         let mint_kp = Keypair::new();
         let mint = mint_kp.pubkey();
         let validator = Keypair::new().pubkey();
+        let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
 
         let pdas = utils::derive_pdas(PROGRAM, payer, mint);
         let setup = utils::setup_mint_and_token_accounts(
@@ -653,6 +753,17 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
             Pubkey::find_program_address(&[vault.as_ref(), mint.as_ref()], &PROGRAM);
         let vault_ata = utils::derive_associated_token_address(vault, mint);
 
+        let ix_init_rent = Instruction {
+            program_id: PROGRAM,
+            accounts: vec![
+                AccountMeta::new(payer, true),
+                AccountMeta::new(rent_pda, false),
+                AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+            ],
+            data: vec![instruction::INITIALIZE_RENT_PDA],
+        };
+        let ix_fund_rent =
+            solana_system_interface::instruction::transfer(&payer, &rent_pda, 100_000_000);
         let ix_init_vault = Instruction {
             program_id: PROGRAM,
             accounts: vec![
@@ -696,7 +807,13 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
         };
 
         let tx_init = Transaction::new_signed_with_payer(
-            &[ix_init_vault, ix_init_queue, ix_init_destination_ata],
+            &[
+                ix_init_rent,
+                ix_fund_rent,
+                ix_init_vault,
+                ix_init_queue,
+                ix_init_destination_ata,
+            ],
             Some(&payer),
             &[&context.payer],
             context.last_blockhash,
@@ -754,7 +871,7 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn process_transfer_queue_tick_is_noop_when_queue_is_empty() {
-    let _test_guard = test_lock().lock().await;
+    let _test_guard = test_lock().lock().unwrap();
     let mut fixture = setup_fixture().await;
 
     let blockhash = latest_blockhash(&mut fixture.context).await;
@@ -790,7 +907,7 @@ async fn process_transfer_queue_tick_is_noop_when_queue_is_empty() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn process_transfer_queue_tick_rejects_non_magic_program() {
-    let _test_guard = test_lock().lock().await;
+    let _test_guard = test_lock().lock().unwrap();
     let fake_magic_program = Pubkey::new_unique();
 
     let mut fixture = {
@@ -799,6 +916,7 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
         );
         let magic_context = convert_magic_pubkey(MAGIC_CONTEXT_PUBKEY);
         clear_captured_schedules(magic_program);
+        clear_captured_cancels(magic_program);
         clear_captured_intent_bundles(magic_program);
 
         let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
@@ -822,6 +940,7 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
         let mint_kp = Keypair::new();
         let mint = mint_kp.pubkey();
         let validator = Keypair::new().pubkey();
+        let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
 
         let pdas = utils::derive_pdas(PROGRAM, payer, mint);
         let setup = utils::setup_mint_and_token_accounts(
@@ -859,6 +978,17 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
             Pubkey::find_program_address(&[vault.as_ref(), mint.as_ref()], &PROGRAM);
         let vault_ata = utils::derive_associated_token_address(vault, mint);
 
+        let ix_init_rent = Instruction {
+            program_id: PROGRAM,
+            accounts: vec![
+                AccountMeta::new(payer, true),
+                AccountMeta::new(rent_pda, false),
+                AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+            ],
+            data: vec![instruction::INITIALIZE_RENT_PDA],
+        };
+        let ix_fund_rent =
+            solana_system_interface::instruction::transfer(&payer, &rent_pda, 100_000_000);
         let ix_init_vault = Instruction {
             program_id: PROGRAM,
             accounts: vec![
@@ -902,7 +1032,13 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
         };
 
         let tx_init = Transaction::new_signed_with_payer(
-            &[ix_init_vault, ix_init_queue, ix_init_destination_ata],
+            &[
+                ix_init_rent,
+                ix_fund_rent,
+                ix_init_vault,
+                ix_init_queue,
+                ix_init_destination_ata,
+            ],
             Some(&payer),
             &[&context.payer],
             context.last_blockhash,
@@ -956,7 +1092,7 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn process_transfer_queue_tick_is_noop_when_next_transfer_is_not_ready() {
-    let _test_guard = test_lock().lock().await;
+    let _test_guard = test_lock().lock().unwrap();
     let mut fixture = setup_fixture().await;
     enqueue_transfer(&mut fixture, 120).await;
 
@@ -993,7 +1129,7 @@ async fn process_transfer_queue_tick_is_noop_when_next_transfer_is_not_ready() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
-    let _test_guard = test_lock().lock().await;
+    let _test_guard = test_lock().lock().unwrap();
     let mut fixture = setup_fixture().await;
     enqueue_transfer(&mut fixture, 0).await;
 

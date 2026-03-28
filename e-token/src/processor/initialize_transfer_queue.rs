@@ -12,7 +12,7 @@ use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_system::instructions::{CreateAccount, Transfer};
 
-pub const DEFAULT_TRANSFER_QUEUE_ITEMS: u32 = 92;
+pub const DEFAULT_TRANSFER_QUEUE_ITEMS: u32 = 100;
 /// Default queue size in bytes. (HEADER_LEN + ITEM_LEN * DEFAULT_TRANSFER_QUEUE_ITEMS)
 pub const DEFAULT_TRANSFER_QUEUE_SIZE_BYTES: u64 =
     (header_len() + item_len() * DEFAULT_TRANSFER_QUEUE_ITEMS as usize) as u64;
