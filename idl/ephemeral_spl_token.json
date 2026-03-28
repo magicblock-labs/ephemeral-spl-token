@@ -519,8 +519,8 @@
         12
       ],
       "docs": [
-        "Initializes the per-mint transfer queue PDA derived from [\"queue\", mint].",
-        "Instruction data may be omitted, or may contain [0..4] size_bytes (u32 LE). Zero selects the default queue size."
+        "Initializes the validator-scoped transfer queue PDA derived from [\"queue\", mint, validator] and its ACL permission PDA.",
+        "Instruction data may be omitted, or may contain [0..4] requested_items (u32 LE). Omitting the bytes uses the default item count; zero is invalid."
       ],
       "accounts": [
         {
@@ -533,16 +533,27 @@
           "writable": true
         },
         {
+          "name": "queuePermission",
+          "writable": true
+        },
+        {
           "name": "mint"
+        },
+        {
+          "name": "validator"
         },
         {
           "name": "systemProgram",
           "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "permissionProgram",
+          "address": "ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1"
         }
       ],
       "args": [
         {
-          "name": "sizeBytes",
+          "name": "requestedItems",
           "type": "u32"
         }
       ]
@@ -624,7 +635,7 @@
           "writable": true
         },
         {
-          "name": "destinationToken",
+          "name": "refundToken",
           "writable": true
         },
         {
@@ -715,6 +726,10 @@
         },
         {
           "name": "tokenProgram"
+        },
+        {
+          "name": "shuttleWalletAta",
+          "writable": true
         }
       ],
       "args": [
@@ -759,6 +774,10 @@
           "writable": true
         },
         {
+          "name": "magicFeeVault",
+          "writable": true
+        },
+        {
           "name": "magicContext",
           "writable": true
         },
@@ -774,7 +793,7 @@
         19
       ],
       "docs": [
-        "Delegates the per-mint transfer queue PDA."
+        "Delegates the validator-scoped transfer queue PDA derived from [\"queue\", mint, validator]."
       ],
       "accounts": [
         {
@@ -1218,6 +1237,27 @@
       ]
     },
     {
+      "name": "allocateTransferQueue",
+      "discriminator": [
+        27
+      ],
+      "docs": [
+        "Allocates more space for a prefunded transfer queue.",
+        "Instruction data: none."
+      ],
+      "accounts": [
+        {
+          "name": "queue",
+          "writable": true
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "undelegationCallback",
       "discriminator": [
         196
@@ -1384,6 +1424,10 @@
       "accounts": [
         {
           "name": "queue",
+          "writable": true
+        },
+        {
+          "name": "magicFeeVault",
           "writable": true
         },
         {
