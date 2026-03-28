@@ -29,10 +29,10 @@ pub fn process_deposit_and_queue_transfer(
     // 5. []                    Destination token account (default) or destination owner (flagged)
     // 6. [signer]              Sender authority
     // 7. []                    Token program
-    // 8. [writable, optional]  Shuttle wallet token account
+    // 8. [writable]            Reimbursement token account
     let args = DepositAndQueueTransferArgs::try_from_bytes(instruction_data)?;
 
-    let [queue_info, vault_info, mint_info, user_source_token_acc, vault_token_acc, destination_token_acc, user_authority, token_program_info, shuttle_wallet_ata_info, ..] =
+    let [queue_info, vault_info, mint_info, user_source_token_acc, vault_token_acc, destination_token_acc, user_authority, token_program_info, reimbursement_token_info, ..] =
         accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
@@ -60,11 +60,11 @@ pub fn process_deposit_and_queue_transfer(
             Err(ProgramError::AccountDataTooSmall) => {
                 #[cfg(feature = "logging")]
                 pinocchio_log::log!("Queue is full");
-                if !address_eq(shuttle_wallet_ata_info.address(), &crate::ID.into()) {
+                if !address_eq(reimbursement_token_info.address(), &crate::ID.into()) {
                     TransferChecked {
                         mint: mint_info,
                         from: user_source_token_acc,
-                        to: shuttle_wallet_ata_info,
+                        to: reimbursement_token_info,
                         authority: user_authority,
                         token_program: token_program_info.address(),
                         amount,
