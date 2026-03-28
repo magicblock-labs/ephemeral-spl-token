@@ -23,7 +23,7 @@ const CLOSE_SHUTTLE_ATA_COMPUTE_UNITS: u32 = 70_000;
 /// 2. []         Shuttle metadata account (PDA [owner, mint, shuttle_id])
 /// 3. []         Shuttle EATA account
 /// 4. [writable] Shuttle wallet ATA account (ATA for [shuttle_metadata, mint])
-/// 5. [writable] Destination owner ATA
+/// 5. [writable] Refund token ATA
 /// 6. []         Token program account
 /// 7. [writable] Magic context account
 /// 8. []         Magic program
@@ -33,7 +33,7 @@ pub fn process_undelegate_and_close_shuttle_ephemeral_ata(
 ) -> ProgramResult {
     let escrow_index = parse_escrow_index(instruction_data)?;
 
-    let [executor, rent_reimbursement, shuttle_info, shuttle_ephemeral_ata_info, shuttle_wallet_ata_info, destination_token_info, token_program_info, magic_context, magic_program, ..] =
+    let [executor, rent_reimbursement, shuttle_info, shuttle_ephemeral_ata_info, shuttle_wallet_ata_info, refund_token_info, token_program_info, magic_context, magic_program, ..] =
         accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
@@ -90,9 +90,9 @@ pub fn process_undelegate_and_close_shuttle_ephemeral_ata(
         Some(token_program_info.address()),
     )?;
     validate_token_account(
-        destination_token_info,
+        refund_token_info,
         &mint,
-        Some(executor.address()),
+        Some(&shuttle.owner),
         Some(token_program_info.address()),
     )?;
 
@@ -102,7 +102,7 @@ pub fn process_undelegate_and_close_shuttle_ephemeral_ata(
         shuttle_info,
         shuttle_ephemeral_ata_info,
         shuttle_wallet_ata_info,
-        destination_token_info,
+        refund_token_info,
         &mint,
         token_program_info,
         magic_context,
@@ -130,7 +130,7 @@ fn undelegate_and_close_shuttle_ephemeral_ata(
     shuttle_info: &AccountView,
     shuttle_ephemeral_ata_info: &AccountView,
     shuttle_wallet_ata_info: &AccountView,
-    destination_token_info: &AccountView,
+    refund_token_info: &AccountView,
     mint: &Address,
     token_program_info: &AccountView,
     magic_context: &AccountView,
@@ -163,8 +163,8 @@ fn undelegate_and_close_shuttle_ephemeral_ata(
             is_writable: shuttle_wallet_ata_info.is_writable(),
         },
         ShortAccountMeta {
-            pubkey: *destination_token_info.address(),
-            is_writable: destination_token_info.is_writable(),
+            pubkey: *refund_token_info.address(),
+            is_writable: refund_token_info.is_writable(),
         },
         ShortAccountMeta {
             pubkey: *mint,

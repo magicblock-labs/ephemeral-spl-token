@@ -4,7 +4,7 @@ use crate::processor::deposit_spl_tokens::transfer_to_vault_for_mint;
 use crate::processor::utils::{read_mint_decimals, validate_token_account};
 use crate::{assert_associated_token_address, assert_owner, assert_signer};
 use ephemeral_spl_api::state::transfer_queue::{
-    queue_len_for_mint_with_capacity, queue_push_from_data, QueuedTransfer,
+    capacity_from_data_len, queue_len_for_mint_with_capacity, queue_push_from_data, QueuedTransfer,
     QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA, QUEUE_SEED,
 };
 use pinocchio::address::address_eq;
@@ -52,10 +52,11 @@ pub fn process_deposit_and_queue_transfer(
     let split = args.split() as usize;
     let decimals = read_mint_decimals(mint_info, token_program_info)?;
 
-    let (queue_len_before, validator) = {
+    let (queue_len_before, validator, queue_capacity) = {
         let data = unsafe { queue_info.borrow_unchecked() };
+        let queue_capacity = capacity_from_data_len(data.len());
         match queue_len_for_mint_with_capacity(data, mint_info.address(), split) {
-            Ok(result) => result,
+            Ok((queue_len_before, validator)) => (queue_len_before, validator, queue_capacity),
             Err(ProgramError::AccountDataTooSmall) => {
                 #[cfg(feature = "logging")]
                 pinocchio_log::log!("Queue is full");
@@ -87,7 +88,7 @@ pub fn process_deposit_and_queue_transfer(
     }
 
     #[cfg(not(feature = "logging"))]
-    let _ = queue_len_before;
+    let _ = (queue_len_before, queue_capacity);
 
     let inserted_at = queue_timestamp_now()?;
 
@@ -166,9 +167,10 @@ pub fn process_deposit_and_queue_transfer(
 
     #[cfg(feature = "logging")]
     pinocchio_log::log!(
-        "DepositAndQueueTransfer queue length: {} -> {} delay_range_ms: {}..={}",
+        "DepositAndQueueTransfer queue length: {} -> {} capacity: {} delay_range_ms: {}..={}",
         queue_len_before,
         queue_len_before + split,
+        queue_capacity,
         args.min_delay_ms(),
         args.max_delay_ms()
     );

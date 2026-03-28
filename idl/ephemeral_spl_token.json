@@ -625,7 +625,7 @@
         },
         {
           "name": "destinationToken",
-          "optional": true
+          "writable": true
         },
         {
           "name": "tokenProgram"
