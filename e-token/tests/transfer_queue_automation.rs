@@ -58,6 +58,12 @@ struct CapturedScheduleTask {
 }
 
 #[derive(Clone)]
+struct CapturedCancelTask {
+    cancel_accounts: Vec<CapturedScheduleAccount>,
+    task_id: i64,
+}
+
+#[derive(Clone)]
 struct CapturedIntentBundle {
     schedule_accounts: Vec<Pubkey>,
     args: MagicIntentBundleArgs,
@@ -65,6 +71,11 @@ struct CapturedIntentBundle {
 
 fn captured_schedules() -> &'static Mutex<HashMap<Pubkey, Vec<CapturedScheduleTask>>> {
     static CAPTURED: OnceLock<Mutex<HashMap<Pubkey, Vec<CapturedScheduleTask>>>> = OnceLock::new();
+    CAPTURED.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn captured_cancels() -> &'static Mutex<HashMap<Pubkey, Vec<CapturedCancelTask>>> {
+    static CAPTURED: OnceLock<Mutex<HashMap<Pubkey, Vec<CapturedCancelTask>>>> = OnceLock::new();
     CAPTURED.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -82,6 +93,10 @@ fn clear_captured_schedules(magic_program: Pubkey) {
     captured_schedules().lock().unwrap().remove(&magic_program);
 }
 
+fn clear_captured_cancels(magic_program: Pubkey) {
+    captured_cancels().lock().unwrap().remove(&magic_program);
+}
+
 fn clear_captured_intent_bundles(magic_program: Pubkey) {
     captured_intent_bundles()
         .lock()
@@ -91,6 +106,14 @@ fn clear_captured_intent_bundles(magic_program: Pubkey) {
 
 fn take_captured_schedules(magic_program: Pubkey) -> Vec<CapturedScheduleTask> {
     captured_schedules()
+        .lock()
+        .unwrap()
+        .remove(&magic_program)
+        .unwrap_or_default()
+}
+
+fn take_captured_cancels(magic_program: Pubkey) -> Vec<CapturedCancelTask> {
+    captured_cancels()
         .lock()
         .unwrap()
         .remove(&magic_program)
@@ -145,6 +168,31 @@ fn process_magic_program_mock(
                         })
                         .collect(),
                     args,
+                });
+        }
+        MagicBlockInstruction::CancelTask { task_id } => {
+            let Some(authority) = accounts.first() else {
+                return Err(ProgramError::NotEnoughAccountKeys);
+            };
+            if !authority.is_signer {
+                return Err(ProgramError::MissingRequiredSignature);
+            }
+
+            captured_cancels()
+                .lock()
+                .unwrap()
+                .entry(*program_id)
+                .or_default()
+                .push(CapturedCancelTask {
+                    cancel_accounts: accounts
+                        .iter()
+                        .map(|account| CapturedScheduleAccount {
+                            pubkey: *account.key,
+                            is_signer: account.is_signer,
+                            is_writable: account.is_writable,
+                        })
+                        .collect(),
+                    task_id,
                 });
         }
         MagicBlockInstruction::ScheduleIntentBundle(args) => {
@@ -256,6 +304,7 @@ async fn setup_fixture() -> Fixture {
     );
     let magic_context = convert_magic_pubkey(MAGIC_CONTEXT_PUBKEY);
     clear_captured_schedules(magic_program);
+    clear_captured_cancels(magic_program);
     clear_captured_intent_bundles(magic_program);
 
     let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
@@ -498,7 +547,9 @@ async fn ensure_transfer_queue_crank_schedules_one_recurring_queue_crank() {
         .unwrap();
 
     let captured = take_captured_schedules(fixture.magic_program);
+    let cancels = take_captured_cancels(fixture.magic_program);
     assert_eq!(captured.len(), 1);
+    assert!(cancels.is_empty());
     assert_eq!(
         captured[0].schedule_accounts,
         vec![
@@ -565,6 +616,12 @@ async fn ensure_transfer_queue_crank_schedules_one_recurring_queue_crank() {
         captured[0].args.instructions[0].data,
         vec![internal::PROCESS_TRANSFER_QUEUE_TICK]
     );
+    let queue_after_first_ensure = queue_account(&mut fixture.context, fixture.queue).await;
+    let header_after_first_ensure = read_header_unaligned(&queue_after_first_ensure.data);
+    assert_eq!(
+        header_after_first_ensure.crank_task_id,
+        captured[0].args.task_id
+    );
 
     let blockhash = latest_blockhash(&mut fixture.context).await;
     let tx = Transaction::new_signed_with_payer(
@@ -579,7 +636,30 @@ async fn ensure_transfer_queue_crank_schedules_one_recurring_queue_crank() {
         .process_transaction(tx)
         .await
         .unwrap();
-    assert!(take_captured_schedules(fixture.magic_program).is_empty());
+    let cancels = take_captured_cancels(fixture.magic_program);
+    assert_eq!(cancels.len(), 1);
+    assert_eq!(cancels[0].task_id, header_after_first_ensure.crank_task_id);
+    assert_eq!(
+        cancels[0].cancel_accounts,
+        vec![
+            CapturedScheduleAccount {
+                pubkey: fixture.payer,
+                is_signer: true,
+                is_writable: true,
+            },
+            CapturedScheduleAccount {
+                pubkey: fixture.queue,
+                is_signer: false,
+                is_writable: true,
+            },
+        ]
+    );
+    let rescheduled = take_captured_schedules(fixture.magic_program);
+    assert_eq!(rescheduled.len(), 1);
+    assert_eq!(
+        rescheduled[0].args.task_id,
+        header_after_first_ensure.crank_task_id
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -593,6 +673,7 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
         );
         let magic_context = convert_magic_pubkey(MAGIC_CONTEXT_PUBKEY);
         clear_captured_schedules(magic_program);
+        clear_captured_cancels(magic_program);
         clear_captured_intent_bundles(magic_program);
 
         let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
@@ -799,6 +880,7 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
         );
         let magic_context = convert_magic_pubkey(MAGIC_CONTEXT_PUBKEY);
         clear_captured_schedules(magic_program);
+        clear_captured_cancels(magic_program);
         clear_captured_intent_bundles(magic_program);
 
         let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);

@@ -150,7 +150,7 @@ pub fn process_deposit_and_queue_transfer(
                 inserted_at,
                 task_id: 0,
                 flags: args.flags(),
-                _pad0: [0; 7],
+                _pad0: [0; 3],
             },
         )?;
 

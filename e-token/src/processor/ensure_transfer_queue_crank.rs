@@ -1,7 +1,9 @@
 use core::mem::MaybeUninit;
 
 use dlp_api::pda::magic_fee_vault_pda_from_validator;
-use ephemeral_rollups_pinocchio::crank::{CrankInstruction, ScheduleCrankArgs, ScheduleCrankCpi};
+use ephemeral_rollups_pinocchio::crank::{
+    CancelCrankCpi, CrankInstruction, ScheduleCrankArgs, ScheduleCrankCpi,
+};
 use ephemeral_spl_api::instruction::internal::PROCESS_TRANSFER_QUEUE_TICK;
 use ephemeral_spl_api::state::transfer_queue::{
     queue_crank_task_id_from_data, queue_set_crank_task_id_from_data, queue_views_checked,
@@ -77,10 +79,13 @@ pub fn process_ensure_transfer_queue_crank(
     let crank_task_id = derive_queue_crank_task_id(queue_info.address());
     let data = unsafe { queue_info.borrow_unchecked() };
     if let Some(existing_task_id) = queue_crank_task_id_from_data(data)? {
-        if existing_task_id == crank_task_id {
-            return Ok(());
+        CancelCrankCpi {
+            authority: payer_info.clone(),
+            task_context: queue_info.clone(),
+            magic_program: magic_program_info.clone(),
+            crank_id: existing_task_id,
         }
-        return Err(ProgramError::InvalidAccountData);
+        .invoke()?;
     }
 
     let tick_data = [PROCESS_TRANSFER_QUEUE_TICK];
