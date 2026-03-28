@@ -64,7 +64,7 @@ pub fn process_initialize_transfer_queue(
     }
 
     if *permission_program_info.address() != PERMISSION_PROGRAM_ID {
-        return Err(ProgramError::InvalidAccountData);
+        return Err(ProgramError::IncorrectProgramId);
     }
     let expected_permission = permission_pda_from_permissioned_account(queue_info.address());
     if expected_permission != *queue_permission_info.address() {
