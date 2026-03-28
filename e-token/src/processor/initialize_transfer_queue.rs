@@ -70,6 +70,10 @@ pub fn process_initialize_transfer_queue(
     if expected_permission != *queue_permission_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
+    let queue_permission_exists = queue_permission_info.lamports() > 0;
+    if queue_permission_exists && !queue_permission_info.owned_by(&PERMISSION_PROGRAM_ID) {
+        return Err(ProgramError::IncorrectProgramId);
+    }
 
     let rent = Rent::get()?;
     let target_lamports = rent
@@ -104,7 +108,7 @@ pub fn process_initialize_transfer_queue(
         .invoke_signed(&[signer])?;
     }
 
-    if queue_permission_info.lamports() == 0 {
+    if !queue_permission_exists {
         if !payer_info.is_signer() {
             return Err(ProgramError::MissingRequiredSignature);
         }

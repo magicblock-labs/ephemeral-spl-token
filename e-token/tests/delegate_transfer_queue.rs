@@ -182,6 +182,15 @@ async fn delegate_transfer_queue_succeeds_and_is_idempotent() {
         .await
         .unwrap();
 
+    let queue_permission_account = context
+        .banks_client
+        .get_account(queue_permission)
+        .await
+        .unwrap()
+        .expect("queue permission account must exist");
+
+    assert_eq!(queue_permission_account.owner, PERMISSION_PROGRAM_ID);
+
     let (buffer_pda, _) = Pubkey::find_program_address(&[b"buffer", queue.as_ref()], &PROGRAM);
     let (delegation_record_pda, _) = Pubkey::find_program_address(
         &[b"delegation", queue.as_ref()],
