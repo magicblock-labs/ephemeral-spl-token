@@ -28,7 +28,7 @@ pub struct TransferQueueHeader {
 ///
 /// `ready_at` and `inserted_at` are stored in milliseconds since unix epoch.
 #[repr(C)]
-#[derive(Copy, Clone, Pod, Zeroable)]
+#[derive(Copy, Clone, Pod, Zeroable, PartialEq, Eq)]
 pub struct QueuedTransfer {
     pub source: Address,
     pub destination_owner: Address,

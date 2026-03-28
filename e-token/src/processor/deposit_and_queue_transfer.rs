@@ -4,12 +4,14 @@ use crate::processor::deposit_spl_tokens::transfer_to_vault_for_mint;
 use crate::processor::utils::{read_mint_decimals, validate_token_account};
 use crate::{assert_associated_token_address, assert_owner, assert_signer};
 use ephemeral_spl_api::state::transfer_queue::{
-    queue_len_for_mint_with_capacity, queue_push_from_data, QueuedTransfer,
+    capacity_from_data_len, queue_len_for_mint_with_capacity, queue_push_from_data, QueuedTransfer,
     QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA, QUEUE_SEED,
 };
+use pinocchio::address::address_eq;
 use pinocchio::sysvars::clock::Clock;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use pinocchio_token_2022::instructions::TransferChecked;
 
 const MILLIS_PER_SECOND: u64 = 1_000;
 
@@ -19,17 +21,18 @@ pub fn process_deposit_and_queue_transfer(
     instruction_data: &[u8],
 ) -> ProgramResult {
     // Expected accounts:
-    // 0. [writable] Transfer queue PDA derived from [QUEUE_SEED, mint, validator]
-    // 1. []         Global vault PDA derived from [mint]
-    // 2. []         Mint account
-    // 3. [writable] User source token account
-    // 4. [writable] Vault destination token account
-    // 5. []         Destination token account (default) or destination owner (flagged)
-    // 6. [signer]   Sender authority
-    // 7. []         Token program
+    // 0. [writable]            Transfer queue PDA derived from [QUEUE_SEED, mint, validator]
+    // 1. []                    Global vault PDA derived from [mint]
+    // 2. []                    Mint account
+    // 3. [writable]            User source token account
+    // 4. [writable]            Vault destination token account
+    // 5. []                    Destination token account (default) or destination owner (flagged)
+    // 6. [signer]              Sender authority
+    // 7. []                    Token program
+    // 8. [writable]            Reimbursement token account
     let args = DepositAndQueueTransferArgs::try_from_bytes(instruction_data)?;
 
-    let [queue_info, vault_info, mint_info, user_source_token_acc, vault_token_acc, destination_token_acc, user_authority, token_program_info, ..] =
+    let [queue_info, vault_info, mint_info, user_source_token_acc, vault_token_acc, destination_token_acc, user_authority, token_program_info, reimbursement_token_info, ..] =
         accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
@@ -47,9 +50,32 @@ pub fn process_deposit_and_queue_transfer(
     )?;
 
     let split = args.split() as usize;
-    let (queue_len_before, validator) = {
+    let decimals = read_mint_decimals(mint_info, token_program_info)?;
+
+    let (queue_len_before, validator, queue_capacity) = {
         let data = unsafe { queue_info.borrow_unchecked() };
-        queue_len_for_mint_with_capacity(data, mint_info.address(), split)?
+        let queue_capacity = capacity_from_data_len(data.len());
+        match queue_len_for_mint_with_capacity(data, mint_info.address(), split) {
+            Ok((queue_len_before, validator)) => (queue_len_before, validator, queue_capacity),
+            Err(ProgramError::AccountDataTooSmall) => {
+                #[cfg(feature = "logging")]
+                pinocchio_log::log!("Queue is full");
+                if !address_eq(reimbursement_token_info.address(), &crate::ID.into()) {
+                    TransferChecked {
+                        mint: mint_info,
+                        from: user_source_token_acc,
+                        to: reimbursement_token_info,
+                        authority: user_authority,
+                        token_program: token_program_info.address(),
+                        amount,
+                        decimals,
+                    }
+                    .invoke()?;
+                }
+                return Ok(());
+            }
+            Err(e) => return Err(e),
+        }
     };
 
     let program_id = ephemeral_spl_api::program::id_address();
@@ -62,9 +88,8 @@ pub fn process_deposit_and_queue_transfer(
     }
 
     #[cfg(not(feature = "logging"))]
-    let _ = queue_len_before;
+    let _ = (queue_len_before, queue_capacity);
 
-    let decimals = read_mint_decimals(mint_info, token_program_info)?;
     let inserted_at = queue_timestamp_now()?;
 
     transfer_to_vault_for_mint(
@@ -142,9 +167,10 @@ pub fn process_deposit_and_queue_transfer(
 
     #[cfg(feature = "logging")]
     pinocchio_log::log!(
-        "DepositAndQueueTransfer queue length: {} -> {} delay_range_ms: {}..={}",
+        "DepositAndQueueTransfer queue length: {} -> {} capacity: {} delay_range_ms: {}..={}",
         queue_len_before,
         queue_len_before + split,
+        queue_capacity,
         args.min_delay_ms(),
         args.max_delay_ms()
     );

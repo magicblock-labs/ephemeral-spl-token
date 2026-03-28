@@ -111,7 +111,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
             ),
             undelegate_and_close_shuttle_action(&common_accounts),
         ]
-        .cleartext_with_insertable(private_transfer, 10)
+        .cleartext_with_insertable(private_transfer, 1)
     };
 
     process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions(
@@ -270,6 +270,9 @@ fn private_transfer_action_encrypted(
             MaybeEncryptedPubkey::ClearText(
                 common_accounts.token_program_info.address().to_bytes()
             ), // 8
+            MaybeEncryptedPubkey::ClearText(
+                common_accounts.shuttle_wallet_ata_info.address().to_bytes()
+            ), // 9
         ],
         instructions: alloc::vec![MaybeEncryptedInstruction {
             program_id: 1,
@@ -282,6 +285,7 @@ fn private_transfer_action_encrypted(
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(7, false)), // destination_owner_info
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(0, true)), // owner_info
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(8, false)), // token_program_info
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(9, false)), // shuttle_wallet_ata_info
             ],
             data: MaybeEncryptedIxData {
                 prefix: {
