@@ -1,3 +1,6 @@
+use ephemeral_rollups_pinocchio::acl::{
+    permission_pda_from_permissioned_account, PERMISSION_PROGRAM_ID,
+};
 use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::transfer_queue::{
@@ -11,11 +14,16 @@ use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use solana_transaction::Transaction;
 
+mod utils;
+
+use crate::utils::add_permission_program;
+
 pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 
 #[tokio::test]
 async fn allocate_transfer_queue_succeeds_and_is_idempotent() {
     let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
+    add_permission_program(&mut pt);
     pt.prefer_bpf(true);
 
     let mint = Pubkey::new_unique();
@@ -35,6 +43,7 @@ async fn allocate_transfer_queue_succeeds_and_is_idempotent() {
     let validator = Keypair::new().pubkey();
     let (queue, bump) =
         Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref(), validator.as_ref()], &PROGRAM);
+    let queue_permission = permission_pda_from_permissioned_account(&queue);
 
     const N_ITEMS: usize = 9999;
     let ix_init_queue = Instruction {
@@ -42,9 +51,11 @@ async fn allocate_transfer_queue_succeeds_and_is_idempotent() {
         accounts: vec![
             AccountMeta::new(payer, true),
             AccountMeta::new(queue, false),
+            AccountMeta::new(queue_permission, false),
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new_readonly(validator, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+            AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
         ],
         data: [
             vec![instruction::INITIALIZE_TRANSFER_QUEUE],

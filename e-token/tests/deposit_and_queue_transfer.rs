@@ -1,3 +1,6 @@
+use ephemeral_rollups_pinocchio::acl::{
+    permission_pda_from_permissioned_account, PERMISSION_PROGRAM_ID,
+};
 use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::transfer_queue::{
@@ -16,6 +19,8 @@ use {
 };
 
 mod utils;
+
+use crate::utils::add_permission_program;
 
 pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 
@@ -47,6 +52,7 @@ fn read_item_unaligned(data: &[u8], index: usize) -> QueuedTransfer {
 async fn setup_fixture(items: Option<u32>) -> Fixture {
     let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
     utils::add_associated_token_program(&mut pt);
+    add_permission_program(&mut pt);
     let mut context = pt.start_with_context().await;
 
     let payer = context.payer.pubkey();
@@ -67,6 +73,7 @@ async fn setup_fixture(items: Option<u32>) -> Fixture {
 
     let queue =
         Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref(), validator.as_ref()], &PROGRAM).0;
+    let queue_permission = permission_pda_from_permissioned_account(&queue);
     let vault = pdas.vault;
     let user_source_ata = setup.user_tokens[0];
     let destination_ata = utils::derive_associated_token_address(payer, mint);
@@ -97,9 +104,11 @@ async fn setup_fixture(items: Option<u32>) -> Fixture {
         accounts: vec![
             AccountMeta::new(payer, true),
             AccountMeta::new(queue, false),
+            AccountMeta::new(queue_permission, false),
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new_readonly(validator, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+            AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
         ],
         data: queue_init_data,
     };
