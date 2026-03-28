@@ -9,7 +9,7 @@ use ephemeral_spl_api::state::transfer_queue::{
     queue_crank_task_id_from_data, queue_set_crank_task_id_from_data, queue_views_checked,
     QUEUE_SEED,
 };
-use pinocchio::cpi::invoke_with_bounds;
+use pinocchio::cpi::{invoke_signed_with_bounds, Seed, Signer};
 use pinocchio::instruction::{InstructionAccount, InstructionView};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
@@ -76,16 +76,24 @@ pub fn process_ensure_transfer_queue_crank(
         return Err(ProgramError::InvalidSeeds);
     }
 
+    let queue_signer_seeds = [
+        Seed::from(QUEUE_SEED),
+        Seed::from(mint.as_ref()),
+        Seed::from(validator.as_ref()),
+        Seed::from(&bump_seed),
+    ];
+    let queue_signers = [Signer::from(&queue_signer_seeds)];
+
     let crank_task_id = derive_queue_crank_task_id(queue_info.address());
     let data = unsafe { queue_info.borrow_unchecked() };
     if let Some(existing_task_id) = queue_crank_task_id_from_data(data)? {
         CancelCrankCpi {
-            authority: payer_info.clone(),
+            authority: queue_info.clone(),
             task_context: queue_info.clone(),
             magic_program: magic_program_info.clone(),
             crank_id: existing_task_id,
         }
-        .invoke()?;
+        .invoke_signed(&queue_signers)?;
     }
 
     let tick_data = [PROCESS_TRANSFER_QUEUE_TICK];
@@ -118,7 +126,7 @@ pub fn process_ensure_transfer_queue_crank(
     )];
     let mut crank_data = [0_u8; SCHEDULE_CRANK_DATA_LEN];
     let schedule_cpi = ScheduleCrankCpi::new(
-        payer_info.clone(),
+        queue_info.clone(),
         magic_program_info.clone(),
         &[],
         ScheduleCrankArgs::new(crank_task_id, &crank_instruction)
@@ -132,7 +140,7 @@ pub fn process_ensure_transfer_queue_crank(
     unsafe {
         schedule_accounts
             .get_unchecked_mut(0)
-            .write(InstructionAccount::writable_signer(payer_info.address()));
+            .write(InstructionAccount::writable_signer(queue_info.address()));
         schedule_accounts
             .get_unchecked_mut(1)
             .write(InstructionAccount::readonly(queue_info.address()));
@@ -158,15 +166,16 @@ pub fn process_ensure_transfer_queue_crank(
         },
     };
     let schedule_account_refs = [
-        payer_info,
+        queue_info,
         queue_info,
         magic_fee_vault_info,
         magic_context_info,
         magic_program_info,
     ];
-    invoke_with_bounds::<SCHEDULE_CRANK_CPI_ACCOUNTS>(
+    invoke_signed_with_bounds::<SCHEDULE_CRANK_CPI_ACCOUNTS>(
         &schedule_instruction,
         &schedule_account_refs,
+        &queue_signers,
     )?;
 
     let data = unsafe { queue_info.borrow_unchecked_mut() };

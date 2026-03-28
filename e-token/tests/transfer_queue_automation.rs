@@ -295,7 +295,7 @@ struct Fixture {
 }
 
 async fn latest_blockhash(context: &mut ProgramTestContext) -> solana_program::hash::Hash {
-    context.banks_client.get_latest_blockhash().await.unwrap()
+    context.get_new_latest_blockhash().await.unwrap()
 }
 
 async fn setup_fixture() -> Fixture {
@@ -327,6 +327,7 @@ async fn setup_fixture() -> Fixture {
     let mint_kp = Keypair::new();
     let mint = mint_kp.pubkey();
     let validator = Keypair::new().pubkey();
+    let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
 
     let pdas = utils::derive_pdas(PROGRAM, payer, mint);
     let setup = utils::setup_mint_and_token_accounts(
@@ -360,6 +361,17 @@ async fn setup_fixture() -> Fixture {
     let (vault_eata, _) = Pubkey::find_program_address(&[vault.as_ref(), mint.as_ref()], &PROGRAM);
     let vault_ata = utils::derive_associated_token_address(vault, mint);
 
+    let ix_init_rent = Instruction {
+        program_id: PROGRAM,
+        accounts: vec![
+            AccountMeta::new(payer, true),
+            AccountMeta::new(rent_pda, false),
+            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+        ],
+        data: vec![instruction::INITIALIZE_RENT_PDA],
+    };
+    let ix_fund_rent =
+        solana_system_interface::instruction::transfer(&payer, &rent_pda, 100_000_000);
     let ix_init_vault = Instruction {
         program_id: PROGRAM,
         accounts: vec![
@@ -403,7 +415,13 @@ async fn setup_fixture() -> Fixture {
     };
 
     let tx_init = Transaction::new_signed_with_payer(
-        &[ix_init_vault, ix_init_queue, ix_init_destination_ata],
+        &[
+            ix_init_rent,
+            ix_fund_rent,
+            ix_init_vault,
+            ix_init_queue,
+            ix_init_destination_ata,
+        ],
         Some(&payer),
         &[&context.payer],
         context.last_blockhash,
@@ -554,14 +572,14 @@ async fn ensure_transfer_queue_crank_schedules_one_recurring_queue_crank() {
         captured[0].schedule_accounts,
         vec![
             CapturedScheduleAccount {
-                pubkey: fixture.payer,
+                pubkey: fixture.queue,
                 is_signer: true,
                 is_writable: true,
             },
             CapturedScheduleAccount {
                 pubkey: fixture.queue,
-                is_signer: false,
-                is_writable: false,
+                is_signer: true,
+                is_writable: true,
             },
             CapturedScheduleAccount {
                 pubkey: fixture.magic_fee_vault,
@@ -643,13 +661,13 @@ async fn ensure_transfer_queue_crank_schedules_one_recurring_queue_crank() {
         cancels[0].cancel_accounts,
         vec![
             CapturedScheduleAccount {
-                pubkey: fixture.payer,
+                pubkey: fixture.queue,
                 is_signer: true,
                 is_writable: true,
             },
             CapturedScheduleAccount {
                 pubkey: fixture.queue,
-                is_signer: false,
+                is_signer: true,
                 is_writable: true,
             },
         ]
@@ -697,6 +715,7 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
         let mint_kp = Keypair::new();
         let mint = mint_kp.pubkey();
         let validator = Keypair::new().pubkey();
+        let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
 
         let pdas = utils::derive_pdas(PROGRAM, payer, mint);
         let setup = utils::setup_mint_and_token_accounts(
@@ -734,6 +753,17 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
             Pubkey::find_program_address(&[vault.as_ref(), mint.as_ref()], &PROGRAM);
         let vault_ata = utils::derive_associated_token_address(vault, mint);
 
+        let ix_init_rent = Instruction {
+            program_id: PROGRAM,
+            accounts: vec![
+                AccountMeta::new(payer, true),
+                AccountMeta::new(rent_pda, false),
+                AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+            ],
+            data: vec![instruction::INITIALIZE_RENT_PDA],
+        };
+        let ix_fund_rent =
+            solana_system_interface::instruction::transfer(&payer, &rent_pda, 100_000_000);
         let ix_init_vault = Instruction {
             program_id: PROGRAM,
             accounts: vec![
@@ -777,7 +807,13 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
         };
 
         let tx_init = Transaction::new_signed_with_payer(
-            &[ix_init_vault, ix_init_queue, ix_init_destination_ata],
+            &[
+                ix_init_rent,
+                ix_fund_rent,
+                ix_init_vault,
+                ix_init_queue,
+                ix_init_destination_ata,
+            ],
             Some(&payer),
             &[&context.payer],
             context.last_blockhash,
@@ -904,6 +940,7 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
         let mint_kp = Keypair::new();
         let mint = mint_kp.pubkey();
         let validator = Keypair::new().pubkey();
+        let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
 
         let pdas = utils::derive_pdas(PROGRAM, payer, mint);
         let setup = utils::setup_mint_and_token_accounts(
@@ -941,6 +978,17 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
             Pubkey::find_program_address(&[vault.as_ref(), mint.as_ref()], &PROGRAM);
         let vault_ata = utils::derive_associated_token_address(vault, mint);
 
+        let ix_init_rent = Instruction {
+            program_id: PROGRAM,
+            accounts: vec![
+                AccountMeta::new(payer, true),
+                AccountMeta::new(rent_pda, false),
+                AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+            ],
+            data: vec![instruction::INITIALIZE_RENT_PDA],
+        };
+        let ix_fund_rent =
+            solana_system_interface::instruction::transfer(&payer, &rent_pda, 100_000_000);
         let ix_init_vault = Instruction {
             program_id: PROGRAM,
             accounts: vec![
@@ -984,7 +1032,13 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
         };
 
         let tx_init = Transaction::new_signed_with_payer(
-            &[ix_init_vault, ix_init_queue, ix_init_destination_ata],
+            &[
+                ix_init_rent,
+                ix_fund_rent,
+                ix_init_vault,
+                ix_init_queue,
+                ix_init_destination_ata,
+            ],
             Some(&payer),
             &[&context.payer],
             context.last_blockhash,
