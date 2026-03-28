@@ -79,9 +79,9 @@ fn captured_cancels() -> &'static Mutex<HashMap<Pubkey, Vec<CapturedCancelTask>>
     CAPTURED.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn test_lock() -> &'static tokio::sync::Mutex<()> {
-    static LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
+fn test_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
 }
 
 fn captured_intent_bundles() -> &'static Mutex<HashMap<Pubkey, Vec<CapturedIntentBundle>>> {
@@ -529,7 +529,7 @@ async fn queue_account(context: &mut ProgramTestContext, queue: Pubkey) -> Solan
 
 #[tokio::test(flavor = "current_thread")]
 async fn ensure_transfer_queue_crank_schedules_one_recurring_queue_crank() {
-    let _test_guard = test_lock().lock().await;
+    let _test_guard = test_lock().lock().unwrap();
     let mut fixture = setup_fixture().await;
 
     let blockhash = latest_blockhash(&mut fixture.context).await;
@@ -664,7 +664,7 @@ async fn ensure_transfer_queue_crank_schedules_one_recurring_queue_crank() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
-    let _test_guard = test_lock().lock().await;
+    let _test_guard = test_lock().lock().unwrap();
     let fake_magic_program = Pubkey::new_unique();
 
     let mut fixture = {
@@ -835,7 +835,7 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn process_transfer_queue_tick_is_noop_when_queue_is_empty() {
-    let _test_guard = test_lock().lock().await;
+    let _test_guard = test_lock().lock().unwrap();
     let mut fixture = setup_fixture().await;
 
     let blockhash = latest_blockhash(&mut fixture.context).await;
@@ -871,7 +871,7 @@ async fn process_transfer_queue_tick_is_noop_when_queue_is_empty() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn process_transfer_queue_tick_rejects_non_magic_program() {
-    let _test_guard = test_lock().lock().await;
+    let _test_guard = test_lock().lock().unwrap();
     let fake_magic_program = Pubkey::new_unique();
 
     let mut fixture = {
@@ -1038,7 +1038,7 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn process_transfer_queue_tick_is_noop_when_next_transfer_is_not_ready() {
-    let _test_guard = test_lock().lock().await;
+    let _test_guard = test_lock().lock().unwrap();
     let mut fixture = setup_fixture().await;
     enqueue_transfer(&mut fixture, 120).await;
 
@@ -1075,7 +1075,7 @@ async fn process_transfer_queue_tick_is_noop_when_next_transfer_is_not_ready() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
-    let _test_guard = test_lock().lock().await;
+    let _test_guard = test_lock().lock().unwrap();
     let mut fixture = setup_fixture().await;
     enqueue_transfer(&mut fixture, 0).await;
 

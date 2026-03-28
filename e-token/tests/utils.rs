@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use ephemeral_rollups_pinocchio::acl::PERMISSION_PROGRAM_ID;
 use solana_keypair::Keypair;
 use solana_program::{
