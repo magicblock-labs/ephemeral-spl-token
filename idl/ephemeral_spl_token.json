@@ -838,6 +838,76 @@
       "args": []
     },
     {
+      "name": "sponsoredLamportsTransfer",
+      "discriminator": [
+        20
+      ],
+      "docs": [
+        "Creates a zero-data PDA derived from [\"lamports\", payer, destination, salt], funds it with the requested lamports plus sponsored rent, delegates it, then schedules transfer and cleanup.",
+        "The destination account must already be delegated; the validator is read from its delegation record.",
+        "Instruction data: [0..8] amount (u64 LE), [8..40] salt ([u8; 32])."
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true
+        },
+        {
+          "name": "rentPda",
+          "writable": true
+        },
+        {
+          "name": "lamportsPda",
+          "writable": true
+        },
+        {
+          "name": "ownerProgram"
+        },
+        {
+          "name": "buffer",
+          "writable": true
+        },
+        {
+          "name": "delegationRecord",
+          "writable": true
+        },
+        {
+          "name": "delegationMetadata",
+          "writable": true
+        },
+        {
+          "name": "delegationProgram",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "destination",
+          "writable": true
+        },
+        {
+          "name": "destinationDelegationRecord"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "salt",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "initializeRentPda",
       "discriminator": [
         23

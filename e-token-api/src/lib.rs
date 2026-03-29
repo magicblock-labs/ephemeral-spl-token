@@ -91,7 +91,6 @@ pub mod instruction {
     ///      Instruction data:
     ///      [0..8]   amount (u64 LE)
     ///      [8..40]  salt ([u8; 32])
-    ///      [40..72] optional validator pubkey
     pub const SPONSORED_LAMPORTS_TRANSFER: u8 = 20;
     /// 23 - InitializeRentPda: initialize the global rent-sponsoring PDA derived from ["rent"]
     ///      Instruction data:

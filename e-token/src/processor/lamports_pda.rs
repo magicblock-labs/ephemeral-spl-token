@@ -1,6 +1,7 @@
 use dlp_api::compact::ClearText;
+use dlp_api::{requires::require_initialized_delegation_record, state::DelegationRecord};
 use ephemeral_rollups_pinocchio::{
-    consts::{MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID},
+    consts::{DELEGATION_PROGRAM_ID, MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID},
     intent_bundle::{ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta},
     types::DelegateConfig,
 };
@@ -31,18 +32,19 @@ pub fn process_sponsored_lamports_transfer(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let args = SponsoredLamportsTransferArgs::try_from_bytes(instruction_data)?;
-    let [payer_info, rent_pda_info, lamports_pda_info, owner_program, buffer_acc, delegation_record, delegation_metadata, _delegation_program, system_program, destination_info, ..] =
+    let (amount, salt) = parse_amount_and_salt(instruction_data)?;
+    let [payer_info, rent_pda_info, lamports_pda_info, owner_program, buffer_acc, delegation_record, delegation_metadata, _delegation_program, system_program, destination_info, destination_delegation_record_info, ..] =
         accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
-    if args.amount() == 0 {
+    if amount == 0 {
         return Err(ProgramError::InvalidArgument);
     }
     assert_signer!(payer_info);
     assert_owner!(rent_pda_info, &pinocchio_system::ID);
+    assert_owner!(destination_info, &DELEGATION_PROGRAM_ID);
 
     if owner_program.address() != &ephemeral_spl_api::program::id_address() {
         return Err(ProgramError::IncorrectProgramId);
@@ -56,7 +58,8 @@ pub fn process_sponsored_lamports_transfer(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    let salt = args.salt();
+    let validator =
+        read_destination_validator(destination_info, destination_delegation_record_info)?;
     let (derived_lamports_pda, lamports_pda_bump) =
         derive_lamports_pda(payer_info.address(), destination_info.address(), &salt);
     if derived_lamports_pda != *lamports_pda_info.address() {
@@ -99,7 +102,7 @@ pub fn process_sponsored_lamports_transfer(
     Transfer {
         from: payer_info,
         to: lamports_pda_info,
-        lamports: args.amount(),
+        lamports: amount,
     }
     .invoke()?;
 
@@ -114,7 +117,7 @@ pub fn process_sponsored_lamports_transfer(
             payer_info,
             lamports_pda_info,
             destination_info,
-            args.amount(),
+            amount,
             &salt,
         ),
         undelegate_lamports_pda_action(
@@ -138,7 +141,7 @@ pub fn process_sponsored_lamports_transfer(
         &pda_seeds,
         lamports_pda_bump,
         DelegateConfig {
-            validator: args.validator().map(Address::new_from_array),
+            validator: Some(validator),
             ..DelegateConfig::default()
         },
         post_actions.cleartext(),
@@ -173,7 +176,7 @@ pub fn process_transfer_lamports_pda(
         .try_minimum_balance(0)?
         .checked_add(amount)
         .ok_or(ProgramError::InvalidArgument)?;
-    if lamports_pda_info.lamports() != expected_balance {
+    if lamports_pda_info.lamports() < expected_balance {
         return Err(ProgramError::InvalidArgument);
     }
 
@@ -205,7 +208,7 @@ pub fn process_undelegate_lamports_pda(
         return Err(ProgramError::InvalidSeeds);
     }
 
-    if lamports_pda_info.lamports() != Rent::get()?.try_minimum_balance(0)? {
+    if lamports_pda_info.lamports() < Rent::get()?.try_minimum_balance(0)? {
         return Err(ProgramError::InvalidArgument);
     }
 
@@ -296,7 +299,7 @@ pub fn process_close_lamports_pda_intent(
         return Err(ProgramError::InvalidSeeds);
     }
 
-    if lamports_pda_info.lamports() != Rent::get()?.try_minimum_balance(0)? {
+    if lamports_pda_info.lamports() < Rent::get()?.try_minimum_balance(0)? {
         return Err(ProgramError::InvalidArgument);
     }
 
@@ -387,6 +390,26 @@ fn parse_amount_and_salt(instruction_data: &[u8]) -> Result<(u64, [u8; 32]), Pro
     Ok((u64::from_le_bytes(amount), salt))
 }
 
+fn read_destination_validator(
+    destination_info: &AccountView,
+    destination_delegation_record_info: &AccountView,
+) -> Result<Address, ProgramError> {
+    require_initialized_delegation_record(
+        destination_info,
+        destination_delegation_record_info,
+        false,
+    )?;
+
+    let destination_delegation_record_data = destination_delegation_record_info.try_borrow()?;
+    let destination_delegation_record =
+        DelegationRecord::try_from_bytes_with_discriminator(&destination_delegation_record_data)
+            .map_err(|_| ProgramError::InvalidAccountData)?;
+
+    Ok(Address::new_from_array(
+        destination_delegation_record.authority.to_bytes(),
+    ))
+}
+
 fn parse_salt(instruction_data: &[u8]) -> Result<[u8; 32], ProgramError> {
     if instruction_data.len() != 32 {
         return Err(ProgramError::InvalidInstructionData);
@@ -447,44 +470,4 @@ fn close_program_account_to_recipient(
     account.set_lamports(0);
     account.close()?;
     Ok(())
-}
-
-pub struct SponsoredLamportsTransferArgs<'a> {
-    bytes: &'a [u8],
-}
-
-impl SponsoredLamportsTransferArgs<'_> {
-    #[inline]
-    pub fn try_from_bytes(bytes: &[u8]) -> Result<SponsoredLamportsTransferArgs<'_>, ProgramError> {
-        if bytes.len() != 40 && bytes.len() != 72 {
-            return Err(ProgramError::InvalidInstructionData);
-        }
-
-        Ok(SponsoredLamportsTransferArgs { bytes })
-    }
-
-    #[inline]
-    pub fn amount(&self) -> u64 {
-        let mut amount = [0u8; 8];
-        amount.copy_from_slice(&self.bytes[..8]);
-        u64::from_le_bytes(amount)
-    }
-
-    #[inline]
-    pub fn salt(&self) -> [u8; 32] {
-        let mut salt = [0u8; 32];
-        salt.copy_from_slice(&self.bytes[8..40]);
-        salt
-    }
-
-    #[inline]
-    pub fn validator(&self) -> Option<[u8; 32]> {
-        if self.bytes.len() == 40 {
-            return None;
-        }
-
-        let mut validator = [0u8; 32];
-        validator.copy_from_slice(&self.bytes[40..72]);
-        Some(validator)
-    }
 }
