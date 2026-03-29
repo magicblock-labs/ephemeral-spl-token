@@ -44,7 +44,8 @@ pub fn process_delegate_transfer_queue(
         }
 
         let bump = header.bump;
-        let derived_queue = TransferQueue::create_pda(mint_info.address(), bump)?;
+        let derived_queue =
+            TransferQueue::create_pda(mint_info.address(), &header.validator, bump)?;
         if derived_queue != *queue_info.address() {
             return Err(ProgramError::InvalidSeeds);
         }

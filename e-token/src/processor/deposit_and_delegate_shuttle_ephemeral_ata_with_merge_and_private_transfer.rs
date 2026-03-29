@@ -9,7 +9,6 @@ use dlp_api::args::{
     MaybeEncryptedPubkey,
 };
 use dlp_api::compact::{self};
-use dlp_api::consts::DEFAULT_VALIDATOR_IDENTITY;
 
 use ephemeral_spl_api::state::transfer_queue::{queue_views, TransferQueue};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
@@ -75,12 +74,13 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
         );
     }
 
-    let bump = {
+    let (bump, validator) = {
         let data = unsafe { queue_info.borrow_unchecked() };
         let (header, _) = queue_views(data)?;
-        header.bump
+        (header.bump, header.validator)
     };
-    let derived_queue = TransferQueue::create_pda(common_accounts.mint_info.address(), bump)?;
+    let derived_queue =
+        TransferQueue::create_pda(common_accounts.mint_info.address(), &validator, bump)?;
     if derived_queue != *queue_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }

@@ -1,11 +1,11 @@
+use ephemeral_rollups_pinocchio::acl::permission_pda_from_permissioned_account;
 use ephemeral_spl_api::state::transfer_queue::{
-    capacity_from_data_len, header_len, item_len, TransferQueueHeader, QUEUE_SEED,
+    capacity_from_data_len, header_len, item_len, TransferQueue, TransferQueueHeader, QUEUE_SEED,
     TRANSFER_QUEUE_VERSION,
 };
 use ephemeral_spl_api::ID as PROGRAM;
 use solana_account::Account as SolanaAccount;
 use solana_instruction::Instruction;
-use solana_keypair::Keypair;
 use {
     ephemeral_spl_api::instruction, solana_instruction::AccountMeta, solana_program_test::tokio,
     solana_pubkey::Pubkey, solana_signer::Signer, solana_transaction::Transaction,
@@ -20,6 +20,7 @@ fn read_header_unaligned(data: &[u8]) -> TransferQueueHeader {
 }
 
 const DEFAULT_TRANSFER_QUEUE_ITEMS: usize = 100;
+const VALIDATOR: Pubkey = Pubkey::new_from_array([77; 32]);
 
 #[tokio::test]
 async fn initialize_transfer_queue_default_size() {
@@ -42,7 +43,7 @@ async fn initialize_transfer_queue_default_size() {
     let payer = payer_kp.pubkey();
 
     let (queue, bump) =
-        Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref(), validator.as_ref()], &PROGRAM);
+        Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref(), VALIDATOR.as_ref()], &PROGRAM);
     let queue_permission = permission_pda_from_permissioned_account(&queue);
 
     let ix = Instruction {
@@ -52,9 +53,9 @@ async fn initialize_transfer_queue_default_size() {
             AccountMeta::new(queue, false),
             AccountMeta::new(queue_permission, false),
             AccountMeta::new_readonly(mint, false),
-            AccountMeta::new_readonly(validator, false),
+            AccountMeta::new_readonly(VALIDATOR, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
-            AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
+            AccountMeta::new_readonly(utils::permission_program_id(), false),
         ],
         data: vec![instruction::INITIALIZE_TRANSFER_QUEUE],
     };
@@ -65,13 +66,9 @@ async fn initialize_transfer_queue_default_size() {
         &[&payer_kp],
         context.last_blockhash,
     );
-    common::metrics::process_transaction_record_cu(
-        &context.banks_client,
-        tx,
-        "init_tq::default",
-    )
-    .await
-    .unwrap();
+    common::metrics::process_transaction_record_cu(&context.banks_client, tx, "init_tq::default")
+        .await
+        .unwrap();
 
     let queue_account = context
         .banks_client
@@ -119,7 +116,8 @@ async fn initialize_transfer_queue_custom_size_is_idempotent() {
 
     let payer_kp = utils::fixed_payer_keypair();
     let payer = payer_kp.pubkey();
-    let (queue, bump) = Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref()], &PROGRAM);
+    let (queue, bump) = TransferQueue::find_pda(&mint, &VALIDATOR);
+    let queue_permission = permission_pda_from_permissioned_account(&queue);
 
     let items = 4_u32;
     let mut data = vec![instruction::INITIALIZE_TRANSFER_QUEUE];
@@ -132,9 +130,9 @@ async fn initialize_transfer_queue_custom_size_is_idempotent() {
             AccountMeta::new(queue, false),
             AccountMeta::new(queue_permission, false),
             AccountMeta::new_readonly(mint, false),
-            AccountMeta::new_readonly(validator, false),
+            AccountMeta::new_readonly(VALIDATOR, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
-            AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
+            AccountMeta::new_readonly(utils::permission_program_id(), false),
         ],
         data,
     };
@@ -161,9 +159,9 @@ async fn initialize_transfer_queue_custom_size_is_idempotent() {
             AccountMeta::new(queue, false),
             AccountMeta::new(queue_permission, false),
             AccountMeta::new_readonly(mint, false),
-            AccountMeta::new_readonly(validator, false),
+            AccountMeta::new_readonly(VALIDATOR, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
-            AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
+            AccountMeta::new_readonly(utils::permission_program_id(), false),
         ],
         data: vec![instruction::INITIALIZE_TRANSFER_QUEUE],
     };
@@ -173,13 +171,9 @@ async fn initialize_transfer_queue_custom_size_is_idempotent() {
         &[&payer_kp],
         second_blockhash,
     );
-    common::metrics::process_transaction_record_cu(
-        &context.banks_client,
-        tx_noop,
-        "init_tq::noop",
-    )
-    .await
-    .unwrap();
+    common::metrics::process_transaction_record_cu(&context.banks_client, tx_noop, "init_tq::noop")
+        .await
+        .unwrap();
 
     let queue_account = context
         .banks_client

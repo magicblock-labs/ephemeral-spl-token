@@ -56,7 +56,7 @@ pub fn process_transfer_queue_tick(
             .checked_mul(MILLIS_PER_SECOND)
             .ok_or(ProgramError::InvalidInstructionData)?;
 
-        let derived_queue = TransferQueue::create_pda(&mint, header.bump)?;
+        let derived_queue = TransferQueue::create_pda(&mint, &header.validator, header.bump)?;
         if derived_queue != *queue_info.address() {
             return Err(ProgramError::InvalidSeeds);
         }
@@ -147,7 +147,7 @@ pub fn process_transfer_queue_tick(
     }];
     let mut intent_bundle_data = [0_u8; MAGIC_INTENT_BUNDLE_DATA_LEN];
     let queue_bump_seed = [queue_bump];
-    let signer_seeds = TransferQueue::signer_seeds(&mint, &queue_bump_seed);
+    let signer_seeds = TransferQueue::signer_seeds(&mint, &validator, &queue_bump_seed);
     let signer = Signer::from(&signer_seeds);
     let derived_magic_fee_vault = magic_fee_vault_pda_from_validator(&validator.to_bytes().into());
     if derived_magic_fee_vault.to_bytes() != magic_fee_vault_info.address().to_bytes() {

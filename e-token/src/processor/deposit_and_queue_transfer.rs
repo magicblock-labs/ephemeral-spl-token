@@ -56,11 +56,13 @@ pub fn process_deposit_and_queue_transfer(
         let data = unsafe { queue_info.borrow_unchecked() };
         let queue_capacity = capacity_from_data_len(data.len());
         match queue_len_and_bump_for_mint_with_capacity(data, mint_info.address(), split) {
-            Ok((queue_len_before, validator, bump)) => (queue_len_before, validator, bump, queue_capacity),
+            Ok((queue_len_before, validator, bump)) => {
+                (queue_len_before, validator, bump, queue_capacity)
+            }
             Err(ProgramError::AccountDataTooSmall) => {
                 #[cfg(feature = "logging")]
                 pinocchio_log::log!("Queue is full");
-                if !address_eq(reimbursement_token_info.address(), &crate::ID.into()) {
+                if !address_eq(reimbursement_token_info.address(), &crate::ID) {
                     TransferChecked {
                         mint: mint_info,
                         from: user_source_token_acc,
@@ -78,7 +80,7 @@ pub fn process_deposit_and_queue_transfer(
         }
     };
 
-    let derived_queue = TransferQueue::create_pda(mint_info.address(), queue_bump)?;
+    let derived_queue = TransferQueue::create_pda(mint_info.address(), &validator, bump)?;
     if derived_queue != *queue_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }

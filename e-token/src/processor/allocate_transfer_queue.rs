@@ -1,4 +1,4 @@
-use ephemeral_spl_api::state::transfer_queue::{item_len, queue_views_checked, QUEUE_SEED};
+use ephemeral_spl_api::state::transfer_queue::{item_len, queue_views_checked, TransferQueue};
 use pinocchio::address::address_eq;
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
@@ -21,20 +21,12 @@ pub fn process_allocate_transfer_queue(
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
-    assert_owner!(queue_info, &ephemeral_spl_api::program::id_address());
+    assert_owner!(queue_info, &crate::ID);
 
     let realloc_size = {
         let (header, _) = queue_views_checked(unsafe { queue_info.borrow_unchecked() })?;
-        let bump_seed = [header.bump];
-        let derived_queue = ephemeral_spl_api::Address::create_program_address(
-            &[
-                QUEUE_SEED,
-                header.mint.as_ref(),
-                header.validator.as_ref(),
-                bump_seed.as_ref(),
-            ],
-            &ephemeral_spl_api::program::id_address(),
-        )?;
+        let derived_queue =
+            TransferQueue::create_pda(&header.mint, &header.validator, header.bump)?;
         if !address_eq(&derived_queue, queue_info.address()) {
             return Err(ProgramError::InvalidSeeds);
         }

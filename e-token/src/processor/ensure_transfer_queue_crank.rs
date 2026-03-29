@@ -9,7 +9,7 @@ use ephemeral_spl_api::state::transfer_queue::{
     queue_crank_task_id_from_data, queue_set_crank_task_id_from_data, queue_views_checked,
     TransferQueue,
 };
-use pinocchio::cpi::{invoke_signed_with_bounds, Seed, Signer};
+use pinocchio::cpi::{invoke_signed_with_bounds, Signer};
 use pinocchio::instruction::{InstructionAccount, InstructionView};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
@@ -56,7 +56,7 @@ pub fn process_ensure_transfer_queue_crank(
         (header.mint, header.bump, header.validator)
     };
 
-    let derived_queue = TransferQueue::create_pda(&mint, bump)?;
+    let derived_queue = TransferQueue::create_pda(&mint, &validator, bump)?;
     if derived_queue != *queue_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
@@ -65,12 +65,8 @@ pub fn process_ensure_transfer_queue_crank(
         return Err(ProgramError::InvalidSeeds);
     }
 
-    let queue_signer_seeds = [
-        Seed::from(QUEUE_SEED),
-        Seed::from(mint.as_ref()),
-        Seed::from(validator.as_ref()),
-        Seed::from(&bump_seed),
-    ];
+    let bump_seed = [bump];
+    let queue_signer_seeds = TransferQueue::signer_seeds(&mint, &validator, &bump_seed);
     let queue_signers = [Signer::from(&queue_signer_seeds)];
 
     let crank_task_id = derive_queue_crank_task_id(queue_info.address());

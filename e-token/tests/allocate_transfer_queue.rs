@@ -1,11 +1,10 @@
 use ephemeral_rollups_pinocchio::acl::{
     permission_pda_from_permissioned_account, PERMISSION_PROGRAM_ID,
 };
-use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::transfer_queue::{
-    header_len, item_len, queue_views_checked, QUEUE_SEED, TRANSFER_QUEUE_VERSION,
+    header_len, item_len, queue_views_checked, TransferQueue, TRANSFER_QUEUE_VERSION,
 };
+use ephemeral_spl_api::{instruction, ID as PROGRAM};
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
@@ -17,8 +16,6 @@ use solana_transaction::Transaction;
 mod utils;
 
 use crate::utils::add_permission_program;
-
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 
 #[tokio::test]
 async fn allocate_transfer_queue_succeeds_and_is_idempotent() {
@@ -41,8 +38,7 @@ async fn allocate_transfer_queue_succeeds_and_is_idempotent() {
     let context = &mut pt.start_with_context().await;
     let payer = context.payer.pubkey();
     let validator = Keypair::new().pubkey();
-    let (queue, bump) =
-        Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref(), validator.as_ref()], &PROGRAM);
+    let (queue, bump) = TransferQueue::find_pda(&mint, &validator);
     let queue_permission = permission_pda_from_permissioned_account(&queue);
 
     const N_ITEMS: usize = 9999;

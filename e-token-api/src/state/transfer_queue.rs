@@ -44,32 +44,48 @@ pub struct TransferQueue;
 
 impl TransferQueue {
     #[inline(always)]
-    pub fn create_pda(mint: &Address, bump_seed: u8) -> Result<Address, ProgramError> {
+    pub fn create_pda(
+        mint: &Address,
+        validator: &Address,
+        bump_seed: u8,
+    ) -> Result<Address, ProgramError> {
         let bump = [bump_seed];
-        let pda = Address::create_program_address(&Self::seeds_with_bump(mint, &bump), &crate::ID)?;
+        let pda = Address::create_program_address(
+            &Self::seeds_with_bump(mint, validator, &bump),
+            &crate::ID,
+        )?;
         Ok(pda)
     }
 
     #[inline(always)]
-    pub fn find_pda(mint: &Address) -> (Address, u8) {
-        Address::find_program_address(&Self::seeds(mint), &crate::ID)
+    pub fn find_pda(mint: &Address, validator: &Address) -> (Address, u8) {
+        Address::find_program_address(&Self::seeds(mint, validator), &crate::ID)
     }
 
     #[inline(always)]
-    pub fn seeds(mint: &Address) -> [&[u8]; 2] {
-        [QUEUE_SEED, mint.as_ref()]
+    pub fn seeds<'a>(mint: &'a Address, validator: &'a Address) -> [&'a [u8]; 3] {
+        [QUEUE_SEED, mint.as_ref(), validator.as_ref()]
     }
 
     #[inline(always)]
-    pub fn seeds_with_bump<'a>(mint: &'a Address, bump: &'a [u8]) -> [&'a [u8]; 3] {
-        [QUEUE_SEED, mint.as_ref(), bump]
+    pub fn seeds_with_bump<'a>(
+        mint: &'a Address,
+        validator: &'a Address,
+        bump: &'a [u8],
+    ) -> [&'a [u8]; 4] {
+        [QUEUE_SEED, mint.as_ref(), validator.as_ref(), bump]
     }
 
     #[inline(always)]
-    pub fn signer_seeds<'a>(mint: &'a Address, bump: &'a [u8]) -> [Seed<'a>; 3] {
+    pub fn signer_seeds<'a>(
+        mint: &'a Address,
+        validator: &'a Address,
+        bump: &'a [u8],
+    ) -> [Seed<'a>; 4] {
         [
             Seed::from(QUEUE_SEED),
             Seed::from(mint.as_ref()),
+            Seed::from(validator.as_ref()),
             Seed::from(bump),
         ]
     }

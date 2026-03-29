@@ -52,7 +52,8 @@ pub fn process_initialize_transfer_queue(
     };
 
     let program_id = crate::ID;
-    let (derived_queue, bump) = TransferQueue::find_pda(mint_info.address());
+    let (derived_queue, bump) =
+        TransferQueue::find_pda(mint_info.address(), validator_info.address());
     if derived_queue != *queue_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
@@ -84,7 +85,8 @@ pub fn process_initialize_transfer_queue(
         }
 
         let bump_seed = [bump];
-        let signer_seeds = TransferQueue::signer_seeds(mint_info.address(), &bump_seed);
+        let signer_seeds =
+            TransferQueue::signer_seeds(mint_info.address(), validator_info.address(), &bump_seed);
         let signer = Signer::from(&signer_seeds);
 
         CreateAccount {
@@ -109,11 +111,10 @@ pub fn process_initialize_transfer_queue(
             &PERMISSION_PROGRAM_ID,
         )
         .members(MembersArgs { members: Some(&[]) })
-        .seeds(&[
-            QUEUE_SEED,
-            mint_info.address().as_ref(),
-            validator_info.address().as_ref(),
-        ])
+        .seeds(&TransferQueue::seeds(
+            mint_info.address(),
+            validator_info.address(),
+        ))
         .bump(bump)
         .invoke()?;
     }

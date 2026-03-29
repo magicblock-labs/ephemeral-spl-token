@@ -3,7 +3,6 @@ use std::{
     sync::{Mutex, OnceLock},
 };
 
-use crate::utils::add_permission_program;
 use dlp_api::pda::magic_fee_vault_pda_from_validator;
 use ephemeral_rollups_pinocchio::acl::{
     permission_pda_from_permissioned_account, PERMISSION_PROGRAM_ID,
@@ -24,7 +23,6 @@ use solana_program::{
     account_info::AccountInfo, entrypoint::ProgramResult, program_error::ProgramError,
 };
 use solana_program_pack::Pack;
-use solana_program_test::ProgramTestBanksClientExt;
 use spl_token_interface::state::Account;
 
 use {
@@ -44,6 +42,10 @@ const QUEUED_AMOUNT: u64 = 10;
 const EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX: u8 = 0;
 const RENT_PDA_SEED: &[u8] = b"rent";
 
+fn automation_validator() -> Pubkey {
+    utils::test_pubkey("transfer_queue_automation::validator")
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct CapturedScheduleAccount {
     pubkey: Pubkey,
@@ -51,19 +53,19 @@ struct CapturedScheduleAccount {
     is_writable: bool,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct CapturedScheduleTask {
     schedule_accounts: Vec<CapturedScheduleAccount>,
     args: ScheduleTaskArgs,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct CapturedCancelTask {
     cancel_accounts: Vec<CapturedScheduleAccount>,
     task_id: i64,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct CapturedIntentBundle {
     schedule_accounts: Vec<Pubkey>,
     args: MagicIntentBundleArgs,
@@ -327,7 +329,7 @@ async fn setup_fixture() -> Fixture {
     let payer = payer_kp.pubkey();
     let mint_kp = utils::test_keypair("transfer_queue_automation::setup_fixture::mint");
     let mint = mint_kp.pubkey();
-    let validator = Keypair::new().pubkey();
+    let validator = automation_validator();
     let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
 
     let pdas = utils::derive_pdas(PROGRAM, payer, mint);
@@ -655,12 +657,35 @@ async fn ensure_transfer_queue_crank_schedules_one_recurring_queue_crank() {
     )
     .await
     .unwrap();
-    assert!(take_captured_schedules(fixture.magic_program).is_empty());
+    let cancels = take_captured_cancels(fixture.magic_program);
+    assert_eq!(cancels.len(), 1);
+    assert_eq!(cancels[0].task_id, header_after_first_ensure.crank_task_id);
+    assert_eq!(
+        cancels[0].cancel_accounts,
+        vec![
+            CapturedScheduleAccount {
+                pubkey: fixture.queue,
+                is_signer: true,
+                is_writable: true,
+            },
+            CapturedScheduleAccount {
+                pubkey: fixture.queue,
+                is_signer: true,
+                is_writable: true,
+            },
+        ]
+    );
+    let rescheduled = take_captured_schedules(fixture.magic_program);
+    assert_eq!(rescheduled.len(), 1);
+    assert_eq!(
+        rescheduled[0].args.task_id,
+        header_after_first_ensure.crank_task_id
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
-    let _test_guard = test_lock().lock().await;
+    let _test_guard = test_lock().lock().unwrap();
     let fake_magic_program = utils::test_pubkey("transfer_queue_automation::fake_magic_program");
 
     let mut fixture = {
@@ -694,7 +719,7 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
             "transfer_queue_automation::ensure_transfer_queue_crank_rejects_non_magic_program::mint",
         );
         let mint = mint_kp.pubkey();
-        let validator = Keypair::new().pubkey();
+        let validator = automation_validator();
         let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
 
         let pdas = utils::derive_pdas(PROGRAM, payer, mint);
@@ -890,7 +915,9 @@ async fn process_transfer_queue_tick_is_noop_when_queue_is_empty() {
 #[tokio::test(flavor = "current_thread")]
 async fn process_transfer_queue_tick_rejects_non_magic_program() {
     let _test_guard = test_lock().lock().unwrap();
-    let fake_magic_program = Pubkey::new_unique();
+    let fake_magic_program = utils::test_pubkey(
+        "transfer_queue_automation::process_transfer_queue_tick_rejects_non_magic_program::fake_magic",
+    );
 
     let mut fixture = {
         let magic_program = solana_pubkey::Pubkey::new_from_array(
@@ -901,33 +928,35 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
         clear_captured_cancels(magic_program);
         clear_captured_intent_bundles(magic_program);
 
-        let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-        utils::add_associated_token_program(&mut pt);
-        add_magic_program_mock(&mut pt, magic_program);
-        add_noop_program_mock(&mut pt, fake_magic_program);
-        add_permission_program(&mut pt);
-        pt.add_account(
-            magic_context,
-            SolanaAccount {
-                lamports: 1_000_000,
-                data: vec![0; 8],
-                owner: magic_program,
-                executable: false,
-                rent_epoch: 0,
-            },
-        );
+        let mut context = utils::start_program_test_with(PROGRAM, |pt| {
+            add_magic_program_mock(pt, magic_program);
+            add_noop_program_mock(pt, fake_magic_program);
+            pt.add_account(
+                magic_context,
+                SolanaAccount {
+                    lamports: 1_000_000,
+                    data: vec![0; 8],
+                    owner: magic_program,
+                    executable: false,
+                    rent_epoch: 0,
+                },
+            );
+        })
+        .await;
 
-        let mut context = pt.start_with_context().await;
-        let payer = context.payer.pubkey();
-        let mint_kp = Keypair::new();
+        let payer_kp = utils::fixed_payer_keypair();
+        let payer = payer_kp.pubkey();
+        let mint_kp = utils::test_keypair(
+            "transfer_queue_automation::process_transfer_queue_tick_rejects_non_magic_program::mint",
+        );
         let mint = mint_kp.pubkey();
-        let validator = Keypair::new().pubkey();
+        let validator = automation_validator();
         let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
 
         let pdas = utils::derive_pdas(PROGRAM, payer, mint);
         let setup = utils::setup_mint_and_token_accounts(
             &mut context,
-            payer,
+            &payer_kp,
             &mint_kp,
             DECIMALS,
             STARTING_BALANCE,
@@ -1022,7 +1051,7 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
                 ix_init_destination_ata,
             ],
             Some(&payer),
-            &[&context.payer],
+            &[&payer_kp],
             context.last_blockhash,
         );
         context
@@ -1033,6 +1062,7 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
 
         Fixture {
             context,
+            payer_kp,
             payer,
             mint,
             magic_program,
@@ -1053,7 +1083,7 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
             fake_magic_program,
         )],
         Some(&fixture.payer),
-        &[&fixture.context.payer],
+        &[&fixture.payer_kp],
         blockhash,
     );
     let err = fixture
@@ -1076,12 +1106,7 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
 async fn process_transfer_queue_tick_is_noop_when_next_transfer_is_not_ready() {
     let _test_guard = test_lock().lock().unwrap();
     let mut fixture = setup_fixture().await;
-    enqueue_transfer(
-        &mut fixture,
-        120,
-        "tq_auto::enqueue_delayed",
-    )
-    .await;
+    enqueue_transfer(&mut fixture, 120, "tq_auto::enqueue_delayed").await;
 
     let blockhash = latest_blockhash(&mut fixture.context).await;
     let tx = Transaction::new_signed_with_payer(
@@ -1119,12 +1144,7 @@ async fn process_transfer_queue_tick_is_noop_when_next_transfer_is_not_ready() {
 async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
     let _test_guard = test_lock().lock().unwrap();
     let mut fixture = setup_fixture().await;
-    enqueue_transfer(
-        &mut fixture,
-        0,
-        "tq_auto::enqueue_ready",
-    )
-    .await;
+    enqueue_transfer(&mut fixture, 0, "tq_auto::enqueue_ready").await;
 
     let queue_before = queue_account(&mut fixture.context, fixture.queue).await;
     let queued = read_item_unaligned(&queue_before.data, 0);

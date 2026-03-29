@@ -148,7 +148,7 @@ pub fn process_close_shuttle_ata_intent(
         };
         let (mint, shuttle_ephemeral_amount, shuttle_eata_bump) = {
             let shuttle_ephemeral_ata_data = shuttle_ephemeral_ata_info.try_borrow()?;
-            let (ephemeral_owner, mint, amount) =
+            let (ephemeral_owner, mint, amount, shuttle_eata_bump) =
                 read_ephemeral_ata_compat(&shuttle_ephemeral_ata_data)?;
             if ephemeral_owner != *shuttle_info.address() {
                 return Err(ProgramError::InvalidAccountData);

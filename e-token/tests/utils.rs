@@ -222,7 +222,7 @@ pub fn add_associated_token_program(pt: &mut ProgramTest) {
 pub fn add_permission_program(pt: &mut ProgramTest) {
     let data = read_file("tests/fixtures/acl.so");
     pt.add_account(
-        PERMISSION_PROGRAM_ID,
+        permission_program_id(),
         solana_account::Account {
             lamports: Rent::default().minimum_balance(data.len()).max(1),
             data,

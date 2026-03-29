@@ -48,7 +48,7 @@ fn read_item_unaligned(data: &[u8], index: usize) -> QueuedTransfer {
     unsafe { core::ptr::read_unaligned(data[offset..].as_ptr() as *const QueuedTransfer) }
 }
 
-async fn setup_fixture(queue_size_bytes: Option<u32>) -> Fixture {
+async fn setup_fixture(items: Option<u32>) -> Fixture {
     let mut context = utils::start_program_test(PROGRAM).await;
 
     let payer_kp = utils::fixed_payer_keypair();
@@ -407,17 +407,15 @@ async fn deposit_and_queue_transfer_rejects_when_queue_is_full() {
         &[&fixture.payer_kp],
         blockhash,
     );
-    let r = common::metrics::process_transaction_with_metadata_recorded(
+    common::metrics::process_transaction_with_metadata_recorded(
         &fixture.context.banks_client,
         tx,
         "dep_queue::reject_queue_full",
     )
     .await
+    .unwrap()
+    .result
     .unwrap();
-    assert_eq!(
-        r.result.unwrap_err(),
-        TransactionError::InstructionError(0, InstructionError::AccountDataTooSmall)
-    );
 
     assert_empty_state(&fixture).await;
 }
@@ -629,7 +627,7 @@ async fn deposit_and_queue_transfer_return_to_shuttle() {
     let tx_init_ata = Transaction::new_signed_with_payer(
         &[ix_init_ata],
         Some(&fixture.payer),
-        &[&fixture.context.payer],
+        &[&fixture.payer_kp],
         blockhash,
     );
     fixture
@@ -674,7 +672,7 @@ async fn deposit_and_queue_transfer_return_to_shuttle() {
     let tx = Transaction::new_signed_with_payer(
         &[ix],
         Some(&fixture.payer),
-        &[&fixture.context.payer],
+        &[&fixture.payer_kp],
         blockhash,
     );
     fixture

@@ -1,14 +1,18 @@
+use dlp_api::consts::DELEGATION_PROGRAM_ID;
 use dlp_api::state::DelegationRecord;
 use ephemeral_rollups_pinocchio::acl::{
     permission_pda_from_permissioned_account, PERMISSION_PROGRAM_ID,
 };
 use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::state::transfer_queue::{
-    header_len, TransferQueueHeader, QUEUE_SEED, TRANSFER_QUEUE_VERSION,
+    header_len, TransferQueue, TransferQueueHeader, TRANSFER_QUEUE_VERSION,
 };
 use ephemeral_spl_api::ID as PROGRAM;
+use pinocchio::error::ProgramError;
+use pinocchio::ProgramResult;
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
+use solana_program::entrypoint::__AccountInfo;
 use solana_program_test::tokio;
 use solana_pubkey::Pubkey;
 use solana_signer::Signer;
@@ -77,7 +81,7 @@ fn parse_delegate_validator(data: &[u8]) -> Result<(u32, Option<[u8; 32]>), Prog
 
 fn process_delegation_program_mock(
     _program_id: &Pubkey,
-    accounts: &[AccountInfo],
+    accounts: &[__AccountInfo],
     instruction_data: &[u8],
 ) -> ProgramResult {
     let [_payer, delegated_account, owner_program, buffer, delegation_record, _delegation_metadata, system_program, ..] =
@@ -125,6 +129,11 @@ fn process_delegation_program_mock(
 async fn delegate_transfer_queue_succeeds_and_is_idempotent() {
     let mint = utils::test_pubkey("delegate_transfer_queue_succeeds_and_is_idempotent::mint");
     let context = utils::start_program_test_with(PROGRAM, |pt| {
+        // pt.add_program(
+        //     "dlp",
+        //     *DELEGATION_PROGRAM_ID.as_array().into(),
+        //     Some(process_delegation_program_mock),
+        // );
         pt.add_account(
             mint,
             Account {
@@ -140,7 +149,8 @@ async fn delegate_transfer_queue_succeeds_and_is_idempotent() {
 
     let payer_kp = utils::fixed_payer_keypair();
     let payer = payer_kp.pubkey();
-    let (queue, bump) = Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref()], &PROGRAM);
+    let (queue, bump) = TransferQueue::find_pda(&mint, &VALIDATOR);
+    let queue_permission = permission_pda_from_permissioned_account(&queue);
 
     let ix_init_queue = Instruction {
         program_id: PROGRAM,
@@ -263,7 +273,7 @@ async fn delegate_transfer_queue_succeeds_and_is_idempotent() {
     );
     assert_eq!(header.length, 0);
     assert_eq!(
-        delegation_record.authority.to_bytes(),
-        solana_system_interface::program::ID.to_bytes()
+        &delegation_record.authority.to_bytes(),
+        VALIDATOR.as_array()
     );
 }
