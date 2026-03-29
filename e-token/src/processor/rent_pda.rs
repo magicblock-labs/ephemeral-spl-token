@@ -1,10 +1,17 @@
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
+use pinocchio::Address;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_system::instructions::CreateAccount;
 
-pub const RENT_PDA_SEED: &[u8] = b"rent";
+pub const RENT_PDA_SEED: &[u8; 4] = b"rent";
+pub const RENT_PDA_BUMP: u8 = 254;
+pub const RENT_PDA: Address = Address::new_from_array(pinocchio_pubkey::derive_address_const(
+    &[RENT_PDA_SEED],
+    Some(RENT_PDA_BUMP),
+    &crate::ID,
+));
 
 #[inline(always)]
 pub fn process_initialize_rent_pda(
@@ -58,10 +65,7 @@ pub fn process_initialize_rent_pda(
 
 #[inline(always)]
 pub fn derive_rent_pda() -> (ephemeral_spl_api::Address, u8) {
-    ephemeral_spl_api::Address::find_program_address(
-        &[RENT_PDA_SEED],
-        &ephemeral_spl_api::program::id_address(),
-    )
+    (RENT_PDA, RENT_PDA_BUMP)
 }
 
 #[inline(always)]
