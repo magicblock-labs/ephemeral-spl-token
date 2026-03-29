@@ -5,7 +5,7 @@ use pinocchio::Address;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_system::instructions::CreateAccount;
 
-pub const RENT_PDA_SEED: &[u8; 4] = b"rent";
+pub const RENT_PDA_SEED: &[u8] = b"rent";
 pub const RENT_PDA_BUMP: u8 = 254;
 pub const RENT_PDA: Address = Address::new_from_array(pinocchio_pubkey::derive_address_const(
     &[RENT_PDA_SEED],
