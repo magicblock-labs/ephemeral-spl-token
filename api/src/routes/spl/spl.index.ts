@@ -1,6 +1,7 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 
 import type { AppBindings } from "../../env";
+import { openApiDefaultHook } from "../../lib/create-app";
 import {
   balanceHandler,
   depositHandler,
@@ -20,7 +21,9 @@ import {
   withdrawRoute,
 } from "./spl.routes";
 
-const app = new OpenAPIHono<{ Bindings: AppBindings }>();
+const app = new OpenAPIHono<{ Bindings: AppBindings }>({
+  defaultHook: openApiDefaultHook,
+});
 
 app.openapi(depositRoute, depositHandler);
 app.openapi(withdrawRoute, withdrawHandler);

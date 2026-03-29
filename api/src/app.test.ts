@@ -700,7 +700,7 @@ describe("app", () => {
       }),
     }, env);
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(422);
   });
 
   it("rejects private transfers with maxDelayMs above 10 minutes", async () => {
@@ -847,6 +847,36 @@ describe("app", () => {
     expect(baseJson.balance).toBe("3");
     expect(privateJson.location).toBe("ephemeral");
     expect(privateJson.balance).toBe("9");
+  });
+
+  it("returns a clearer validation error when required balance query params are missing", async () => {
+    const response = await app.request("/v1/spl/balance", {}, env);
+
+    expect(response.status).toBe(422);
+
+    const json = await response.json() as {
+      error: {
+        code: string;
+        message: string;
+        issues: Array<{
+          path: string[];
+          message: string;
+        }>;
+      };
+    };
+
+    expect(json.error.code).toBe("VALIDATION_ERROR");
+    expect(json.error.message).toBe("Missing required fields: address, mint");
+    expect(json.error.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        path: ["address"],
+        message: "address is required",
+      }),
+      expect.objectContaining({
+        path: ["mint"],
+        message: "mint is required",
+      }),
+    ]));
   });
 
   it("returns initialized=true when the mint transfer queue exists", async () => {

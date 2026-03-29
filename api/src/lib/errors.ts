@@ -56,16 +56,41 @@ export function errorBody(
     : { error: { code, message, details } };
 }
 
+function stringifyIssuePath(path: ZodIssue["path"]) {
+  return path
+    .map((segment: string | number | symbol) => typeof segment === "number" ? segment : String(segment))
+    .join(".");
+}
+
+function isMissingRequiredIssue(issue: ZodIssue) {
+  return issue.code === "invalid_type" && issue.message.includes("received undefined");
+}
+
 export function validationErrorBody(error: ZodError): z.infer<typeof validationErrorResponseSchema> {
+  const issues = error.issues.map((issue: ZodIssue) => {
+    const path = issue.path.map((segment: string | number | symbol) => typeof segment === "number" ? segment : String(segment));
+    const pathLabel = stringifyIssuePath(issue.path);
+
+    return {
+      code: issue.code,
+      message: isMissingRequiredIssue(issue) && pathLabel
+        ? `${pathLabel} is required`
+        : issue.message,
+      path,
+    };
+  });
+
+  const missingRequiredPaths = issues
+    .filter((issue) => issue.code === "invalid_type" && issue.message.endsWith("is required") && issue.path.length > 0)
+    .map((issue) => issue.path.join("."));
+
   return {
     error: {
       code: "VALIDATION_ERROR",
-      message: "Request validation failed",
-      issues: error.issues.map((issue: ZodIssue) => ({
-        code: issue.code,
-        message: issue.message,
-        path: issue.path.map((segment: string | number | symbol) => typeof segment === "number" ? segment : String(segment)),
-      })),
+      message: missingRequiredPaths.length > 0
+        ? `Missing required fields: ${missingRequiredPaths.join(", ")}`
+        : "Request validation failed",
+      issues,
     },
   };
 }

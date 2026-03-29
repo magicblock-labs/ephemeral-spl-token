@@ -3,6 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 
 import { getEnv, type AppBindings, type AppEnv } from "../env";
+import { openApiDefaultHook } from "../lib/create-app";
 import {
   jsonContent,
 } from "../lib/openapi";
@@ -456,7 +457,9 @@ function createMcpServer(env: AppEnv) {
   return server;
 }
 
-const app = new OpenAPIHono<{ Bindings: AppBindings }>();
+const app = new OpenAPIHono<{ Bindings: AppBindings }>({
+  defaultHook: openApiDefaultHook,
+});
 
 app.get("/mcp", (c) => {
   const accept = c.req.header("accept") || "";
