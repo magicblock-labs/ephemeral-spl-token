@@ -10,6 +10,9 @@ use dlp_api::args::{
 };
 use dlp_api::compact::{self};
 use dlp_api::consts::DEFAULT_VALIDATOR_IDENTITY;
+use pinocchio::sysvars::rent::Rent;
+use pinocchio::sysvars::Sysvar;
+use pinocchio_token_2022::state::TokenAccount;
 
 use ephemeral_spl_api::state::transfer_queue::QUEUE_SEED;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
@@ -118,6 +121,8 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
         &common_accounts,
         args.common_args()?,
         actions,
+        ephemeral_spl_api::consts::SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS
+            + Rent::get()?.try_minimum_balance(TokenAccount::BASE_LEN)?,
     )
 }
 

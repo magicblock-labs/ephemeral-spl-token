@@ -8,6 +8,7 @@ use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
 use ephemeral_spl_api::state::transfer_queue::{header_len, TransferQueueHeader, QUEUE_SEED};
 use ephemeral_spl_api::state::{load, Initializable};
+use pinocchio_token_2022::state::TokenAccount;
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
@@ -309,6 +310,13 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
         .await
         .unwrap();
 
+    let rent_pda_account_before = context
+        .banks_client
+        .get_account(rent_pda)
+        .await
+        .unwrap()
+        .expect("rent pda must exist");
+
     let tx_delegate = Transaction::new_signed_with_payer(
         &[ix_delegate],
         Some(&payer),
@@ -395,5 +403,30 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
     assert!(
         delegation_record_account.data.len() > record_len,
         "expected stored post-delegation payload bytes"
+    );
+
+    let rent_pda_account = context
+        .banks_client
+        .get_account(rent_pda)
+        .await
+        .unwrap()
+        .expect("rent pda must exist");
+    let ata_rent = Rent::default().minimum_balance(TokenAccount::BASE_LEN);
+    let sponsor_fee = ephemeral_spl_api::consts::SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS;
+    let metadata_rent = context
+        .banks_client
+        .get_account(delegation_metadata_pda)
+        .await
+        .unwrap()
+        .unwrap()
+        .lamports;
+    let rents = metadata_rent
+        + delegation_record_account.lamports
+        + shuttle_account.lamports
+        + shuttle_eata_account.lamports
+        + ata_rent;
+    assert_eq!(
+        rent_pda_account.lamports,
+        rent_pda_account_before.lamports + ata_rent + sponsor_fee - rents
     );
 }
