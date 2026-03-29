@@ -838,111 +838,6 @@
       "args": []
     },
     {
-      "name": "initializeFeesPda",
-      "discriminator": [
-        20
-      ],
-      "docs": [
-        "Initializes the validator-scoped FEES PDA."
-      ],
-      "accounts": [
-        {
-          "name": "payer",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "feesPda",
-          "writable": true
-        },
-        {
-          "name": "validator"
-        },
-        {
-          "name": "systemProgram",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": []
-    },
-    {
-      "name": "delegateFeesPda",
-      "discriminator": [
-        21
-      ],
-      "docs": [
-        "Delegates the validator-scoped FEES PDA."
-      ],
-      "accounts": [
-        {
-          "name": "payer",
-          "signer": true
-        },
-        {
-          "name": "feesPda",
-          "writable": true
-        },
-        {
-          "name": "validator"
-        },
-        {
-          "name": "ownerProgram"
-        },
-        {
-          "name": "buffer",
-          "writable": true
-        },
-        {
-          "name": "delegationRecord",
-          "writable": true
-        },
-        {
-          "name": "delegationMetadata",
-          "writable": true
-        },
-        {
-          "name": "delegationProgram",
-          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
-        },
-        {
-          "name": "systemProgram",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": []
-    },
-    {
-      "name": "commitFeesPda",
-      "discriminator": [
-        22
-      ],
-      "docs": [
-        "Schedules a commit for the validator-scoped FEES PDA."
-      ],
-      "accounts": [
-        {
-          "name": "payer",
-          "signer": true
-        },
-        {
-          "name": "feesPda",
-          "writable": true
-        },
-        {
-          "name": "validator"
-        },
-        {
-          "name": "magicContext",
-          "writable": true
-        },
-        {
-          "name": "magicProgram",
-          "address": "Magic11111111111111111111111111111111111111"
-        }
-      ],
-      "args": []
-    },
-    {
       "name": "initializeRentPda",
       "discriminator": [
         23
@@ -1516,10 +1411,6 @@
       "discriminator": []
     },
     {
-      "name": "FeesPda",
-      "discriminator": []
-    },
-    {
       "name": "TransferQueue",
       "discriminator": []
     }
@@ -1620,34 +1511,6 @@
                 3
               ]
             }
-          }
-        ]
-      }
-    },
-    {
-      "name": "FeesPda",
-      "docs": [
-        "Validator-scoped FEES PDA derived from [\"FEES\", validator]."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "tag",
-            "type": {
-              "array": [
-                "u8",
-                4
-              ]
-            }
-          },
-          {
-            "name": "validator",
-            "type": "pubkey"
-          },
-          {
-            "name": "bump",
-            "type": "u8"
           }
         ]
       }
@@ -1786,11 +1649,6 @@
       "name": "SHUTTLE_METADATA_SIZE",
       "type": "u64",
       "value": "72"
-    },
-    {
-      "name": "FEES_PDA_SIZE",
-      "type": "u64",
-      "value": "37"
     },
     {
       "name": "TRANSFER_QUEUE_HEADER_SIZE",
