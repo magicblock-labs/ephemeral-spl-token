@@ -4,14 +4,18 @@ import { z } from "@hono/zod-openapi";
 import { getEnv, type AppBindings } from "../../env";
 import {
   buildDepositTransaction,
+  buildInitializeMintTransaction,
   buildTransferTransaction,
   buildWithdrawTransaction,
   getBaseBalance,
+  getMintInitializationStatus,
   getPrivateBalance,
 } from "../../lib/solana";
 import {
   balanceRoute,
   depositRoute,
+  initializeMintRoute,
+  mintInitializationRoute,
   privateBalanceRoute,
   transferRoute,
   withdrawRoute,
@@ -19,6 +23,8 @@ import {
 import {
   balanceQuerySchema,
   depositRequestSchema,
+  initializeMintRequestSchema,
+  mintInitializationQuerySchema,
   transferRequestSchema,
   withdrawRequestSchema,
 } from "./spl.schemas";
@@ -36,6 +42,13 @@ export const withdrawHandler: RouteHandler<typeof withdrawRoute, RouteEnv> = asy
   const env = getEnv(c.env);
   const body = c.req.valid("json") as z.infer<typeof withdrawRequestSchema>;
   const response = await buildWithdrawTransaction(env, body);
+  return c.json(response, 200);
+};
+
+export const initializeMintHandler: RouteHandler<typeof initializeMintRoute, RouteEnv> = async (c) => {
+  const env = getEnv(c.env);
+  const body = c.req.valid("json") as z.infer<typeof initializeMintRequestSchema>;
+  const response = await buildInitializeMintTransaction(env, body);
   return c.json(response, 200);
 };
 
@@ -57,5 +70,12 @@ export const privateBalanceHandler: RouteHandler<typeof privateBalanceRoute, Rou
   const env = getEnv(c.env);
   const query = c.req.valid("query") as z.infer<typeof balanceQuerySchema>;
   const response = await getPrivateBalance(env, query);
+  return c.json(response, 200);
+};
+
+export const mintInitializationHandler: RouteHandler<typeof mintInitializationRoute, RouteEnv> = async (c) => {
+  const env = getEnv(c.env);
+  const query = c.req.valid("query") as z.infer<typeof mintInitializationQuerySchema>;
+  const response = await getMintInitializationStatus(env, query);
   return c.json(response, 200);
 };

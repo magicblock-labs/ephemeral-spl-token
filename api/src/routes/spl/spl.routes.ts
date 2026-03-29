@@ -12,6 +12,10 @@ import {
   balanceQuerySchema,
   balanceResponseSchema,
   depositRequestSchema,
+  initializeMintRequestSchema,
+  initializeMintResponseSchema,
+  mintInitializationQuerySchema,
+  mintInitializationResponseSchema,
   transactionResponseSchema,
   transferRequestSchema,
   withdrawRequestSchema,
@@ -54,6 +58,25 @@ const privateBalanceResponseExample = {
   location: "ephemeral" as const,
   balance: "1000000",
 };
+const mintInitializationResponseExample = {
+  mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  validator: "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57",
+  transferQueue: "BuBHLbaPmYmgvMiZ8uZb96RjBtmWzJY52u7Di5urNf6M",
+  initialized: true,
+};
+const initializeMintResponseExample = {
+  kind: "initializeMint" as const,
+  version: "legacy" as const,
+  transactionBase64: "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAIDKmcfsS5XfSOLaLlaBHJry50iH2Ufk2TMz4STC2fHzIcFKkerg3q2DD3Yn8TISmGeKoxSLz+BiP7iQ4pYqXYXsgu8D8C7R8ovdMQRLpSrE8+jxjTl3BfqywPNGiPNfnh8eS+smowIxqKDcCjw5liNXQkkCbBSDCBDFwtrgCKqoQ0DAgEBBAECAwQCAQEEAgIDBAIBAQQDAgME",
+  sendTo: "base" as const,
+  recentBlockhash: "9A4VhP8M8fQZxP4h7rB6mP6eM8w2pJkYh7QdZk7V4r2x",
+  lastValidBlockHeight: 284512337,
+  instructionCount: 4,
+  requiredSigners: ["3rXKwQ1kpjBd5tdcco32qsvqUh1BnZjcYnS5kYrP7AYE"],
+  validator: "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57",
+  transferQueue: "BuBHLbaPmYmgvMiZ8uZb96RjBtmWzJY52u7Di5urNf6M",
+  rentPda: "Bt9oNR5cCtnfuMmXgWELd6q5i974PdEMQDUE55nBC57L",
+};
 
 export const depositRoute = createRoute({
   path: "/v1/spl/deposit",
@@ -80,6 +103,21 @@ export const withdrawRoute = createRoute({
   },
   responses: {
     200: jsonContent(transactionResponseSchema, "Unsigned serialized transaction", withdrawResponseExample),
+    400: jsonContent(errorResponseSchema, "Build error"),
+    422: jsonContent(validationErrorResponseSchema, "Validation error"),
+  },
+});
+
+export const initializeMintRoute = createRoute({
+  path: "/v1/spl/initialize-mint",
+  method: "post",
+  tags,
+  description: "Build an unsigned base-chain transaction that initializes and delegates a validator-scoped transfer queue for a mint.",
+  request: {
+    body: jsonContentRequired(initializeMintRequestSchema, "Initialize mint request"),
+  },
+  responses: {
+    200: jsonContent(initializeMintResponseSchema, "Unsigned serialized transaction", initializeMintResponseExample),
     400: jsonContent(errorResponseSchema, "Build error"),
     422: jsonContent(validationErrorResponseSchema, "Validation error"),
   },
@@ -125,6 +163,21 @@ export const privateBalanceRoute = createRoute({
   },
   responses: {
     200: jsonContent(balanceResponseSchema, "Ephemeral token balance", privateBalanceResponseExample),
+    400: jsonContent(errorResponseSchema, "Query error"),
+    422: jsonContent(validationErrorResponseSchema, "Validation error"),
+  },
+});
+
+export const mintInitializationRoute = createRoute({
+  path: "/v1/spl/is-mint-initialized",
+  method: "get",
+  tags,
+  description: "Check whether the validator-scoped transfer queue exists for a mint on the ephemeral RPC.",
+  request: {
+    query: mintInitializationQuerySchema,
+  },
+  responses: {
+    200: jsonContent(mintInitializationResponseSchema, "Mint transfer queue initialization status", mintInitializationResponseExample),
     400: jsonContent(errorResponseSchema, "Query error"),
     422: jsonContent(validationErrorResponseSchema, "Validation error"),
   },
