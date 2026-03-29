@@ -57,7 +57,7 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
         accounts.token_program_info,
         accounts.system_program,
         args.shuttle_id(),
-        0,
+        ephemeral_spl_api::consts::SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS,
     )?;
 
     #[cfg(feature = "logging")]
