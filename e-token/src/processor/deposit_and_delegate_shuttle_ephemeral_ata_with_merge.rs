@@ -471,6 +471,7 @@ pub(crate) fn undelegate_and_close_shuttle_action(
             AccountMeta::new_readonly(*accounts.shuttle_info.address(), false),
             AccountMeta::new_readonly(*accounts.shuttle_eata_info.address(), false),
             AccountMeta::new(*accounts.shuttle_wallet_ata_info.address(), false),
+            AccountMeta::new(*accounts.owner_source_token_info.address(), false),
             AccountMeta::new_readonly(*accounts.token_program_info.address(), false),
             AccountMeta::new(Pubkey::from(MAGIC_CONTEXT_ID.to_bytes()), false),
             AccountMeta::new_readonly(Pubkey::from(MAGIC_PROGRAM_ID.to_bytes()), false),

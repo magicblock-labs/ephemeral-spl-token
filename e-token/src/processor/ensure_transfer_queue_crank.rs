@@ -1,12 +1,15 @@
 use core::mem::MaybeUninit;
 
-use ephemeral_rollups_pinocchio::crank::{CrankInstruction, ScheduleCrankArgs, ScheduleCrankCpi};
+use dlp_api::pda::magic_fee_vault_pda_from_validator;
+use ephemeral_rollups_pinocchio::crank::{
+    CancelCrankCpi, CrankInstruction, ScheduleCrankArgs, ScheduleCrankCpi,
+};
 use ephemeral_spl_api::instruction::internal::PROCESS_TRANSFER_QUEUE_TICK;
 use ephemeral_spl_api::state::transfer_queue::{
     queue_crank_task_id_from_data, queue_set_crank_task_id_from_data, queue_views_checked,
     TransferQueue,
 };
-use pinocchio::cpi::invoke_with_bounds;
+use pinocchio::cpi::{invoke_signed_with_bounds, Seed, Signer};
 use pinocchio::instruction::{InstructionAccount, InstructionView};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
@@ -14,8 +17,8 @@ use crate::{assert_owner, assert_signer};
 
 pub const CRANK_EXECUTION_INTERVAL_MILLIS: i64 = 500;
 
-const PROCESS_QUEUE_TICK_CRANK_ACCOUNTS: usize = 3;
-const SCHEDULE_CRANK_CPI_ACCOUNTS: usize = 4;
+const PROCESS_QUEUE_TICK_CRANK_ACCOUNTS: usize = 4;
+const SCHEDULE_CRANK_CPI_ACCOUNTS: usize = 5;
 const SCHEDULE_CRANK_DATA_LEN: usize =
     4 + 8 + 8 + 8 + 8 + 32 + 8 + (PROCESS_QUEUE_TICK_CRANK_ACCOUNTS * 34) + 8 + 1;
 
@@ -30,10 +33,13 @@ pub fn process_ensure_transfer_queue_crank(
 
     // Expected accounts:
     // 0. [writable, signer] Payer for the recurring crank
-    // 1. [writable] Transfer queue PDA derived from [QUEUE_SEED, mint]
-    // 2. [writable] Magic context account
-    // 3. []         Magic program
-    let [payer_info, queue_info, magic_context_info, magic_program_info, ..] = accounts else {
+    // 1. [writable] Transfer queue PDA derived from [QUEUE_SEED, mint, validator]
+    // 2. [writable] Validator magic fee vault PDA derived from ["magic-fee-vault", validator]
+    // 3. [writable] Magic context account
+    // 4. []         Magic program
+    let [payer_info, queue_info, magic_fee_vault_info, magic_context_info, magic_program_info, ..] =
+        accounts
+    else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
@@ -44,30 +50,50 @@ pub fn process_ensure_transfer_queue_crank(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    let (mint, bump) = {
+    let (mint, bump, validator) = {
         let data = unsafe { queue_info.borrow_unchecked() };
         let (header, _) = queue_views_checked(data)?;
-        (header.mint, header.bump)
+        (header.mint, header.bump, header.validator)
     };
 
     let derived_queue = TransferQueue::create_pda(&mint, bump)?;
     if derived_queue != *queue_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
+    let derived_magic_fee_vault = magic_fee_vault_pda_from_validator(&validator.to_bytes().into());
+    if derived_magic_fee_vault.to_bytes() != magic_fee_vault_info.address().to_bytes() {
+        return Err(ProgramError::InvalidSeeds);
+    }
+
+    let queue_signer_seeds = [
+        Seed::from(QUEUE_SEED),
+        Seed::from(mint.as_ref()),
+        Seed::from(validator.as_ref()),
+        Seed::from(&bump_seed),
+    ];
+    let queue_signers = [Signer::from(&queue_signer_seeds)];
 
     let crank_task_id = derive_queue_crank_task_id(queue_info.address());
     let data = unsafe { queue_info.borrow_unchecked() };
     if let Some(existing_task_id) = queue_crank_task_id_from_data(data)? {
-        if existing_task_id == crank_task_id {
-            return Ok(());
+        CancelCrankCpi {
+            authority: queue_info.clone(),
+            task_context: queue_info.clone(),
+            magic_program: magic_program_info.clone(),
+            crank_id: existing_task_id,
         }
-        return Err(ProgramError::InvalidAccountData);
+        .invoke_signed(&queue_signers)?;
     }
 
     let tick_data = [PROCESS_TRANSFER_QUEUE_TICK];
     let tick_accounts = [
         InstructionAccount {
             address: queue_info.address(),
+            is_signer: false,
+            is_writable: true,
+        },
+        InstructionAccount {
+            address: magic_fee_vault_info.address(),
             is_signer: false,
             is_writable: true,
         },
@@ -85,7 +111,7 @@ pub fn process_ensure_transfer_queue_crank(
     let crank_instruction = [CrankInstruction::new(crate::ID, &tick_accounts, &tick_data)];
     let mut crank_data = [0_u8; SCHEDULE_CRANK_DATA_LEN];
     let schedule_cpi = ScheduleCrankCpi::new(
-        payer_info.clone(),
+        queue_info.clone(),
         magic_program_info.clone(),
         &[],
         ScheduleCrankArgs::new(crank_task_id, &crank_instruction)
@@ -99,15 +125,18 @@ pub fn process_ensure_transfer_queue_crank(
     unsafe {
         schedule_accounts
             .get_unchecked_mut(0)
-            .write(InstructionAccount::writable_signer(payer_info.address()));
+            .write(InstructionAccount::writable_signer(queue_info.address()));
         schedule_accounts
             .get_unchecked_mut(1)
             .write(InstructionAccount::readonly(queue_info.address()));
         schedule_accounts
             .get_unchecked_mut(2)
-            .write(InstructionAccount::readonly(magic_context_info.address()));
+            .write(InstructionAccount::readonly(magic_fee_vault_info.address()));
         schedule_accounts
             .get_unchecked_mut(3)
+            .write(InstructionAccount::readonly(magic_context_info.address()));
+        schedule_accounts
+            .get_unchecked_mut(4)
             .write(InstructionAccount::readonly(magic_program_info.address()));
     }
 
@@ -122,14 +151,16 @@ pub fn process_ensure_transfer_queue_crank(
         },
     };
     let schedule_account_refs = [
-        payer_info,
         queue_info,
+        queue_info,
+        magic_fee_vault_info,
         magic_context_info,
         magic_program_info,
     ];
-    invoke_with_bounds::<SCHEDULE_CRANK_CPI_ACCOUNTS>(
+    invoke_signed_with_bounds::<SCHEDULE_CRANK_CPI_ACCOUNTS>(
         &schedule_instruction,
         &schedule_account_refs,
+        &queue_signers,
     )?;
 
     let data = unsafe { queue_info.borrow_unchecked_mut() };

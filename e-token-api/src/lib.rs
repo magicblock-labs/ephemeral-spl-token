@@ -131,6 +131,8 @@ pub mod instruction {
     ///      [5..13] transfer amount (u64 LE)
     ///      [13..45] optional validator pubkey
     pub const WITHDRAW_THROUGH_DELEGATED_SHUTTLE_WITH_MERGE: u8 = 26;
+    /// 27 - AllocateTransferQueue: allocates more space for the transfer queue
+    pub const ALLOCATE_TRANSFER_QUEUE: u8 = 27;
 
     /// Internal-only instruction discriminators used by the on-chain program.
     pub mod internal {

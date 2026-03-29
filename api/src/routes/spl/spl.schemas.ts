@@ -95,6 +95,56 @@ export const balanceResponseSchema = z.object({
   balance: z.string(),
 }).openapi("BalanceResponse");
 
+export const mintInitializationQuerySchema = z.object({
+  mint: publicKeySchema.openapi({
+    example: DEFAULT_DEPOSIT_MINT,
+  }),
+  cluster: clusterSchema.optional(),
+  validator: publicKeySchema.openapi({
+    example: DEFAULT_DEPOSIT_VALIDATOR,
+    description: "Optional. Defaults to the selected ephemeral RPC identity resolved via `getIdentity`.",
+  }).optional(),
+}).openapi("MintInitializationQuery", {
+  example: {
+    mint: DEFAULT_DEPOSIT_MINT,
+    validator: DEFAULT_DEPOSIT_VALIDATOR,
+  },
+});
+
+export const mintInitializationResponseSchema = z.object({
+  mint: publicKeySchema,
+  validator: publicKeySchema,
+  transferQueue: publicKeySchema,
+  initialized: z.boolean(),
+}).openapi("MintInitializationResponse");
+
+export const initializeMintRequestSchema = z.object({
+  payer: publicKeySchema.openapi({
+    example: DEPOSIT_EXAMPLE_OWNER,
+  }),
+  mint: publicKeySchema.openapi({
+    example: DEFAULT_DEPOSIT_MINT,
+  }),
+  cluster: clusterSchema.optional(),
+  validator: publicKeySchema.openapi({
+    example: DEFAULT_DEPOSIT_VALIDATOR,
+    description: "Optional. Defaults to the selected ephemeral RPC identity resolved via `getIdentity`.",
+  }).optional(),
+}).openapi("InitializeMintRequest", {
+  example: {
+    payer: DEPOSIT_EXAMPLE_OWNER,
+    mint: DEFAULT_DEPOSIT_MINT,
+    validator: DEFAULT_DEPOSIT_VALIDATOR,
+  },
+});
+
+export const initializeMintResponseSchema = transactionResponseSchema.extend({
+  kind: z.literal("initializeMint"),
+  validator: publicKeySchema,
+  transferQueue: publicKeySchema,
+  rentPda: publicKeySchema,
+}).openapi("InitializeMintResponse");
+
 export const depositRequestSchema = z.object({
   owner: publicKeySchema.openapi({
     example: DEPOSIT_EXAMPLE_OWNER,

@@ -32,8 +32,11 @@ pub unsafe extern "C" fn entrypoint(input: *mut u8) -> u64 {
 
 /// Log an error.
 #[cold]
-fn log_error(_error: &ProgramError) {
-    pinocchio_log::log!("Program error");
+fn log_error(error: &ProgramError) {
+    pinocchio_log::log!(
+        "Instruction failed with: {}",
+        error.to_str::<EphemeralSplError>()
+    );
 }
 
 /// Process an instruction.
@@ -217,6 +220,12 @@ pub(crate) fn inner_process_instruction(
             pinocchio_log::log!("Instruction: InitializeRentPda");
 
             process_initialize_rent_pda(accounts, instruction_data)
+        }
+        instruction::ALLOCATE_TRANSFER_QUEUE => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: AllocateTransferQueue");
+
+            process_allocate_transfer_queue(accounts, instruction_data)
         }
         internal::UNDELEGATION_CALLBACK => {
             #[cfg(feature = "logging")]

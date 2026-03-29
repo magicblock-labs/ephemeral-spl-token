@@ -219,6 +219,20 @@ pub fn add_associated_token_program(pt: &mut ProgramTest) {
     pt.prefer_bpf(true);
 }
 
+pub fn add_permission_program(pt: &mut ProgramTest) {
+    let data = read_file("tests/fixtures/acl.so");
+    pt.add_account(
+        PERMISSION_PROGRAM_ID,
+        solana_account::Account {
+            lamports: Rent::default().minimum_balance(data.len()).max(1),
+            data,
+            owner: bpf_loader::id(),
+            executable: true,
+            rent_epoch: 0,
+        },
+    );
+}
+
 pub fn derive_associated_token_address(wallet: Pubkey, mint: Pubkey) -> Pubkey {
     Pubkey::find_program_address(
         &[

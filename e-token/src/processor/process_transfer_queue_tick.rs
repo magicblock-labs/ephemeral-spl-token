@@ -1,4 +1,5 @@
 use crate::processor::rent_pda::derive_rent_pda;
+use dlp_api::pda::magic_fee_vault_pda_from_validator;
 use ephemeral_rollups_pinocchio::intent_bundle::{
     ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
 };
@@ -32,15 +33,20 @@ pub fn process_transfer_queue_tick(
 
     // Expected accounts:
     // 0. [writable] Transfer queue PDA, used as the scheduled-action authority
-    // 1. [writable] Magic context account
-    // 2. []         Magic program
-    let [queue_info, magic_context_info, magic_program_info, ..] = accounts else {
+    // 1. [writable] Validator magic fee vault PDA derived from ["magic-fee-vault", validator]
+    // 2. [writable] Magic context account
+    // 3. []         Magic program
+    let [queue_info, magic_fee_vault_info, magic_context_info, magic_program_info, ..] = accounts
+    else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
+    if magic_program_info.address() != &ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID {
+        return Err(ProgramError::IncorrectProgramId);
+    }
 
     let program_id = crate::ID;
     let clock = Clock::get()?;
-    let (mint, queue_bump, queue_len, queued_transfer) = {
+    let (mint, queue_bump, queue_len, queued_transfer, validator) = {
         let data = unsafe { queue_info.borrow_unchecked() };
         let (header, _) = queue_views_checked(data)?;
         let mint = header.mint;
@@ -78,7 +84,7 @@ pub fn process_transfer_queue_tick(
             queue_len
         );
 
-        (mint, header.bump, queue_len, next)
+        (mint, header.bump, queue_len, next, header.validator)
     };
     #[cfg(not(feature = "logging"))]
     let _ = queue_len;
@@ -143,12 +149,17 @@ pub fn process_transfer_queue_tick(
     let queue_bump_seed = [queue_bump];
     let signer_seeds = TransferQueue::signer_seeds(&mint, &queue_bump_seed);
     let signer = Signer::from(&signer_seeds);
+    let derived_magic_fee_vault = magic_fee_vault_pda_from_validator(&validator.to_bytes().into());
+    if derived_magic_fee_vault.to_bytes() != magic_fee_vault_info.address().to_bytes() {
+        return Err(ProgramError::InvalidSeeds);
+    }
 
     MagicIntentBundleBuilder::new(
         queue_info.clone(),
         magic_context_info.clone(),
         magic_program_info.clone(),
     )
+    .magic_fee_vault(magic_fee_vault_info.clone())
     .set_standalone_actions(&standalone_actions)
     .build_and_invoke_signed(&mut intent_bundle_data, &[signer])?;
 

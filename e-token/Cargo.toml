@@ -29,6 +29,7 @@ magicblock-delegation-program-api = { workspace = true, default-features = false
 ] }
 
 [dev-dependencies]
+bytemuck = { workspace = true }
 solana-program-pack = { workspace = true }
 solana-keypair = { workspace = true }
 solana-program = { workspace = true }

@@ -9,6 +9,7 @@ use dlp_api::args::{
     MaybeEncryptedPubkey,
 };
 use dlp_api::compact::{self};
+use dlp_api::consts::DEFAULT_VALIDATOR_IDENTITY;
 
 use ephemeral_spl_api::state::transfer_queue::{queue_views, TransferQueue};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
@@ -31,7 +32,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
     // Expected accounts:
     // 0..17 Same as DepositAndDelegateShuttleEphemeralAtaWithMerge, except there is no
     //        cleartext destination ATA account in this outer instruction.
-    // 18. [writable] Transfer queue PDA derived from [QUEUE_SEED, mint]
+    // 18. [writable] Transfer queue PDA derived from [QUEUE_SEED, mint, validator]
     //
     let args = DepositAndDelegateShuttleWithPrivateTransferArgs::try_from_bytes(instruction_data)?;
     if args.amount() == 0 {
@@ -95,7 +96,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
             ),
             undelegate_and_close_shuttle_action(&common_accounts),
         ]
-        .cleartext_with_insertable(private_transfer, 10)
+        .cleartext_with_insertable(private_transfer, 1)
     };
 
     process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions(
@@ -254,6 +255,9 @@ fn private_transfer_action_encrypted(
             MaybeEncryptedPubkey::ClearText(
                 common_accounts.token_program_info.address().to_bytes()
             ), // 8
+            MaybeEncryptedPubkey::ClearText(
+                common_accounts.shuttle_wallet_ata_info.address().to_bytes()
+            ), // 9
         ],
         instructions: alloc::vec![MaybeEncryptedInstruction {
             program_id: 1,
@@ -266,6 +270,7 @@ fn private_transfer_action_encrypted(
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(7, false)), // destination_owner_info
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(0, true)), // owner_info
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(8, false)), // token_program_info
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(9, false)), // shuttle_wallet_ata_info
             ],
             data: MaybeEncryptedIxData {
                 prefix: {
