@@ -1,11 +1,18 @@
 import {
+  delegateTransferQueueIx,
+  deriveRentPda,
+  deriveTransferQueue,
   delegateSpl,
+  initRentPdaIx,
+  initTransferQueueIx,
   transferSpl,
   withdrawSpl,
 } from "@magicblock-labs/ephemeral-rollups-sdk";
 import {
   Connection,
+  LAMPORTS_PER_SOL,
   PublicKey,
+  SystemProgram,
   Transaction,
   TransactionInstruction,
 } from "@solana/web3.js";
@@ -30,6 +37,8 @@ const MEMO_PROGRAM_ID = new PublicKey(
 
 const DEFAULT_DEPOSIT_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const DEFAULT_DEPOSIT_DEVNET_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
+const TRANSFER_QUEUE_RENT_LAMPORTS = LAMPORTS_PER_SOL / 10;
+const PRIVATE_TRANSFER_MAX_DELAY_MS_LIMIT = 10n * 60n * 1000n;
 
 const connectionCache = new Map<string, Connection>();
 const validatorCache = new Map<string, Promise<PublicKey | undefined>>();
@@ -48,7 +57,7 @@ type RpcConfig = {
 };
 
 type TransactionResponse = {
-  kind: "deposit" | "withdraw" | "transfer";
+  kind: "deposit" | "withdraw" | "transfer" | "initializeMint";
   version: "legacy";
   transactionBase64: string;
   sendTo: SendTarget;
@@ -83,6 +92,13 @@ type WithdrawInput = {
   idempotent?: boolean;
 };
 
+type InitializeMintTransactionInput = {
+  payer: string;
+  mint: string;
+  cluster?: string;
+  validator?: string;
+};
+
 type TransferInput = {
   from: string;
   to: string;
@@ -108,12 +124,32 @@ type BalanceInput = {
   cluster?: string;
 };
 
+type MintInitializationInput = {
+  mint: string;
+  validator?: string;
+  cluster?: string;
+};
+
 type BalanceResponse = {
   address: string;
   mint: string;
   ata: string;
   location: SendTarget;
   balance: string;
+};
+
+type MintInitializationResponse = {
+  mint: string;
+  validator: string;
+  transferQueue: string;
+  initialized: boolean;
+};
+
+type InitializeMintTransactionResponse = TransactionResponse & {
+  kind: "initializeMint";
+  validator: string;
+  transferQueue: string;
+  rentPda: string;
 };
 
 type RpcIdentityResponse = {
@@ -367,6 +403,18 @@ async function resolveDepositValidator(config: RpcConfig, explicitValidator?: st
   return resolveValidator(config, explicitValidator);
 }
 
+async function resolveRequiredValidator(config: RpcConfig, explicitValidator?: string) {
+  const validator = await resolveValidator(config, explicitValidator);
+
+  if (!validator) {
+    throw new ApiError(502, "RPC_ERROR", "Failed to resolve validator identity", {
+      endpoint: config.ephemeralRpcUrl,
+    });
+  }
+
+  return validator;
+}
+
 async function getBlockhash(config: RpcConfig, source: SendTarget): Promise<BlockhashResult> {
   const connection = source === "base"
     ? getBaseConnection(config)
@@ -493,6 +541,66 @@ export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawInput
   );
 }
 
+export async function buildInitializeMintTransaction(
+  env: AppEnv,
+  input: InitializeMintTransactionInput,
+): Promise<InitializeMintTransactionResponse> {
+  const config = resolveRpcConfig(env, input.cluster);
+  const payer = parsePublicKey(input.payer, "payer");
+  const mint = parsePublicKey(input.mint, "mint");
+  const validator = await resolveRequiredValidator(config, input.validator);
+  const [transferQueue] = deriveTransferQueue(mint, validator);
+  const [rentPda] = deriveRentPda();
+  const blockhash = await getBlockhash(config, "base");
+
+  const instructions = [
+    initTransferQueueIx(
+      payer,
+      transferQueue,
+      mint,
+      validator,
+    ),
+    initRentPdaIx(
+      payer,
+      rentPda,
+    ),
+    SystemProgram.transfer({
+      fromPubkey: payer,
+      toPubkey: rentPda,
+      lamports: TRANSFER_QUEUE_RENT_LAMPORTS,
+    }),
+    delegateTransferQueueIx(
+      transferQueue,
+      payer,
+      mint,
+    ),
+  ];
+
+  const response = serializeTransaction(
+    "initializeMint",
+    "base",
+    instructions,
+    payer,
+    blockhash,
+    validator,
+  );
+
+  return {
+    ...response,
+    kind: "initializeMint",
+    version: "legacy",
+    sendTo: "base",
+    recentBlockhash: blockhash.blockhash,
+    lastValidBlockHeight: blockhash.lastValidBlockHeight,
+    instructionCount: instructions.length,
+    requiredSigners: response.requiredSigners,
+    transactionBase64: response.transactionBase64,
+    validator: validator.toBase58(),
+    transferQueue: transferQueue.toBase58(),
+    rentPda: rentPda.toBase58(),
+  };
+}
+
 export async function buildTransferTransaction(env: AppEnv, input: TransferInput) {
   const config = resolveRpcConfig(env, input.cluster);
   const from = parsePublicKey(input.from, "from");
@@ -520,6 +628,17 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
     && maxDelayMs < minDelayMs
   ) {
     throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "maxDelayMs must be greater than or equal to minDelayMs");
+  }
+
+  const effectiveMaxDelayMs = maxDelayMs ?? minDelayMs;
+
+  // Temporary cap while private transfer delay windows stay limited.
+  if (
+    input.visibility === "private"
+    && effectiveMaxDelayMs !== undefined
+    && effectiveMaxDelayMs > PRIVATE_TRANSFER_MAX_DELAY_MS_LIMIT
+  ) {
+    throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "maxDelayMs must be less than or equal to 600000");
   }
 
   if (
@@ -626,4 +745,28 @@ export function getBaseBalance(env: AppEnv, input: BalanceInput) {
 
 export function getPrivateBalance(env: AppEnv, input: BalanceInput) {
   return getBalanceInternal(env, input, "ephemeral");
+}
+
+export async function getMintInitializationStatus(env: AppEnv, input: MintInitializationInput): Promise<MintInitializationResponse> {
+  const config = resolveRpcConfig(env, input.cluster);
+  const mint = parsePublicKey(input.mint, "mint");
+  const validator = await resolveRequiredValidator(config, input.validator);
+  const [transferQueue] = deriveTransferQueue(mint, validator);
+  const connection = getEphemeralConnection(config);
+
+  try {
+    const accountInfo = await connection.getAccountInfo(transferQueue, "confirmed");
+
+    return {
+      mint: mint.toBase58(),
+      validator: validator.toBase58(),
+      transferQueue: transferQueue.toBase58(),
+      initialized: accountInfo !== null,
+    };
+  }
+  catch (error) {
+    throw new ApiError(502, "RPC_ERROR", "Failed to fetch transfer queue account", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
 }

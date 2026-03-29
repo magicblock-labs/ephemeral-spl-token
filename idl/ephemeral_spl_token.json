@@ -271,7 +271,8 @@
           "writable": true
         },
         {
-          "name": "magicProgram"
+          "name": "magicProgram",
+          "address": "Magic11111111111111111111111111111111111111"
         }
       ],
       "args": []
@@ -394,7 +395,8 @@
           "address": "ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1"
         },
         {
-          "name": "magicProgram"
+          "name": "magicProgram",
+          "address": "Magic11111111111111111111111111111111111111"
         },
         {
           "name": "magicContext",
@@ -646,7 +648,8 @@
           "writable": true
         },
         {
-          "name": "magicProgram"
+          "name": "magicProgram",
+          "address": "Magic11111111111111111111111111111111111111"
         }
       ],
       "args": [
@@ -761,12 +764,12 @@
         17
       ],
       "docs": [
-        "Ensures the recurring transfer-queue crank is scheduled."
+        "Ensures the recurring transfer-queue crank is scheduled.",
+        "The queue PDA is the Magic crank payer/authority; payer is still passed as a signer for ABI compatibility."
       ],
       "accounts": [
         {
           "name": "payer",
-          "writable": true,
           "signer": true
         },
         {
@@ -782,7 +785,8 @@
           "writable": true
         },
         {
-          "name": "magicProgram"
+          "name": "magicProgram",
+          "address": "Magic11111111111111111111111111111111111111"
         }
       ],
       "args": []
@@ -932,7 +936,8 @@
           "writable": true
         },
         {
-          "name": "magicProgram"
+          "name": "magicProgram",
+          "address": "Magic11111111111111111111111111111111111111"
         }
       ],
       "args": []
@@ -1419,7 +1424,8 @@
         199
       ],
       "docs": [
-        "Internal recurring crank callback that checks a queue and schedules settlement."
+        "Internal recurring crank callback that checks a queue and schedules settlement.",
+        "The queue PDA acts as the scheduled-action authority."
       ],
       "accounts": [
         {
@@ -1435,7 +1441,8 @@
           "writable": true
         },
         {
-          "name": "magicProgram"
+          "name": "magicProgram",
+          "address": "Magic11111111111111111111111111111111111111"
         }
       ],
       "args": []
@@ -1483,7 +1490,8 @@
           "writable": true
         },
         {
-          "name": "magicProgram"
+          "name": "magicProgram",
+          "address": "Magic11111111111111111111111111111111111111"
         }
       ],
       "args": [
