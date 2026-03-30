@@ -84,7 +84,7 @@ flowchart TD
         E --> F[Queue automation waits until each split is ready]
         F --> G[Each ready split is released from the global vault]
         G --> H[Recipient ATA is created from rent_pda only if the queued flags require it]
-        H --> I[Recipient receives the split(s) on base]
+        H --> I[Recipient receives one or more splits on base]
     end
 
     I --> J[Result<br/>Base-to-base private transfer with delayed settlement through the validator queue]
