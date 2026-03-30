@@ -39,6 +39,7 @@ Transfer queue and automation
 - `16` `DepositAndQueueTransfer` — deposit into the vault and enqueue one or more delayed transfers. Raw data is `amount:u64`, `min_delay_ms:u64`, `max_delay_ms:u64`, `split:u32`, with an optional trailing flags byte.
 - `17` `EnsureTransferQueueCrank` — ensure the recurring transfer-queue crank is scheduled.
 - `19` `DelegateTransferQueue` — delegate the per-mint transfer queue PDA.
+- `20` `SponsoredLamportsTransfer` — transfer lamports via the sponsored rent mechanism.
 
 Rent PDA
 - `23` `InitializeRentPda` — initialize the global rent-sponsoring PDA derived from `["rent"]`.
