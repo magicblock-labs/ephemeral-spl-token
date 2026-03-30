@@ -83,6 +83,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge(
     process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions(
         &accounts.common,
         args.common_args(),
+        0,
         default_post_delegation_actions(&accounts).cleartext(),
     )
 }
@@ -192,6 +193,7 @@ pub(crate) fn default_post_delegation_actions(
 pub(crate) fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions(
     accounts: &DepositAndDelegateShuttleAccounts<'_>,
     args: DepositAndDelegateShuttleCommonArgs,
+    extra_setup_lamports: u64,
     post_actions: PostDelegationActions,
 ) -> ProgramResult {
     let prepared = prepare_sponsored_shuttle_delegation(
@@ -205,6 +207,7 @@ pub(crate) fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actio
         accounts.token_program_info,
         accounts.system_program,
         args.shuttle_id,
+        extra_setup_lamports,
     )?;
 
     if prepared.already_delegated {
@@ -260,6 +263,7 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
     token_program_info: &AccountView,
     system_program: &AccountView,
     shuttle_id: u32,
+    extra_setup_lamports: u64,
 ) -> Result<PreparedShuttleDelegation, ProgramError> {
     if !payer_info.is_signer() || !owner_info.is_signer() {
         return Err(ProgramError::MissingRequiredSignature);
@@ -294,10 +298,14 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
         return Err(ProgramError::InvalidAccountData);
     }
 
+    let setup_lamports = ephemeral_spl_api::consts::SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS
+        .checked_add(extra_setup_lamports)
+        .ok_or(ProgramError::InvalidArgument)?;
+
     Transfer {
         from: payer_info,
         to: rent_pda_info,
-        lamports: ephemeral_spl_api::consts::SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS,
+        lamports: setup_lamports,
     }
     .invoke()?;
 

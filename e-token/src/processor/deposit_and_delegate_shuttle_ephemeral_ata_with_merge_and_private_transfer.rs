@@ -117,6 +117,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
     process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions(
         &common_accounts,
         args.common_args()?,
+        ephemeral_spl_api::consts::SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS,
         actions,
     )
 }
