@@ -32,7 +32,7 @@ use crate::{
     processor::{
         deposit_spl_tokens::transfer_to_vault_for_mint,
         initialize_shuttle_ephemeral_ata::initialize_shuttle_ephemeral_ata_with_sponsor,
-        rent_pda::derive_rent_pda,
+        rent_pda::{RENT_PDA, RENT_PDA_BUMP},
     },
 };
 
@@ -62,7 +62,6 @@ pub(crate) struct DepositAndDelegateShuttleWithMergeAccounts<'a> {
 
 pub(crate) struct PreparedShuttleDelegation {
     pub(crate) mint: Address,
-    pub(crate) rent_bump: u8,
     pub(crate) already_delegated: bool,
 }
 
@@ -245,7 +244,6 @@ pub(crate) fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actio
         args,
         &prepared.mint,
         shuttle_eata.bump,
-        prepared.rent_bump,
         post_actions,
     )
 }
@@ -289,8 +287,7 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
         );
     }
 
-    let (derived_rent_pda, rent_bump) = derive_rent_pda();
-    if derived_rent_pda != *rent_pda_info.address() {
+    if &RENT_PDA != rent_pda_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
     if rent_pda_info.data_len() != 0 {
@@ -304,7 +301,7 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
     }
     .invoke()?;
 
-    let rent_bump_seed = [rent_bump];
+    let rent_bump_seed = [RENT_PDA_BUMP];
     let rent_signer_seed = [
         Seed::from(crate::processor::rent_pda::RENT_PDA_SEED),
         Seed::from(&rent_bump_seed),
@@ -329,7 +326,6 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
     if shuttle_eata_info.owned_by(&delegation_program) {
         return Ok(PreparedShuttleDelegation {
             mint: *mint_info.address(),
-            rent_bump,
             already_delegated: true,
         });
     }
@@ -407,7 +403,6 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
 
     Ok(PreparedShuttleDelegation {
         mint,
-        rent_bump,
         already_delegated: false,
     })
 }
@@ -427,10 +422,9 @@ pub(crate) fn delegate_sponsored_shuttle_with_post_actions(
     args: DepositAndDelegateShuttleCommonArgs,
     mint: &Address,
     shuttle_eata_bump: u8,
-    rent_bump: u8,
     post_actions: PostDelegationActions,
 ) -> ProgramResult {
-    let rent_bump_seed = [rent_bump];
+    let rent_bump_seed = [RENT_PDA_BUMP];
     let rent_signer_seed = [
         Seed::from(crate::processor::rent_pda::RENT_PDA_SEED),
         Seed::from(&rent_bump_seed),

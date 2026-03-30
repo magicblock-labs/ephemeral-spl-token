@@ -15,6 +15,7 @@ crate-type = ["cdylib"]
 logging = []
 
 [dependencies]
+const-crypto = { workspace = true }
 ephemeral-rollups-pinocchio = { workspace = true }
 pinocchio = { workspace = true }
 pinocchio-log = { workspace = true }
