@@ -35,7 +35,9 @@ pub fn process_close_shuttle_ata_intent(
         return Err(ProgramError::InvalidInstructionData);
     };
 
-    let [rent_reimbursement_info, shuttle_info, shuttle_ephemeral_ata_info, shuttle_wallet_ata_info, destination_token_info, mint_info, vault_info, vault_source_token_acc, token_program_info, source_program, escrow_authority, escrow_signer] = accounts else {
+    let [rent_reimbursement_info, shuttle_info, shuttle_ephemeral_ata_info, shuttle_wallet_ata_info, destination_token_info, mint_info, vault_info, vault_source_token_acc, token_program_info, source_program, escrow_authority, escrow_signer] =
+        accounts
+    else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 

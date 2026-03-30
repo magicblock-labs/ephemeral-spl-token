@@ -8,10 +8,6 @@ use {
     pinocchio::{error::ProgramError, AccountView, ProgramResult},
 };
 
-use ephemeral_spl_api::state::load_initialized;
-use pinocchio::cpi::{Seed, Signer};
-use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
-use ephemeral_spl_api::program::id_address;
 use crate::{
     assert_owner,
     processor::{
@@ -19,6 +15,10 @@ use crate::{
         utils::read_mint_decimals,
     },
 };
+use ephemeral_spl_api::program::id_address;
+use ephemeral_spl_api::state::load_initialized;
+use pinocchio::cpi::{Seed, Signer};
+use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
 
 #[inline(always)]
 pub fn process_execute_ready_queued_transfer(
@@ -40,7 +40,9 @@ pub fn process_execute_ready_queued_transfer(
     // 9. []         Source program (must equal this program)
     // 10. []        Escrow authority
     // 11. [signer]  Escrow signer PDA
-    let [vault_info, mint_info, vault_token_acc_info, destination_owner_info, destination_token_acc_info, rent_pda_info, token_program_info, associated_token_program_info, system_program_info, source_program, escrow_authority, escrow_signer] = accounts else {
+    let [vault_info, mint_info, vault_token_acc_info, destination_owner_info, destination_token_acc_info, rent_pda_info, token_program_info, associated_token_program_info, system_program_info, source_program, escrow_authority, escrow_signer] =
+        accounts
+    else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
