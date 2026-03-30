@@ -239,10 +239,6 @@ export const transferRequestSchema = z.object({
     example: 1,
     description: "Optional. Private transfer only. Defaults to 1. Must be between 1 and 15.",
   }).optional(),
-  authToken: z.string().openapi({
-    example: "1234567890",
-    description: "The authentication token provided by the Private Ephemeral Rollup. Only needed when sending from a delegated account.",
-  }).optional(),
 }).openapi("TransferRequest", {
   example: {
     from: DEPOSIT_EXAMPLE_OWNER,
