@@ -116,11 +116,13 @@ type TransferInput = {
   minDelayMs?: string;
   maxDelayMs?: string;
   split?: number;
+  authToken?: string;
 };
 
 type BalanceInput = {
   address: string;
   mint: string;
+  authToken?: string;
   cluster?: string;
 };
 
@@ -176,8 +178,8 @@ function getBaseConnection(config: RpcConfig) {
   return getConnection(config.baseRpcUrl);
 }
 
-function getEphemeralConnection(config: RpcConfig) {
-  return getConnection(config.ephemeralRpcUrl);
+function getEphemeralConnection(config: RpcConfig, authToken?: string) {
+  return getConnection(config.ephemeralRpcUrl + (authToken ? `?token=${authToken}` : ""));
 }
 
 function createClusterConfigError(missingVars: Array<"BASE_DEVNET_RPC_URL" | "EPHEMERAL_DEVNET_RPC_URL">) {
@@ -195,7 +197,7 @@ function createClusterConfigError(missingVars: Array<"BASE_DEVNET_RPC_URL" | "EP
   );
 }
 
-function resolveRpcConfig(env: AppEnv, cluster?: string): RpcConfig {
+export function resolveRpcConfig(env: AppEnv, cluster?: string): RpcConfig {
   const value = cluster?.trim();
   const normalized = value?.toLowerCase();
 
@@ -255,12 +257,12 @@ function parseAmount(value: string | number, fieldName: string) {
   try {
     const amount = typeof value === "number"
       ? (() => {
-          if (!Number.isSafeInteger(value) || value <= 0) {
-            throw new Error("non-positive");
-          }
+        if (!Number.isSafeInteger(value) || value <= 0) {
+          throw new Error("non-positive");
+        }
 
-          return BigInt(value);
-        })()
+        return BigInt(value);
+      })()
       : BigInt(value);
 
     if (amount <= 0n) {
@@ -415,10 +417,10 @@ async function resolveRequiredValidator(config: RpcConfig, explicitValidator?: s
   return validator;
 }
 
-async function getBlockhash(config: RpcConfig, source: SendTarget): Promise<BlockhashResult> {
+async function getBlockhash(config: RpcConfig, source: SendTarget, authToken?: string): Promise<BlockhashResult> {
   const connection = source === "base"
     ? getBaseConnection(config)
-    : getEphemeralConnection(config);
+    : getEphemeralConnection(config, authToken);
 
   try {
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
@@ -662,12 +664,12 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
     : undefined;
 
   const sendTo: SendTarget = input.fromBalance === "ephemeral" ? "ephemeral" : "base";
-  const blockhash = await getBlockhash(config, sendTo);
+  const blockhash = await getBlockhash(config, sendTo, input.authToken);
 
   try {
-      const instructions = [
-        createNoopInstruction(),
-        ...(await transferSpl(from, to, mint, amount, {
+    const instructions = [
+      createNoopInstruction(),
+      ...(await transferSpl(from, to, mint, amount, {
         visibility: input.visibility,
         fromBalance: input.fromBalance,
         toBalance: input.toBalance,
@@ -679,10 +681,10 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
         shuttleId: createRandomShuttleId(),
         privateTransfer: input.minDelayMs !== undefined || input.maxDelayMs !== undefined || input.split !== undefined
           ? {
-              minDelayMs,
-              maxDelayMs,
-              split,
-            }
+            minDelayMs,
+            maxDelayMs,
+            split,
+          }
           : undefined,
       })),
       ...(input.memo !== undefined ? [createMemoInstruction(input.memo)] : []),
@@ -717,7 +719,7 @@ async function getBalanceInternal(
   const ata = getAssociatedTokenAddressSync(mint, owner, false, TOKEN_PROGRAM_ID);
   const connection = location === "base"
     ? getBaseConnection(config)
-    : getEphemeralConnection(config);
+    : getEphemeralConnection(config, input.authToken);
 
   try {
     const accountInfo = await connection.getAccountInfo(ata, "confirmed");
@@ -744,6 +746,9 @@ export function getBaseBalance(env: AppEnv, input: BalanceInput) {
 }
 
 export function getPrivateBalance(env: AppEnv, input: BalanceInput) {
+  if (!input.authToken) {
+    throw new ApiError(400, "MISSING_AUTH_TOKEN", "authToken is required for private balance");
+  }
   return getBalanceInternal(env, input, "ephemeral");
 }
 
@@ -752,7 +757,7 @@ export async function getMintInitializationStatus(env: AppEnv, input: MintInitia
   const mint = parsePublicKey(input.mint, "mint");
   const validator = await resolveRequiredValidator(config, input.validator);
   const [transferQueue] = deriveTransferQueue(mint, validator);
-  const connection = getEphemeralConnection(config);
+  const connection = getBaseConnection(config);
 
   try {
     const accountInfo = await connection.getAccountInfo(transferQueue, "confirmed");

@@ -11,9 +11,13 @@ import {
 import {
   balanceQuerySchema,
   balanceResponseSchema,
+  challengeQuerySchema,
+  challengeResponseSchema,
   depositRequestSchema,
   initializeMintRequestSchema,
   initializeMintResponseSchema,
+  loginQuerySchema,
+  loginResponseSchema,
   mintInitializationQuerySchema,
   mintInitializationResponseSchema,
   transactionResponseSchema,
@@ -76,6 +80,12 @@ const initializeMintResponseExample = {
   validator: "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57",
   transferQueue: "BuBHLbaPmYmgvMiZ8uZb96RjBtmWzJY52u7Di5urNf6M",
   rentPda: "Bt9oNR5cCtnfuMmXgWELd6q5i974PdEMQDUE55nBC57L",
+};
+const challengeResponseExample = {
+  challenge: "1234567890",
+};
+const loginResponseExample = {
+  token: "1234567890",
 };
 
 export const depositRoute = createRoute({
@@ -182,3 +192,33 @@ export const mintInitializationRoute = createRoute({
     422: jsonContent(validationErrorResponseSchema, "Validation error"),
   },
 });
+
+export const challengeRoute = createRoute({
+  path: "/v1/spl/challenge",
+  method: "get",
+  tags,
+  description: "Generate a challenge string for the wallet to sign.",
+  request: {
+    query: challengeQuerySchema,
+  },
+  responses: {
+    200: jsonContent(challengeResponseSchema, "Challenge string", challengeResponseExample),
+    500: jsonContent(errorResponseSchema, "Internal server error"),
+  },
+});
+
+export const loginRoute = createRoute({
+  path: "/v1/spl/login",
+  method: "post",
+  tags,
+  description: "Login the wallet to the Private Ephemeral Rollup.",
+  request: {
+    body: jsonContentRequired(loginQuerySchema, "Login request"),
+  },
+  responses: {
+    200: jsonContent(loginResponseSchema, "Login response", loginResponseExample),
+    403: jsonContent(errorResponseSchema, "Signature verification failed"),
+    500: jsonContent(errorResponseSchema, "Internal server error"),
+  },
+});
+

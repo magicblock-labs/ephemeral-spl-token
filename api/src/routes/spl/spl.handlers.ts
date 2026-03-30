@@ -13,8 +13,10 @@ import {
 } from "../../lib/solana";
 import {
   balanceRoute,
+  challengeRoute,
   depositRoute,
   initializeMintRoute,
+  loginRoute,
   mintInitializationRoute,
   privateBalanceRoute,
   transferRoute,
@@ -22,12 +24,15 @@ import {
 } from "./spl.routes";
 import {
   balanceQuerySchema,
+  challengeQuerySchema,
   depositRequestSchema,
   initializeMintRequestSchema,
+  loginQuerySchema,
   mintInitializationQuerySchema,
   transferRequestSchema,
   withdrawRequestSchema,
 } from "./spl.schemas";
+import { getChallenge, login } from "../../lib/auth";
 
 type RouteEnv = { Bindings: AppBindings };
 
@@ -77,5 +82,19 @@ export const mintInitializationHandler: RouteHandler<typeof mintInitializationRo
   const env = getEnv(c.env);
   const query = c.req.valid("query") as z.infer<typeof mintInitializationQuerySchema>;
   const response = await getMintInitializationStatus(env, query);
+  return c.json(response, 200);
+};
+
+export const challengeHandler: RouteHandler<typeof challengeRoute, RouteEnv> = async (c) => {
+  const env = getEnv(c.env);
+  const query = c.req.valid("query") as z.infer<typeof challengeQuerySchema>;
+  const response = await getChallenge(env, query);
+  return c.json(response, 200);
+};
+
+export const loginHandler: RouteHandler<typeof loginRoute, RouteEnv> = async (c) => {
+  const env = getEnv(c.env);
+  const body = c.req.valid("json") as z.infer<typeof loginQuerySchema>;
+  const response = await login(env, body);
   return c.json(response, 200);
 };

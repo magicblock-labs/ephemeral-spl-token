@@ -114,6 +114,8 @@ describe("app", () => {
     expect(json.paths["/.well-known/mcp.json"]).toBeUndefined();
     expect(json.paths["/mcp"]?.post?.requestBody?.content?.["application/json"]?.schema).toBeDefined();
     expect(json.paths["/v1/spl/private-balance"]).toBeDefined();
+    expect(json.paths["/v1/spl/challenge"]).toBeDefined();
+    expect(json.paths["/v1/spl/login"]).toBeDefined();
     expect(json.paths["/v1/spl/is-mint-initialized"]).toBeDefined();
     expect(json.paths["/v1/spl/initialize-mint"]).toBeDefined();
     expect(json.paths["/v1/spl/deposit"]?.post?.responses?.["200"]?.content?.["application/json"]?.example).toMatchObject({
@@ -295,13 +297,13 @@ describe("app", () => {
       const endpoint = (this as Connection & { _rpcEndpoint: string })._rpcEndpoint;
       return endpoint.includes("base.devnet.rpc.test")
         ? {
-            blockhash: "So11111111111111111111111111111111111111112",
-            lastValidBlockHeight: 321,
-          }
+          blockhash: "So11111111111111111111111111111111111111112",
+          lastValidBlockHeight: 321,
+        }
         : {
-            blockhash: "11111111111111111111111111111111",
-            lastValidBlockHeight: 123,
-          };
+          blockhash: "11111111111111111111111111111111",
+          lastValidBlockHeight: 123,
+        };
     });
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       expect(String(input)).toBe(devnetEnv.EPHEMERAL_DEVNET_RPC_URL);
@@ -393,13 +395,13 @@ describe("app", () => {
       const endpoint = (this as Connection & { _rpcEndpoint: string })._rpcEndpoint;
       return endpoint.includes("base")
         ? {
-            blockhash: "So11111111111111111111111111111111111111112",
-            lastValidBlockHeight: 321,
-          }
+          blockhash: "So11111111111111111111111111111111111111112",
+          lastValidBlockHeight: 321,
+        }
         : {
-            blockhash: "11111111111111111111111111111111",
-            lastValidBlockHeight: 123,
-          };
+          blockhash: "11111111111111111111111111111111",
+          lastValidBlockHeight: 123,
+        };
     });
 
     const response = await app.request("/v1/spl/initialize-mint", {
@@ -597,13 +599,13 @@ describe("app", () => {
       const endpoint = (this as Connection & { _rpcEndpoint: string })._rpcEndpoint;
       return endpoint.includes("ephemeral")
         ? {
-            blockhash: "11111111111111111111111111111111",
-            lastValidBlockHeight: 456,
-          }
+          blockhash: "11111111111111111111111111111111",
+          lastValidBlockHeight: 456,
+        }
         : {
-            blockhash: "So11111111111111111111111111111111111111112",
-            lastValidBlockHeight: 123,
-          };
+          blockhash: "So11111111111111111111111111111111111111112",
+          lastValidBlockHeight: 123,
+        };
     });
 
     const response = await app.request("/v1/spl/transfer", {
@@ -832,7 +834,7 @@ describe("app", () => {
       env,
     );
     const privateResponse = await app.request(
-      `/v1/spl/private-balance?address=${owner}&mint=So11111111111111111111111111111111111111112`,
+      `/v1/spl/private-balance?address=${owner}&mint=So11111111111111111111111111111111111111112&authToken=1234567890`,
       {},
       env,
     );
@@ -847,6 +849,81 @@ describe("app", () => {
     expect(baseJson.balance).toBe("3");
     expect(privateJson.location).toBe("ephemeral");
     expect(privateJson.balance).toBe("9");
+  });
+
+  it("returns 400 when private balance is requested without authToken", async () => {
+    const response = await app.request(
+      `/v1/spl/private-balance?address=${owner}&mint=So11111111111111111111111111111111111111112`,
+      {},
+      env,
+    );
+
+    expect(response.status).toBe(400);
+
+    const json = await response.json() as { error: { code: string; message: string } };
+    expect(json.error.code).toBe("MISSING_AUTH_TOKEN");
+    expect(json.error.message).toBe("authToken is required for private balance");
+  });
+
+  it("returns a challenge from the ephemeral rollup auth endpoint", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(`${env.EPHEMERAL_RPC_URL}/auth/challenge?pubkey=${owner}`);
+      return new Response(JSON.stringify({ challenge: "challenge-token-abc" }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+        },
+      });
+    });
+
+    const response = await app.request(
+      `/v1/spl/challenge?pubkey=${owner}`,
+      {},
+      env,
+    );
+
+    expect(response.status).toBe(200);
+
+    const json = await response.json() as { challenge: string };
+    expect(json.challenge).toBe("challenge-token-abc");
+  });
+
+  it("returns a token from the ephemeral rollup login endpoint", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      expect(String(input)).toBe(`${env.EPHEMERAL_RPC_URL}/auth/login`);
+      expect(init?.method).toBe("POST");
+      const body = JSON.parse(init?.body as string) as {
+        pubkey: string;
+        challenge: string;
+        signature: string;
+      };
+      expect(body.pubkey).toBe(owner);
+      expect(body.challenge).toBe("c1");
+      expect(body.signature).toBe("s1");
+      return new Response(JSON.stringify({ token: "token-xyz" }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+        },
+      });
+    });
+
+    const response = await app.request("/v1/spl/login", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        pubkey: owner,
+        challenge: "c1",
+        signature: "s1",
+      }),
+    }, env);
+
+    expect(response.status).toBe(200);
+
+    const json = await response.json() as { token: string };
+    expect(json.token).toBe("token-xyz");
   });
 
   it("returns a clearer validation error when required balance query params are missing", async () => {
@@ -887,7 +964,7 @@ describe("app", () => {
 
     vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(async function getAccountInfo(this: Connection & { _rpcEndpoint: string }, address) {
       const endpoint = (this as Connection & { _rpcEndpoint: string })._rpcEndpoint;
-      expect(endpoint).toBe(env.EPHEMERAL_RPC_URL);
+      expect(endpoint).toBe(env.BASE_RPC_URL);
       expect(address.toBase58()).toBe(transferQueue.toBase58());
       return createAccountInfo(0n);
     });
@@ -923,7 +1000,7 @@ describe("app", () => {
 
     vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(async function getAccountInfo(this: Connection & { _rpcEndpoint: string }, address) {
       const endpoint = (this as Connection & { _rpcEndpoint: string })._rpcEndpoint;
-      expect(endpoint).toBe(env.EPHEMERAL_RPC_URL);
+      expect(endpoint).toBe(env.BASE_RPC_URL);
       expect(address.toBase58()).toBe(transferQueue.toBase58());
       return null;
     });
@@ -946,7 +1023,7 @@ describe("app", () => {
   it("defaults the validator when checking mint initialization", async () => {
     const mintInitializationEnv = {
       ...env,
-      EPHEMERAL_RPC_URL: "https://ephemeral.mint-init.rpc.test",
+      BASE_RPC_URL: "https://base.mint-init.rpc.test",
     };
     const mint = "So11111111111111111111111111111111111111112";
     const [transferQueue] = deriveTransferQueue(new PublicKey(mint), new PublicKey(resolvedValidator));
@@ -957,7 +1034,7 @@ describe("app", () => {
     });
     vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(async function getAccountInfo(this: Connection & { _rpcEndpoint: string }, address) {
       const endpoint = (this as Connection & { _rpcEndpoint: string })._rpcEndpoint;
-      expect(endpoint).toBe(mintInitializationEnv.EPHEMERAL_RPC_URL);
+      expect(endpoint).toBe(mintInitializationEnv.BASE_RPC_URL);
       expect(address.toBase58()).toBe(transferQueue.toBase58());
       return createAccountInfo(0n);
     });
@@ -997,7 +1074,7 @@ describe("app", () => {
       env,
     );
     const privateResponse = await app.request(
-      `/v1/spl/private-balance?address=${owner}&mint=So11111111111111111111111111111111111111112&cluster=${encodeURIComponent("https://custom.rpc.test")}`,
+      `/v1/spl/private-balance?address=${owner}&mint=So11111111111111111111111111111111111111112&cluster=${encodeURIComponent("https://custom.rpc.test")}&authToken=1234567890`,
       {},
       env,
     );
