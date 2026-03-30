@@ -198,13 +198,6 @@ async fn sponsored_lamports_transfer_delegates_zero_data_pda_and_charges_fee() {
         lamports_pda_account.lamports,
         sponsored_rent + TRANSFER_AMOUNT
     );
-    let delegation_metadata_account = context
-        .banks_client
-        .get_account(delegation_metadata_pda)
-        .await
-        .unwrap()
-        .expect("delegation metadata must exist");
-
     let destination_account = context
         .banks_client
         .get_account(destination.pubkey())
@@ -235,7 +228,13 @@ async fn sponsored_lamports_transfer_delegates_zero_data_pda_and_charges_fee() {
         rent_pda_before.lamports + SPONSORED_LAMPORTS_TRANSFER_SETUP_LAMPORTS
             - sponsored_rent
             - delegation_record_account.lamports
-            - delegation_metadata_account.lamports
+            - context
+                .banks_client
+                .get_account(delegation_metadata_pda)
+                .await
+                .unwrap()
+                .expect("delegation metadata must exist")
+                .lamports
     );
 }
 

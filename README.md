@@ -50,7 +50,7 @@ Internal automation instructions
 - `199` `ProcessTransferQueueTick` — internal recurring crank callback that checks a queue and schedules settlement.
 - `201` `UndelegateWithdrawAndCloseShuttleEphemeralAta` — internal post-delegation shuttle withdrawal and close/refund handler.
 
-Discriminators `18` and `20`-`22` are currently unused.
+Discriminators `18`, `21`, and `22` are currently unused.
 
 Program ID and external program
 - The Ephemeral SPL Token program ID is declared in `e-token-api/src/lib.rs` under `program::id_address()`.
