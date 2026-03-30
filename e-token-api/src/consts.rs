@@ -6,10 +6,10 @@ pub const SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS: u64 = 500_000;
 /// Additional flat lamport fee charged by sponsored shuttle delegation setup
 /// flows that also enqueue a private transfer.
 ///
-/// 0.001504 SOL = 1_504_000 lamports. Combined with
+/// 0.00153928 SOL = 1_539_280 lamports. Combined with
 /// `SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS`, the total setup fee is
-/// 0.002004 SOL (which covers ATA creation if needed).
-pub const SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS: u64 = 1_504_000;
+/// 0.00203928 SOL (which covers ATA creation if needed).
+pub const SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS: u64 = 1_539_280;
 
 /// Flat lamport fee charged by sponsored lamports transfer flows.
 ///
