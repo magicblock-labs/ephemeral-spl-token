@@ -177,7 +177,13 @@ function getBaseConnection(config: RpcConfig) {
 }
 
 function getEphemeralConnection(config: RpcConfig, authToken?: string) {
-  return getConnection(config.ephemeralRpcUrl + (authToken ? `?token=${authToken}` : ""));
+  if (!authToken) {
+    return getConnection(config.ephemeralRpcUrl);
+  }
+
+  const url = new URL(config.ephemeralRpcUrl);
+  url.searchParams.set("token", authToken);
+  return new Connection(url.toString(), "confirmed");
 }
 
 function createClusterConfigError(missingVars: Array<"BASE_DEVNET_RPC_URL" | "EPHEMERAL_DEVNET_RPC_URL">) {
