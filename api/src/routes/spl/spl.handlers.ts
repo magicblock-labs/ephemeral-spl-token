@@ -23,7 +23,6 @@ import {
   withdrawRoute,
 } from "./spl.routes";
 import {
-  authTokenSchema,
   balanceQuerySchema,
   challengeQuerySchema,
   depositRequestSchema,
