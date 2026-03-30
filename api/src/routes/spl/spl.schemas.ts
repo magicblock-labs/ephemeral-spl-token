@@ -76,7 +76,7 @@ export const visibilitySchema = z.enum(["public", "private"]).openapi("TransferV
 export const balanceLocationSchema = z.enum(["base", "ephemeral"]).openapi("BalanceLocation");
 export const authTokenSchema = z.object({
   authorization: z.string().openapi({
-    example: "1234567890",
+    example: "Bearer 1234567890",
     description: "The authentication token provided by the Private Ephemeral Rollup. Only needed for private balance.",
   }).optional()
 });
