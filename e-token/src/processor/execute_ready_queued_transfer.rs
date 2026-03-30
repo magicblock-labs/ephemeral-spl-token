@@ -8,10 +8,6 @@ use {
     pinocchio::{error::ProgramError, AccountView, ProgramResult},
 };
 
-use ephemeral_spl_api::state::load_initialized;
-use pinocchio::cpi::{Seed, Signer};
-use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
-
 use crate::{
     assert_owner,
     processor::{
@@ -19,6 +15,10 @@ use crate::{
         utils::read_mint_decimals,
     },
 };
+use ephemeral_spl_api::program::id_address;
+use ephemeral_spl_api::state::load_initialized;
+use pinocchio::cpi::{Seed, Signer};
+use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
 
 #[inline(always)]
 pub fn process_execute_ready_queued_transfer(
@@ -37,25 +37,18 @@ pub fn process_execute_ready_queued_transfer(
     // 6. []         Token program
     // 7. []         Associated token program
     // 8. []         System program
-    //
-    // Expected trailing accounts from tail:
-    // - second to last: escrow authority
-    // - last:          escrow signer PDA
-    if accounts.len() < 11 {
+    // 9. []         Source program (must equal this program)
+    // 10. []        Escrow authority
+    // 11. [signer]  Escrow signer PDA
+    let [vault_info, mint_info, vault_token_acc_info, destination_owner_info, destination_token_acc_info, rent_pda_info, token_program_info, associated_token_program_info, system_program_info, source_program, escrow_authority, escrow_signer] =
+        accounts
+    else {
         return Err(ProgramError::NotEnoughAccountKeys);
-    }
+    };
 
-    let vault_info = &accounts[0];
-    let mint_info = &accounts[1];
-    let vault_token_acc_info = &accounts[2];
-    let destination_owner_info = &accounts[3];
-    let destination_token_acc_info = &accounts[4];
-    let rent_pda_info = &accounts[5];
-    let token_program_info = &accounts[6];
-    let associated_token_program_info = &accounts[7];
-    let system_program_info = &accounts[8];
-    let escrow_authority = &accounts[accounts.len() - 2];
-    let escrow_signer = &accounts[accounts.len() - 1];
+    if source_program.address() != &id_address() {
+        return Err(ProgramError::IncorrectAuthority);
+    }
 
     if !escrow_signer.is_signer() {
         return Err(ProgramError::MissingRequiredSignature);
