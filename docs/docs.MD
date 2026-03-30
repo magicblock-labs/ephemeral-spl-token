@@ -70,27 +70,27 @@ sequenceDiagram
     autonumber
     participant U as Sender
     participant ET as e-token program
-    participant SH as Temporary shuttle
-    participant Q as Delegated queue
-    participant MG as Queue automation
+    participant SH as Temporary relay accounts
+    participant Q as Validator transfer queue
+    participant MG as Automated settlement
     participant R as Recipient
 
     Note over U,Q: Queue for this mint and validator already exists and is delegated.
 
-    U->>ET: Submit instruction 25<br/>amount + validator + encrypted recipient + encrypted timing plan
-    ET->>SH: Sponsor and initialize shuttle accounts
-    ET->>SH: Deposit amount into shuttle-backed state
-    ET->>SH: Delegate shuttle with post-actions
+    U->>ET: User signs one transaction<br/>specifying amount, validator route, encrypted recipient, and timing policy
+    ET->>SH: Create sponsored temporary relay accounts
+    ET->>SH: Stage the funds in relay-backed state
+    ET->>SH: Start delegated execution with built-in follow-up actions
 
-    SH->>U: Merge shuttle wallet balance back to sender source ATA
-    SH->>Q: Enqueue private delayed transfer<br/>same amount, encrypted destination, split and delay policy
-    SH->>ET: Undelegate and close shuttle
-    ET->>ET: Refund shuttle rent to rent_pda
+    SH->>U: Restore the sender source token balance
+    SH->>Q: Privately enqueue the payment<br/>same amount, encrypted destination, split and delay policy
+    SH->>ET: Undelegate and close the temporary relay flow
+    ET->>ET: Refund relay rent to rent_pda
 
-    Note over U,R: At this point the recipient still has not received funds.<br/>The transfer is only queued.
+    Note over U,R: At this point the recipient still has not received funds.<br/>The payment is only queued for later release.
 
     loop each ready queued split
-        MG->>ET: Trigger queue settlement
+        MG->>ET: Run scheduled settlement
         ET->>R: Create recipient ATA if required
         ET->>R: Release queued amount from the global vault
     end
