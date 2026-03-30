@@ -43,7 +43,11 @@ export function parseAuthToken(headers: Record<string, string>): string | undefi
     if (!authToken) {
         return undefined;
     }
-    return authToken.split(" ")[1];
+    const parts = authToken.split(" ");
+    if (parts.length !== 2 || parts[0] !== "Bearer") {
+        return undefined;
+    }
+    return parts[1];
 }
 
 export async function getChallenge(env: AppEnv, input: ChallengeInput): Promise<ChallengeResponse> {
