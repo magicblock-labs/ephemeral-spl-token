@@ -835,7 +835,7 @@ describe("app", () => {
     );
     const privateResponse = await app.request(
       `/v1/spl/private-balance?address=${owner}&mint=So11111111111111111111111111111111111111112`,
-      { headers: { authorization: "Basic 1234567890" } },
+      { headers: { authorization: "Bearer 1234567890" } },
       env,
     );
 
@@ -1075,7 +1075,7 @@ describe("app", () => {
     );
     const privateResponse = await app.request(
       `/v1/spl/private-balance?address=${owner}&mint=So11111111111111111111111111111111111111112&cluster=${encodeURIComponent("https://custom.rpc.test")}`,
-      { headers: { authorization: "Basic 1234567890" } },
+      { headers: { authorization: "Bearer 1234567890" } },
       env,
     );
 
