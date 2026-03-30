@@ -206,6 +206,7 @@ export const challengeRoute = createRoute({
   },
   responses: {
     200: jsonContent(challengeResponseSchema, "Challenge string", challengeResponseExample),
+    422: jsonContent(validationErrorResponseSchema, "Validation error"),
     500: jsonContent(errorResponseSchema, "Internal server error"),
   },
 });
@@ -221,6 +222,7 @@ export const loginRoute = createRoute({
   responses: {
     200: jsonContent(loginResponseSchema, "Login response", loginResponseExample),
     403: jsonContent(errorResponseSchema, "Signature verification failed"),
+    422: jsonContent(validationErrorResponseSchema, "Validation error"),
     500: jsonContent(errorResponseSchema, "Internal server error"),
   },
 });
