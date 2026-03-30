@@ -9,6 +9,7 @@ import {
   jsonContentRequired,
 } from "../../lib/openapi";
 import {
+  authTokenSchema,
   balanceQuerySchema,
   balanceResponseSchema,
   challengeQuerySchema,
@@ -140,6 +141,7 @@ export const transferRoute = createRoute({
   description: "Transfer SPL tokens publicly or privately trough an ephemeral rollup.",
   request: {
     body: jsonContentRequired(transferRequestSchema, "Transfer request"),
+    headers: authTokenSchema
   },
   responses: {
     200: jsonContent(transactionResponseSchema, "Unsigned serialized transaction"),
@@ -170,6 +172,7 @@ export const privateBalanceRoute = createRoute({
   description: "Get the balance for the owner's ATA on the ephemeral RPC.",
   request: {
     query: balanceQuerySchema,
+    headers: authTokenSchema
   },
   responses: {
     200: jsonContent(balanceResponseSchema, "Ephemeral token balance", privateBalanceResponseExample),

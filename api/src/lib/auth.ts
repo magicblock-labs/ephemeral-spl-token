@@ -27,6 +27,14 @@ export type AuthChallengeResponse = {
     error?: string;
 };
 
+export function parseAuthToken(headers: Record<string, string>): string | undefined {
+    const authToken = headers["Authorization"] ?? headers["authorization"];
+    if (!authToken) {
+        return undefined;
+    }
+    return authToken.split(" ")[1];
+}
+
 export async function getChallenge(env: AppEnv, input: ChallengeInput): Promise<ChallengeResponse> {
     const config = resolveRpcConfig(env, input.cluster);
     const challengeResponse = await fetch(

@@ -23,6 +23,7 @@ import {
   withdrawRoute,
 } from "./spl.routes";
 import {
+  authTokenSchema,
   balanceQuerySchema,
   challengeQuerySchema,
   depositRequestSchema,
@@ -32,7 +33,7 @@ import {
   transferRequestSchema,
   withdrawRequestSchema,
 } from "./spl.schemas";
-import { getChallenge, login } from "../../lib/auth";
+import { getChallenge, login, parseAuthToken } from "../../lib/auth";
 
 type RouteEnv = { Bindings: AppBindings };
 
@@ -60,7 +61,8 @@ export const initializeMintHandler: RouteHandler<typeof initializeMintRoute, Rou
 export const transferHandler: RouteHandler<typeof transferRoute, RouteEnv> = async (c) => {
   const env = getEnv(c.env);
   const body = c.req.valid("json") as z.infer<typeof transferRequestSchema>;
-  const response = await buildTransferTransaction(env, body);
+  const authToken = parseAuthToken(c.req.header());
+  const response = await buildTransferTransaction(env, body, authToken);
   return c.json(response, 200);
 };
 
@@ -74,7 +76,11 @@ export const balanceHandler: RouteHandler<typeof balanceRoute, RouteEnv> = async
 export const privateBalanceHandler: RouteHandler<typeof privateBalanceRoute, RouteEnv> = async (c) => {
   const env = getEnv(c.env);
   const query = c.req.valid("query") as z.infer<typeof balanceQuerySchema>;
-  const response = await getPrivateBalance(env, query);
+  const authToken = parseAuthToken(c.req.header());
+  if (!authToken) {
+    return c.json({ error: { code: "MISSING_AUTH_TOKEN", message: "authToken is required for private balance" } }, 400);
+  }
+  const response = await getPrivateBalance(env, query, authToken);
   return c.json(response, 200);
 };
 

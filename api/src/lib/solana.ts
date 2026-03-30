@@ -116,13 +116,11 @@ type TransferInput = {
   minDelayMs?: string;
   maxDelayMs?: string;
   split?: number;
-  authToken?: string;
 };
 
 type BalanceInput = {
   address: string;
   mint: string;
-  authToken?: string;
   cluster?: string;
 };
 
@@ -603,7 +601,7 @@ export async function buildInitializeMintTransaction(
   };
 }
 
-export async function buildTransferTransaction(env: AppEnv, input: TransferInput) {
+export async function buildTransferTransaction(env: AppEnv, input: TransferInput, authToken?: string) {
   const config = resolveRpcConfig(env, input.cluster);
   const from = parsePublicKey(input.from, "from");
   const to = parsePublicKey(input.to, "to");
@@ -664,7 +662,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
     : undefined;
 
   const sendTo: SendTarget = input.fromBalance === "ephemeral" ? "ephemeral" : "base";
-  const blockhash = await getBlockhash(config, sendTo, input.authToken);
+  const blockhash = await getBlockhash(config, sendTo, authToken);
 
   try {
     const instructions = [
@@ -712,6 +710,7 @@ async function getBalanceInternal(
   env: AppEnv,
   input: BalanceInput,
   location: SendTarget,
+  authToken?: string,
 ): Promise<BalanceResponse> {
   const config = resolveRpcConfig(env, input.cluster);
   const owner = parsePublicKey(input.address, "address");
@@ -719,7 +718,7 @@ async function getBalanceInternal(
   const ata = getAssociatedTokenAddressSync(mint, owner, false, TOKEN_PROGRAM_ID);
   const connection = location === "base"
     ? getBaseConnection(config)
-    : getEphemeralConnection(config, input.authToken);
+    : getEphemeralConnection(config, authToken);
 
   try {
     const accountInfo = await connection.getAccountInfo(ata, "confirmed");
@@ -745,11 +744,8 @@ export function getBaseBalance(env: AppEnv, input: BalanceInput) {
   return getBalanceInternal(env, input, "base");
 }
 
-export function getPrivateBalance(env: AppEnv, input: BalanceInput) {
-  if (!input.authToken) {
-    throw new ApiError(400, "MISSING_AUTH_TOKEN", "authToken is required for private balance");
-  }
-  return getBalanceInternal(env, input, "ephemeral");
+export function getPrivateBalance(env: AppEnv, input: BalanceInput, authToken?: string) {
+  return getBalanceInternal(env, input, "ephemeral", authToken);
 }
 
 export async function getMintInitializationStatus(env: AppEnv, input: MintInitializationInput): Promise<MintInitializationResponse> {

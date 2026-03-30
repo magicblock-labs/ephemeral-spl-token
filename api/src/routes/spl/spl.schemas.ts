@@ -74,6 +74,12 @@ export const clusterSchema = z.union([
 
 export const visibilitySchema = z.enum(["public", "private"]).openapi("TransferVisibility");
 export const balanceLocationSchema = z.enum(["base", "ephemeral"]).openapi("BalanceLocation");
+export const authTokenSchema = z.object({
+  authorization: z.string().openapi({
+    example: "1234567890",
+    description: "The authentication token provided by the Private Ephemeral Rollup. Only needed for private balance.",
+  }).optional()
+});
 
 export const transactionResponseSchema = z.object({
   kind: z.enum(["deposit", "withdraw", "transfer"]),
@@ -259,10 +265,6 @@ export const transferRequestSchema = z.object({
 export const balanceQuerySchema = z.object({
   address: publicKeySchema,
   mint: publicKeySchema,
-  authToken: z.string().openapi({
-    example: "1234567890",
-    description: "The authentication token provided by the Private Ephemeral Rollup. Only needed for private balance.",
-  }).optional(),
   cluster: clusterSchema.optional(),
 }).openapi("BalanceQuery", {
   example: {
