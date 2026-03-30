@@ -12,11 +12,11 @@ pub mod deposit_and_queue_transfer;
 pub mod deposit_spl_tokens;
 pub mod ensure_transfer_queue_crank;
 pub mod execute_ready_queued_transfer;
-pub mod fees_pda;
 pub mod initialize_ephemeral_ata;
 pub mod initialize_global_vault;
 pub mod initialize_shuttle_ephemeral_ata;
 pub mod initialize_transfer_queue;
+pub mod lamports_pda;
 pub mod merge_shuttle_into_ephemeral_ata;
 pub mod process_transfer_queue_tick;
 pub mod rent_pda;
@@ -44,13 +44,14 @@ pub use deposit_and_queue_transfer::process_deposit_and_queue_transfer;
 pub use deposit_spl_tokens::process_deposit_spl_tokens;
 pub use ensure_transfer_queue_crank::process_ensure_transfer_queue_crank;
 pub use execute_ready_queued_transfer::process_execute_ready_queued_transfer;
-pub use fees_pda::{
-    process_commit_fees_pda, process_delegate_fees_pda, process_initialize_fees_pda,
-};
 pub use initialize_ephemeral_ata::process_initialize_ephemeral_ata;
 pub use initialize_global_vault::process_initialize_global_vault;
 pub use initialize_shuttle_ephemeral_ata::process_initialize_shuttle_ephemeral_ata;
 pub use initialize_transfer_queue::process_initialize_transfer_queue;
+pub use lamports_pda::{
+    process_close_lamports_pda_intent, process_sponsored_lamports_transfer,
+    process_transfer_lamports_pda, process_undelegate_lamports_pda,
+};
 pub use merge_shuttle_into_ephemeral_ata::process_merge_shuttle_into_ephemeral_ata;
 pub use process_transfer_queue_tick::process_transfer_queue_tick;
 pub use rent_pda::process_initialize_rent_pda;

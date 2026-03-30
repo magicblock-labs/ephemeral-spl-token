@@ -511,7 +511,7 @@ pub(crate) fn undelegate_and_close_shuttle_action(
 
 #[allow(clippy::too_many_arguments)]
 #[inline(never)]
-fn delegate_account_with_actions_from_sponsor(
+pub(crate) fn delegate_account_with_actions_from_sponsor(
     sponsor_info: &AccountView,
     sponsor_signer: Signer<'_, '_>,
     pda_acc: &AccountView,

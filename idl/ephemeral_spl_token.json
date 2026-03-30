@@ -838,12 +838,14 @@
       "args": []
     },
     {
-      "name": "initializeFeesPda",
+      "name": "sponsoredLamportsTransfer",
       "discriminator": [
         20
       ],
       "docs": [
-        "Initializes the validator-scoped FEES PDA."
+        "Creates a zero-data PDA derived from [\"lamports\", payer, destination, salt], funds it with the requested lamports plus sponsored rent, delegates it, then schedules transfer and cleanup.",
+        "The destination account must already be delegated; the validator is read from its delegation record.",
+        "Instruction data: [0..8] amount (u64 LE), [8..40] salt ([u8; 32])."
       ],
       "accounts": [
         {
@@ -852,38 +854,12 @@
           "signer": true
         },
         {
-          "name": "feesPda",
+          "name": "rentPda",
           "writable": true
         },
         {
-          "name": "validator"
-        },
-        {
-          "name": "systemProgram",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": []
-    },
-    {
-      "name": "delegateFeesPda",
-      "discriminator": [
-        21
-      ],
-      "docs": [
-        "Delegates the validator-scoped FEES PDA."
-      ],
-      "accounts": [
-        {
-          "name": "payer",
-          "signer": true
-        },
-        {
-          "name": "feesPda",
+          "name": "lamportsPda",
           "writable": true
-        },
-        {
-          "name": "validator"
         },
         {
           "name": "ownerProgram"
@@ -907,40 +883,30 @@
         {
           "name": "systemProgram",
           "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": []
-    },
-    {
-      "name": "commitFeesPda",
-      "discriminator": [
-        22
-      ],
-      "docs": [
-        "Schedules a commit for the validator-scoped FEES PDA."
-      ],
-      "accounts": [
-        {
-          "name": "payer",
-          "signer": true
         },
         {
-          "name": "feesPda",
+          "name": "destination",
           "writable": true
         },
         {
-          "name": "validator"
-        },
-        {
-          "name": "magicContext",
-          "writable": true
-        },
-        {
-          "name": "magicProgram",
-          "address": "Magic11111111111111111111111111111111111111"
+          "name": "destinationDelegationRecord"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "salt",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
     },
     {
       "name": "initializeRentPda",
@@ -1448,6 +1414,45 @@
       "args": []
     },
     {
+      "name": "transferLamportsPda",
+      "discriminator": [
+        200
+      ],
+      "docs": [
+        "Internal post-delegation handler that transfers requested lamports from the delegated zero-data PDA to the destination base-layer account.",
+        "Instruction data: [0..8] amount (u64 LE), [8..40] salt ([u8; 32])."
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true
+        },
+        {
+          "name": "lamportsPda",
+          "writable": true
+        },
+        {
+          "name": "destination",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "salt",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "undelegateWithdrawAndCloseShuttleEphemeralAta",
       "discriminator": [
         201
@@ -1500,6 +1505,99 @@
           "type": "u8"
         }
       ]
+    },
+    {
+      "name": "undelegateLamportsPda",
+      "discriminator": [
+        202
+      ],
+      "docs": [
+        "Internal post-delegation handler that commits and undelegates the lamports PDA, then schedules the final close/refund intent.",
+        "Instruction data: [0..32] salt ([u8; 32])."
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true
+        },
+        {
+          "name": "rentPda"
+        },
+        {
+          "name": "lamportsPda",
+          "writable": true
+        },
+        {
+          "name": "destination"
+        },
+        {
+          "name": "magicContext",
+          "writable": true
+        },
+        {
+          "name": "magicProgram",
+          "address": "Magic11111111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "salt",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "closeLamportsPdaIntent",
+      "discriminator": [
+        203
+      ],
+      "docs": [
+        "Internal post-undelegation handler that refunds the sponsored rent to the global rent PDA and closes the lamports PDA.",
+        "Instruction data: [0] escrow index, [1..33] salt ([u8; 32])."
+      ],
+      "accounts": [
+        {
+          "name": "rentPda",
+          "writable": true
+        },
+        {
+          "name": "lamportsPda",
+          "writable": true
+        },
+        {
+          "name": "payer"
+        },
+        {
+          "name": "destination"
+        },
+        {
+          "name": "escrowAuthority"
+        },
+        {
+          "name": "escrowSigner",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "escrowIndex",
+          "type": "u8"
+        },
+        {
+          "name": "salt",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
     }
   ],
   "accounts": [
@@ -1513,10 +1611,6 @@
     },
     {
       "name": "ShuttleMetadata",
-      "discriminator": []
-    },
-    {
-      "name": "FeesPda",
       "discriminator": []
     },
     {
@@ -1620,34 +1714,6 @@
                 3
               ]
             }
-          }
-        ]
-      }
-    },
-    {
-      "name": "FeesPda",
-      "docs": [
-        "Validator-scoped FEES PDA derived from [\"FEES\", validator]."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "tag",
-            "type": {
-              "array": [
-                "u8",
-                4
-              ]
-            }
-          },
-          {
-            "name": "validator",
-            "type": "pubkey"
-          },
-          {
-            "name": "bump",
-            "type": "u8"
           }
         ]
       }
@@ -1786,11 +1852,6 @@
       "name": "SHUTTLE_METADATA_SIZE",
       "type": "u64",
       "value": "72"
-    },
-    {
-      "name": "FEES_PDA_SIZE",
-      "type": "u64",
-      "value": "37"
     },
     {
       "name": "TRANSFER_QUEUE_HEADER_SIZE",

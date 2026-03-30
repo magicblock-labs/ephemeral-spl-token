@@ -84,18 +84,14 @@ pub mod instruction {
     ///      Instruction data:
     ///      []        no instruction args
     pub const DELEGATE_TRANSFER_QUEUE: u8 = 19;
-    /// 20 - InitializeFeesPda: initialize the validator-scoped FEES PDA derived from ["FEES", validator]
+    /// 20 - SponsoredLamportsTransfer: create a zero-data PDA derived from
+    ///      [b"lamports", payer, destination, salt], fund it with the requested
+    ///      lamports plus sponsored rent from the global rent PDA, delegate it,
+    ///      then schedule post-delegation transfer + cleanup actions.
     ///      Instruction data:
-    ///      []        no instruction args
-    pub const INITIALIZE_FEES_PDA: u8 = 20;
-    /// 21 - DelegateFeesPda: delegate the validator-scoped FEES PDA to the delegation program
-    ///      Instruction data:
-    ///      []        no instruction args
-    pub const DELEGATE_FEES_PDA: u8 = 21;
-    /// 22 - CommitFeesPda: schedule a commit for the validator-scoped FEES PDA through the magic program
-    ///      Instruction data:
-    ///      []        no instruction args
-    pub const COMMIT_FEES_PDA: u8 = 22;
+    ///      [0..8]   amount (u64 LE)
+    ///      [8..40]  salt ([u8; 32])
+    pub const SPONSORED_LAMPORTS_TRANSFER: u8 = 20;
     /// 23 - InitializeRentPda: initialize the global rent-sponsoring PDA derived from ["rent"]
     ///      Instruction data:
     ///      []        no instruction args
@@ -149,8 +145,18 @@ pub mod instruction {
         pub const EXECUTE_READY_QUEUED_TRANSFER: u8 = 198;
         /// 199 - ProcessTransferQueueTick: recurring crank callback that checks a queue and schedules settlement.
         pub const PROCESS_TRANSFER_QUEUE_TICK: u8 = 199;
+        /// 200 - TransferLamportsPda: post-delegation action that transfers the
+        ///       requested lamports from the delegated zero-data PDA to the
+        ///       destination base-layer account.
+        pub const TRANSFER_LAMPORTS_PDA: u8 = 200;
         /// 201 - UndelegateWithdrawAndCloseShuttleEphemeralAta: internal post-delegation action that
         ///       undelegates a shuttle and schedules the close/refund post-undelegate action.
         pub const UNDELEGATE_WITHDRAW_AND_CLOSE_SHUTTLE_EPHEMERAL_ATA: u8 = 201;
+        /// 202 - UndelegateLamportsPda: post-delegation action that commits and
+        ///       undelegates the lamports PDA, then schedules the close/refund intent.
+        pub const UNDELEGATE_LAMPORTS_PDA: u8 = 202;
+        /// 203 - CloseLamportsPdaIntent: post-undelegate Magic intent that
+        ///       refunds the sponsored rent to the global rent PDA and closes the PDA.
+        pub const CLOSE_LAMPORTS_PDA_INTENT: u8 = 203;
     }
 }
