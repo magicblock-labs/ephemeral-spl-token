@@ -1414,6 +1414,45 @@
       "args": []
     },
     {
+      "name": "transferLamportsPda",
+      "discriminator": [
+        200
+      ],
+      "docs": [
+        "Internal post-delegation handler that transfers requested lamports from the delegated zero-data PDA to the destination base-layer account.",
+        "Instruction data: [0..8] amount (u64 LE), [8..40] salt ([u8; 32])."
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true
+        },
+        {
+          "name": "lamportsPda",
+          "writable": true
+        },
+        {
+          "name": "destination",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "salt",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "undelegateWithdrawAndCloseShuttleEphemeralAta",
       "discriminator": [
         201
@@ -1464,6 +1503,99 @@
         {
           "name": "escrowIndex",
           "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "undelegateLamportsPda",
+      "discriminator": [
+        202
+      ],
+      "docs": [
+        "Internal post-delegation handler that commits and undelegates the lamports PDA, then schedules the final close/refund intent.",
+        "Instruction data: [0..32] salt ([u8; 32])."
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true
+        },
+        {
+          "name": "rentPda"
+        },
+        {
+          "name": "lamportsPda",
+          "writable": true
+        },
+        {
+          "name": "destination"
+        },
+        {
+          "name": "magicContext",
+          "writable": true
+        },
+        {
+          "name": "magicProgram",
+          "address": "Magic11111111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "salt",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "closeLamportsPdaIntent",
+      "discriminator": [
+        203
+      ],
+      "docs": [
+        "Internal post-undelegation handler that refunds the sponsored rent to the global rent PDA and closes the lamports PDA.",
+        "Instruction data: [0] escrow index, [1..33] salt ([u8; 32])."
+      ],
+      "accounts": [
+        {
+          "name": "rentPda",
+          "writable": true
+        },
+        {
+          "name": "lamportsPda",
+          "writable": true
+        },
+        {
+          "name": "payer"
+        },
+        {
+          "name": "destination"
+        },
+        {
+          "name": "escrowAuthority"
+        },
+        {
+          "name": "escrowSigner",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "escrowIndex",
+          "type": "u8"
+        },
+        {
+          "name": "salt",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
         }
       ]
     }
