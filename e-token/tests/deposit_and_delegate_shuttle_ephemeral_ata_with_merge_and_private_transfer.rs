@@ -2,6 +2,9 @@ use dlp_api::state::DelegationRecord;
 use ephemeral_rollups_pinocchio::acl::{
     permission_pda_from_permissioned_account, PERMISSION_PROGRAM_ID,
 };
+use ephemeral_spl_api::consts::{
+    SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS, SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS,
+};
 use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
@@ -186,6 +189,13 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
         .process_transaction(tx_init)
         .await
         .unwrap();
+
+    let rent_pda_before = context
+        .banks_client
+        .get_account(rent_pda)
+        .await
+        .unwrap()
+        .expect("rent pda must exist");
 
     let (buffer_pda, _) = Pubkey::find_program_address(
         &[b"buffer", shuttle_eata.as_ref()],
@@ -372,12 +382,24 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
     let queue_header = read_header_unaligned(&queue_account.data);
     assert_eq!(queue_header.length, 0);
 
+    let rent_pda_after = context
+        .banks_client
+        .get_account(rent_pda)
+        .await
+        .unwrap()
+        .expect("rent pda must still exist");
     let delegation_record_account = context
         .banks_client
         .get_account(delegation_record_pda)
         .await
         .unwrap()
         .expect("delegation record must exist");
+    let delegation_metadata_account = context
+        .banks_client
+        .get_account(delegation_metadata_pda)
+        .await
+        .unwrap()
+        .expect("delegation metadata must exist");
 
     let record_len = DelegationRecord::size_with_discriminator();
     let record = DelegationRecord::try_from_bytes_with_discriminator(
@@ -395,5 +417,22 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
     assert!(
         delegation_record_account.data.len() > record_len,
         "expected stored post-delegation payload bytes"
+    );
+    assert_eq!(
+        rent_pda_after.lamports,
+        rent_pda_before.lamports
+            + SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS
+            + SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS
+            - shuttle_account.lamports
+            - shuttle_eata_account.lamports
+            - context
+                .banks_client
+                .get_account(shuttle_wallet_ata)
+                .await
+                .unwrap()
+                .expect("shuttle wallet ata must exist")
+                .lamports
+            - delegation_record_account.lamports
+            - delegation_metadata_account.lamports
     );
 }
