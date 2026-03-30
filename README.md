@@ -80,7 +80,7 @@ You can run a single test by passing its name, for example:
 cargo test-sbf --features logging delegate_ephemeral_ata
 ```
 
-Tests live under `e-token/tests/` and cover balance accounting, delegation/undelegation, shuttle flows, permissions, the rent PDA, and transfer-queue automation.
+Tests live under `e-token/tests/` and cover balance accounting, delegation/undelegation, shuttle flows, permissions, the rent PDA and lamports-PDA flows, and transfer-queue automation.
 
 ## Notes
 - The workspace depends on `ephemeral-rollups-pinocchio` and several Solana crates; ensure your local environment matches the versions declared in the workspace `Cargo.toml`.
