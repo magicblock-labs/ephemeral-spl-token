@@ -63,6 +63,39 @@ sequenceDiagram
     end
 ```
 
+### Simplified Sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as Sender
+    participant ET as e-token program
+    participant SH as Temporary shuttle
+    participant Q as Delegated queue
+    participant MG as Queue automation
+    participant R as Recipient
+
+    Note over U,Q: Queue for this mint and validator already exists and is delegated.
+
+    U->>ET: Submit instruction 25<br/>amount + validator + encrypted recipient + encrypted timing plan
+    ET->>SH: Sponsor and initialize shuttle accounts
+    ET->>SH: Deposit amount into shuttle-backed state
+    ET->>SH: Delegate shuttle with post-actions
+
+    SH->>U: Merge shuttle wallet balance back to sender source ATA
+    SH->>Q: Enqueue private delayed transfer<br/>same amount, encrypted destination, split and delay policy
+    SH->>ET: Undelegate and close shuttle
+    ET->>ET: Refund shuttle rent to rent_pda
+
+    Note over U,R: At this point the recipient still has not received funds.<br/>The transfer is only queued.
+
+    loop each ready queued split
+        MG->>ET: Trigger queue settlement
+        ET->>R: Create recipient ATA if required
+        ET->>R: Release queued amount from the global vault
+    end
+```
+
 ### User View
 
 ```mermaid
