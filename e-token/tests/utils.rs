@@ -1,6 +1,10 @@
+#![allow(dead_code)]
+
+use ephemeral_rollups_pinocchio::acl::PERMISSION_PROGRAM_ID;
 use solana_keypair::Keypair;
 use solana_program::{
     account_info::AccountInfo,
+    bpf_loader,
     entrypoint::ProgramResult,
     program::{invoke, invoke_signed},
     program_error::ProgramError,
@@ -8,7 +12,7 @@ use solana_program::{
     sysvar::Sysvar,
 };
 use solana_program_pack::Pack;
-use solana_program_test::{processor, ProgramTest, ProgramTestContext};
+use solana_program_test::{processor, read_file, ProgramTest, ProgramTestContext};
 use solana_pubkey::{pubkey, Pubkey};
 use solana_signer::Signer;
 use solana_system_interface::instruction::create_account;
@@ -111,6 +115,20 @@ pub fn add_associated_token_program(pt: &mut ProgramTest) {
         processor!(process_associated_token_program_mock),
     );
     pt.prefer_bpf(true);
+}
+
+pub fn add_permission_program(pt: &mut ProgramTest) {
+    let data = read_file("tests/fixtures/acl.so");
+    pt.add_account(
+        PERMISSION_PROGRAM_ID,
+        solana_account::Account {
+            lamports: Rent::default().minimum_balance(data.len()).max(1),
+            data,
+            owner: bpf_loader::id(),
+            executable: true,
+            rent_epoch: 0,
+        },
+    );
 }
 
 pub fn derive_associated_token_address(wallet: Pubkey, mint: Pubkey) -> Pubkey {

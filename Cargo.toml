@@ -51,6 +51,8 @@ solana-program-test = "=3.0.2"
 solana-signer = "3.0.0"
 solana-keypair = "3.0.1"
 solana-transaction = "3.0.1"
-solana-system-interface = { version="2.0.0", features=["bincode"] }
+solana-system-interface = { version = "2.0.0", features = ["bincode"] }
 spl-token-interface = "2.0.0"
 magicblock-delegation-program-api = { version = "0.1.1", default-features = false }
+bytemuck = { version = "1.23.1", features = ["derive"] }
+const-crypto = "0.3.0"

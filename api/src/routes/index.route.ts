@@ -1,6 +1,7 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 
 import type { AppBindings } from "../env";
+import { openApiDefaultHook } from "../lib/create-app";
 import { jsonContent } from "../lib/openapi";
 
 const tags = ["Meta"];
@@ -18,7 +19,9 @@ const healthRoute = createRoute({
   },
 });
 
-const app = new OpenAPIHono<{ Bindings: AppBindings }>();
+const app = new OpenAPIHono<{ Bindings: AppBindings }>({
+  defaultHook: openApiDefaultHook,
+});
 
 app.get("/", (c) => c.redirect("/reference"));
 

@@ -109,7 +109,6 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
         args.common_args(),
         &prepared.mint,
         shuttle_eata.bump,
-        prepared.rent_bump,
         post_actions.cleartext(),
     )
 }

@@ -1,4 +1,7 @@
 use dlp_api::state::DelegationRecord;
+use ephemeral_rollups_pinocchio::acl::{
+    permission_pda_from_permissioned_account, PERMISSION_PROGRAM_ID,
+};
 use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::transfer_queue::{
@@ -14,7 +17,12 @@ use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use solana_transaction::Transaction;
 
+mod utils;
+
+use crate::utils::add_permission_program;
+
 pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
+pub const VALIDATOR: Pubkey = Pubkey::new_from_array([77; 32]);
 
 fn read_header_unaligned(data: &[u8]) -> TransferQueueHeader {
     assert!(data.len() >= header_len());
@@ -91,7 +99,7 @@ fn process_delegation_program_mock(
     }
 
     let (commit_frequency_ms, validator) = parse_delegate_validator(&instruction_data[8..])?;
-    if validator != Some(solana_system_interface::program::ID.to_bytes()) {
+    if validator != Some(VALIDATOR.to_bytes()) {
         return Err(ProgramError::InvalidInstructionData);
     }
 
@@ -127,6 +135,7 @@ async fn delegate_transfer_queue_succeeds_and_is_idempotent() {
         ephemeral_rollups_pinocchio::ID,
         processor!(process_delegation_program_mock),
     );
+    add_permission_program(&mut pt);
     pt.prefer_bpf(true);
 
     let mint = Pubkey::new_unique();
@@ -143,15 +152,20 @@ async fn delegate_transfer_queue_succeeds_and_is_idempotent() {
 
     let context = &mut pt.start_with_context().await;
     let payer = context.payer.pubkey();
-    let (queue, bump) = Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref()], &PROGRAM);
+    let (queue, bump) =
+        Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref(), VALIDATOR.as_ref()], &PROGRAM);
+    let queue_permission = permission_pda_from_permissioned_account(&queue);
 
     let ix_init_queue = Instruction {
         program_id: PROGRAM,
         accounts: vec![
             AccountMeta::new(payer, true),
             AccountMeta::new(queue, false),
+            AccountMeta::new(queue_permission, false),
             AccountMeta::new_readonly(mint, false),
+            AccountMeta::new_readonly(VALIDATOR, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+            AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
         ],
         data: vec![instruction::INITIALIZE_TRANSFER_QUEUE],
     };
@@ -167,6 +181,15 @@ async fn delegate_transfer_queue_succeeds_and_is_idempotent() {
         .process_transaction(tx_init)
         .await
         .unwrap();
+
+    let queue_permission_account = context
+        .banks_client
+        .get_account(queue_permission)
+        .await
+        .unwrap()
+        .expect("queue permission account must exist");
+
+    assert_eq!(queue_permission_account.owner, PERMISSION_PROGRAM_ID);
 
     let (buffer_pda, _) = Pubkey::find_program_address(&[b"buffer", queue.as_ref()], &PROGRAM);
     let (delegation_record_pda, _) = Pubkey::find_program_address(

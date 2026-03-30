@@ -10,6 +10,10 @@ use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use solana_transaction::Transaction;
 
+mod utils;
+
+use crate::utils::add_permission_program;
+
 pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 
 #[tokio::test]
@@ -17,17 +21,7 @@ async fn delegate_ephemeral_ata_permission_succeeds() {
     let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
     pt.prefer_bpf(true);
 
-    let acl_data = read_file("tests/fixtures/acl.so");
-    pt.add_account(
-        PERMISSION_PROGRAM_ID,
-        Account {
-            lamports: Rent::default().minimum_balance(acl_data.len()).max(1),
-            data: acl_data,
-            owner: bpf_loader::id(),
-            executable: true,
-            rent_epoch: 0,
-        },
-    );
+    add_permission_program(&mut pt);
 
     let dlp_data = read_file("tests/fixtures/dlp.so");
     pt.add_account(
@@ -179,17 +173,7 @@ async fn delegate_ephemeral_ata_permission_non_owner_succeeds() {
     let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
     pt.prefer_bpf(true);
 
-    let acl_data = read_file("tests/fixtures/acl.so");
-    pt.add_account(
-        PERMISSION_PROGRAM_ID,
-        Account {
-            lamports: Rent::default().minimum_balance(acl_data.len()).max(1),
-            data: acl_data,
-            owner: bpf_loader::id(),
-            executable: true,
-            rent_epoch: 0,
-        },
-    );
+    add_permission_program(&mut pt);
 
     let dlp_data = read_file("tests/fixtures/dlp.so");
     pt.add_account(

@@ -11,11 +11,11 @@ use {
 use ephemeral_spl_api::state::load_initialized;
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
-
+use ephemeral_spl_api::program::id_address;
 use crate::{
     assert_owner,
     processor::{
-        rent_pda::{derive_rent_pda, RENT_PDA_SEED},
+        rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
         utils::read_mint_decimals,
     },
 };
@@ -41,10 +41,9 @@ pub fn process_execute_ready_queued_transfer(
     // Expected trailing accounts from tail:
     // - second to last: escrow authority
     // - last:          escrow signer PDA
-    if accounts.len() < 11 {
+    let [vault_info, mint_info, ] = accounts else {
         return Err(ProgramError::NotEnoughAccountKeys);
     }
-
     let vault_info = &accounts[0];
     let mint_info = &accounts[1];
     let vault_token_acc_info = &accounts[2];
@@ -54,8 +53,15 @@ pub fn process_execute_ready_queued_transfer(
     let token_program_info = &accounts[6];
     let associated_token_program_info = &accounts[7];
     let system_program_info = &accounts[8];
-    let escrow_authority = &accounts[accounts.len() - 2];
-    let escrow_signer = &accounts[accounts.len() - 1];
+    let source_program = &accounts[9];
+    let escrow_authority = &accounts[10];
+    let escrow_signer = &accounts[11];
+
+    if source_program.address() != &id_address() {
+        pinocchio_log::log!("salam!");
+        return Err(ProgramError::IncorrectAuthority);
+    }
+    pinocchio_log::log!("shalom!");
 
     if !escrow_signer.is_signer() {
         return Err(ProgramError::MissingRequiredSignature);
@@ -69,8 +75,7 @@ pub fn process_execute_ready_queued_transfer(
 
     if args.should_create_destination_ata_idempotent() {
         assert_owner!(rent_pda_info, &SYSTEM_PROGRAM_ID);
-        let (derived_rent_pda, rent_bump) = derive_rent_pda();
-        if derived_rent_pda != *rent_pda_info.address() {
+        if &RENT_PDA != rent_pda_info.address() {
             return Err(ProgramError::InvalidSeeds);
         }
         if rent_pda_info.data_len() != 0 {
@@ -82,7 +87,7 @@ pub fn process_execute_ready_queued_transfer(
             return Err(ProgramError::InvalidAccountData);
         }
 
-        let rent_bump_seed = [rent_bump];
+        let rent_bump_seed = [RENT_PDA_BUMP];
         let rent_signer_seed = [Seed::from(RENT_PDA_SEED), Seed::from(&rent_bump_seed)];
         let rent_signer = Signer::from(&rent_signer_seed);
 

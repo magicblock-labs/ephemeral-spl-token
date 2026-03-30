@@ -1,3 +1,4 @@
+pub mod allocate_transfer_queue;
 pub mod close_ephemeral_ata;
 pub mod close_shuttle_ata_intent;
 pub mod create_ephemeral_ata_permission;
@@ -29,6 +30,7 @@ pub(crate) mod utils;
 pub mod withdraw_spl_tokens;
 pub mod withdraw_through_delegated_shuttle_with_merge;
 
+pub use allocate_transfer_queue::process_allocate_transfer_queue;
 pub use close_ephemeral_ata::process_close_ephemeral_ata;
 pub use close_shuttle_ata_intent::process_close_shuttle_ata_intent;
 pub use create_ephemeral_ata_permission::process_create_ephemeral_ata_permission;

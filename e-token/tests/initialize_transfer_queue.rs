@@ -1,3 +1,6 @@
+use ephemeral_rollups_pinocchio::acl::{
+    permission_pda_from_permissioned_account, PERMISSION_PROGRAM_ID,
+};
 use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::transfer_queue::{
     capacity_from_data_len, header_len, item_len, TransferQueueHeader, QUEUE_SEED,
@@ -5,6 +8,7 @@ use ephemeral_spl_api::state::transfer_queue::{
 };
 use solana_account::Account as SolanaAccount;
 use solana_instruction::Instruction;
+use solana_keypair::Keypair;
 use {
     ephemeral_spl_api::instruction,
     solana_instruction::AccountMeta,
@@ -14,6 +18,10 @@ use {
     solana_transaction::Transaction,
 };
 
+mod utils;
+
+use crate::utils::add_permission_program;
+
 pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 
 fn read_header_unaligned(data: &[u8]) -> TransferQueueHeader {
@@ -21,9 +29,12 @@ fn read_header_unaligned(data: &[u8]) -> TransferQueueHeader {
     unsafe { core::ptr::read_unaligned(data.as_ptr() as *const TransferQueueHeader) }
 }
 
+const DEFAULT_TRANSFER_QUEUE_ITEMS: usize = 100;
+
 #[tokio::test]
 async fn initialize_transfer_queue_default_size() {
     let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
+    add_permission_program(&mut pt);
     let mint = Pubkey::new_unique();
     pt.add_account(
         mint,
@@ -38,16 +49,22 @@ async fn initialize_transfer_queue_default_size() {
 
     let context = &mut pt.start_with_context().await;
     let payer = context.payer.pubkey();
+    let validator = Keypair::new().pubkey();
 
-    let (queue, bump) = Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref()], &PROGRAM);
+    let (queue, bump) =
+        Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref(), validator.as_ref()], &PROGRAM);
+    let queue_permission = permission_pda_from_permissioned_account(&queue);
 
     let ix = Instruction {
         program_id: PROGRAM,
         accounts: vec![
             AccountMeta::new(payer, true),
             AccountMeta::new(queue, false),
+            AccountMeta::new(queue_permission, false),
             AccountMeta::new_readonly(mint, false),
+            AccountMeta::new_readonly(validator, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+            AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
         ],
         data: vec![instruction::INITIALIZE_TRANSFER_QUEUE],
     };
@@ -68,8 +85,14 @@ async fn initialize_transfer_queue_default_size() {
         .expect("queue account must exist");
 
     assert_eq!(queue_account.owner, PROGRAM);
-    assert_eq!(queue_account.data.len(), 9_728);
-    assert!(capacity_from_data_len(queue_account.data.len()) >= 1);
+    assert_eq!(
+        queue_account.data.len(),
+        header_len() + item_len() * DEFAULT_TRANSFER_QUEUE_ITEMS
+    );
+    assert_eq!(
+        capacity_from_data_len(queue_account.data.len()),
+        DEFAULT_TRANSFER_QUEUE_ITEMS
+    );
 
     let header = read_header_unaligned(&queue_account.data);
     assert_eq!(header.version, TRANSFER_QUEUE_VERSION);
@@ -84,6 +107,7 @@ async fn initialize_transfer_queue_default_size() {
 #[tokio::test]
 async fn initialize_transfer_queue_custom_size_is_idempotent() {
     let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
+    add_permission_program(&mut pt);
     let mint = Pubkey::new_unique();
     pt.add_account(
         mint,
@@ -98,19 +122,25 @@ async fn initialize_transfer_queue_custom_size_is_idempotent() {
 
     let context = &mut pt.start_with_context().await;
     let payer = context.payer.pubkey();
-    let (queue, bump) = Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref()], &PROGRAM);
+    let validator = Keypair::new().pubkey();
+    let (queue, bump) =
+        Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref(), validator.as_ref()], &PROGRAM);
+    let queue_permission = permission_pda_from_permissioned_account(&queue);
 
-    let custom_size = (header_len() + (item_len() * 4)) as u32;
+    let items = 4_u32;
     let mut data = vec![instruction::INITIALIZE_TRANSFER_QUEUE];
-    data.extend_from_slice(&custom_size.to_le_bytes());
+    data.extend_from_slice(&items.to_le_bytes());
 
     let ix_init_custom = Instruction {
         program_id: PROGRAM,
         accounts: vec![
             AccountMeta::new(payer, true),
             AccountMeta::new(queue, false),
+            AccountMeta::new(queue_permission, false),
             AccountMeta::new_readonly(mint, false),
+            AccountMeta::new_readonly(validator, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+            AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
         ],
         data,
     };
@@ -133,8 +163,11 @@ async fn initialize_transfer_queue_custom_size_is_idempotent() {
         accounts: vec![
             AccountMeta::new(payer, true),
             AccountMeta::new(queue, false),
+            AccountMeta::new(queue_permission, false),
             AccountMeta::new_readonly(mint, false),
+            AccountMeta::new_readonly(validator, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+            AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
         ],
         data: vec![instruction::INITIALIZE_TRANSFER_QUEUE],
     };
@@ -157,7 +190,10 @@ async fn initialize_transfer_queue_custom_size_is_idempotent() {
         .unwrap()
         .expect("queue account must exist after idempotent init");
 
-    assert_eq!(queue_account.data.len(), custom_size as usize);
+    assert_eq!(
+        queue_account.data.len(),
+        header_len() + item_len() * items as usize
+    );
     assert!(capacity_from_data_len(queue_account.data.len()) >= 1);
 
     let header = read_header_unaligned(&queue_account.data);

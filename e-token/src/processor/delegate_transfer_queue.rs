@@ -11,7 +11,7 @@ pub fn process_delegate_transfer_queue(
 ) -> ProgramResult {
     // Expected accounts:
     // 0. [signer]   Payer
-    // 1. [writable] Transfer queue PDA derived from [QUEUE_SEED, mint]
+    // 1. [writable] Transfer queue PDA derived from [QUEUE_SEED, mint, validator]
     // 2. []         Mint account
     // 3. []         Owner program (this program)
     // 4. [writable] Buffer account
@@ -37,7 +37,7 @@ pub fn process_delegate_transfer_queue(
         return Err(ProgramError::IllegalOwner);
     }
 
-    let bump = {
+    let (bump, validator) = {
         let data = unsafe { queue_info.borrow_unchecked() };
         let (header, _) = queue_views_checked(data)?;
         if header.mint != *mint_info.address() {
@@ -47,7 +47,12 @@ pub fn process_delegate_transfer_queue(
         let bump = header.bump;
         let bump_seed = [bump];
         let derived_queue = ephemeral_spl_api::Address::create_program_address(
-            &[QUEUE_SEED, mint_info.address().as_ref(), bump_seed.as_ref()],
+            &[
+                QUEUE_SEED,
+                mint_info.address().as_ref(),
+                header.validator.as_ref(),
+                bump_seed.as_ref(),
+            ],
             &program_id,
         )
         .map_err(|_| ProgramError::InvalidAccountData)?;
@@ -55,7 +60,7 @@ pub fn process_delegate_transfer_queue(
             return Err(ProgramError::InvalidSeeds);
         }
 
-        bump
+        (bump, header.validator)
     };
 
     if queue_info.owned_by(&delegation_program) {
@@ -70,10 +75,10 @@ pub fn process_delegate_transfer_queue(
     }
 
     let config = DelegateConfig {
-        validator: Some(pinocchio_system::ID),
+        validator: Some(validator),
         ..DelegateConfig::default()
     };
-    let seeds: &[&[u8]] = &[QUEUE_SEED, mint_info.address().as_ref()];
+    let seeds: &[&[u8]] = &[QUEUE_SEED, mint_info.address().as_ref(), validator.as_ref()];
 
     DelegateAccountCpiBuilder::new(
         payer_info,

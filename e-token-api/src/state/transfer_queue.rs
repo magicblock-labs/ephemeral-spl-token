@@ -18,29 +18,27 @@ pub struct TransferQueueHeader {
     pub _pad0: [u8; 6],
     pub mint: Address,
     pub length: u32,
-    pub _pad1: [u8; 4],
-    pub next_task_id: u64,
+    pub _pad1: [u8; 8],
+    pub next_task_id: u32,
     pub crank_task_id: i64,
+    pub validator: Address,
 }
 
 /// One queued transfer entry.
 ///
 /// `ready_at` and `inserted_at` are stored in milliseconds since unix epoch.
 #[repr(C)]
-#[derive(Copy, Clone, Pod, Zeroable)]
+#[derive(Copy, Clone, Pod, Zeroable, PartialEq, Eq)]
 pub struct QueuedTransfer {
     pub source: Address,
     pub destination_owner: Address,
     pub amount: u64,
     pub ready_at: i64,
     pub inserted_at: i64,
-    pub task_id: u64,
+    pub task_id: u32,
     pub flags: u8,
-    pub _pad0: [u8; 7],
+    pub _pad0: [u8; 3],
 }
-
-const _: [(); 64] = [(); core::mem::size_of::<TransferQueueHeader>()];
-const _: [(); 104] = [(); core::mem::size_of::<QueuedTransfer>()];
 
 impl QueuedTransfer {
     #[inline(always)]
@@ -114,7 +112,12 @@ pub fn queue_views_mut(
 
 /// Initializes an uninitialized queue (version == 0).
 /// Idempotent when already initialized with the same version.
-pub fn init_queue(data: &mut [u8], bump: u8, mint: Address) -> Result<(), ProgramError> {
+pub fn init_queue(
+    data: &mut [u8],
+    bump: u8,
+    mint: Address,
+    validator: Address,
+) -> Result<(), ProgramError> {
     let (header, items) = queue_views_mut(data)?;
     if items.is_empty() {
         return Err(ProgramError::InvalidAccountData);
@@ -126,6 +129,7 @@ pub fn init_queue(data: &mut [u8], bump: u8, mint: Address) -> Result<(), Progra
             header.version = TRANSFER_QUEUE_VERSION;
             header.bump = bump;
             header.mint = mint;
+            header.validator = validator;
             Ok(())
         }
         TRANSFER_QUEUE_VERSION => {
@@ -177,7 +181,7 @@ pub fn queue_len_for_mint_with_capacity(
     data: &[u8],
     expected_mint: &Address,
     required_slots: usize,
-) -> Result<usize, ProgramError> {
+) -> Result<(usize, Address), ProgramError> {
     let (header, items) = queue_views_checked(data)?;
     if header.mint != *expected_mint {
         return Err(ProgramError::InvalidAccountData);
@@ -189,7 +193,7 @@ pub fn queue_len_for_mint_with_capacity(
         return Err(ProgramError::AccountDataTooSmall);
     }
 
-    Ok(queue_len)
+    Ok((queue_len, header.validator))
 }
 
 #[inline(always)]
@@ -211,6 +215,13 @@ fn higher_priority(a: &QueuedTransfer, b: &QueuedTransfer) -> bool {
     }
 
     a.task_id < b.task_id
+}
+
+#[inline(always)]
+fn maybe_reset_next_task_id(header: &mut TransferQueueHeader) {
+    if header.length == 0 && header.next_task_id > (u32::MAX / 2) {
+        header.next_task_id = 0;
+    }
 }
 
 // The queue items are stored as an array-backed binary min-heap.
@@ -311,6 +322,7 @@ pub fn queue_push_from_data(
     mut transfer: QueuedTransfer,
 ) -> Result<(), ProgramError> {
     let (header, items) = queue_views_mut_checked(data)?;
+    maybe_reset_next_task_id(header);
     if header.length as usize >= items.len() {
         return Err(ProgramError::AccountDataTooSmall);
     }
@@ -338,7 +350,9 @@ pub fn queue_peek_from_data(data: &[u8]) -> Result<Option<QueuedTransfer>, Progr
 /// Pop the next transfer from the queue account.
 pub fn queue_pop_from_data(data: &mut [u8]) -> Result<Option<QueuedTransfer>, ProgramError> {
     let (header, items) = queue_views_mut_checked(data)?;
-    Ok(heap_pop(items, &mut header.length))
+    let popped = heap_pop(items, &mut header.length);
+    maybe_reset_next_task_id(header);
+    Ok(popped)
 }
 
 pub fn queue_crank_task_id_from_data(data: &[u8]) -> Result<Option<i64>, ProgramError> {
@@ -383,7 +397,7 @@ mod tests {
             inserted_at,
             task_id: 0,
             flags: 0,
-            _pad0: [0; 7],
+            _pad0: [0; 3],
         }
     }
 
@@ -394,7 +408,7 @@ mod tests {
         let mut aligned = std::vec![0u64; words];
         let data = &mut bytemuck::cast_slice_mut::<u64, u8>(&mut aligned)[..data_len];
 
-        init_queue(data, 1, addr(9)).unwrap();
+        init_queue(data, 1, addr(9), addr(10)).unwrap();
 
         queue_push_from_data(data, item(2, 2, 100, 10, 5)).unwrap();
         queue_push_from_data(data, item(3, 3, 200, 10, 2)).unwrap();
@@ -427,7 +441,7 @@ mod tests {
         let mut aligned = std::vec![0u64; words];
         let data = &mut bytemuck::cast_slice_mut::<u64, u8>(&mut aligned)[..data_len];
 
-        init_queue(data, 1, addr(9)).unwrap();
+        init_queue(data, 1, addr(9), addr(10)).unwrap();
 
         queue_push_from_data(data, item(1, 1, 100, 10, 5)).unwrap();
         queue_push_from_data(data, item(9, 9, 50, 10, 5)).unwrap();
@@ -445,11 +459,53 @@ mod tests {
         let mut aligned = std::vec![0u64; words];
         let data = &mut bytemuck::cast_slice_mut::<u64, u8>(&mut aligned)[..data_len];
 
-        init_queue(data, 1, addr(7)).unwrap();
+        init_queue(data, 1, addr(7), addr(10)).unwrap();
         assert_eq!(queue_crank_task_id_from_data(data).unwrap(), None);
 
         queue_set_crank_task_id_from_data(data, 42).unwrap();
         assert_eq!(queue_crank_task_id_from_data(data).unwrap(), Some(42));
+    }
+
+    #[test]
+    fn queue_push_resets_next_task_id_when_empty_and_past_half_max() {
+        let data_len = header_len() + item_len();
+        let words = data_len.div_ceil(8);
+        let mut aligned = std::vec![0u64; words];
+        let data = &mut bytemuck::cast_slice_mut::<u64, u8>(&mut aligned)[..data_len];
+
+        init_queue(data, 1, addr(7), addr(10)).unwrap();
+        let (header, _) = queue_views_mut_checked(data).unwrap();
+        header.next_task_id = (u32::MAX / 2) + 1;
+
+        queue_push_from_data(data, item(1, 2, 10, 3, 2)).unwrap();
+
+        let (header, items) = queue_views_checked(data).unwrap();
+        assert_eq!(header.next_task_id, 2);
+        assert_eq!(items[0].task_id, 1);
+    }
+
+    #[test]
+    fn queue_pop_resets_next_task_id_when_empty_and_past_half_max() {
+        let data_len = header_len() + item_len();
+        let words = data_len.div_ceil(8);
+        let mut aligned = std::vec![0u64; words];
+        let data = &mut bytemuck::cast_slice_mut::<u64, u8>(&mut aligned)[..data_len];
+
+        init_queue(data, 1, addr(7), addr(10)).unwrap();
+        {
+            let (header, items) = queue_views_mut_checked(data).unwrap();
+            header.length = 1;
+            header.next_task_id = (u32::MAX / 2) + 1;
+            items[0] = item(1, 2, 10, 3, 2);
+        }
+
+        let popped = queue_pop_from_data(data).unwrap().unwrap();
+        assert_eq!(popped.amount, 10);
+
+        let (header, items) = queue_views_checked(data).unwrap();
+        assert_eq!(header.length, 0);
+        assert_eq!(header.next_task_id, 0);
+        assert!(items[0] == QueuedTransfer::zeroed());
     }
 
     #[test]

@@ -94,13 +94,13 @@ pub fn process_close_shuttle_ata_intent(
             return Err(ProgramError::InvalidAccountData);
         }
 
-        let shuttle_owner = shuttle_owner_opt
-            .as_ref()
-            .ok_or(ProgramError::InvalidAccountData)?;
+        let Some(shuttle_owner) = shuttle_owner_opt.as_ref() else {
+            return Err(ProgramError::InvalidAccountData);
+        };
         let (mint, shuttle_wallet_amount) = {
             let token_account = validate_token_account(
                 shuttle_wallet_ata_info,
-                &mint_info.address(),
+                mint_info.address(),
                 Some(shuttle_info.address()),
                 Some(token_program_info.address()),
             )?;
@@ -151,19 +151,13 @@ pub fn process_close_shuttle_ata_intent(
             return Err(ProgramError::InvalidAccountData);
         }
 
-        let shuttle_owner = shuttle_owner_opt
-            .as_ref()
-            .ok_or(ProgramError::InvalidAccountData)?;
+        let Some(shuttle_owner) = shuttle_owner_opt.as_ref() else {
+            return Err(ProgramError::InvalidAccountData);
+        };
         let (mint, shuttle_ephemeral_amount) = {
             let shuttle_ephemeral_ata_data = shuttle_ephemeral_ata_info.try_borrow()?;
             let (ephemeral_owner, mint, amount) =
-                read_ephemeral_ata_compat(&shuttle_ephemeral_ata_data).map_err(|err| {
-                    if err == ProgramError::UninitializedAccount {
-                        ProgramError::InvalidAccountData
-                    } else {
-                        err
-                    }
-                })?;
+                read_ephemeral_ata_compat(&shuttle_ephemeral_ata_data)?;
             if ephemeral_owner != *shuttle_info.address() {
                 return Err(ProgramError::InvalidAccountData);
             }
