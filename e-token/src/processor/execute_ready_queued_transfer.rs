@@ -15,7 +15,7 @@ use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
 use crate::{
     assert_owner,
     processor::{
-        rent_pda::{derive_rent_pda, RENT_PDA_SEED},
+        rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
         utils::read_mint_decimals,
     },
 };
@@ -69,8 +69,7 @@ pub fn process_execute_ready_queued_transfer(
 
     if args.should_create_destination_ata_idempotent() {
         assert_owner!(rent_pda_info, &SYSTEM_PROGRAM_ID);
-        let (derived_rent_pda, rent_bump) = derive_rent_pda();
-        if derived_rent_pda != *rent_pda_info.address() {
+        if &RENT_PDA != rent_pda_info.address() {
             return Err(ProgramError::InvalidSeeds);
         }
         if rent_pda_info.data_len() != 0 {
@@ -82,7 +81,7 @@ pub fn process_execute_ready_queued_transfer(
             return Err(ProgramError::InvalidAccountData);
         }
 
-        let rent_bump_seed = [rent_bump];
+        let rent_bump_seed = [RENT_PDA_BUMP];
         let rent_signer_seed = [Seed::from(RENT_PDA_SEED), Seed::from(&rent_bump_seed)];
         let rent_signer = Signer::from(&rent_signer_seed);
 

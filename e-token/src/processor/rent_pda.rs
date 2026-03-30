@@ -29,8 +29,7 @@ pub fn process_initialize_rent_pda(
     };
 
     let required_lamports = Rent::get()?.try_minimum_balance(0)?;
-    let (derived_rent_pda, bump) = derive_rent_pda();
-    if derived_rent_pda != *rent_pda_info.address() {
+    if &RENT_PDA != rent_pda_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
 
@@ -45,7 +44,7 @@ pub fn process_initialize_rent_pda(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    let bump_seed = [bump];
+    let bump_seed = [RENT_PDA_BUMP];
     let signer_seeds = [Seed::from(RENT_PDA_SEED), Seed::from(&bump_seed)];
     let signer = Signer::from(&signer_seeds);
 
@@ -59,11 +58,6 @@ pub fn process_initialize_rent_pda(
     .invoke_signed(&[signer])?;
 
     Ok(())
-}
-
-#[inline(always)]
-pub const fn derive_rent_pda() -> (ephemeral_spl_api::Address, u8) {
-    (RENT_PDA, RENT_PDA_BUMP)
 }
 
 #[inline(always)]

@@ -1,4 +1,3 @@
-use crate::processor::rent_pda::derive_rent_pda;
 use dlp_api::pda::magic_fee_vault_pda_from_validator;
 use ephemeral_rollups_pinocchio::intent_bundle::{
     ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
@@ -13,6 +12,8 @@ use pinocchio::sysvars::clock::Clock;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
+
+use crate::processor::rent_pda::RENT_PDA;
 pub(crate) const EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX: u8 = 0;
 
 const ASSOCIATED_TOKEN_PROGRAM_ID: ephemeral_spl_api::Address =
@@ -96,7 +97,6 @@ pub fn process_transfer_queue_tick(
     let vault_token_account = derive_associated_token_address(&vault, &mint);
     let destination_token_account =
         derive_associated_token_address(&queued_transfer.destination_owner, &mint);
-    let (rent_pda, _) = derive_rent_pda();
     let mut execute_data = [0_u8; 11];
     execute_data[0] = EXECUTE_READY_QUEUED_TRANSFER;
     execute_data[1] = EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX;
@@ -124,7 +124,7 @@ pub fn process_transfer_queue_tick(
             is_writable: true,
         },
         ShortAccountMeta {
-            pubkey: rent_pda,
+            pubkey: RENT_PDA,
             is_writable: true,
         },
         ShortAccountMeta {
