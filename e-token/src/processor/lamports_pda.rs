@@ -17,7 +17,7 @@ use crate::{
     assert_owner, assert_signer,
     processor::{
         deposit_and_delegate_shuttle_ephemeral_ata_with_merge::delegate_account_with_actions_from_sponsor,
-        rent_pda::{derive_rent_pda, RENT_PDA_SEED},
+        rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
     },
 };
 
@@ -50,8 +50,7 @@ pub fn process_sponsored_lamports_transfer(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    let (derived_rent_pda, rent_bump) = derive_rent_pda();
-    if derived_rent_pda != *rent_pda_info.address() {
+    if RENT_PDA != *rent_pda_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
     if rent_pda_info.data_len() != 0 {
@@ -76,7 +75,7 @@ pub fn process_sponsored_lamports_transfer(
     }
     .invoke()?;
 
-    let rent_bump_seed = [rent_bump];
+    let rent_bump_seed = [RENT_PDA_BUMP];
     let rent_signer_seeds = [Seed::from(RENT_PDA_SEED), Seed::from(&rent_bump_seed)];
     let rent_signer = Signer::from(&rent_signer_seeds);
 
@@ -285,8 +284,7 @@ pub fn process_close_lamports_pda_intent(
         return Err(ProgramError::InvalidSeeds);
     }
 
-    let (derived_rent_pda, _) = derive_rent_pda();
-    if derived_rent_pda != *rent_pda_info.address() {
+    if RENT_PDA != *rent_pda_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
     if rent_pda_info.data_len() != 0 || lamports_pda_info.data_len() != 0 {
