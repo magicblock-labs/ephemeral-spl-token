@@ -37,31 +37,16 @@ pub fn process_execute_ready_queued_transfer(
     // 6. []         Token program
     // 7. []         Associated token program
     // 8. []         System program
-    //
-    // Expected trailing accounts from tail:
-    // - second to last: escrow authority
-    // - last:          escrow signer PDA
-    let [vault_info, mint_info, ] = accounts else {
+    // 9. []         Source program (must equal this program)
+    // 10. []        Escrow authority
+    // 11. [signer]  Escrow signer PDA
+    let [vault_info, mint_info, vault_token_acc_info, destination_owner_info, destination_token_acc_info, rent_pda_info, token_program_info, associated_token_program_info, system_program_info, source_program, escrow_authority, escrow_signer] = accounts else {
         return Err(ProgramError::NotEnoughAccountKeys);
-    }
-    let vault_info = &accounts[0];
-    let mint_info = &accounts[1];
-    let vault_token_acc_info = &accounts[2];
-    let destination_owner_info = &accounts[3];
-    let destination_token_acc_info = &accounts[4];
-    let rent_pda_info = &accounts[5];
-    let token_program_info = &accounts[6];
-    let associated_token_program_info = &accounts[7];
-    let system_program_info = &accounts[8];
-    let source_program = &accounts[9];
-    let escrow_authority = &accounts[10];
-    let escrow_signer = &accounts[11];
+    };
 
     if source_program.address() != &id_address() {
-        pinocchio_log::log!("salam!");
         return Err(ProgramError::IncorrectAuthority);
     }
-    pinocchio_log::log!("shalom!");
 
     if !escrow_signer.is_signer() {
         return Err(ProgramError::MissingRequiredSignature);
