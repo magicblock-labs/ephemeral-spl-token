@@ -65,8 +65,9 @@ pub mod instruction {
     pub const INITIALIZE_TRANSFER_QUEUE: u8 = 12;
     /// 13 - DelegateShuttleEphemeralAta: delegate shuttle account to a DLP program using PDA seeds
     pub const DELEGATE_SHUTTLE_EPHEMERAL_ATA: u8 = 13;
-    /// 14 - UndelegateShuttleEphemeralAta: revoke delegation on shuttle ATA and close it when empty
-    pub const UNDELEGATE_SHUTTLE_EPHEMERAL_ATA: u8 = 14;
+    /// 14 - UndelegateAndCloseShuttleToOwner: revoke delegation on a shuttle ATA
+    ///      and schedule settlement/close using an owner-owned destination token account.
+    pub const UNDELEGATE_AND_CLOSE_SHUTTLE_TO_OWNER: u8 = 14;
     /// 15 - MergeShuttleIntoEphemeralAta: transfer all shuttle ATA funds into destination ATA and keep shuttle account open
     pub const MERGE_SHUTTLE_INTO_EPHEMERAL_ATA: u8 = 15;
     /// 16 - DepositAndQueueTransfer: transfer tokens from signer into the vault ATA and enqueue one or more delayed transfers
@@ -139,8 +140,10 @@ pub mod instruction {
     pub mod internal {
         /// 196 - UndelegationCallback: delegation-program callback used to restore delegated state.
         pub const UNDELEGATION_CALLBACK: u8 = 196;
-        /// 197 - CloseShuttleAtaIntent: Magic standalone action that closes an emptied shuttle ATA flow.
-        pub const CLOSE_SHUTTLE_ATA_INTENT: u8 = 197;
+        /// 197 - SettleAndCloseShuttleIntent: Magic standalone action that withdraws any
+        ///       remaining shuttle balance to the supplied destination token account, then
+        ///       closes the shuttle accounts.
+        pub const SETTLE_AND_CLOSE_SHUTTLE_INTENT: u8 = 197;
         /// 198 - ExecuteReadyQueuedTransfer: Magic standalone action that settles one queued transfer.
         pub const EXECUTE_READY_QUEUED_TRANSFER: u8 = 198;
         /// 199 - ProcessTransferQueueTick: recurring crank callback that checks a queue and schedules settlement.
@@ -149,9 +152,6 @@ pub mod instruction {
         ///       requested lamports from the delegated zero-data PDA to the
         ///       destination base-layer account.
         pub const TRANSFER_LAMPORTS_PDA: u8 = 200;
-        /// 201 - UndelegateWithdrawAndCloseShuttleEphemeralAta: internal post-delegation action that
-        ///       undelegates a shuttle and schedules the close/refund post-undelegate action.
-        pub const UNDELEGATE_WITHDRAW_AND_CLOSE_SHUTTLE_EPHEMERAL_ATA: u8 = 201;
         /// 202 - UndelegateLamportsPda: post-delegation action that commits and
         ///       undelegates the lamports PDA, then schedules the close/refund intent.
         pub const UNDELEGATE_LAMPORTS_PDA: u8 = 202;

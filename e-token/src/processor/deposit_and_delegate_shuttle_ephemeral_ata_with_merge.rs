@@ -500,20 +500,40 @@ pub(crate) fn merge_shuttle_into_token_account_action(
 pub(crate) fn undelegate_and_close_shuttle_action(
     accounts: &DepositAndDelegateShuttleAccounts<'_>,
 ) -> Instruction {
+    build_undelegate_and_close_shuttle_instruction(
+        accounts.payer_info.address(),
+        accounts.rent_pda_info.address(),
+        accounts.shuttle_info.address(),
+        accounts.shuttle_eata_info.address(),
+        accounts.shuttle_wallet_ata_info.address(),
+        accounts.owner_source_token_info.address(),
+        accounts.token_program_info.address(),
+    )
+}
+
+pub(crate) fn build_undelegate_and_close_shuttle_instruction(
+    payer: &Address,
+    rent_pda: &Address,
+    shuttle: &Address,
+    shuttle_eata: &Address,
+    shuttle_wallet_ata: &Address,
+    refund_token: &Address,
+    token_program: &Address,
+) -> Instruction {
     Instruction {
         program_id: Pubkey::from(ephemeral_spl_api::program::ID),
         accounts: alloc::vec![
-            AccountMeta::new(*accounts.payer_info.address(), true),
-            AccountMeta::new(*accounts.rent_pda_info.address(), false),
-            AccountMeta::new_readonly(*accounts.shuttle_info.address(), false),
-            AccountMeta::new_readonly(*accounts.shuttle_eata_info.address(), false),
-            AccountMeta::new(*accounts.shuttle_wallet_ata_info.address(), false),
-            AccountMeta::new(*accounts.owner_source_token_info.address(), false),
-            AccountMeta::new_readonly(*accounts.token_program_info.address(), false),
+            AccountMeta::new(*payer, true),
+            AccountMeta::new(*rent_pda, false),
+            AccountMeta::new_readonly(*shuttle, false),
+            AccountMeta::new_readonly(*shuttle_eata, false),
+            AccountMeta::new(*shuttle_wallet_ata, false),
+            AccountMeta::new(*refund_token, false),
+            AccountMeta::new_readonly(*token_program, false),
             AccountMeta::new(Pubkey::from(MAGIC_CONTEXT_ID.to_bytes()), false),
             AccountMeta::new_readonly(Pubkey::from(MAGIC_PROGRAM_ID.to_bytes()), false),
         ],
-        data: alloc::vec![ephemeral_spl_api::instruction::UNDELEGATE_SHUTTLE_EPHEMERAL_ATA],
+        data: alloc::vec![ephemeral_spl_api::instruction::UNDELEGATE_AND_CLOSE_SHUTTLE_TO_OWNER],
     }
 }
 

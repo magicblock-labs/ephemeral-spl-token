@@ -167,11 +167,11 @@ pub(crate) fn inner_process_instruction(
 
             process_withdraw_through_delegated_shuttle_with_merge(accounts, instruction_data)
         }
-        instruction::UNDELEGATE_SHUTTLE_EPHEMERAL_ATA => {
+        instruction::UNDELEGATE_AND_CLOSE_SHUTTLE_TO_OWNER => {
             #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: UndelegateShuttleEphemeralAta");
+            pinocchio_log::log!("Instruction: UndelegateAndCloseShuttleToOwner");
 
-            process_undelegate_and_close_shuttle_ephemeral_ata(accounts, instruction_data)
+            process_undelegate_and_close_shuttle_to_owner(accounts, instruction_data)
         }
         instruction::MERGE_SHUTTLE_INTO_EPHEMERAL_ATA => {
             #[cfg(feature = "logging")]
@@ -221,9 +221,9 @@ pub(crate) fn inner_process_instruction(
 
             process_undelegation_callback(accounts, instruction_data)
         }
-        internal::CLOSE_SHUTTLE_ATA_INTENT => {
+        internal::SETTLE_AND_CLOSE_SHUTTLE_INTENT => {
             #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: CloseShuttleAtaIntent");
+            pinocchio_log::log!("Instruction: SettleAndCloseShuttleIntent");
 
             process_close_shuttle_ata_intent(accounts, instruction_data)
         }
@@ -244,12 +244,6 @@ pub(crate) fn inner_process_instruction(
             pinocchio_log::log!("Instruction: TransferLamportsPda");
 
             process_transfer_lamports_pda(accounts, instruction_data)
-        }
-        internal::UNDELEGATE_WITHDRAW_AND_CLOSE_SHUTTLE_EPHEMERAL_ATA => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: UndelegateWithdrawAndCloseShuttleEphemeralAta");
-
-            process_undelegate_withdraw_and_close_shuttle_ephemeral_ata(accounts, instruction_data)
         }
         internal::UNDELEGATE_LAMPORTS_PDA => {
             #[cfg(feature = "logging")]
