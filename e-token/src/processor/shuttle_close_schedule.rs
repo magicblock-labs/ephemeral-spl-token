@@ -78,7 +78,7 @@ pub(crate) fn schedule_shuttle_close_after_undelegate(
         },
         ShortAccountMeta {
             pubkey: *token_program_info.address(),
-            is_writable: token_program_info.is_writable(),
+            is_writable: false,
         },
     ];
     let close_handler = [CallHandler {
