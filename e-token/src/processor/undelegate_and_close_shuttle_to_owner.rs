@@ -3,6 +3,7 @@ use ephemeral_spl_api::state::{
 };
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
+use crate::assert_owner;
 use crate::processor::{
     shuttle_close_schedule::{parse_escrow_index, schedule_shuttle_close_after_undelegate},
     utils::{get_associated_token_address, validate_token_account},
@@ -38,14 +39,7 @@ pub fn process_undelegate_and_close_shuttle_to_owner(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    unsafe {
-        if shuttle_info
-            .owner()
-            .ne(&ephemeral_spl_api::program::id_address())
-        {
-            return Err(ProgramError::IllegalOwner);
-        }
-    }
+    assert_owner!(shuttle_info, &ephemeral_spl_api::program::id_address());
 
     let shuttle = load_initialized::<ShuttleMetadata>(unsafe { shuttle_info.borrow_unchecked() })?;
     if shuttle.payer != *rent_reimbursement.address() {
