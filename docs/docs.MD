@@ -44,9 +44,9 @@ sequenceDiagram
     ET->>GV: owner_source_token -> vault_token (amount)
     ET->>Q: Enqueue queued transfer items<br/>Store destination owner + ready_at + flags per split
 
-    ER->>ET: Action 3<br/>UNDELEGATE_SHUTTLE_EPHEMERAL_ATA
-    ET->>MG: commit_and_undelegate()<br/>schedule CLOSE_SHUTTLE_ATA_INTENT
-    MG->>ET: CLOSE_SHUTTLE_ATA_INTENT
+    ER->>ET: Action 3<br/>UNDELEGATE_AND_CLOSE_SHUTTLE_TO_OWNER
+    ET->>MG: commit_and_undelegate()<br/>schedule SETTLE_AND_CLOSE_SHUTTLE_INTENT
+    MG->>ET: SETTLE_AND_CLOSE_SHUTTLE_INTENT
     ET->>RP: Refund shuttle rents and close temporary shuttle accounts
 
     Note over MG,Q: Final delivery is a separate delayed path driven by queue automation.

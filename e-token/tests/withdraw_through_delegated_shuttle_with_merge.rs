@@ -354,7 +354,7 @@ async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_clean
 }
 
 #[tokio::test]
-async fn undelegate_withdraw_and_close_shuttle_ephemeral_ata_schedules_close_action() {
+async fn undelegate_and_close_shuttle_ephemeral_ata_schedules_close_action() {
     let magic_program =
         Pubkey::new_from_array(ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID.to_bytes());
     let magic_context = convert_magic_pubkey(MAGIC_CONTEXT_PUBKEY);
@@ -363,7 +363,7 @@ async fn undelegate_withdraw_and_close_shuttle_ephemeral_ata_schedules_close_act
     let owner = Keypair::new();
     let mint_kp = Keypair::new();
     let mint = mint_kp.pubkey();
-    let shuttle_id = 3_u32;
+    let shuttle_id = 4_u32;
     let (vault, _) = Pubkey::find_program_address(&[mint.as_ref()], &PROGRAM);
     let vault_ata = utils::derive_associated_token_address(vault, mint);
     let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
@@ -371,6 +371,7 @@ async fn undelegate_withdraw_and_close_shuttle_ephemeral_ata_schedules_close_act
         utils::derive_shuttle_ephemeral_ata(PROGRAM, owner.pubkey(), mint, shuttle_id);
     let (shuttle_eata, _) = utils::derive_shuttle_eata(PROGRAM, shuttle_metadata, mint);
     let shuttle_wallet_ata = utils::derive_associated_token_address(shuttle_metadata, mint);
+    let owner_destination_ata = utils::derive_associated_token_address(owner.pubkey(), mint);
 
     let mut shuttle_data = vec![0u8; ShuttleMetadata::LEN];
     let shuttle_state = load_mut::<ShuttleMetadata>(shuttle_data.as_mut_slice()).unwrap();
@@ -387,6 +388,16 @@ async fn undelegate_withdraw_and_close_shuttle_ephemeral_ata_schedules_close_act
     let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
     utils::add_associated_token_program(&mut pt);
     add_magic_program_mock(&mut pt, magic_program);
+    pt.add_account(
+        owner.pubkey(),
+        Account {
+            lamports: Rent::default().minimum_balance(0).max(1),
+            data: vec![],
+            owner: solana_system_interface::program::ID,
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
     pt.add_account(
         rent_pda,
         Account {
@@ -431,7 +442,7 @@ async fn undelegate_withdraw_and_close_shuttle_ephemeral_ata_schedules_close_act
     let mut context = pt.start_with_context().await;
     let payer = context.payer.pubkey();
 
-    let setup = utils::setup_mint_and_token_accounts(
+    utils::setup_mint_and_token_accounts(
         &mut context,
         payer,
         &mint_kp,
@@ -440,19 +451,20 @@ async fn undelegate_withdraw_and_close_shuttle_ephemeral_ata_schedules_close_act
         1,
     )
     .await;
-    let destination_ata = setup.user_tokens[0];
 
+    let ix_create_owner_destination =
+        associated_token_create_idempotent_ix(payer, owner_destination_ata, owner.pubkey(), mint);
     let ix_create_shuttle_wallet =
         associated_token_create_idempotent_ix(payer, shuttle_wallet_ata, shuttle_metadata, mint);
-    let tx_create_shuttle_wallet = Transaction::new_signed_with_payer(
-        &[ix_create_shuttle_wallet],
+    let tx_create_token_accounts = Transaction::new_signed_with_payer(
+        &[ix_create_owner_destination, ix_create_shuttle_wallet],
         Some(&payer),
         &[&context.payer],
         context.last_blockhash,
     );
     context
         .banks_client
-        .process_transaction(tx_create_shuttle_wallet)
+        .process_transaction(tx_create_token_accounts)
         .await
         .unwrap();
 
@@ -464,13 +476,12 @@ async fn undelegate_withdraw_and_close_shuttle_ephemeral_ata_schedules_close_act
             AccountMeta::new_readonly(shuttle_metadata, false),
             AccountMeta::new_readonly(shuttle_eata, false),
             AccountMeta::new(shuttle_wallet_ata, false),
-            AccountMeta::new(destination_ata, false),
-            AccountMeta::new_readonly(mint, false),
+            AccountMeta::new(owner_destination_ata, false),
             AccountMeta::new_readonly(spl_token_interface::ID, false),
             AccountMeta::new(magic_context, false),
             AccountMeta::new_readonly(magic_program, false),
         ],
-        data: vec![internal::UNDELEGATE_WITHDRAW_AND_CLOSE_SHUTTLE_EPHEMERAL_ATA],
+        data: vec![instruction::UNDELEGATE_AND_CLOSE_SHUTTLE_TO_OWNER],
     };
     let tx_undelegate = Transaction::new_signed_with_payer(
         &[ix_undelegate],
@@ -501,7 +512,7 @@ async fn undelegate_withdraw_and_close_shuttle_ephemeral_ata_schedules_close_act
     let close_action = &base_actions[0];
     assert_eq!(
         close_action.args.data,
-        vec![internal::CLOSE_SHUTTLE_ATA_INTENT, u8::MAX]
+        vec![internal::SETTLE_AND_CLOSE_SHUTTLE_INTENT, u8::MAX]
     );
     assert_eq!(close_action.accounts.len(), 9);
     assert_eq!(
@@ -510,7 +521,7 @@ async fn undelegate_withdraw_and_close_shuttle_ephemeral_ata_schedules_close_act
     );
     assert_eq!(
         close_action.accounts[4].pubkey.to_bytes(),
-        destination_ata.to_bytes()
+        owner_destination_ata.to_bytes()
     );
     assert_eq!(close_action.accounts[5].pubkey.to_bytes(), mint.to_bytes());
     assert_eq!(close_action.accounts[6].pubkey.to_bytes(), vault.to_bytes());
