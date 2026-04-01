@@ -111,7 +111,15 @@ pub(crate) fn withdraw_ephemeral_ata_tokens(
     Ok(())
 }
 
-/// Instruction data for the `WithdrawSplTokens` instruction.
+///
+/// DataLayout:
+///
+///     00..08 : amount (u64)
+///
+/// ValidLength:
+///
+///     08
+///
 pub struct WithdrawArgs<'a> {
     raw: *const u8,
     _data: PhantomData<&'a [u8]>,

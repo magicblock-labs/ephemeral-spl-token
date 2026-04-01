@@ -70,6 +70,13 @@ pub fn process_delegate_transfer_queue(
     };
     let seeds: &[&[u8]] = &[QUEUE_SEED, mint_info.address().as_ref(), validator.as_ref()];
 
+    // CHECKPOINT (security): initialize_transfer_queue creates a private ACL for
+    // queue_info, but this instruction does not take/check the permission account.
+    // It delegates via direct DelegateAccountCpiBuilder, so the queue ACL is not
+    // enforced on this path. So we should either remove the ACL, or consider routing Delegate ix
+    // through delegate_permission() ix on permission program, because without this and
+    // permissionless ensure_transfer_queue_crank, anyone can delegate queue and automated
+    // the crank execution).
     DelegateAccountCpiBuilder::new(
         payer_info,
         queue_info,

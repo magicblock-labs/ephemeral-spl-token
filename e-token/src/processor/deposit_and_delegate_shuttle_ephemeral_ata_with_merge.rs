@@ -89,6 +89,18 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge(
     )
 }
 
+///
+/// DataLayout:
+///
+///     00..04 : shuttle_id (u32)
+///     04..12 : amount (u64)
+///     12..44 : validator (optional [u8; 32])
+///
+/// ValidLength:
+///
+///     12 (without validator)
+///     44 (with validator)
+///
 pub struct DepositAndDelegateShuttleArgs<'a> {
     raw: *const u8,
     len: usize,
@@ -211,6 +223,7 @@ pub(crate) fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actio
         extra_setup_lamports,
     )?;
 
+    // CHECKPOINT: this silent no-op may hide caller-side setup issues during debugging.
     if prepared.already_delegated {
         return Ok(());
     }
@@ -317,6 +330,8 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
     ];
     let rent_signer = Signer::from(&rent_signer_seed);
 
+    // CHECKPOINT: which argument is to be initialized? reorder such that it's always the
+    // first argument.
     initialize_shuttle_ephemeral_ata_with_sponsor(
         rent_pda_info,
         Some(rent_signer),
@@ -522,10 +537,14 @@ pub(crate) fn delegate_account_with_actions_from_sponsor(
     actions: PostDelegationActions,
     action_signer_accounts: &[&AccountView],
 ) -> ProgramResult {
+    if !address_eq(system_program.address(), &pinocchio_system::ID) {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+
     let pda_key_bytes = pda_acc.address().as_array();
     let (_, buffer_pda_bump) = ephemeral_spl_api::Address::find_program_address(
         &[BUFFER, pda_key_bytes.as_ref()],
-        owner_program.address(),
+        owner_program.address(), // which must be same as crate::ID
     );
 
     let buffer_bump_slice = [buffer_pda_bump];
@@ -538,6 +557,11 @@ pub(crate) fn delegate_account_with_actions_from_sponsor(
 
     let data_len = pda_acc.data_len();
 
+    // CreateAccount indirectly validates two arguments:
+    // - buffer_acc: the instruction requires `to: buffer_acc` to be a signer, so invoking it with
+    //   buffer_signer implicitly proves buffer_acc matches the PDA derived above.
+    // - owner_program: buffer_acc is derived with owner_program (as program_id), which implicitly
+    //   proves owner_program == crate::ID else the CPI will fail.
     CreateAccount {
         from: sponsor_info,
         to: buffer_acc,

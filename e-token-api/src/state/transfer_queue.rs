@@ -21,7 +21,7 @@ pub struct TransferQueueHeader {
     pub mint: Address,
     pub length: u32,
     pub _pad1: [u8; 8],
-    pub next_task_id: u32,
+    pub next_task_id: u32, // CHECKPOINT: why do we have this field?
     pub crank_task_id: i64,
     pub validator: Address,
 }
@@ -120,6 +120,7 @@ impl QueuedTransfer {
     }
 }
 
+// TODO (snawaz): make these constant.
 #[inline(always)]
 pub const fn header_len() -> usize {
     core::mem::size_of::<TransferQueueHeader>()
@@ -326,6 +327,7 @@ pub fn queue_allocate_group_id_from_data(data: &mut [u8]) -> Result<u32, Program
 
 #[inline(always)]
 fn higher_priority(a: &QueuedTransfer, b: &QueuedTransfer) -> bool {
+    // TODO (snawaz): simplify it (and make it performant).
     if a.ready_at != b.ready_at {
         return a.ready_at < b.ready_at;
     }
@@ -359,6 +361,8 @@ fn effective_next_task_id(length: u32, next_task_id: u32) -> u32 {
 
 #[inline(always)]
 fn maybe_reset_next_task_id(header: &mut TransferQueueHeader) {
+    // CHECKPOINT: why do we have this function to begin with? it is practically noop
+    // as the condition will never be true.
     if header.length == 0 && header.next_task_id > (u32::MAX / 2) {
         header.next_task_id = 0;
     }
@@ -388,6 +392,7 @@ fn heap_push(
     length: &mut u32,
     transfer: QueuedTransfer,
 ) -> Result<(), ProgramError> {
+    // TODO (snawaz): simplify it (and make it performant avoiding the swap)
     let len = checked_active_len(*length, items.len())?;
     if len >= items.len() {
         return Err(ProgramError::AccountDataTooSmall);

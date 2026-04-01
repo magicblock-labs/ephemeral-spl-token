@@ -22,9 +22,8 @@ pub fn process_create_ephemeral_ata_permission(
     // 3. []         System program
     // 4. []         Permission program (ACL)
 
-    // Instruction data layout:
-    // [0] bump
-    // [1] MemberFlags bitfield encoded via MemberFlags::to_acl_flag_byte.
+    // Instruction data:
+    // [0] MemberFlags bitfield encoded via MemberFlags::to_acl_flag_byte.
     let args = CreateEphemeralAtaPermission::try_from_bytes(instruction_data)?;
 
     let [ephemeral_ata_info, permission_info, payer_info, system_program, permission_program, ..] =
@@ -88,6 +87,15 @@ pub fn process_create_ephemeral_ata_permission(
         .invoke()
 }
 
+///
+/// DataLayout:
+///
+///     00..01 : flag_byte (u8)
+///
+/// ValidLength:
+///
+///     >= 01
+///
 pub struct CreateEphemeralAtaPermission<'a> {
     raw: *const u8,
     _data: PhantomData<&'a [u8]>,

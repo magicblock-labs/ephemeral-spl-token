@@ -22,6 +22,9 @@ use pinocchio::{
 };
 use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
 
+///
+/// Executes on: BASE only.
+///
 #[inline(always)]
 pub fn process_execute_ready_queued_transfer(
     accounts: &[AccountView],
@@ -48,6 +51,8 @@ pub fn process_execute_ready_queued_transfer(
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
+    // Note that accounts [source_program, escrow_authority, escrow_signer] are appended by DLP's
+    // CallHandlerV2 instruction.
     if !address_eq(source_program.address(), &crate::ID) {
         return Err(ProgramError::IncorrectAuthority);
     }
@@ -140,6 +145,17 @@ pub(crate) fn validate_vault_for_mint(
     Ok(vault.bump)
 }
 
+///
+/// DataLayout:
+///
+///     00..01 : escrow_index (u8)
+///     01..09 : amount (u64)
+///     09..10 : flags (u8)
+///
+/// ValidLength:
+///
+///     10
+///
 pub struct ExecuteQueuedTransferArgs<'a> {
     raw: *const u8,
     len: usize,

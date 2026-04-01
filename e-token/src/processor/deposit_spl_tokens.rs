@@ -98,7 +98,15 @@ pub(crate) fn transfer_to_vault_for_mint(
     .invoke()
 }
 
-/// Instruction data for the `DepositSplTokens` instruction.
+///
+/// DataLayout:
+///
+///     00..08 : amount (u64)
+///
+/// ValidLength:
+///
+///     >= 08
+///
 pub struct DepositArgs<'a> {
     raw: *const u8,
     _data: PhantomData<&'a [u8]>,

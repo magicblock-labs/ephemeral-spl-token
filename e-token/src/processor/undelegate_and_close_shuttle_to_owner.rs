@@ -36,6 +36,13 @@ pub fn process_undelegate_and_close_shuttle_to_owner(
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
+    // CHECKPOINT:  unauthorized third-party cleanup/cancellation is possible.
+    //
+    // it is currently permissionless, means anyone (executor) could
+    // force undelegate-and-close shuttle of other users and force shuttle into refund/cleanup.
+    //
+    // should we consider executor == shuttle.owner or shuttle.payer etc?
+
     if !executor.is_signer() {
         return Err(ProgramError::MissingRequiredSignature);
     }
