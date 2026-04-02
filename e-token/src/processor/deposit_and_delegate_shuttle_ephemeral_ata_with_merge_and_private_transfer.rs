@@ -209,7 +209,9 @@ impl DepositAndDelegateShuttleWithPrivateTransferArgs<'_> {
         unsafe { self.read_vardata::<1>() }
     }
 
-    // decrypted { min_delay_ms: u64, max_delay_ms: 64, split: u32, flags: u8 } :: PACKED
+    // decrypted { min_delay_ms: u64, max_delay_ms: u64, split: u32, client_ref_id?: u64 } :: PACKED
+    // Legacy payloads may still append flags before client_ref_id; the inner
+    // DepositAndQueueTransfer parser keeps that layout for backward compatibility.
     #[inline]
     fn encrypted_data_suffix(&self) -> Result<&[u8], ProgramError> {
         unsafe { self.read_vardata::<2>() }

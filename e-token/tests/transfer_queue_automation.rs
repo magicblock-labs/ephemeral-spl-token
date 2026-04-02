@@ -29,7 +29,7 @@ use spl_token_interface::state::Account;
 
 use {
     solana_program_test::{processor, tokio, ProgramTest, ProgramTestContext},
-    solana_pubkey::Pubkey,
+    solana_pubkey::{pubkey, Pubkey},
     solana_signer::Signer,
     solana_transaction::Transaction,
 };
@@ -42,6 +42,7 @@ const DECIMALS: u8 = 6;
 const STARTING_BALANCE: u64 = 10_000 * 10u64.pow(DECIMALS as u32);
 const QUEUED_AMOUNT: u64 = 10;
 const EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX: u8 = 0;
+const MEMO_PROGRAM_ID: Pubkey = pubkey!("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
 const RENT_PDA_SEED: &[u8] = b"rent";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -448,11 +449,22 @@ async fn setup_fixture() -> Fixture {
 }
 
 async fn enqueue_transfer(fixture: &mut Fixture, min_delay_ms: u64) {
+    enqueue_transfer_with_client_ref_id(fixture, min_delay_ms, None).await;
+}
+
+async fn enqueue_transfer_with_client_ref_id(
+    fixture: &mut Fixture,
+    min_delay_ms: u64,
+    client_ref_id: Option<u64>,
+) {
     let mut data = vec![instruction::DEPOSIT_AND_QUEUE_TRANSFER];
     data.extend_from_slice(&QUEUED_AMOUNT.to_le_bytes());
     data.extend_from_slice(&min_delay_ms.to_le_bytes());
     data.extend_from_slice(&min_delay_ms.to_le_bytes());
     data.extend_from_slice(&1_u32.to_le_bytes());
+    if let Some(client_ref_id) = client_ref_id {
+        data.extend_from_slice(&client_ref_id.to_le_bytes());
+    }
 
     let ix = Instruction {
         program_id: PROGRAM,
@@ -1287,4 +1299,90 @@ async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
         token_amount(&mut fixture.context, fixture.destination_ata).await,
         0
     );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn recurring_queue_crank_adds_memo_action_when_client_ref_id_is_present() {
+    let _test_guard = test_lock().lock().unwrap();
+    let mut fixture = setup_fixture().await;
+    enqueue_transfer_with_client_ref_id(&mut fixture, 0, Some(42)).await;
+
+    let queue_before = queue_account(&mut fixture.context, fixture.queue).await;
+    let queued = read_item_unaligned(&queue_before.data, 0);
+    let expected_amount = queued.amount;
+
+    let blockhash = latest_blockhash(&mut fixture.context).await;
+    let tx = Transaction::new_signed_with_payer(
+        &[ensure_queue_crank_ix(&fixture)],
+        Some(&fixture.payer),
+        &[&fixture.context.payer],
+        blockhash,
+    );
+    fixture
+        .context
+        .banks_client
+        .process_transaction(tx)
+        .await
+        .unwrap();
+
+    let captured = take_captured_schedules(fixture.magic_program);
+    assert_eq!(captured.len(), 1);
+
+    let scheduled_ix = Instruction {
+        program_id: convert_magic_pubkey(captured[0].args.instructions[0].program_id),
+        accounts: captured[0].args.instructions[0]
+            .accounts
+            .iter()
+            .map(|meta| AccountMeta {
+                pubkey: convert_magic_pubkey(meta.pubkey),
+                is_signer: meta.is_signer,
+                is_writable: meta.is_writable,
+            })
+            .collect(),
+        data: captured[0].args.instructions[0].data.clone(),
+    };
+    let blockhash = latest_blockhash(&mut fixture.context).await;
+    let tx = Transaction::new_signed_with_payer(
+        &[scheduled_ix],
+        Some(&fixture.payer),
+        &[&fixture.context.payer],
+        blockhash,
+    );
+    fixture
+        .context
+        .banks_client
+        .process_transaction(tx)
+        .await
+        .unwrap();
+
+    let captured_bundles = peek_captured_intent_bundles(fixture.magic_program);
+    assert_eq!(captured_bundles.len(), 1);
+    assert_eq!(captured_bundles[0].args.standalone_actions.len(), 2);
+
+    let transfer_action = &captured_bundles[0].args.standalone_actions[0];
+    assert_eq!(
+        transfer_action.destination_program.to_bytes(),
+        PROGRAM.to_bytes()
+    );
+    let mut expected_action_data = vec![
+        internal::EXECUTE_READY_QUEUED_TRANSFER,
+        EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
+    ];
+    expected_action_data.extend_from_slice(&expected_amount.to_le_bytes());
+    expected_action_data.push(0);
+    assert_eq!(transfer_action.args.data, expected_action_data);
+
+    let memo_action = &captured_bundles[0].args.standalone_actions[1];
+    assert_eq!(
+        memo_action.destination_program.to_bytes(),
+        MEMO_PROGRAM_ID.to_bytes()
+    );
+    assert_eq!(memo_action.compute_units, 10_000);
+    assert_eq!(
+        captured_bundles[0].schedule_accounts[memo_action.escrow_authority as usize],
+        fixture.queue
+    );
+    assert_eq!(memo_action.args.escrow_index, 255);
+    assert_eq!(memo_action.args.data, b"42");
+    assert!(memo_action.accounts.is_empty());
 }

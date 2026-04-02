@@ -3,9 +3,11 @@ use core::{convert::TryFrom, marker::PhantomData};
 use crate::processor::deposit_spl_tokens::transfer_to_vault_for_mint;
 use crate::processor::utils::{read_mint_decimals, validate_token_account};
 use crate::{assert_associated_token_address, assert_owner, assert_signer};
+#[cfg(feature = "logging")]
+use ephemeral_spl_api::state::transfer_queue::queue_views_checked;
 use ephemeral_spl_api::state::transfer_queue::{
-    capacity_from_data_len, queue_len_for_mint_with_capacity, queue_push_from_data, QueuedTransfer,
-    QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA, QUEUE_SEED,
+    capacity_from_data_len, queue_allocate_group_id_from_data, queue_len_for_mint_with_capacity,
+    queue_push_from_data, QueuedTransfer, QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA, QUEUE_SEED,
 };
 use pinocchio::address::address_eq;
 use pinocchio::sysvars::clock::Clock;
@@ -90,7 +92,7 @@ pub fn process_deposit_and_queue_transfer(
     #[cfg(not(feature = "logging"))]
     let _ = (queue_len_before, queue_capacity);
 
-    let inserted_at = queue_timestamp_now()?;
+    let now_ms = queue_timestamp_now()?;
 
     transfer_to_vault_for_mint(
         vault_info,
@@ -121,9 +123,11 @@ pub fn process_deposit_and_queue_transfer(
         );
         *token.owner()
     };
+    let client_ref_id = args.client_ref_id().unwrap_or(0);
     let split_plan = build_split_plan(amount, split, decimals)?;
 
     let data = unsafe { queue_info.borrow_unchecked_mut() };
+    let group_id = queue_allocate_group_id_from_data(data)?;
     for index in 0..split {
         let queued_amount = split_plan.amount_for_index(index);
         let queue_position = queue_len_before
@@ -136,29 +140,43 @@ pub fn process_deposit_and_queue_transfer(
             &destination_owner,
         )?;
         let stored_delay = queue_delay_units_from_millis(selected_delay_ms)?;
-        let ready_at = inserted_at
+        let ready_at = now_ms
             .checked_add(stored_delay)
             .ok_or(ProgramError::InvalidInstructionData)?;
+        #[cfg(feature = "logging")]
+        let queued_task_id = {
+            let (header, _) = queue_views_checked(data)?;
+            if header.length == 0 && header.next_task_id > (u32::MAX / 2) {
+                1
+            } else if header.next_task_id == 0 {
+                1
+            } else {
+                header.next_task_id
+            }
+        };
 
-        queue_push_from_data(
-            data,
-            QueuedTransfer {
-                source,
-                destination_owner,
-                amount: queued_amount,
-                ready_at,
-                inserted_at,
-                task_id: 0,
-                flags: args.flags(),
-                _pad0: [0; 3],
-            },
-        )?;
+        let mut queued_transfer = QueuedTransfer {
+            source,
+            destination_owner,
+            amount: queued_amount,
+            ready_at,
+            client_ref_id,
+            task_id: 0,
+            flags: args.flags(),
+            _pad0: [0; 3],
+        };
+        queued_transfer.set_group_id(group_id)?;
+
+        queue_push_from_data(data, queued_transfer)?;
 
         #[cfg(feature = "logging")]
         pinocchio_log::log!(
-            "DepositAndQueueTransfer split {}/{} amount: {} delay_ms: {} ready_at: {}",
+            "DepositAndQueueTransfer split {}/{} group_id: {} task_id: {} client_ref_id: {} amount: {} delay_ms: {} ready_at: {}",
             index + 1,
             split,
+            group_id,
+            queued_task_id,
+            client_ref_id,
             queued_amount,
             selected_delay_ms,
             ready_at
@@ -187,15 +205,23 @@ pub struct DepositAndQueueTransferArgs<'a> {
 impl DepositAndQueueTransferArgs<'_> {
     const LEN: usize = 28;
     const LEN_WITH_FLAGS: usize = 29;
+    const LEN_WITH_CLIENT_REF_ID: usize = 36;
+    const LEN_WITH_FLAGS_AND_CLIENT_REF_ID: usize = 37;
 
     #[inline]
     pub fn try_from_bytes(bytes: &[u8]) -> Result<DepositAndQueueTransferArgs<'_>, ProgramError> {
-        if bytes.len() != Self::LEN && bytes.len() != Self::LEN_WITH_FLAGS {
+        if bytes.len() != Self::LEN
+            && bytes.len() != Self::LEN_WITH_FLAGS
+            && bytes.len() != Self::LEN_WITH_CLIENT_REF_ID
+            && bytes.len() != Self::LEN_WITH_FLAGS_AND_CLIENT_REF_ID
+        {
             return Err(ProgramError::InvalidInstructionData);
         }
 
-        if bytes.len() == Self::LEN_WITH_FLAGS
-            && (bytes[Self::LEN] & !QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA) != 0
+        if matches!(
+            bytes.len(),
+            Self::LEN_WITH_FLAGS | Self::LEN_WITH_FLAGS_AND_CLIENT_REF_ID
+        ) && (bytes[Self::LEN] & !QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA) != 0
         {
             return Err(ProgramError::InvalidInstructionData);
         }
@@ -233,10 +259,24 @@ impl DepositAndQueueTransferArgs<'_> {
 
     #[inline]
     pub fn flags(&self) -> u8 {
-        if self.len == Self::LEN {
-            0
-        } else {
+        // TODO: Remove legacy flags parsing once all writers emit the
+        // client_ref_id suffix layout without flags.
+        if matches!(
+            self.len,
+            Self::LEN_WITH_FLAGS | Self::LEN_WITH_FLAGS_AND_CLIENT_REF_ID
+        ) {
             unsafe { *self.raw.add(Self::LEN) }
+        } else {
+            0
+        }
+    }
+
+    #[inline]
+    pub fn client_ref_id(&self) -> Option<u64> {
+        match self.len {
+            Self::LEN_WITH_CLIENT_REF_ID => Some(self.read_u64(Self::LEN)),
+            Self::LEN_WITH_FLAGS_AND_CLIENT_REF_ID => Some(self.read_u64(Self::LEN_WITH_FLAGS)),
+            _ => None,
         }
     }
 
@@ -440,4 +480,41 @@ fn hash_delay_seed(destination: &ephemeral_spl_api::Address, queue_position: u64
     hash ^= queue_position;
     hash = hash.wrapping_mul(0x100_0000_01b3);
     hash ^ (hash >> 32)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn valid_base_bytes() -> [u8; DepositAndQueueTransferArgs::LEN] {
+        let mut bytes = [0u8; DepositAndQueueTransferArgs::LEN];
+        bytes[..8].copy_from_slice(&1_u64.to_le_bytes());
+        bytes[8..16].copy_from_slice(&2_u64.to_le_bytes());
+        bytes[16..24].copy_from_slice(&3_u64.to_le_bytes());
+        bytes[24..28].copy_from_slice(&1_u32.to_le_bytes());
+        bytes
+    }
+
+    #[test]
+    fn deposit_and_queue_transfer_args_accept_client_ref_id_without_flags() {
+        let mut bytes = [0u8; DepositAndQueueTransferArgs::LEN_WITH_CLIENT_REF_ID];
+        bytes[..DepositAndQueueTransferArgs::LEN].copy_from_slice(&valid_base_bytes());
+        bytes[DepositAndQueueTransferArgs::LEN..].copy_from_slice(&42_u64.to_le_bytes());
+
+        let args = DepositAndQueueTransferArgs::try_from_bytes(&bytes).unwrap();
+        assert_eq!(args.flags(), 0);
+        assert_eq!(args.client_ref_id(), Some(42));
+    }
+
+    #[test]
+    fn deposit_and_queue_transfer_args_accept_legacy_flags_before_client_ref_id() {
+        let mut bytes = [0u8; DepositAndQueueTransferArgs::LEN_WITH_FLAGS_AND_CLIENT_REF_ID];
+        bytes[..DepositAndQueueTransferArgs::LEN].copy_from_slice(&valid_base_bytes());
+        bytes[DepositAndQueueTransferArgs::LEN] = QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA;
+        bytes[DepositAndQueueTransferArgs::LEN_WITH_FLAGS..].copy_from_slice(&77_u64.to_le_bytes());
+
+        let args = DepositAndQueueTransferArgs::try_from_bytes(&bytes).unwrap();
+        assert_eq!(args.flags(), QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA);
+        assert_eq!(args.client_ref_id(), Some(77));
+    }
 }

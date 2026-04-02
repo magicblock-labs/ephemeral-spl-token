@@ -158,11 +158,37 @@ fn build_deposit_and_queue_ix(
     max_delay_ms: u64,
     split: u32,
 ) -> Instruction {
+    build_deposit_and_queue_ix_with_options(
+        fixture,
+        amount,
+        min_delay_ms,
+        max_delay_ms,
+        split,
+        None,
+        None,
+    )
+}
+
+fn build_deposit_and_queue_ix_with_options(
+    fixture: &Fixture,
+    amount: u64,
+    min_delay_ms: u64,
+    max_delay_ms: u64,
+    split: u32,
+    flags: Option<u8>,
+    client_ref_id: Option<u64>,
+) -> Instruction {
     let mut data = vec![instruction::DEPOSIT_AND_QUEUE_TRANSFER];
     data.extend_from_slice(&amount.to_le_bytes());
     data.extend_from_slice(&min_delay_ms.to_le_bytes());
     data.extend_from_slice(&max_delay_ms.to_le_bytes());
     data.extend_from_slice(&split.to_le_bytes());
+    if let Some(flags) = flags {
+        data.push(flags);
+    }
+    if let Some(client_ref_id) = client_ref_id {
+        data.extend_from_slice(&client_ref_id.to_le_bytes());
+    }
 
     Instruction {
         program_id: PROGRAM,
@@ -309,6 +335,8 @@ async fn deposit_and_queue_transfer_transfers_once_and_enqueues_split_items() {
     assert_eq!(header.length, split);
 
     let mut queued_amounts = [0u64; 3];
+    let mut shared_group_id = None;
+    let mut shared_client_ref_id = None;
     for (index, queued_amount) in queued_amounts.iter_mut().enumerate().take(split as usize) {
         let queued = read_item_unaligned(&queue_account.data, index);
         *queued_amount = queued.amount;
@@ -317,14 +345,124 @@ async fn deposit_and_queue_transfer_transfers_once_and_enqueues_split_items() {
             queued.destination_owner.as_array(),
             &fixture.payer.to_bytes()
         );
+        let group_id = queued.group_id();
+        assert!(group_id != 0);
+        if let Some(expected_group_id) = shared_group_id {
+            assert_eq!(group_id, expected_group_id);
+        } else {
+            shared_group_id = Some(group_id);
+        }
+        let implied_now_ms = (queued.ready_at - min_delay_ms as i64) as u64;
+        let client_ref_id = queued.client_ref_id;
+        assert_eq!(client_ref_id, 0);
+        if let Some(expected_client_ref_id) = shared_client_ref_id {
+            assert_eq!(client_ref_id, expected_client_ref_id);
+        } else {
+            shared_client_ref_id = Some(client_ref_id);
+        }
         assert_eq!(queued.flags, 0);
-        assert_eq!(queued.ready_at - queued.inserted_at, min_delay_ms as i64);
-        assert!(queued.inserted_at >= clock_before.unix_timestamp * 1_000);
-        assert!(queued.inserted_at <= clock_after.unix_timestamp * 1_000);
+        assert!(implied_now_ms >= (clock_before.unix_timestamp * 1_000) as u64);
+        assert!(implied_now_ms <= (clock_after.unix_timestamp * 1_000) as u64);
     }
 
     queued_amounts.sort_unstable();
     assert_eq!(queued_amounts, [3, 3, 4]);
+}
+
+#[tokio::test]
+async fn deposit_and_queue_transfer_assigns_distinct_group_ids_per_enqueue() {
+    let fixture = setup_fixture(None).await;
+    let first_ix = build_deposit_and_queue_ix(&fixture, 10, 0, 0, 2);
+    let second_ix = build_deposit_and_queue_ix(&fixture, 12, 0, 0, 3);
+
+    for ix in [first_ix, second_ix] {
+        let blockhash = fixture
+            .context
+            .banks_client
+            .get_latest_blockhash()
+            .await
+            .unwrap();
+        let tx = Transaction::new_signed_with_payer(
+            &[ix],
+            Some(&fixture.payer),
+            &[&fixture.context.payer],
+            blockhash,
+        );
+        fixture
+            .context
+            .banks_client
+            .process_transaction(tx)
+            .await
+            .unwrap();
+    }
+
+    let queue_account = fixture
+        .context
+        .banks_client
+        .get_account(fixture.queue)
+        .await
+        .unwrap()
+        .expect("queue account must exist");
+    let header = read_header_unaligned(&queue_account.data);
+    assert_eq!(header.length, 5);
+
+    let mut group_ids = (0..header.length as usize)
+        .map(|index| read_item_unaligned(&queue_account.data, index).group_id())
+        .collect::<Vec<_>>();
+    group_ids.sort_unstable();
+    assert!(group_ids[0] != 0);
+    assert_eq!(group_ids[0], group_ids[1]);
+    assert_eq!(group_ids[2], group_ids[3]);
+    assert_eq!(group_ids[3], group_ids[4]);
+    assert!(group_ids[1] != group_ids[2]);
+}
+
+#[tokio::test]
+async fn deposit_and_queue_transfer_uses_explicit_client_ref_id_for_all_splits() {
+    let fixture = setup_fixture(None).await;
+    let client_ref_id = 0x1234_5678_9abc_def0_u64;
+    let split = 3;
+    let ix = build_deposit_and_queue_ix_with_options(
+        &fixture,
+        12,
+        0,
+        0,
+        split,
+        None,
+        Some(client_ref_id),
+    );
+    let blockhash = fixture
+        .context
+        .banks_client
+        .get_latest_blockhash()
+        .await
+        .unwrap();
+
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&fixture.payer),
+        &[&fixture.context.payer],
+        blockhash,
+    );
+    fixture
+        .context
+        .banks_client
+        .process_transaction(tx)
+        .await
+        .unwrap();
+
+    let queue_account = fixture
+        .context
+        .banks_client
+        .get_account(fixture.queue)
+        .await
+        .unwrap()
+        .expect("queue account must exist");
+
+    for index in 0..split as usize {
+        let queued = read_item_unaligned(&queue_account.data, index);
+        assert_eq!(queued.client_ref_id, client_ref_id);
+    }
 }
 
 #[tokio::test]
@@ -484,22 +622,22 @@ async fn deposit_and_queue_transfer_uses_deterministic_split_delays_within_range
         .unwrap()
         .expect("queue account must exist");
 
-    let mut actual_delays = Vec::new();
+    let mut actual_ready_ats = Vec::new();
     for index in 0..split as usize {
         let queued = read_item_unaligned(&queue_account.data, index);
-        let delay_ms = (queued.ready_at - queued.inserted_at) as u64;
-        assert!(delay_ms >= min_delay_ms);
-        assert!(delay_ms <= max_delay_ms);
-        actual_delays.push(delay_ms);
+        actual_ready_ats.push(queued.ready_at);
     }
 
     let mut expected_delays = (0..split as usize)
         .map(|index| expected_split_delay_ms(&fixture.payer, index, min_delay_ms, max_delay_ms))
         .collect::<Vec<_>>();
 
-    actual_delays.sort_unstable();
+    actual_ready_ats.sort_unstable();
     expected_delays.sort_unstable();
-    assert_eq!(actual_delays, expected_delays);
+    let implied_now_ms = actual_ready_ats[0] - expected_delays[0] as i64;
+    for (ready_at, expected_delay_ms) in actual_ready_ats.iter().zip(expected_delays.iter()) {
+        assert_eq!(*ready_at - *expected_delay_ms as i64, implied_now_ms);
+    }
 }
 
 #[tokio::test]

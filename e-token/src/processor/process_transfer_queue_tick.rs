@@ -1,3 +1,5 @@
+use alloc::string::ToString;
+
 use dlp_api::pda::magic_fee_vault_pda_from_validator;
 use ephemeral_rollups_pinocchio::intent_bundle::{
     ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
@@ -12,13 +14,17 @@ use pinocchio::sysvars::clock::Clock;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
+use solana_pubkey::pubkey;
 
 use crate::processor::rent_pda::RENT_PDA;
 pub(crate) const EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX: u8 = 0;
 
 const ASSOCIATED_TOKEN_PROGRAM_ID: ephemeral_spl_api::Address =
     pinocchio_associated_token_account::ID;
+const MEMO_PROGRAM_ID: solana_pubkey::Pubkey =
+    pubkey!("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
 const EXECUTE_READY_QUEUED_TRANSFER_COMPUTE_UNITS: u32 = 140_000;
+const MEMO_COMPUTE_UNITS: u32 = 10_000;
 const MAGIC_INTENT_BUNDLE_DATA_LEN: usize = 512;
 const MILLIS_PER_SECOND: i64 = 1_000;
 
@@ -89,7 +95,6 @@ pub fn process_transfer_queue_tick(
 
         (mint, queue_bump, queue_len, next, header.validator)
     };
-    #[cfg(not(feature = "logging"))]
     let _ = queue_len;
 
     let (vault, _) =
@@ -140,14 +145,6 @@ pub fn process_transfer_queue_tick(
             is_writable: false,
         },
     ];
-    let standalone_actions = [CallHandler {
-        destination_program: ephemeral_spl_api::program::id_address(),
-        escrow_authority: queue_info.clone(),
-        args: ActionArgs::new(&execute_data)
-            .with_escrow_index(EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX),
-        compute_units: EXECUTE_READY_QUEUED_TRANSFER_COMPUTE_UNITS,
-        accounts: &execute_accounts,
-    }];
     let mut intent_bundle_data = [0_u8; MAGIC_INTENT_BUNDLE_DATA_LEN];
     let queue_bump_seed = [queue_bump];
     let signer_seeds = [
@@ -162,13 +159,51 @@ pub fn process_transfer_queue_tick(
         return Err(ProgramError::InvalidSeeds);
     }
 
+    let memo_accounts: [ShortAccountMeta; 0] = [];
+    let memo_data =
+        (queued_transfer.client_ref_id != 0).then(|| queued_transfer.client_ref_id.to_string());
+    let transfer_only;
+    let transfer_with_memo;
+    let standalone_actions = if let Some(memo_data) = memo_data.as_ref() {
+        transfer_with_memo = [
+            CallHandler {
+                destination_program: ephemeral_spl_api::program::id_address(),
+                escrow_authority: queue_info.clone(),
+                args: ActionArgs::new(&execute_data)
+                    .with_escrow_index(EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX),
+                compute_units: EXECUTE_READY_QUEUED_TRANSFER_COMPUTE_UNITS,
+                accounts: &execute_accounts,
+            },
+            CallHandler {
+                destination_program: ephemeral_spl_api::Address::new_from_array(
+                    MEMO_PROGRAM_ID.to_bytes(),
+                ),
+                escrow_authority: queue_info.clone(),
+                args: ActionArgs::new(memo_data.as_bytes()),
+                compute_units: MEMO_COMPUTE_UNITS,
+                accounts: &memo_accounts,
+            },
+        ];
+        &transfer_with_memo[..]
+    } else {
+        transfer_only = [CallHandler {
+            destination_program: ephemeral_spl_api::program::id_address(),
+            escrow_authority: queue_info.clone(),
+            args: ActionArgs::new(&execute_data)
+                .with_escrow_index(EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX),
+            compute_units: EXECUTE_READY_QUEUED_TRANSFER_COMPUTE_UNITS,
+            accounts: &execute_accounts,
+        }];
+        &transfer_only[..]
+    };
+
     MagicIntentBundleBuilder::new(
         queue_info.clone(),
         magic_context_info.clone(),
         magic_program_info.clone(),
     )
     .magic_fee_vault(magic_fee_vault_info.clone())
-    .set_standalone_actions(&standalone_actions)
+    .set_standalone_actions(standalone_actions)
     .build_and_invoke_signed(&mut intent_bundle_data, &[signer])?;
 
     let data = unsafe { queue_info.borrow_unchecked_mut() };
@@ -178,10 +213,19 @@ pub fn process_transfer_queue_tick(
     }
 
     #[cfg(feature = "logging")]
-    pinocchio_log::log!(
-        "ProcessTransferQueueTick queue length after pop: {}",
-        queue_len - 1
-    );
+    {
+        let sender = popped_transfer.source.to_string();
+        let receiver = popped_transfer.destination_owner.to_string();
+        pinocchio_log::log!(
+            "ProcessTransferQueueTick group_id: {} task_id: {} client_ref_id: {} sender: {} receiver: {} amount: {}",
+            popped_transfer.group_id(),
+            popped_transfer.task_id,
+            popped_transfer.client_ref_id,
+            sender.as_str(),
+            receiver.as_str(),
+            popped_transfer.amount
+        );
+    }
 
     Ok(())
 }
