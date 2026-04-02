@@ -4,7 +4,7 @@ use crate::processor::deposit_spl_tokens::transfer_to_vault_for_mint;
 use crate::processor::utils::{read_mint_decimals, validate_token_account};
 use crate::{assert_associated_token_address, assert_owner, assert_signer};
 #[cfg(feature = "logging")]
-use ephemeral_spl_api::state::transfer_queue::queue_views_checked;
+use ephemeral_spl_api::state::transfer_queue::queue_peek_next_task_id_from_data;
 use ephemeral_spl_api::state::transfer_queue::{
     capacity_from_data_len, queue_allocate_group_id_from_data, queue_len_for_mint_with_capacity,
     queue_push_from_data, QueuedTransfer, QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA, QUEUE_SEED,
@@ -28,13 +28,13 @@ pub fn process_deposit_and_queue_transfer(
     // 2. []                    Mint account
     // 3. [writable]            User source token account
     // 4. [writable]            Vault destination token account
-    // 5. []                    Destination token account (default) or destination owner (flagged)
+    // 5. []                    Destination owner (preferred) or legacy destination ATA
     // 6. [signer]              Sender authority
     // 7. []                    Token program
     // 8. [writable]            Reimbursement token account
     let args = DepositAndQueueTransferArgs::try_from_bytes(instruction_data)?;
 
-    let [queue_info, vault_info, mint_info, user_source_token_acc, vault_token_acc, destination_token_acc, user_authority, token_program_info, reimbursement_token_info, ..] =
+    let [queue_info, vault_info, mint_info, user_source_token_acc, vault_token_acc, destination_info, user_authority, token_program_info, reimbursement_token_info, ..] =
         accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
@@ -106,22 +106,27 @@ pub fn process_deposit_and_queue_transfer(
     )?;
 
     let source = *user_authority.address();
-    let destination_owner = if args.should_create_destination_ata_idempotent() {
-        *destination_token_acc.address()
-    } else {
-        let token = validate_token_account(
-            destination_token_acc,
+    let destination_owner = if address_eq(
+        unsafe { destination_info.owner() },
+        token_program_info.address(),
+    ) {
+        // TODO: Remove legacy destination-ATA compatibility once SDKs have migrated
+        // to passing destination owner on account 5.
+        let destination_token = validate_token_account(
+            destination_info,
             mint_info.address(),
             None,
             Some(token_program_info.address()),
         )?;
         assert_associated_token_address!(
-            destination_token_acc.address(),
+            destination_info.address(),
             mint_info.address(),
-            token.owner(),
+            destination_token.owner(),
             token_program_info.address()
         );
-        *token.owner()
+        *destination_token.owner()
+    } else {
+        *destination_info.address()
     };
     let client_ref_id = args.client_ref_id().unwrap_or(0);
     let split_plan = build_split_plan(amount, split, decimals)?;
@@ -144,16 +149,7 @@ pub fn process_deposit_and_queue_transfer(
             .checked_add(stored_delay)
             .ok_or(ProgramError::InvalidInstructionData)?;
         #[cfg(feature = "logging")]
-        let queued_task_id = {
-            let (header, _) = queue_views_checked(data)?;
-            if header.length == 0 && header.next_task_id > (u32::MAX / 2) {
-                1
-            } else if header.next_task_id == 0 {
-                1
-            } else {
-                header.next_task_id
-            }
-        };
+        let queued_task_id = queue_peek_next_task_id_from_data(data)?;
 
         let mut queued_transfer = QueuedTransfer {
             source,
@@ -162,7 +158,7 @@ pub fn process_deposit_and_queue_transfer(
             ready_at,
             client_ref_id,
             task_id: 0,
-            flags: args.flags(),
+            flags: args.flags() | QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
             _pad0: [0; 3],
         };
         queued_transfer.set_group_id(group_id)?;
@@ -278,11 +274,6 @@ impl DepositAndQueueTransferArgs<'_> {
             Self::LEN_WITH_FLAGS_AND_CLIENT_REF_ID => Some(self.read_u64(Self::LEN_WITH_FLAGS)),
             _ => None,
         }
-    }
-
-    #[inline]
-    pub fn should_create_destination_ata_idempotent(&self) -> bool {
-        self.flags() & QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA != 0
     }
 
     #[inline]

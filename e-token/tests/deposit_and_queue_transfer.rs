@@ -178,6 +178,28 @@ fn build_deposit_and_queue_ix_with_options(
     flags: Option<u8>,
     client_ref_id: Option<u64>,
 ) -> Instruction {
+    build_deposit_and_queue_ix_for_destination(
+        fixture,
+        fixture.payer,
+        amount,
+        min_delay_ms,
+        max_delay_ms,
+        split,
+        flags,
+        client_ref_id,
+    )
+}
+
+fn build_deposit_and_queue_ix_for_destination(
+    fixture: &Fixture,
+    destination: Pubkey,
+    amount: u64,
+    min_delay_ms: u64,
+    max_delay_ms: u64,
+    split: u32,
+    flags: Option<u8>,
+    client_ref_id: Option<u64>,
+) -> Instruction {
     let mut data = vec![instruction::DEPOSIT_AND_QUEUE_TRANSFER];
     data.extend_from_slice(&amount.to_le_bytes());
     data.extend_from_slice(&min_delay_ms.to_le_bytes());
@@ -198,7 +220,7 @@ fn build_deposit_and_queue_ix_with_options(
             AccountMeta::new_readonly(fixture.mint, false),
             AccountMeta::new(fixture.user_source_ata, false),
             AccountMeta::new(fixture.vault_ata, false),
-            AccountMeta::new_readonly(fixture.destination_ata, false),
+            AccountMeta::new_readonly(destination, false),
             AccountMeta::new_readonly(fixture.payer, true),
             AccountMeta::new_readonly(spl_token_interface::ID, false),
             AccountMeta::new_readonly(PROGRAM, false),
@@ -360,7 +382,10 @@ async fn deposit_and_queue_transfer_transfers_once_and_enqueues_split_items() {
         } else {
             shared_client_ref_id = Some(client_ref_id);
         }
-        assert_eq!(queued.flags, 0);
+        assert_eq!(
+            queued.flags,
+            ephemeral_spl_api::state::transfer_queue::QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA
+        );
         assert!(implied_now_ms >= (clock_before.unix_timestamp * 1_000) as u64);
         assert!(implied_now_ms <= (clock_after.unix_timestamp * 1_000) as u64);
     }
@@ -463,6 +488,58 @@ async fn deposit_and_queue_transfer_uses_explicit_client_ref_id_for_all_splits()
         let queued = read_item_unaligned(&queue_account.data, index);
         assert_eq!(queued.client_ref_id, client_ref_id);
     }
+}
+
+#[tokio::test]
+async fn deposit_and_queue_transfer_accepts_legacy_destination_ata() {
+    let fixture = setup_fixture(None).await;
+    let ix = build_deposit_and_queue_ix_for_destination(
+        &fixture,
+        fixture.destination_ata,
+        10,
+        0,
+        0,
+        1,
+        None,
+        None,
+    );
+    let blockhash = fixture
+        .context
+        .banks_client
+        .get_latest_blockhash()
+        .await
+        .unwrap();
+
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&fixture.payer),
+        &[&fixture.context.payer],
+        blockhash,
+    );
+    fixture
+        .context
+        .banks_client
+        .process_transaction(tx)
+        .await
+        .unwrap();
+
+    let queue_account = fixture
+        .context
+        .banks_client
+        .get_account(fixture.queue)
+        .await
+        .unwrap()
+        .expect("queue account must exist");
+    let queued = read_item_unaligned(&queue_account.data, 0);
+
+    assert_eq!(
+        queued.destination_owner.as_array(),
+        &fixture.payer.to_bytes()
+    );
+    assert_eq!(
+        queued.flags,
+        ephemeral_spl_api::state::transfer_queue::QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA
+    );
 }
 
 #[tokio::test]
@@ -785,7 +862,7 @@ async fn deposit_and_queue_transfer_return_to_shuttle() {
                 AccountMeta::new_readonly(fixture.mint, false),
                 AccountMeta::new(fixture.user_source_ata, false),
                 AccountMeta::new(fixture.vault_ata, false),
-                AccountMeta::new_readonly(fixture.destination_ata, false),
+                AccountMeta::new_readonly(fixture.payer, false),
                 AccountMeta::new_readonly(fixture.payer, true),
                 AccountMeta::new_readonly(spl_token_interface::ID, false),
                 AccountMeta::new(shuttle_wallet_ata, false),

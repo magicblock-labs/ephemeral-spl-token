@@ -291,6 +291,17 @@ fn higher_priority(a: &QueuedTransfer, b: &QueuedTransfer) -> bool {
 }
 
 #[inline(always)]
+fn effective_next_task_id(length: u32, next_task_id: u32) -> u32 {
+    let next_task_id = if length == 0 && next_task_id > (u32::MAX / 2) {
+        0
+    } else {
+        next_task_id
+    };
+
+    if next_task_id == 0 { 1 } else { next_task_id }
+}
+
+#[inline(always)]
 fn maybe_reset_next_task_id(header: &mut TransferQueueHeader) {
     if header.length == 0 && header.next_task_id > (u32::MAX / 2) {
         header.next_task_id = 0;
@@ -400,11 +411,7 @@ pub fn queue_push_from_data(
         return Err(ProgramError::AccountDataTooSmall);
     }
 
-    let task_id = if header.next_task_id == 0 {
-        1
-    } else {
-        header.next_task_id
-    };
+    let task_id = effective_next_task_id(header.length, header.next_task_id);
     transfer.task_id = task_id;
 
     heap_push(items, &mut header.length, transfer)?;
@@ -412,6 +419,12 @@ pub fn queue_push_from_data(
         .checked_add(1)
         .ok_or(ProgramError::InvalidArgument)?;
     Ok(())
+}
+
+/// Peek the effective next task id that would be assigned by `queue_push_from_data`.
+pub fn queue_peek_next_task_id_from_data(data: &[u8]) -> Result<u32, ProgramError> {
+    let (header, _) = queue_views_checked(data)?;
+    Ok(effective_next_task_id(header.length, header.next_task_id))
 }
 
 /// Peek the next transfer from the queue account.
@@ -592,6 +605,20 @@ mod tests {
         let (header, items) = queue_views_checked(data).unwrap();
         assert_eq!(header.next_task_id, 2);
         assert_eq!(items[0].task_id, 1);
+    }
+
+    #[test]
+    fn queue_peek_next_task_id_applies_reset_rules() {
+        let data_len = header_len() + item_len();
+        let words = data_len.div_ceil(8);
+        let mut aligned = std::vec![0u64; words];
+        let data = &mut bytemuck::cast_slice_mut::<u64, u8>(&mut aligned)[..data_len];
+
+        init_queue(data, 1, addr(7), addr(10)).unwrap();
+        let (header, _) = queue_views_mut_checked(data).unwrap();
+        header.next_task_id = (u32::MAX / 2) + 1;
+
+        assert_eq!(queue_peek_next_task_id_from_data(data).unwrap(), 1);
     }
 
     #[test]

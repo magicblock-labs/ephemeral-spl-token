@@ -474,7 +474,7 @@ async fn enqueue_transfer_with_client_ref_id(
             AccountMeta::new_readonly(fixture.mint, false),
             AccountMeta::new(fixture.source_ata, false),
             AccountMeta::new(fixture.vault_ata, false),
-            AccountMeta::new_readonly(fixture.destination_ata, false),
+            AccountMeta::new_readonly(fixture.payer, false),
             AccountMeta::new_readonly(fixture.payer, true),
             AccountMeta::new_readonly(spl_token_interface::ID, false),
             AccountMeta::new_readonly(PROGRAM, false),
@@ -1228,7 +1228,8 @@ async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
         EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
     ];
     expected_action_data.extend_from_slice(&expected_amount.to_le_bytes());
-    expected_action_data.push(0);
+    expected_action_data
+        .push(ephemeral_spl_api::state::transfer_queue::QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA);
     assert_eq!(standalone_action.args.data, expected_action_data);
     assert_eq!(standalone_action.accounts.len(), 9);
     let rent_pda = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM).0;
@@ -1369,7 +1370,8 @@ async fn recurring_queue_crank_adds_memo_action_when_client_ref_id_is_present() 
         EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
     ];
     expected_action_data.extend_from_slice(&expected_amount.to_le_bytes());
-    expected_action_data.push(0);
+    expected_action_data
+        .push(ephemeral_spl_api::state::transfer_queue::QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA);
     assert_eq!(transfer_action.args.data, expected_action_data);
 
     let memo_action = &captured_bundles[0].args.standalone_actions[1];
