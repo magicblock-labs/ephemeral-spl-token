@@ -1302,7 +1302,7 @@ async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn recurring_queue_crank_adds_memo_action_when_client_ref_id_is_present() {
+async fn recurring_queue_crank_includes_client_ref_id_in_execute_action_when_present() {
     let _test_guard = test_lock().lock().unwrap();
     let mut fixture = setup_fixture().await;
     enqueue_transfer_with_client_ref_id(&mut fixture, 0, Some(42)).await;
@@ -1357,7 +1357,7 @@ async fn recurring_queue_crank_adds_memo_action_when_client_ref_id_is_present() 
 
     let captured_bundles = peek_captured_intent_bundles(fixture.magic_program);
     assert_eq!(captured_bundles.len(), 1);
-    assert_eq!(captured_bundles[0].args.standalone_actions.len(), 2);
+    assert_eq!(captured_bundles[0].args.standalone_actions.len(), 1);
 
     let transfer_action = &captured_bundles[0].args.standalone_actions[0];
     assert_eq!(
@@ -1371,51 +1371,6 @@ async fn recurring_queue_crank_adds_memo_action_when_client_ref_id_is_present() 
     expected_action_data.extend_from_slice(&expected_amount.to_le_bytes());
     expected_action_data
         .push(ephemeral_spl_api::state::transfer_queue::QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA);
+    expected_action_data.extend_from_slice(&42_u64.to_le_bytes());
     assert_eq!(transfer_action.args.data, expected_action_data);
-
-    let memo_action = &captured_bundles[0].args.standalone_actions[1];
-    assert_eq!(
-        memo_action.destination_program.to_bytes(),
-        PROGRAM.to_bytes()
-    );
-    assert_eq!(memo_action.compute_units, 10_000);
-    assert_eq!(
-        captured_bundles[0].schedule_accounts[memo_action.escrow_authority as usize],
-        fixture.queue
-    );
-    assert_eq!(memo_action.args.escrow_index, 255);
-    let mut expected_memo_action_data = vec![internal::LOG_CLIENT_REF_ID];
-    expected_memo_action_data.extend_from_slice(&42_u64.to_le_bytes());
-    assert_eq!(memo_action.args.data, expected_memo_action_data);
-    assert!(memo_action.accounts.is_empty());
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn log_client_ref_id_internal_instruction_succeeds_with_extra_accounts() {
-    let _test_guard = test_lock().lock().unwrap();
-    let mut fixture = setup_fixture().await;
-
-    let mut data = vec![internal::LOG_CLIENT_REF_ID];
-    data.extend_from_slice(&42_u64.to_le_bytes());
-    let blockhash = latest_blockhash(&mut fixture.context).await;
-    let tx = Transaction::new_signed_with_payer(
-        &[Instruction {
-            program_id: PROGRAM,
-            accounts: vec![
-                AccountMeta::new_readonly(fixture.queue, false),
-                AccountMeta::new_readonly(fixture.magic_context, false),
-            ],
-            data,
-        }],
-        Some(&fixture.payer),
-        &[&fixture.context.payer],
-        blockhash,
-    );
-
-    fixture
-        .context
-        .banks_client
-        .process_transaction(tx)
-        .await
-        .unwrap();
 }

@@ -245,12 +245,6 @@ pub(crate) fn inner_process_instruction(
 
             process_transfer_lamports_pda(accounts, instruction_data)
         }
-        internal::LOG_CLIENT_REF_ID => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: LogClientRefId");
-
-            process_log_client_ref_id(accounts, instruction_data)
-        }
         internal::UNDELEGATE_LAMPORTS_PDA => {
             #[cfg(feature = "logging")]
             pinocchio_log::log!("Instruction: UndelegateLamportsPda");

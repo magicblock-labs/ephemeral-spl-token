@@ -6,7 +6,7 @@ use ephemeral_rollups_pinocchio::intent_bundle::{
     ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
 };
 use ephemeral_rollups_pinocchio::spl::consts::TOKEN_PROGRAM_ID;
-use ephemeral_spl_api::instruction::internal::{EXECUTE_READY_QUEUED_TRANSFER, LOG_CLIENT_REF_ID};
+use ephemeral_spl_api::instruction::internal::EXECUTE_READY_QUEUED_TRANSFER;
 use ephemeral_spl_api::state::transfer_queue::{
     queue_peek_from_data, queue_pop_from_data, queue_views_checked, QUEUE_SEED,
 };
@@ -22,7 +22,6 @@ pub(crate) const EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX: u8 = 0;
 const ASSOCIATED_TOKEN_PROGRAM_ID: ephemeral_spl_api::Address =
     pinocchio_associated_token_account::ID;
 const EXECUTE_READY_QUEUED_TRANSFER_COMPUTE_UNITS: u32 = 140_000;
-const LOG_CLIENT_REF_ID_COMPUTE_UNITS: u32 = 10_000;
 const MAGIC_INTENT_BUNDLE_DATA_LEN: usize = 512;
 const MILLIS_PER_SECOND: i64 = 1_000;
 
@@ -100,11 +99,17 @@ pub fn process_transfer_queue_tick(
     let vault_token_account = derive_associated_token_address(&vault, &mint);
     let destination_token_account =
         derive_associated_token_address(&queued_transfer.destination_owner, &mint);
-    let mut execute_data = [0_u8; 11];
+    let mut execute_data = [0_u8; 19];
     execute_data[0] = EXECUTE_READY_QUEUED_TRANSFER;
     execute_data[1] = EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX;
     execute_data[2..10].copy_from_slice(&queued_transfer.amount.to_le_bytes());
     execute_data[10] = queued_transfer.flags;
+    let execute_data_len = if queued_transfer.client_ref_id != 0 {
+        execute_data[11..19].copy_from_slice(&queued_transfer.client_ref_id.to_le_bytes());
+        19
+    } else {
+        11
+    };
     let execute_accounts = [
         ShortAccountMeta {
             pubkey: vault,
@@ -157,42 +162,14 @@ pub fn process_transfer_queue_tick(
         return Err(ProgramError::InvalidSeeds);
     }
 
-    let memo_accounts: [ShortAccountMeta; 0] = [];
-    let mut log_client_ref_id_data = [0_u8; 9];
-    log_client_ref_id_data[0] = LOG_CLIENT_REF_ID;
-    log_client_ref_id_data[1..].copy_from_slice(&queued_transfer.client_ref_id.to_le_bytes());
-    let transfer_only;
-    let transfer_with_memo;
-    let standalone_actions = if queued_transfer.client_ref_id != 0 {
-        transfer_with_memo = [
-            CallHandler {
-                destination_program: ephemeral_spl_api::program::id_address(),
-                escrow_authority: queue_info.clone(),
-                args: ActionArgs::new(&execute_data)
-                    .with_escrow_index(EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX),
-                compute_units: EXECUTE_READY_QUEUED_TRANSFER_COMPUTE_UNITS,
-                accounts: &execute_accounts,
-            },
-            CallHandler {
-                destination_program: ephemeral_spl_api::program::id_address(),
-                escrow_authority: queue_info.clone(),
-                args: ActionArgs::new(&log_client_ref_id_data),
-                compute_units: LOG_CLIENT_REF_ID_COMPUTE_UNITS,
-                accounts: &memo_accounts,
-            },
-        ];
-        &transfer_with_memo[..]
-    } else {
-        transfer_only = [CallHandler {
-            destination_program: ephemeral_spl_api::program::id_address(),
-            escrow_authority: queue_info.clone(),
-            args: ActionArgs::new(&execute_data)
-                .with_escrow_index(EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX),
-            compute_units: EXECUTE_READY_QUEUED_TRANSFER_COMPUTE_UNITS,
-            accounts: &execute_accounts,
-        }];
-        &transfer_only[..]
-    };
+    let standalone_actions = [CallHandler {
+        destination_program: ephemeral_spl_api::program::id_address(),
+        escrow_authority: queue_info.clone(),
+        args: ActionArgs::new(&execute_data[..execute_data_len])
+            .with_escrow_index(EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX),
+        compute_units: EXECUTE_READY_QUEUED_TRANSFER_COMPUTE_UNITS,
+        accounts: &execute_accounts,
+    }];
 
     MagicIntentBundleBuilder::new(
         queue_info.clone(),
@@ -200,7 +177,7 @@ pub fn process_transfer_queue_tick(
         magic_program_info.clone(),
     )
     .magic_fee_vault(magic_fee_vault_info.clone())
-    .set_standalone_actions(standalone_actions)
+    .set_standalone_actions(&standalone_actions)
     .build_and_invoke_signed(&mut intent_bundle_data, &[signer])?;
 
     let data = unsafe { queue_info.borrow_unchecked_mut() };

@@ -38,7 +38,7 @@ pub fn process_execute_ready_queued_transfer(
     // 7. []         Associated token program
     // 8. []         System program
     // 9. []         Source program (must equal this program)
-    // 10. []        Escrow authority
+    // 10. []        Queue PDA authority
     // 11. [signer]  Escrow signer PDA
     let [vault_info, mint_info, vault_token_acc_info, destination_owner_info, destination_token_acc_info, rent_pda_info, token_program_info, associated_token_program_info, system_program_info, source_program, escrow_authority, escrow_signer] =
         accounts
@@ -110,6 +110,12 @@ pub fn process_execute_ready_queued_transfer(
     }
     .invoke_signed(&[signer])?;
 
+    if let Some(client_ref_id) = args.client_ref_id() {
+        if client_ref_id != 0 {
+            pinocchio_log::log!("client_ref_id: {}", client_ref_id);
+        }
+    }
+
     Ok(())
 }
 
@@ -139,20 +145,23 @@ pub(crate) fn validate_vault_for_mint(
 
 pub struct ExecuteQueuedTransferArgs<'a> {
     raw: *const u8,
+    len: usize,
     _data: PhantomData<&'a [u8]>,
 }
 
 impl ExecuteQueuedTransferArgs<'_> {
     const LEN: usize = 10;
+    const LEN_WITH_CLIENT_REF_ID: usize = 18;
 
     #[inline]
     pub fn try_from_bytes(bytes: &[u8]) -> Result<ExecuteQueuedTransferArgs<'_>, ProgramError> {
-        if bytes.len() != Self::LEN {
+        if bytes.len() != Self::LEN && bytes.len() != Self::LEN_WITH_CLIENT_REF_ID {
             return Err(ProgramError::InvalidInstructionData);
         }
 
         Ok(ExecuteQueuedTransferArgs {
             raw: bytes.as_ptr(),
+            len: bytes.len(),
             _data: PhantomData,
         })
     }
@@ -179,5 +188,18 @@ impl ExecuteQueuedTransferArgs<'_> {
     #[inline]
     pub fn should_create_destination_ata_idempotent(&self) -> bool {
         self.flags() & QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA != 0
+    }
+
+    #[inline]
+    pub fn client_ref_id(&self) -> Option<u64> {
+        if self.len != Self::LEN_WITH_CLIENT_REF_ID {
+            return None;
+        }
+
+        let mut buf = [0u8; 8];
+        unsafe {
+            core::ptr::copy_nonoverlapping(self.raw.add(10), buf.as_mut_ptr(), 8);
+        }
+        Some(u64::from_le_bytes(buf))
     }
 }

@@ -156,9 +156,6 @@ pub mod instruction {
         ///       requested lamports from the delegated zero-data PDA to the
         ///       destination base-layer account.
         pub const TRANSFER_LAMPORTS_PDA: u8 = 200;
-        /// 201 - LogClientRefId: standalone action that logs a queued transfer
-        ///       client reference ID without invoking the Memo program.
-        pub const LOG_CLIENT_REF_ID: u8 = 201;
         /// 202 - UndelegateLamportsPda: post-delegation action that commits and
         ///       undelegates the lamports PDA, then schedules the close/refund intent.
         pub const UNDELEGATE_LAMPORTS_PDA: u8 = 202;
