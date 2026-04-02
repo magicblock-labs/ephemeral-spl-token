@@ -1,3 +1,6 @@
+#[cfg(feature = "logging")]
+use alloc::string::ToString;
+
 use dlp_api::pda::magic_fee_vault_pda_from_validator;
 use ephemeral_rollups_pinocchio::intent_bundle::{
     ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
@@ -89,7 +92,6 @@ pub fn process_transfer_queue_tick(
 
         (mint, queue_bump, queue_len, next, header.validator)
     };
-    #[cfg(not(feature = "logging"))]
     let _ = queue_len;
 
     let (vault, _) =
@@ -97,11 +99,17 @@ pub fn process_transfer_queue_tick(
     let vault_token_account = derive_associated_token_address(&vault, &mint);
     let destination_token_account =
         derive_associated_token_address(&queued_transfer.destination_owner, &mint);
-    let mut execute_data = [0_u8; 11];
+    let mut execute_data = [0_u8; 19];
     execute_data[0] = EXECUTE_READY_QUEUED_TRANSFER;
     execute_data[1] = EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX;
     execute_data[2..10].copy_from_slice(&queued_transfer.amount.to_le_bytes());
     execute_data[10] = queued_transfer.flags;
+    let execute_data_len = if queued_transfer.client_ref_id != 0 {
+        execute_data[11..19].copy_from_slice(&queued_transfer.client_ref_id.to_le_bytes());
+        19
+    } else {
+        11
+    };
     let execute_accounts = [
         ShortAccountMeta {
             pubkey: vault,
@@ -140,14 +148,6 @@ pub fn process_transfer_queue_tick(
             is_writable: false,
         },
     ];
-    let standalone_actions = [CallHandler {
-        destination_program: ephemeral_spl_api::program::id_address(),
-        escrow_authority: queue_info.clone(),
-        args: ActionArgs::new(&execute_data)
-            .with_escrow_index(EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX),
-        compute_units: EXECUTE_READY_QUEUED_TRANSFER_COMPUTE_UNITS,
-        accounts: &execute_accounts,
-    }];
     let mut intent_bundle_data = [0_u8; MAGIC_INTENT_BUNDLE_DATA_LEN];
     let queue_bump_seed = [queue_bump];
     let signer_seeds = [
@@ -161,6 +161,15 @@ pub fn process_transfer_queue_tick(
     if derived_magic_fee_vault.to_bytes() != magic_fee_vault_info.address().to_bytes() {
         return Err(ProgramError::InvalidSeeds);
     }
+
+    let standalone_actions = [CallHandler {
+        destination_program: ephemeral_spl_api::program::id_address(),
+        escrow_authority: queue_info.clone(),
+        args: ActionArgs::new(&execute_data[..execute_data_len])
+            .with_escrow_index(EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX),
+        compute_units: EXECUTE_READY_QUEUED_TRANSFER_COMPUTE_UNITS,
+        accounts: &execute_accounts,
+    }];
 
     MagicIntentBundleBuilder::new(
         queue_info.clone(),
@@ -178,10 +187,19 @@ pub fn process_transfer_queue_tick(
     }
 
     #[cfg(feature = "logging")]
-    pinocchio_log::log!(
-        "ProcessTransferQueueTick queue length after pop: {}",
-        queue_len - 1
-    );
+    {
+        let sender = popped_transfer.source.to_string();
+        let receiver = popped_transfer.destination_owner.to_string();
+        pinocchio_log::log!(
+            "ProcessTransferQueueTick group_id: {} task_id: {} client_ref_id: {} sender: {} receiver: {} amount: {}",
+            popped_transfer.group_id(),
+            popped_transfer.task_id,
+            popped_transfer.client_ref_id,
+            sender.as_str(),
+            receiver.as_str(),
+            popped_transfer.amount
+        );
+    }
 
     Ok(())
 }

@@ -83,7 +83,7 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
 
     let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
 
-    let setup = utils::setup_mint_and_token_accounts(
+    let _setup = utils::setup_mint_and_token_accounts(
         &mut context,
         payer,
         &mint_kp,
@@ -92,7 +92,7 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
         1,
     )
     .await;
-    let destination_ata = setup.user_tokens[0];
+    let destination_owner = payer;
 
     let (shuttle_metadata, _) =
         utils::derive_shuttle_ephemeral_ata(PROGRAM, owner.pubkey(), mint, shuttle_id);
@@ -232,10 +232,10 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
         delegate_data.extend_from_slice(validator.as_array());
     }
 
-    // add encrypted_destination_token_account (varindex: 1)
+    // add encrypted destination owner (varindex: 1)
     {
         let data = dlp_api::encryption::encrypt_ed25519_recipient(
-            destination_ata.as_array(),
+            destination_owner.as_array(),
             &validator.to_bytes(),
         )
         .expect("validator key should be valid for encryption");
