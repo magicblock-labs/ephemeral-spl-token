@@ -29,7 +29,7 @@ use spl_token_interface::state::Account;
 
 use {
     solana_program_test::{processor, tokio, ProgramTest, ProgramTestContext},
-    solana_pubkey::{pubkey, Pubkey},
+    solana_pubkey::Pubkey,
     solana_signer::Signer,
     solana_transaction::Transaction,
 };
@@ -42,7 +42,6 @@ const DECIMALS: u8 = 6;
 const STARTING_BALANCE: u64 = 10_000 * 10u64.pow(DECIMALS as u32);
 const QUEUED_AMOUNT: u64 = 10;
 const EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX: u8 = 0;
-const MEMO_PROGRAM_ID: Pubkey = pubkey!("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
 const RENT_PDA_SEED: &[u8] = b"rent";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1377,7 +1376,7 @@ async fn recurring_queue_crank_adds_memo_action_when_client_ref_id_is_present() 
     let memo_action = &captured_bundles[0].args.standalone_actions[1];
     assert_eq!(
         memo_action.destination_program.to_bytes(),
-        MEMO_PROGRAM_ID.to_bytes()
+        PROGRAM.to_bytes()
     );
     assert_eq!(memo_action.compute_units, 10_000);
     assert_eq!(
@@ -1385,6 +1384,38 @@ async fn recurring_queue_crank_adds_memo_action_when_client_ref_id_is_present() 
         fixture.queue
     );
     assert_eq!(memo_action.args.escrow_index, 255);
-    assert_eq!(memo_action.args.data, b"42");
+    let mut expected_memo_action_data = vec![internal::LOG_CLIENT_REF_ID];
+    expected_memo_action_data.extend_from_slice(&42_u64.to_le_bytes());
+    assert_eq!(memo_action.args.data, expected_memo_action_data);
     assert!(memo_action.accounts.is_empty());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn log_client_ref_id_internal_instruction_succeeds_with_extra_accounts() {
+    let _test_guard = test_lock().lock().unwrap();
+    let mut fixture = setup_fixture().await;
+
+    let mut data = vec![internal::LOG_CLIENT_REF_ID];
+    data.extend_from_slice(&42_u64.to_le_bytes());
+    let blockhash = latest_blockhash(&mut fixture.context).await;
+    let tx = Transaction::new_signed_with_payer(
+        &[Instruction {
+            program_id: PROGRAM,
+            accounts: vec![
+                AccountMeta::new_readonly(fixture.queue, false),
+                AccountMeta::new_readonly(fixture.magic_context, false),
+            ],
+            data,
+        }],
+        Some(&fixture.payer),
+        &[&fixture.context.payer],
+        blockhash,
+    );
+
+    fixture
+        .context
+        .banks_client
+        .process_transaction(tx)
+        .await
+        .unwrap();
 }

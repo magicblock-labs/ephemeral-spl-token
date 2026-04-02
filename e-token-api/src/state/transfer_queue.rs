@@ -298,7 +298,11 @@ fn effective_next_task_id(length: u32, next_task_id: u32) -> u32 {
         next_task_id
     };
 
-    if next_task_id == 0 { 1 } else { next_task_id }
+    if next_task_id == 0 {
+        1
+    } else {
+        next_task_id
+    }
 }
 
 #[inline(always)]

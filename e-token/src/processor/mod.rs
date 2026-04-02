@@ -17,6 +17,7 @@ pub mod initialize_global_vault;
 pub mod initialize_shuttle_ephemeral_ata;
 pub mod initialize_transfer_queue;
 pub mod lamports_pda;
+pub mod log_client_ref_id;
 pub mod merge_shuttle_into_ephemeral_ata;
 pub mod process_transfer_queue_tick;
 pub mod rent_pda;
@@ -52,6 +53,7 @@ pub use lamports_pda::{
     process_close_lamports_pda_intent, process_sponsored_lamports_transfer,
     process_transfer_lamports_pda, process_undelegate_lamports_pda,
 };
+pub use log_client_ref_id::process_log_client_ref_id;
 pub use merge_shuttle_into_ephemeral_ata::process_merge_shuttle_into_ephemeral_ata;
 pub use process_transfer_queue_tick::process_transfer_queue_tick;
 pub use rent_pda::process_initialize_rent_pda;

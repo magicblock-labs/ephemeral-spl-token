@@ -1,3 +1,4 @@
+#[cfg(feature = "logging")]
 use alloc::string::ToString;
 
 use dlp_api::pda::magic_fee_vault_pda_from_validator;
@@ -5,7 +6,7 @@ use ephemeral_rollups_pinocchio::intent_bundle::{
     ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
 };
 use ephemeral_rollups_pinocchio::spl::consts::TOKEN_PROGRAM_ID;
-use ephemeral_spl_api::instruction::internal::EXECUTE_READY_QUEUED_TRANSFER;
+use ephemeral_spl_api::instruction::internal::{EXECUTE_READY_QUEUED_TRANSFER, LOG_CLIENT_REF_ID};
 use ephemeral_spl_api::state::transfer_queue::{
     queue_peek_from_data, queue_pop_from_data, queue_views_checked, QUEUE_SEED,
 };
@@ -14,17 +15,14 @@ use pinocchio::sysvars::clock::Clock;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
-use solana_pubkey::pubkey;
 
 use crate::processor::rent_pda::RENT_PDA;
 pub(crate) const EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX: u8 = 0;
 
 const ASSOCIATED_TOKEN_PROGRAM_ID: ephemeral_spl_api::Address =
     pinocchio_associated_token_account::ID;
-const MEMO_PROGRAM_ID: solana_pubkey::Pubkey =
-    pubkey!("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
 const EXECUTE_READY_QUEUED_TRANSFER_COMPUTE_UNITS: u32 = 140_000;
-const MEMO_COMPUTE_UNITS: u32 = 10_000;
+const LOG_CLIENT_REF_ID_COMPUTE_UNITS: u32 = 10_000;
 const MAGIC_INTENT_BUNDLE_DATA_LEN: usize = 512;
 const MILLIS_PER_SECOND: i64 = 1_000;
 
@@ -160,11 +158,12 @@ pub fn process_transfer_queue_tick(
     }
 
     let memo_accounts: [ShortAccountMeta; 0] = [];
-    let memo_data =
-        (queued_transfer.client_ref_id != 0).then(|| queued_transfer.client_ref_id.to_string());
+    let mut log_client_ref_id_data = [0_u8; 9];
+    log_client_ref_id_data[0] = LOG_CLIENT_REF_ID;
+    log_client_ref_id_data[1..].copy_from_slice(&queued_transfer.client_ref_id.to_le_bytes());
     let transfer_only;
     let transfer_with_memo;
-    let standalone_actions = if let Some(memo_data) = memo_data.as_ref() {
+    let standalone_actions = if queued_transfer.client_ref_id != 0 {
         transfer_with_memo = [
             CallHandler {
                 destination_program: ephemeral_spl_api::program::id_address(),
@@ -175,12 +174,10 @@ pub fn process_transfer_queue_tick(
                 accounts: &execute_accounts,
             },
             CallHandler {
-                destination_program: ephemeral_spl_api::Address::new_from_array(
-                    MEMO_PROGRAM_ID.to_bytes(),
-                ),
+                destination_program: ephemeral_spl_api::program::id_address(),
                 escrow_authority: queue_info.clone(),
-                args: ActionArgs::new(memo_data.as_bytes()),
-                compute_units: MEMO_COMPUTE_UNITS,
+                args: ActionArgs::new(&log_client_ref_id_data),
+                compute_units: LOG_CLIENT_REF_ID_COMPUTE_UNITS,
                 accounts: &memo_accounts,
             },
         ];
