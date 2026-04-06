@@ -22,6 +22,7 @@ pub mod process_transfer_queue_tick;
 pub mod rent_pda;
 pub mod reset_ephemeral_ata_permission;
 pub(crate) mod shuttle_close_schedule;
+pub mod transfer_queue_refill;
 pub mod undelegate_and_close_shuttle_to_owner;
 pub mod undelegate_ephemeral_ata;
 pub mod undelegate_ephemeral_ata_permission;
@@ -56,6 +57,9 @@ pub use merge_shuttle_into_ephemeral_ata::process_merge_shuttle_into_ephemeral_a
 pub use process_transfer_queue_tick::process_transfer_queue_tick;
 pub use rent_pda::process_initialize_rent_pda;
 pub use reset_ephemeral_ata_permission::process_reset_ephemeral_ata_permission;
+pub use transfer_queue_refill::{
+    process_mark_transfer_queue_refill_pending, process_pending_transfer_queue_refill,
+};
 pub use undelegate_and_close_shuttle_to_owner::process_undelegate_and_close_shuttle_to_owner;
 pub use undelegate_ephemeral_ata::process_undelegate_ephemeral_ata;
 pub use undelegate_ephemeral_ata_permission::process_undelegate_ephemeral_ata_permission;
