@@ -15,3 +15,8 @@ pub const SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS: u64 = 1_539_280;
 ///
 /// 0.0003 SOL = 300_000 lamports.
 pub const SPONSORED_LAMPORTS_TRANSFER_SETUP_LAMPORTS: u64 = 300_000;
+
+/// Fixed lamports amount used when refilling transfer queues.
+///
+/// 0.02 SOL = 20_000_000 lamports.
+pub const TRANSFER_QUEUE_REFILL_LAMPORTS: u64 = 20_000_000;

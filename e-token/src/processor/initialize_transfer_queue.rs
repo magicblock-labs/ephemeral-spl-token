@@ -78,7 +78,7 @@ pub fn process_initialize_transfer_queue(
     let rent = Rent::get()?;
     let target_lamports = rent
         .try_minimum_balance(queue_size)?
-        .checked_add(1_000_000_000) // Cover for 10_000 commits (0.0001 SOL each)
+        .checked_add(100_000_000) // Cover for 1_000 commits (0.0001 SOL each)
         .ok_or(ProgramError::ArithmeticOverflow)?;
 
     if !queue_info.owned_by(&program_id) {

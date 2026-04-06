@@ -374,6 +374,7 @@ fn close_lamports_handler_data(escrow_index: u8, salt: &[u8; 32]) -> [u8; 34] {
     data
 }
 
+#[allow(clippy::too_many_arguments)]
 fn parse_amount_and_salt(instruction_data: &[u8]) -> Result<(u64, [u8; 32]), ProgramError> {
     if instruction_data.len() != 40 {
         return Err(ProgramError::InvalidInstructionData);
