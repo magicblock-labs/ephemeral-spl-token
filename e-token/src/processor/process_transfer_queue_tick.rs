@@ -1,16 +1,18 @@
 use dlp_api::pda::magic_fee_vault_pda_from_validator;
 use ephemeral_rollups_pinocchio::intent_bundle::{
-    ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
+    ActionArgs, ActionCallback, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
 };
 use ephemeral_rollups_pinocchio::spl::consts::TOKEN_PROGRAM_ID;
-use ephemeral_spl_api::instruction::internal::EXECUTE_READY_QUEUED_TRANSFER;
+use ephemeral_spl_api::instruction::internal::{
+    EXECUTE_READY_QUEUED_TRANSFER, EXECUTE_TRANSFER_CALLBACK,
+};
 use ephemeral_spl_api::state::transfer_queue::{
-    queue_peek_from_data, queue_pop_from_data, queue_views_checked, QUEUE_SEED,
+    queue_peek_from_data, queue_pop_from_data, queue_views_checked, QueuedTransfer, QUEUE_SEED,
 };
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::clock::Clock;
 use pinocchio::sysvars::Sysvar;
-use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
 use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
 
 use crate::processor::rent_pda::RENT_PDA;
@@ -92,62 +94,35 @@ pub fn process_transfer_queue_tick(
     #[cfg(not(feature = "logging"))]
     let _ = queue_len;
 
-    let (vault, _) =
-        ephemeral_spl_api::Address::find_program_address(&[mint.as_ref()], &program_id);
-    let vault_token_account = derive_associated_token_address(&vault, &mint);
-    let destination_token_account =
-        derive_associated_token_address(&queued_transfer.destination_owner, &mint);
+    let (vault, _) = Address::find_program_address(&[mint.as_ref()], &program_id);
+
+    let amount_bytes: [u8; 8] = queued_transfer.amount.to_le_bytes();
+
+    // Create action callback
+    let mut callback_data = [0_u8; 10];
+    callback_data[0..8].copy_from_slice(&amount_bytes);
+    callback_data[9] = queued_transfer.flags;
+
+    let standalone_action_callback_accounts =
+        create_action_callback_accounts(&validator, &queued_transfer, &vault, &mint);
+    let standalone_action_callback =
+        create_action_callback(&standalone_action_callback_accounts, &callback_data);
+
+    // Create action with callback
     let mut execute_data = [0_u8; 11];
     execute_data[0] = EXECUTE_READY_QUEUED_TRANSFER;
     execute_data[1] = EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX;
-    execute_data[2..10].copy_from_slice(&queued_transfer.amount.to_le_bytes());
+    execute_data[2..10].copy_from_slice(&amount_bytes);
     execute_data[10] = queued_transfer.flags;
-    let execute_accounts = [
-        ShortAccountMeta {
-            pubkey: vault,
-            is_writable: false,
-        },
-        ShortAccountMeta {
-            pubkey: mint,
-            is_writable: false,
-        },
-        ShortAccountMeta {
-            pubkey: vault_token_account,
-            is_writable: true,
-        },
-        ShortAccountMeta {
-            pubkey: queued_transfer.destination_owner,
-            is_writable: false,
-        },
-        ShortAccountMeta {
-            pubkey: destination_token_account,
-            is_writable: true,
-        },
-        ShortAccountMeta {
-            pubkey: RENT_PDA,
-            is_writable: true,
-        },
-        ShortAccountMeta {
-            pubkey: TOKEN_PROGRAM_ID,
-            is_writable: false,
-        },
-        ShortAccountMeta {
-            pubkey: ASSOCIATED_TOKEN_PROGRAM_ID,
-            is_writable: false,
-        },
-        ShortAccountMeta {
-            pubkey: SYSTEM_PROGRAM_ID,
-            is_writable: false,
-        },
-    ];
-    let standalone_actions = [CallHandler {
-        destination_program: ephemeral_spl_api::program::id_address(),
-        escrow_authority: queue_info.clone(),
-        args: ActionArgs::new(&execute_data)
-            .with_escrow_index(EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX),
-        compute_units: EXECUTE_READY_QUEUED_TRANSFER_COMPUTE_UNITS,
-        accounts: &execute_accounts,
-    }];
+
+    let standalone_action_accounts = create_action_accounts(&queued_transfer, &vault, &mint);
+    let standalone_actions = [create_callhandler(
+        &queue_info,
+        &standalone_action_accounts,
+        &execute_data,
+        standalone_action_callback,
+    )];
+
     let mut intent_bundle_data = [0_u8; MAGIC_INTENT_BUNDLE_DATA_LEN];
     let queue_bump_seed = [queue_bump];
     let signer_seeds = [
@@ -186,8 +161,131 @@ pub fn process_transfer_queue_tick(
     Ok(())
 }
 
+fn create_action_accounts(
+    queued_transfer: &QueuedTransfer,
+    vault: &Address,
+    mint: &Address,
+) -> [ShortAccountMeta; 9] {
+    let vault_token_account = derive_associated_token_address(vault, mint);
+    let destination_token_account =
+        derive_associated_token_address(&queued_transfer.destination_owner, mint);
+
+    let action_accounts = [
+        ShortAccountMeta {
+            pubkey: vault.clone(),
+            is_writable: false,
+        },
+        ShortAccountMeta {
+            pubkey: mint.clone(),
+            is_writable: false,
+        },
+        ShortAccountMeta {
+            pubkey: vault_token_account,
+            is_writable: true,
+        },
+        ShortAccountMeta {
+            pubkey: queued_transfer.destination_owner,
+            is_writable: false,
+        },
+        ShortAccountMeta {
+            pubkey: destination_token_account,
+            is_writable: true,
+        },
+        ShortAccountMeta {
+            pubkey: RENT_PDA,
+            is_writable: true,
+        },
+        ShortAccountMeta {
+            pubkey: TOKEN_PROGRAM_ID,
+            is_writable: false,
+        },
+        ShortAccountMeta {
+            pubkey: ASSOCIATED_TOKEN_PROGRAM_ID,
+            is_writable: false,
+        },
+        ShortAccountMeta {
+            pubkey: SYSTEM_PROGRAM_ID,
+            is_writable: false,
+        },
+    ];
+
+    action_accounts
+}
+
+fn create_action_callback_accounts(
+    validator: &Address,
+    queued_transfer: &QueuedTransfer,
+    vault: &Address,
+    mint: &Address,
+) -> [ShortAccountMeta; 5] {
+    let vault_token_account = derive_associated_token_address(vault, mint);
+    let source_token_account = derive_associated_token_address(&queued_transfer.source, mint);
+    let callback_accounts = [
+        // ShortAccountMeta {
+        //     pubkey: validator.clone(),
+        //     is_writable: false,
+        // },
+        ShortAccountMeta {
+            pubkey: vault.clone(),
+            is_writable: false,
+        },
+        ShortAccountMeta {
+            pubkey: mint.clone(),
+            is_writable: false,
+        },
+        ShortAccountMeta {
+            pubkey: vault_token_account,
+            is_writable: true,
+        },
+        ShortAccountMeta {
+            pubkey: source_token_account,
+            is_writable: false, // TODO(edwin): true if delegated
+        },
+        ShortAccountMeta {
+            pubkey: TOKEN_PROGRAM_ID,
+            is_writable: false,
+        },
+    ];
+
+    callback_accounts
+}
+
+fn create_action_callback<'a>(
+    accounts: &'a [ShortAccountMeta],
+    payload: &'a [u8],
+) -> ActionCallback<'a> {
+    const CALLBACK_COMPUTE_UNITS: u32 = 100_000;
+
+    ActionCallback {
+        destination_program: ephemeral_spl_api::program::id_address(),
+        discriminator: &[EXECUTE_TRANSFER_CALLBACK],
+        payload,
+        compute_units: CALLBACK_COMPUTE_UNITS,
+        accounts,
+    }
+}
+
+fn create_callhandler<'a>(
+    queue_info: &AccountView,
+    action_accounts: &'a [ShortAccountMeta],
+    action_data: &'a [u8],
+    action_callback: ActionCallback<'a>,
+) -> CallHandler<'a> {
+    let action = CallHandler {
+        destination_program: ephemeral_spl_api::program::id_address(),
+        escrow_authority: queue_info.clone(),
+        args: ActionArgs::new(action_data)
+            .with_escrow_index(EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX),
+        compute_units: EXECUTE_READY_QUEUED_TRANSFER_COMPUTE_UNITS,
+        accounts: action_accounts,
+        callback: Some(action_callback),
+    };
+
+    action
+}
+
 #[inline(always)]
-fn derive_associated_token_address(
+pub(crate) fn derive_associated_token_address(
     wallet: &ephemeral_spl_api::Address,
     mint: &ephemeral_spl_api::Address,
 ) -> ephemeral_spl_api::Address {

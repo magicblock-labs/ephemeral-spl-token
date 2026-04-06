@@ -1814,9 +1814,8 @@ dependencies = [
 
 [[package]]
 name = "ephemeral-rollups-pinocchio"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32333fcc831aeb330b5c32df9d4ac1f949487bb293aa5a1b6406f40a5d787d82"
+version = "0.10.2"
+source = "git+https://github.com/magicblock-labs/ephemeral-rollups-sdk.git?rev=5fe4bde4#5fe4bde498fd10a3641a975680a4fbe3c1b372f3"
 dependencies = [
  "bincode 2.0.1",
  "pinocchio 0.10.1",

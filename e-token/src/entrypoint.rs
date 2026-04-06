@@ -257,6 +257,12 @@ pub(crate) fn inner_process_instruction(
 
             process_close_lamports_pda_intent(accounts, instruction_data)
         }
+        internal::EXECUTE_TRANSFER_CALLBACK => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: ExecuteTransferCallback");
+
+            process_execute_transfer_callback(accounts, instruction_data)
+        }
         _ => Err(EphemeralSplError::InvalidInstruction.into()),
     }
 }

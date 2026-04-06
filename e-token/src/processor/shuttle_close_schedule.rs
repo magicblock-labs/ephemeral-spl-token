@@ -87,6 +87,7 @@ pub(crate) fn schedule_shuttle_close_after_undelegate(
         args: ActionArgs::new(&close_handler_data).with_escrow_index(escrow_index),
         compute_units: CLOSE_SHUTTLE_ATA_COMPUTE_UNITS,
         accounts: &close_handler_accounts,
+        callback: None,
     }];
     let committed_accounts = [shuttle_wallet_ata_info.clone()];
     let mut intent_bundle_data = [0u8; INTENT_BUNDLE_DATA_BUF_SIZE];
