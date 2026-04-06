@@ -76,6 +76,9 @@ pub mod instruction {
     ///      [8..16]   min_delay_ms (u64 LE), 0 => immediate
     ///      [16..24]  max_delay_ms (u64 LE), must be >= min_delay_ms
     ///      [24..28]  split count (u32 LE), must be >= 1
+    ///      [28]      optional legacy flags (u8)
+    ///      [28..36]  optional client_ref_id (u64 LE) when flags are omitted
+    ///      [29..37]  optional client_ref_id (u64 LE) after legacy flags
     pub const DEPOSIT_AND_QUEUE_TRANSFER: u8 = 16;
     /// 17 - EnsureTransferQueueCrank: ensure the per-mint recurring queue crank is scheduled
     ///      Instruction data:
@@ -121,7 +124,8 @@ pub mod instruction {
     ///      [12..]   len-prefixed optional validator pubkey bytes
     ///      [...]    len-prefixed encrypted destination owner pubkey bytes
     ///      [...]    len-prefixed encrypted packed suffix
-    ///               (min_delay_ms:u64, max_delay_ms:u64, split:u32, flags:u8)
+    ///               (min_delay_ms:u64, max_delay_ms:u64, split:u32, client_ref_id?:u64)
+    ///               Legacy payloads may still append flags before client_ref_id.
     pub const DEPOSIT_AND_DELEGATE_SHUTTLE_EPHEMERAL_ATA_WITH_MERGE_AND_PRIVATE_TRANSFER: u8 = 25;
     /// 26 - WithdrawThroughDelegatedShuttleWithMerge: initialize shuttle metadata/EATA/wallet ATA,
     ///      sponsor delegation from the global rent PDA, then schedule a post-delegation transfer

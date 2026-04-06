@@ -1,3 +1,6 @@
+#[cfg(feature = "logging")]
+use alloc::string::ToString;
+
 use dlp_api::pda::magic_fee_vault_pda_from_validator;
 use ephemeral_rollups_pinocchio::intent_bundle::{
     ActionArgs, ActionCallback, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
@@ -91,7 +94,6 @@ pub fn process_transfer_queue_tick(
 
         (mint, queue_bump, queue_len, next, header.validator)
     };
-    #[cfg(not(feature = "logging"))]
     let _ = queue_len;
 
     let (vault, _) = Address::find_program_address(&[mint.as_ref()], &program_id);
@@ -109,17 +111,23 @@ pub fn process_transfer_queue_tick(
         create_action_callback(&standalone_action_callback_accounts, &callback_data);
 
     // Create action with callback
-    let mut execute_data = [0_u8; 11];
+    let mut execute_data = [0_u8; 19];
     execute_data[0] = EXECUTE_READY_QUEUED_TRANSFER;
     execute_data[1] = EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX;
     execute_data[2..10].copy_from_slice(&amount_bytes);
     execute_data[10] = queued_transfer.flags;
-
+    let execute_data_len = if queued_transfer.client_ref_id != 0 {
+        execute_data[11..19].copy_from_slice(&queued_transfer.client_ref_id.to_le_bytes());
+        19
+    } else {
+        11
+    };
+    
     let standalone_action_accounts = create_action_accounts(&queued_transfer, &vault, &mint);
     let standalone_actions = [create_callhandler(
         &queue_info,
         &standalone_action_accounts,
-        &execute_data,
+        &execute_data[..execute_data_len],
         standalone_action_callback,
     )];
 
@@ -153,10 +161,19 @@ pub fn process_transfer_queue_tick(
     }
 
     #[cfg(feature = "logging")]
-    pinocchio_log::log!(
-        "ProcessTransferQueueTick queue length after pop: {}",
-        queue_len - 1
-    );
+    {
+        let sender = popped_transfer.source.to_string();
+        let receiver = popped_transfer.destination_owner.to_string();
+        pinocchio_log::log!(
+            "ProcessTransferQueueTick group_id: {} task_id: {} client_ref_id: {} sender: {} receiver: {} amount: {}",
+            popped_transfer.group_id(),
+            popped_transfer.task_id,
+            popped_transfer.client_ref_id,
+            sender.as_str(),
+            receiver.as_str(),
+            popped_transfer.amount
+        );
+    }
 
     Ok(())
 }
