@@ -20,3 +20,10 @@ pub const SPONSORED_LAMPORTS_TRANSFER_SETUP_LAMPORTS: u64 = 300_000;
 ///
 /// 0.02 SOL = 20_000_000 lamports.
 pub const TRANSFER_QUEUE_REFILL_LAMPORTS: u64 = 20_000_000;
+
+/// Upfront lamports buffer funded into a newly initialized transfer queue.
+///
+/// 0.1 SOL = 100_000_000 lamports. This covers about 1,000 commits at
+/// 0.0001 SOL each, which keeps the relationship to
+/// `TRANSFER_QUEUE_REFILL_LAMPORTS` discoverable.
+pub const TRANSFER_QUEUE_INITIAL_BUFFER_LAMPORTS: u64 = 100_000_000;

@@ -100,11 +100,6 @@ pub fn process_pending_transfer_queue_refill(
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
-    let program_id = ephemeral_spl_api::program::id_address();
-    if refill_state_info.lamports() == 0 || !refill_state_info.owned_by(&program_id) {
-        return Ok(());
-    }
-
     validate_queue_refill_state_address(refill_state_info, queue_info.address())?;
     validate_rent_pda(rent_pda_info)?;
 
@@ -113,7 +108,7 @@ pub fn process_pending_transfer_queue_refill(
     if refill_lamports_pda != *lamports_pda_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
-    if owner_program_info.address() != &program_id {
+    if owner_program_info.address() != &ephemeral_spl_api::program::id_address() {
         return Err(ProgramError::IncorrectProgramId);
     }
 
@@ -328,10 +323,6 @@ fn ensure_queue_refill_state_exists(
     }
 
     assert_owner!(refill_state_info, &program_id);
-    let refill_state_data = unsafe { refill_state_info.borrow_unchecked_mut() };
-    for b in refill_state_data.iter_mut() {
-        *b = 0;
-    }
     Ok(())
 }
 

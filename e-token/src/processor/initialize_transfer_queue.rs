@@ -3,6 +3,7 @@ use ephemeral_rollups_pinocchio::acl::{
     consts::PERMISSION_PROGRAM_ID, instruction::CreatePermissionCpiBuilder,
     pda::permission_pda_from_permissioned_account, types::MembersArgs,
 };
+use ephemeral_spl_api::consts::TRANSFER_QUEUE_INITIAL_BUFFER_LAMPORTS;
 use ephemeral_spl_api::state::transfer_queue::{
     capacity_from_data_len, header_len, init_queue, item_len, queue_views_mut_checked, QUEUE_SEED,
 };
@@ -78,7 +79,7 @@ pub fn process_initialize_transfer_queue(
     let rent = Rent::get()?;
     let target_lamports = rent
         .try_minimum_balance(queue_size)?
-        .checked_add(100_000_000) // Cover for 1_000 commits (0.0001 SOL each)
+        .checked_add(TRANSFER_QUEUE_INITIAL_BUFFER_LAMPORTS)
         .ok_or(ProgramError::ArithmeticOverflow)?;
 
     if !queue_info.owned_by(&program_id) {

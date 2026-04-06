@@ -17,12 +17,15 @@ use pinocchio::sysvars::{clock::Clock, Sysvar};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
 
-use crate::processor::{
-    rent_pda::RENT_PDA,
-    transfer_queue_refill::{
-        queue_refill_state_address, refill_transfer_queue_amounts,
-        MARK_TRANSFER_QUEUE_REFILL_PENDING_COMPUTE_UNITS,
-        MARK_TRANSFER_QUEUE_REFILL_PENDING_ESCROW_INDEX,
+use crate::{
+    assert_owner,
+    processor::{
+        rent_pda::RENT_PDA,
+        transfer_queue_refill::{
+            queue_refill_state_address, refill_transfer_queue_amounts,
+            MARK_TRANSFER_QUEUE_REFILL_PENDING_COMPUTE_UNITS,
+            MARK_TRANSFER_QUEUE_REFILL_PENDING_ESCROW_INDEX,
+        },
     },
 };
 
@@ -225,9 +228,7 @@ fn schedule_execute_ready_transfer(
     queued_transfer: &QueuedTransfer,
     program_id: &ephemeral_spl_api::Address,
 ) -> ProgramResult {
-    if !tick_accounts.queue_info.owned_by(program_id) {
-        return Err(ProgramError::IllegalOwner);
-    }
+    assert_owner!(tick_accounts.queue_info, program_id);
 
     #[cfg(feature = "logging")]
     pinocchio_log::log!(
