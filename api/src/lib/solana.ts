@@ -3,13 +3,16 @@ import {
   deriveRentPda,
   deriveTransferQueue,
   delegateSpl,
+  ensureTransferQueueCrankIx,
   initRentPdaIx,
   initTransferQueueIx,
+  magicFeeVaultPdaFromValidator,
   transferSpl,
-  withdrawSpl,
+  withdrawSpl, initVaultIx, initVaultAtaIx, delegateEphemeralAtaIx, deriveVault, deriveEphemeralAta, deriveVaultAta,
 } from "@magicblock-labs/ephemeral-rollups-sdk";
 import {
   Connection,
+  Keypair,
   LAMPORTS_PER_SOL,
   PublicKey,
   SystemProgram,
@@ -37,8 +40,13 @@ const MEMO_PROGRAM_ID = new PublicKey(
 
 const DEFAULT_DEPOSIT_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const DEFAULT_DEPOSIT_DEVNET_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
-const TRANSFER_QUEUE_RENT_LAMPORTS = LAMPORTS_PER_SOL / 10;
+const DEFAULT_FALLBACK_VALIDATOR = new PublicKey(
+  "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57",
+);
+const TRANSFER_QUEUE_RENT_LAMPORTS = LAMPORTS_PER_SOL / 50;
 const PRIVATE_TRANSFER_MAX_DELAY_MS_LIMIT = 10n * 60n * 1000n;
+const TRANSFER_QUEUE_RECENT_SIGNATURE_LIMIT = 5;
+const TRANSFER_QUEUE_STALE_MS = 60_000;
 
 const connectionCache = new Map<string, Connection>();
 const validatorCache = new Map<string, Promise<PublicKey | undefined>>();
@@ -115,6 +123,7 @@ type TransferInput = {
   memo?: string;
   minDelayMs?: string;
   maxDelayMs?: string;
+  clientRefId?: string;
   split?: number;
 };
 
@@ -159,6 +168,10 @@ type RpcIdentityResponse = {
   error?: {
     message?: string;
   };
+};
+
+type BackgroundTaskScheduler = {
+  waitUntil: (promise: Promise<unknown>) => void;
 };
 
 function getConnection(endpoint: string) {
@@ -402,7 +415,12 @@ async function resolveValidator(config: RpcConfig, explicitValidator?: string) {
     return parsePublicKey(explicitValidator, "validator");
   }
 
-  return getValidatorFromRpc(config.ephemeralRpcUrl);
+  try {
+    return await getValidatorFromRpc(config.ephemeralRpcUrl) ?? DEFAULT_FALLBACK_VALIDATOR;
+  }
+  catch {
+    return DEFAULT_FALLBACK_VALIDATOR;
+  }
 }
 
 async function resolveDepositValidator(config: RpcConfig, explicitValidator?: string) {
@@ -557,6 +575,9 @@ export async function buildInitializeMintTransaction(
   const validator = await resolveRequiredValidator(config, input.validator);
   const [transferQueue] = deriveTransferQueue(mint, validator);
   const [rentPda] = deriveRentPda();
+  const [vault] = deriveVault(mint);
+  const [vaultEphemeralAta] = deriveEphemeralAta(vault, mint);
+  const vaultAta = deriveVaultAta(mint, vault);
   const blockhash = await getBlockhash(config, "base");
 
   const instructions = [
@@ -580,6 +601,9 @@ export async function buildInitializeMintTransaction(
       payer,
       mint,
     ),
+    initVaultIx(vault, mint, payer),
+    initVaultAtaIx(payer, vaultAta, vault, mint),
+    delegateEphemeralAtaIx(payer, vaultEphemeralAta, validator),
   ];
 
   const response = serializeTransaction(
@@ -615,9 +639,11 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
   const amount = parseAmount(input.amount, "amount");
   const payer = from;
   const feePayer = from;
+  const shuttleId = createRandomShuttleId();
 
   const minDelayMs = parseOptionalAmount(input.minDelayMs, "minDelayMs");
   const maxDelayMs = parseOptionalAmount(input.maxDelayMs, "maxDelayMs");
+  const clientRefId = parseOptionalAmount(input.clientRefId, "clientRefId");
   const split = input.split;
 
   if (minDelayMs !== undefined && minDelayMs < 0n) {
@@ -628,6 +654,10 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
     throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "maxDelayMs must be non-negative");
   }
 
+  if (clientRefId !== undefined && clientRefId < 0n) {
+    throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "clientRefId must be non-negative");
+  }
+
   if (
     minDelayMs !== undefined
     && maxDelayMs !== undefined
@@ -636,13 +666,13 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
     throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "maxDelayMs must be greater than or equal to minDelayMs");
   }
 
-  const effectiveMaxDelayMs = maxDelayMs ?? minDelayMs;
+  const maxDelayMsForValidation = maxDelayMs ?? minDelayMs;
 
   // Temporary cap while private transfer delay windows stay limited.
   if (
     input.visibility === "private"
-    && effectiveMaxDelayMs !== undefined
-    && effectiveMaxDelayMs > PRIVATE_TRANSFER_MAX_DELAY_MS_LIMIT
+    && maxDelayMsForValidation !== undefined
+    && maxDelayMsForValidation > PRIVATE_TRANSFER_MAX_DELAY_MS_LIMIT
   ) {
     throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "maxDelayMs must be less than or equal to 600000");
   }
@@ -682,11 +712,15 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
         initIfMissing: input.initIfMissing,
         initAtasIfMissing: input.initAtasIfMissing,
         initVaultIfMissing: input.initVaultIfMissing,
-        shuttleId: createRandomShuttleId(),
-        privateTransfer: input.minDelayMs !== undefined || input.maxDelayMs !== undefined || input.split !== undefined
+        shuttleId,
+        privateTransfer: input.minDelayMs !== undefined
+          || input.maxDelayMs !== undefined
+          || input.clientRefId !== undefined
+          || input.split !== undefined
           ? {
             minDelayMs,
             maxDelayMs,
+            clientRefId,
             split,
           }
           : undefined,
@@ -754,7 +788,101 @@ export function getPrivateBalance(env: AppEnv, input: BalanceInput, authToken?: 
   return getBalanceInternal(env, input, "ephemeral", authToken);
 }
 
-export async function getMintInitializationStatus(env: AppEnv, input: MintInitializationInput): Promise<MintInitializationResponse> {
+function getNewestSignatureTimestampMs(signatures: Array<{ blockTime?: number | null }>) {
+  let newestSignatureTimestampMs: number | undefined;
+
+  for (const signature of signatures) {
+    if (signature.blockTime === null || signature.blockTime === undefined) {
+      continue;
+    }
+
+    const signatureTimestampMs = signature.blockTime * 1000;
+
+    if (newestSignatureTimestampMs === undefined || signatureTimestampMs > newestSignatureTimestampMs) {
+      newestSignatureTimestampMs = signatureTimestampMs;
+    }
+  }
+
+  return newestSignatureTimestampMs;
+}
+
+async function ensureTransferQueueCrankRunning(
+  config: RpcConfig,
+  transferQueue: PublicKey,
+  validator: PublicKey,
+) {
+  const connection = getEphemeralConnection(config);
+  const signatures = await connection.getSignaturesForAddress(
+    transferQueue,
+    { limit: TRANSFER_QUEUE_RECENT_SIGNATURE_LIMIT },
+    "confirmed",
+  );
+  const newestSignatureTimestampMs = getNewestSignatureTimestampMs(signatures);
+
+  if (
+    newestSignatureTimestampMs !== undefined
+    && Date.now() - newestSignatureTimestampMs < TRANSFER_QUEUE_STALE_MS
+  ) {
+    return;
+  }
+
+  const payer = Keypair.generate();
+  const magicFeeVault = magicFeeVaultPdaFromValidator(validator);
+  const transaction = new Transaction().add(
+    ensureTransferQueueCrankIx(
+      payer.publicKey,
+      transferQueue,
+      magicFeeVault,
+    ),
+  );
+  transaction.feePayer = payer.publicKey;
+
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
+  transaction.recentBlockhash = blockhash;
+  transaction.lastValidBlockHeight = lastValidBlockHeight;
+  transaction.sign(payer);
+
+  const signature = await connection.sendRawTransaction(transaction.serialize(), {
+    skipPreflight: true,
+    preflightCommitment: "confirmed",
+  });
+  const confirmation = await connection.confirmTransaction({
+    signature,
+    blockhash,
+    lastValidBlockHeight,
+  }, "confirmed");
+
+  if (confirmation.value.err !== null) {
+    throw new Error(`Transfer queue crank transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+  }
+}
+
+function scheduleTransferQueueCrank(
+  backgroundScheduler: BackgroundTaskScheduler | undefined,
+  config: RpcConfig,
+  transferQueue: PublicKey,
+  validator: PublicKey,
+) {
+  if (!backgroundScheduler) {
+    return;
+  }
+
+  backgroundScheduler.waitUntil(
+    ensureTransferQueueCrankRunning(config, transferQueue, validator).catch((error) => {
+      console.error("Failed to ensure transfer queue crank", {
+        transferQueue: transferQueue.toBase58(),
+        validator: validator.toBase58(),
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }),
+  );
+}
+
+export async function getMintInitializationStatus(
+  env: AppEnv,
+  input: MintInitializationInput,
+  backgroundScheduler?: BackgroundTaskScheduler,
+): Promise<MintInitializationResponse> {
   const config = resolveRpcConfig(env, input.cluster);
   const mint = parsePublicKey(input.mint, "mint");
   const validator = await resolveRequiredValidator(config, input.validator);
@@ -763,12 +891,17 @@ export async function getMintInitializationStatus(env: AppEnv, input: MintInitia
 
   try {
     const accountInfo = await connection.getAccountInfo(transferQueue, "confirmed");
+    const initialized = accountInfo !== null;
+
+    if (initialized) {
+      scheduleTransferQueueCrank(backgroundScheduler, config, transferQueue, validator);
+    }
 
     return {
       mint: mint.toBase58(),
       validator: validator.toBase58(),
       transferQueue: transferQueue.toBase58(),
-      initialized: accountInfo !== null,
+      initialized,
     };
   }
   catch (error) {
