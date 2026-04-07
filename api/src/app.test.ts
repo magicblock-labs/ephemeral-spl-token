@@ -235,7 +235,7 @@ describe("app", () => {
         idempotent: true,
         initIfMissing: true,
         initAtasIfMissing: true,
-        initVaultIfMissing: true,
+        initVaultIfMissing: false,
       }),
     }, depositEnv);
 
