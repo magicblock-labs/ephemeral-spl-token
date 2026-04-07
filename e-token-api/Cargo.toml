@@ -11,6 +11,7 @@ edition = { workspace = true }
 pinocchio = { workspace = true }
 pinocchio-pubkey = { workspace = true }
 solana-address = { workspace = true, features = ["bytemuck"] }
+solana-signature = { workspace = true }
 ephemeral-rollups-pinocchio = { workspace = true }
 bytemuck = { workspace = true, features = ["derive"] }
 

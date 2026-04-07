@@ -101,9 +101,10 @@ pub fn process_transfer_queue_tick(
     let amount_bytes: [u8; 8] = queued_transfer.amount.to_le_bytes();
 
     // Create action callback
-    let mut callback_data = [0_u8; 10];
+    let mut callback_data = [0_u8; 13];
     callback_data[0..8].copy_from_slice(&amount_bytes);
-    callback_data[9] = queued_transfer.flags;
+    callback_data[8..12].copy_from_slice(&queued_transfer.group_id().to_le_bytes());
+    callback_data[12] = queued_transfer.flags;
 
     let standalone_action_callback_accounts =
         create_action_callback_accounts(&validator, &queued_transfer, &vault, &mint);
@@ -122,7 +123,7 @@ pub fn process_transfer_queue_tick(
     } else {
         11
     };
-    
+
     let standalone_action_accounts = create_action_accounts(&queued_transfer, &vault, &mint);
     let standalone_actions = [create_callhandler(
         &queue_info,

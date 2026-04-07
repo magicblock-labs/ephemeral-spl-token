@@ -34,6 +34,7 @@ ephemeral-rollups-pinocchio = { git = "https://github.com/magicblock-labs/epheme
 
 pinocchio = { version = "0.10.1", features = ["cpi"] }
 solana-address = { version = "2.0", features = ["curve25519"] }
+solana-signature = { version = "3.0.0", default-features = false }
 pinocchio-log = "0.5.1"
 pinocchio-pubkey = "0.3"
 pinocchio-system = "0.5"
