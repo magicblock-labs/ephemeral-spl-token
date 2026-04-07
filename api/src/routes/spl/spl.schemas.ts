@@ -18,6 +18,20 @@ const isPublicKey = (value: string) => {
   }
 };
 
+const isNonNegativeBigIntString = (value: string) => {
+  if (!/^\d+$/.test(value)) {
+    return false;
+  }
+
+  try {
+    BigInt(value);
+    return true;
+  }
+  catch {
+    return false;
+  }
+};
+
 export const publicKeySchema = z
   .string()
   .refine(isPublicKey, "Invalid public key")
@@ -57,7 +71,7 @@ export const withdrawAmountSchema = z
 
 export const optionalBigIntStringSchema = z
   .string()
-  .regex(/^\d+$/, "Must be an integer string")
+  .refine(isNonNegativeBigIntString, "Must be a non-negative bigint string")
   .openapi({
     example: "0",
   });
@@ -229,6 +243,10 @@ export const transferRequestSchema = z.object({
     example: "0",
     description: "Optional. Private transfer only. Defaults to 0 when omitted, or to minDelayMs when minDelayMs is set.",
   }).optional(),
+  clientRefId: optionalBigIntStringSchema.openapi({
+    example: "42",
+    description: "Optional. Private transfer only. Encrypted client reference ID that can be used to confirm a payment.",
+  }).optional(),
   split: z.int().positive().max(15).openapi({
     example: 1,
     description: "Optional. Private transfer only. Defaults to 1. Must be between 1 and 15.",
@@ -248,6 +266,7 @@ export const transferRequestSchema = z.object({
     memo: "Order #1042",
     minDelayMs: "0",
     maxDelayMs: "0",
+    clientRefId: "42",
     split: 1,
   },
 });
