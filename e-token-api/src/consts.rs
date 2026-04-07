@@ -11,6 +11,11 @@ pub const SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS: u64 = 500_000;
 /// 0.00203928 SOL (which covers ATA creation if needed).
 pub const SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS: u64 = 1_539_280;
 
+/// Private transfer fee charged on instruction 25 (`DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer`).
+///
+/// 10 basis points = 0.1%.
+pub const PRIVATE_TRANSFER_FEE_BASIS_POINTS: u64 = 10;
+
 /// Flat lamport fee charged by sponsored lamports transfer flows.
 ///
 /// 0.0003 SOL = 300_000 lamports.
