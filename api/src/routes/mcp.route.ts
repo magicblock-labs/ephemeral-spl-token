@@ -126,7 +126,7 @@ const mcpToolCallRequestExample = {
       amount: 1,
       initIfMissing: true,
       initAtasIfMissing: true,
-      initVaultIfMissing: true,
+      initVaultIfMissing: false,
       idempotent: true,
     },
   },
