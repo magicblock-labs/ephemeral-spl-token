@@ -2,8 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import {
+  deriveEphemeralAta,
   deriveRentPda,
   deriveTransferQueue,
+  deriveVault,
+  deriveVaultAta,
   magicFeeVaultPdaFromValidator,
 } from "@magicblock-labs/ephemeral-rollups-sdk";
 import {
@@ -414,6 +417,9 @@ describe("app", () => {
     const mint = "So11111111111111111111111111111111111111112";
     const [transferQueue] = deriveTransferQueue(new PublicKey(mint), new PublicKey(validator));
     const [rentPda] = deriveRentPda();
+    const [vault] = deriveVault(new PublicKey(mint));
+    const [vaultEphemeralAta] = deriveEphemeralAta(vault, new PublicKey(mint));
+    const vaultAta = deriveVaultAta(new PublicKey(mint), vault);
     const fetchSpy = vi.spyOn(globalThis, "fetch");
 
     vi.spyOn(Connection.prototype, "getLatestBlockhash").mockImplementation(async function getLatestBlockhash(this: Connection & { _rpcEndpoint: string }) {
@@ -461,20 +467,23 @@ describe("app", () => {
     expect(json.transferQueue).toBe(transferQueue.toBase58());
     expect(json.rentPda).toBe(rentPda.toBase58());
     expect(json.recentBlockhash).toBe("So11111111111111111111111111111111111111112");
-    expect(json.instructionCount).toBe(4);
+    expect(json.instructionCount).toBe(7);
 
     const transaction = Transaction.from(Buffer.from(json.transactionBase64, "base64"));
-    expect(transaction.instructions).toHaveLength(4);
+    expect(transaction.instructions).toHaveLength(7);
     expect(transaction.instructions[2]?.programId.toBase58()).toBe(SystemProgram.programId.toBase58());
 
     const decodedTransfer = SystemInstruction.decodeTransfer(transaction.instructions[2]!);
     expect(decodedTransfer.fromPubkey.toBase58()).toBe(owner);
     expect(decodedTransfer.toPubkey.toBase58()).toBe(rentPda.toBase58());
-    expect(decodedTransfer.lamports).toBe(BigInt(LAMPORTS_PER_SOL / 10));
+    expect(decodedTransfer.lamports).toBe(BigInt(LAMPORTS_PER_SOL / 50));
 
     expect(transaction.instructions[0]?.keys.some((key) => key.pubkey.toBase58() === transferQueue.toBase58())).toBe(true);
     expect(transaction.instructions[1]?.keys.some((key) => key.pubkey.toBase58() === rentPda.toBase58())).toBe(true);
     expect(transaction.instructions[3]?.keys.some((key) => key.pubkey.toBase58() === transferQueue.toBase58())).toBe(true);
+    expect(transaction.instructions[4]?.keys.some((key) => key.pubkey.toBase58() === vault.toBase58())).toBe(true);
+    expect(transaction.instructions[5]?.keys.some((key) => key.pubkey.toBase58() === vaultAta.toBase58())).toBe(true);
+    expect(transaction.instructions[6]?.keys.some((key) => key.pubkey.toBase58() === vaultEphemeralAta.toBase58())).toBe(true);
   });
 
   it("defaults the validator when building an initialize mint transaction", async () => {
@@ -512,7 +521,7 @@ describe("app", () => {
     };
 
     expect(json.validator).toBe(resolvedValidator);
-    expect(json.instructionCount).toBe(4);
+    expect(json.instructionCount).toBe(7);
   });
 
   it("returns a config error when RPC env vars are missing", async () => {
