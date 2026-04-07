@@ -530,6 +530,8 @@ The API automatically decides:
 - which blockhash to use
 - whether the client should send to the base RPC or ephemeral RPC
 
+`initVaultIfMissing` is optional and defaults to `false`.
+
 The returned `sendTo` value is:
 
 - `"base"` when `fromBalance` is `"base"`
@@ -550,7 +552,7 @@ curl -X POST http://127.0.0.1:8787/v1/spl/transfer \
     "toBalance": "base",
     "initIfMissing": true,
     "initAtasIfMissing": true,
-    "initVaultIfMissing": true,
+    "initVaultIfMissing": false,
     "memo": "Order #1042",
     "minDelayMs": "0",
     "maxDelayMs": "0",
