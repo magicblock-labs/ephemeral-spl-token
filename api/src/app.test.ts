@@ -2,8 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import {
+  deriveEphemeralAta,
   deriveRentPda,
   deriveTransferQueue,
+  deriveVault,
+  deriveVaultAta,
+  magicFeeVaultPdaFromValidator,
 } from "@magicblock-labs/ephemeral-rollups-sdk";
 import {
   AccountInfo,
@@ -69,6 +73,25 @@ function createIdentityResponse(identity: string) {
       "content-type": "application/json",
     },
   });
+}
+
+type TestExecutionContext = ExecutionContext & {
+  drain: () => Promise<void>;
+};
+
+function createExecutionContext(): TestExecutionContext {
+  const tasks: Promise<unknown>[] = [];
+
+  return {
+    props: undefined,
+    waitUntil(promise: Promise<unknown>) {
+      tasks.push(promise);
+    },
+    passThroughOnException() {},
+    async drain() {
+      await Promise.all(tasks);
+    },
+  };
 }
 
 describe("app", () => {
@@ -231,11 +254,12 @@ describe("app", () => {
     expect(transaction.instructions.length).toBeGreaterThan(0);
   });
 
-  it("retries validator resolution after a transient RPC failure", async () => {
+  it("falls back to the default validator after a transient RPC failure and retries later", async () => {
     const retryEnv = {
       ...env,
       EPHEMERAL_RPC_URL: "https://ephemeral.retry.rpc.test",
     };
+    const fallbackValidator = "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57";
     let fetchCalls = 0;
 
     vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
@@ -262,7 +286,13 @@ describe("app", () => {
       }),
     }, retryEnv);
 
-    expect(firstResponse.status).toBe(502);
+    expect(firstResponse.status).toBe(200);
+
+    const firstJson = await firstResponse.json() as {
+      validator: string;
+    };
+
+    expect(firstJson.validator).toBe(fallbackValidator);
 
     const secondResponse = await app.request("/v1/spl/deposit", {
       method: "POST",
@@ -387,6 +417,9 @@ describe("app", () => {
     const mint = "So11111111111111111111111111111111111111112";
     const [transferQueue] = deriveTransferQueue(new PublicKey(mint), new PublicKey(validator));
     const [rentPda] = deriveRentPda();
+    const [vault] = deriveVault(new PublicKey(mint));
+    const [vaultEphemeralAta] = deriveEphemeralAta(vault, new PublicKey(mint));
+    const vaultAta = deriveVaultAta(new PublicKey(mint), vault);
     const fetchSpy = vi.spyOn(globalThis, "fetch");
 
     vi.spyOn(Connection.prototype, "getLatestBlockhash").mockImplementation(async function getLatestBlockhash(this: Connection & { _rpcEndpoint: string }) {
@@ -434,20 +467,23 @@ describe("app", () => {
     expect(json.transferQueue).toBe(transferQueue.toBase58());
     expect(json.rentPda).toBe(rentPda.toBase58());
     expect(json.recentBlockhash).toBe("So11111111111111111111111111111111111111112");
-    expect(json.instructionCount).toBe(4);
+    expect(json.instructionCount).toBe(7);
 
     const transaction = Transaction.from(Buffer.from(json.transactionBase64, "base64"));
-    expect(transaction.instructions).toHaveLength(4);
+    expect(transaction.instructions).toHaveLength(7);
     expect(transaction.instructions[2]?.programId.toBase58()).toBe(SystemProgram.programId.toBase58());
 
     const decodedTransfer = SystemInstruction.decodeTransfer(transaction.instructions[2]!);
     expect(decodedTransfer.fromPubkey.toBase58()).toBe(owner);
     expect(decodedTransfer.toPubkey.toBase58()).toBe(rentPda.toBase58());
-    expect(decodedTransfer.lamports).toBe(BigInt(LAMPORTS_PER_SOL / 10));
+    expect(decodedTransfer.lamports).toBe(BigInt(LAMPORTS_PER_SOL / 50));
 
     expect(transaction.instructions[0]?.keys.some((key) => key.pubkey.toBase58() === transferQueue.toBase58())).toBe(true);
     expect(transaction.instructions[1]?.keys.some((key) => key.pubkey.toBase58() === rentPda.toBase58())).toBe(true);
     expect(transaction.instructions[3]?.keys.some((key) => key.pubkey.toBase58() === transferQueue.toBase58())).toBe(true);
+    expect(transaction.instructions[4]?.keys.some((key) => key.pubkey.toBase58() === vault.toBase58())).toBe(true);
+    expect(transaction.instructions[5]?.keys.some((key) => key.pubkey.toBase58() === vaultAta.toBase58())).toBe(true);
+    expect(transaction.instructions[6]?.keys.some((key) => key.pubkey.toBase58() === vaultEphemeralAta.toBase58())).toBe(true);
   });
 
   it("defaults the validator when building an initialize mint transaction", async () => {
@@ -485,7 +521,7 @@ describe("app", () => {
     };
 
     expect(json.validator).toBe(resolvedValidator);
-    expect(json.instructionCount).toBe(4);
+    expect(json.instructionCount).toBe(7);
   });
 
   it("returns a config error when RPC env vars are missing", async () => {
@@ -682,6 +718,85 @@ describe("app", () => {
     expect(json.validator).toBe(resolvedValidator);
   });
 
+  it("includes clientRefId in private transfer payloads when provided", async () => {
+    const transferEnv = {
+      ...env,
+      EPHEMERAL_RPC_URL: "https://ephemeral.client-ref.rpc.test",
+    };
+    const baseBody = {
+      from: owner,
+      to: destination,
+      mint: "So11111111111111111111111111111111111111112",
+      amount: 2,
+      visibility: "private" as const,
+      fromBalance: "base" as const,
+      toBalance: "base" as const,
+      minDelayMs: "0",
+      maxDelayMs: "0",
+      split: 1,
+    };
+
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123,
+    });
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(transferEnv.EPHEMERAL_RPC_URL);
+      return createIdentityResponse(resolvedValidator);
+    });
+    vi.spyOn(globalThis.crypto, "getRandomValues").mockImplementation((array) => {
+      if (array instanceof Uint32Array) {
+        array.fill(7);
+        return array;
+      }
+
+      (array as Uint8Array).fill(1);
+      return array;
+    });
+
+    const withoutClientRefResponse = await app.request("/v1/spl/transfer", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(baseBody),
+    }, transferEnv);
+
+    const withClientRefResponse = await app.request("/v1/spl/transfer", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        ...baseBody,
+        clientRefId: "42",
+      }),
+    }, transferEnv);
+
+    expect(withoutClientRefResponse.status).toBe(200);
+    expect(withClientRefResponse.status).toBe(200);
+
+    const withoutClientRefJson = await withoutClientRefResponse.json() as {
+      instructionCount: number;
+      transactionBase64: string;
+    };
+    const withClientRefJson = await withClientRefResponse.json() as {
+      instructionCount: number;
+      transactionBase64: string;
+    };
+
+    expect(withClientRefJson.instructionCount).toBe(withoutClientRefJson.instructionCount);
+    expect(withClientRefJson.transactionBase64).not.toBe(withoutClientRefJson.transactionBase64);
+
+    const withoutClientRefTx = Transaction.from(Buffer.from(withoutClientRefJson.transactionBase64, "base64"));
+    const withClientRefTx = Transaction.from(Buffer.from(withClientRefJson.transactionBase64, "base64"));
+
+    expect(withClientRefTx.instructions).toHaveLength(withoutClientRefTx.instructions.length);
+    expect(withClientRefTx.instructions.map((instruction) => Buffer.from(instruction.data).toString("base64"))).not.toEqual(
+      withoutClientRefTx.instructions.map((instruction) => Buffer.from(instruction.data).toString("base64")),
+    );
+  });
+
   it("rejects split values above 15", async () => {
     const response = await app.request("/v1/spl/transfer", {
       method: "POST",
@@ -701,6 +816,43 @@ describe("app", () => {
     }, env);
 
     expect(response.status).toBe(422);
+  });
+
+  it("validates clientRefId as a bigint string at the API layer", async () => {
+    const response = await app.request("/v1/spl/transfer", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        from: owner,
+        to: destination,
+        mint: "So11111111111111111111111111111111111111112",
+        amount: 2,
+        visibility: "private",
+        fromBalance: "base",
+        toBalance: "base",
+        clientRefId: "1.5",
+      }),
+    }, env);
+
+    expect(response.status).toBe(422);
+
+    const json = await response.json() as {
+      error: {
+        issues: Array<{
+          path: string[];
+          message: string;
+        }>;
+      };
+    };
+
+    expect(json.error.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        path: ["clientRefId"],
+        message: "Must be a non-negative bigint string",
+      }),
+    ]));
   });
 
   it("rejects private transfers with maxDelayMs above 10 minutes", async () => {
@@ -979,6 +1131,134 @@ describe("app", () => {
     expect(json.validator).toBe(resolvedValidator);
     expect(json.transferQueue).toBe(transferQueue.toBase58());
     expect(json.initialized).toBe(true);
+  });
+
+  it("skips the background crank when recent transfer queue activity exists", async () => {
+    const mint = "So11111111111111111111111111111111111111112";
+    const validator = Keypair.generate().publicKey.toBase58();
+    const [transferQueue] = deriveTransferQueue(new PublicKey(mint), new PublicKey(validator));
+    const executionCtx = createExecutionContext();
+    const nowMs = 1_700_000_000_000;
+    const getLatestBlockhashSpy = vi.spyOn(Connection.prototype, "getLatestBlockhash");
+    const sendRawTransactionSpy = vi.spyOn(Connection.prototype, "sendRawTransaction");
+
+    vi.spyOn(Date, "now").mockReturnValue(nowMs);
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockResolvedValue(createAccountInfo(0n));
+    vi.spyOn(Connection.prototype, "getSignaturesForAddress").mockImplementation(async function getSignaturesForAddress(this: Connection & { _rpcEndpoint: string }, address) {
+      expect((this as Connection & { _rpcEndpoint: string })._rpcEndpoint).toBe(env.EPHEMERAL_RPC_URL);
+      expect(address.toBase58()).toBe(transferQueue.toBase58());
+      return [{
+        blockTime: Math.floor((nowMs - 30_000) / 1000),
+        confirmationStatus: "confirmed",
+        err: null,
+        memo: null,
+        signature: "recent-signature",
+        slot: 1,
+      }];
+    });
+
+    const response = await app.fetch(
+      new Request(`http://localhost/v1/spl/is-mint-initialized?mint=${mint}&validator=${validator}`),
+      env,
+      executionCtx,
+    );
+
+    expect(response.status).toBe(200);
+
+    await executionCtx.drain();
+
+    expect(getLatestBlockhashSpy).not.toHaveBeenCalled();
+    expect(sendRawTransactionSpy).not.toHaveBeenCalled();
+  });
+
+  it("starts the background crank when the transfer queue has no recent transactions", async () => {
+    const mint = "So11111111111111111111111111111111111111112";
+    const validator = Keypair.generate().publicKey.toBase58();
+    const validatorPublicKey = new PublicKey(validator);
+    const [transferQueue] = deriveTransferQueue(new PublicKey(mint), validatorPublicKey);
+    const executionCtx = createExecutionContext();
+    const nowMs = 1_700_000_000_000;
+    let rawTransaction: Buffer | undefined;
+
+    vi.spyOn(Date, "now").mockReturnValue(nowMs);
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockResolvedValue(createAccountInfo(0n));
+    vi.spyOn(Connection.prototype, "getSignaturesForAddress").mockResolvedValue([]);
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123,
+    });
+    vi.spyOn(Connection.prototype, "sendRawTransaction").mockImplementation(async function sendRawTransaction(this: Connection & { _rpcEndpoint: string }, raw) {
+      expect((this as Connection & { _rpcEndpoint: string })._rpcEndpoint).toBe(env.EPHEMERAL_RPC_URL);
+      rawTransaction = Buffer.from(raw);
+      return "background-crank-signature";
+    });
+    vi.spyOn(Connection.prototype, "confirmTransaction").mockResolvedValue({
+      context: { slot: 1 },
+      value: { err: null },
+    } as never);
+
+    const response = await app.fetch(
+      new Request(`http://localhost/v1/spl/is-mint-initialized?mint=${mint}&validator=${validator}`),
+      env,
+      executionCtx,
+    );
+
+    expect(response.status).toBe(200);
+
+    await executionCtx.drain();
+
+    expect(rawTransaction).toBeDefined();
+
+    const transaction = Transaction.from(rawTransaction!);
+    expect(transaction.instructions).toHaveLength(1);
+    expect(transaction.instructions[0]?.keys[1]?.pubkey.toBase58()).toBe(transferQueue.toBase58());
+    expect(transaction.instructions[0]?.keys[2]?.pubkey.toBase58()).toBe(
+      magicFeeVaultPdaFromValidator(validatorPublicKey).toBase58(),
+    );
+  });
+
+  it("starts the background crank when the latest transfer queue transaction is older than a minute", async () => {
+    const mint = "So11111111111111111111111111111111111111112";
+    const validator = Keypair.generate().publicKey.toBase58();
+    const [transferQueue] = deriveTransferQueue(new PublicKey(mint), new PublicKey(validator));
+    const executionCtx = createExecutionContext();
+    const nowMs = 1_700_000_000_000;
+    const sendRawTransactionSpy = vi.spyOn(Connection.prototype, "sendRawTransaction").mockResolvedValue("background-crank-signature");
+
+    vi.spyOn(Date, "now").mockReturnValue(nowMs);
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockResolvedValue(createAccountInfo(0n));
+    vi.spyOn(Connection.prototype, "getSignaturesForAddress").mockImplementation(async function getSignaturesForAddress(this: Connection & { _rpcEndpoint: string }, address) {
+      expect((this as Connection & { _rpcEndpoint: string })._rpcEndpoint).toBe(env.EPHEMERAL_RPC_URL);
+      expect(address.toBase58()).toBe(transferQueue.toBase58());
+      return [{
+        blockTime: Math.floor((nowMs - 61_000) / 1000),
+        confirmationStatus: "confirmed",
+        err: null,
+        memo: null,
+        signature: "stale-signature",
+        slot: 1,
+      }];
+    });
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123,
+    });
+    vi.spyOn(Connection.prototype, "confirmTransaction").mockResolvedValue({
+      context: { slot: 1 },
+      value: { err: null },
+    } as never);
+
+    const response = await app.fetch(
+      new Request(`http://localhost/v1/spl/is-mint-initialized?mint=${mint}&validator=${validator}`),
+      env,
+      executionCtx,
+    );
+
+    expect(response.status).toBe(200);
+
+    await executionCtx.drain();
+
+    expect(sendRawTransactionSpy).toHaveBeenCalledOnce();
   });
 
   it("uses a custom RPC URL only for base RPC calls when cluster is a URL", async () => {

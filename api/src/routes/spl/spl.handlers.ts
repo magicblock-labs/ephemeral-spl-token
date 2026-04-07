@@ -30,6 +30,18 @@ import {
 } from "./spl.schemas";
 
 type RouteEnv = { Bindings: AppBindings };
+type BackgroundScheduler = {
+  waitUntil: (promise: Promise<unknown>) => void;
+};
+
+function getBackgroundScheduler(c: { executionCtx: BackgroundScheduler }) {
+  try {
+    return c.executionCtx;
+  }
+  catch {
+    return undefined;
+  }
+}
 
 export const depositHandler: RouteHandler<typeof depositRoute, RouteEnv> = async (c) => {
   const env = getEnv(c.env);
@@ -76,6 +88,10 @@ export const privateBalanceHandler: RouteHandler<typeof privateBalanceRoute, Rou
 export const mintInitializationHandler: RouteHandler<typeof mintInitializationRoute, RouteEnv> = async (c) => {
   const env = getEnv(c.env);
   const query = c.req.valid("query") as z.infer<typeof mintInitializationQuerySchema>;
-  const response = await getMintInitializationStatus(env, query);
+  const response = await getMintInitializationStatus(
+    env,
+    query,
+    getBackgroundScheduler(c as { executionCtx: BackgroundScheduler }),
+  );
   return c.json(response, 200);
 };
