@@ -748,7 +748,7 @@ async function getBalanceInternal(
   const config = resolveRpcConfig(env, input.cluster);
   const owner = parsePublicKey(input.address, "address");
   const mint = parsePublicKey(input.mint, "mint");
-  const ata = getAssociatedTokenAddressSync(mint, owner, false, TOKEN_PROGRAM_ID);
+  const ata = getAssociatedTokenAddressSync(mint, owner, true, TOKEN_PROGRAM_ID);
   const connection = location === "base"
     ? getBaseConnection(config)
     : getEphemeralConnection(config);
