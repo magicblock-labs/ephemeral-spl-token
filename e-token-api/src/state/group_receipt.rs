@@ -1,10 +1,86 @@
-use super::{Initializable, RawType};
+use bytemuck::{Pod, Zeroable};
+use pinocchio::error::ProgramError;
+use pinocchio::{AccountView, ProgramResult};
+use solana_signature::Signature;
+
+pub struct GroupReceipt<'a> {
+    header: &'a mut GroupReceiptHeader,
+    items_data: &'a mut [u8],
+    items_capacity: usize,
+}
+
+impl<'a> GroupReceipt<'a> {
+    pub fn new(info: &'a AccountView) -> Result<Self, ProgramError> {
+        let data = unsafe { info.borrow_unchecked_mut() };
+        let (header_data, items_data) = data
+            .split_at_mut_checked(GroupReceiptHeader::size())
+            .ok_or(ProgramError::InvalidAccountData)?;
+
+        // Parse header
+        let header = GroupReceiptHeader::from_data_mut(header_data)?;
+
+        // Narmalize and store items data
+        let items_capacity = Self::calculate_items_capacity(items_data);
+        let items_data = &mut items_data[..items_capacity];
+        Ok(Self {
+            header,
+            items_data,
+            items_capacity,
+        })
+    }
+
+    /// Calculates required size in bytes for given number of items
+    pub fn required_size(items: usize) -> usize {
+        GroupReceiptHeader::size() + Self::item_size() * items
+    }
+
+    pub fn items(&self) -> Result<&[Signature], ProgramError> {
+        let initialized_items_bytes = self.initialized_items_bytes();
+        bytemuck::try_cast_slice(&self.items_data[..initialized_items_bytes])
+            .map_err(|_| ProgramError::InvalidAccountData)
+    }
+
+    /// Records transfer, adding item and updating state accordingly
+    pub fn record_transfer(&mut self, item: Option<Signature>) -> ProgramResult {
+        if self.transfers_left() > 0 {
+            Ok(())
+        } else {
+            Err(ProgramError::InvalidInstructionData)
+        }?;
+
+        let item = item.unwrap_or(Signature::zeroed());
+        let item_start = self.initialized_items_bytes();
+        let item_range = (item_start..item_start + Self::item_size());
+        self.items_data[item_range].copy_from_slice(item.as_array());
+        self.header.transfers_left -= 1;
+
+        Ok(())
+    }
+
+    fn initialized_items_bytes(&self) -> usize {
+        let initialized_items = self.items_capacity - self.transfers_left() as usize;
+        initialized_items * Self::item_size()
+    }
+
+    pub fn transfers_left(&self) -> u32 {
+        self.header.transfers_left
+    }
+
+    pub const fn item_size() -> usize {
+        size_of::<Signature>()
+    }
+
+    pub fn calculate_items_capacity(data: &[u8]) -> usize {
+        data.len() / Self::item_size()
+    }
+}
 
 /// On-chain record tracking how many transfers in a group remain to be
 /// confirmed.  One account is created per (queue, group_id) pair and is
 /// closed once all splits have been acknowledged.
 #[repr(C)]
-pub struct GroupReceipt {
+#[derive(Copy, Clone, Pod, Zeroable)]
+pub struct GroupReceiptHeader {
     /// Group ID
     pub id: u32,
     /// PDA bump for receipt.
@@ -15,34 +91,47 @@ pub struct GroupReceipt {
     pub transfers_left: u32,
 }
 
-impl RawType for GroupReceipt {
-    const LEN: usize = core::mem::size_of::<GroupReceipt>();
-}
-
-impl Initializable for GroupReceipt {
-    #[inline(always)]
-    fn is_initialized(&self) -> bool {
-        // Initialized group ID starts from 1
-        self.id != 0
-    }
-}
-
-impl GroupReceipt {
+impl GroupReceiptHeader {
     pub fn new(id: u32, bump: u8, splits: u32) -> Self {
         Self {
             id,
             bump,
             _pad: [0; 3],
-            transfers_left: splits
+            transfers_left: splits,
         }
+    }
+
+    pub fn from_data(data: &[u8]) -> Result<&GroupReceiptHeader, ProgramError> {
+        bytemuck::try_from_bytes::<GroupReceiptHeader>(data)
+            .map_err(|_| ProgramError::InvalidAccountData)
+    }
+
+    fn from_data_mut(data: &mut [u8]) -> Result<&mut GroupReceiptHeader, ProgramError> {
+        bytemuck::try_from_bytes_mut::<GroupReceiptHeader>(data)
+            .map_err(|_| ProgramError::InvalidAccountData)
     }
 
     pub fn transfers_left(&self) -> u32 {
         self.transfers_left
     }
 
-    // TODO(edwin): define API
-    pub fn transfer_complete(&mut self) {
-        let _ = self.transfers_left.checked_sub(1);
+    pub const fn size() -> usize {
+        size_of::<Self>()
     }
+}
+
+fn initialize_group_receipt(account: &AccountView, group_id: u32, splits: u32, bump: u8) -> ProgramResult {
+    let data = unsafe { account.borrow_unchecked_mut() };
+    let required_data = GroupReceipt::required_size(splits as usize);
+
+    if data.len() != required_data {
+        Err(ProgramError::InvalidInstructionData)
+    } else {
+        Ok(())
+    }?;
+
+    let header = GroupReceiptHeader::new(group_id, bump, splits);
+    data[..GroupReceiptHeader::size()].copy_from_slice(bytemuck::bytes_of(&header));
+
+    Ok(())
 }

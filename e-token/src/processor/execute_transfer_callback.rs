@@ -1,6 +1,6 @@
 use crate::processor::process_transfer_queue_tick::derive_associated_token_address;
 use ephemeral_spl_api::program::id_address;
-use ephemeral_spl_api::state::group_receipt::GroupReceipt;
+use ephemeral_spl_api::state::group_receipt::GroupReceiptHeader;
 use ephemeral_spl_api::state::transfer_queue::{
     queue_views_checked, TransferQueueHeader, QUEUE_SEED,
 };
@@ -168,8 +168,9 @@ fn handle_group_receipt(
 
     init_group_receipt_id(queue_info, group_receipt_info, group_receipt_bump, args)?;
 
-    let group_receipt =
-        load_mut_initialized::<GroupReceipt>(unsafe { group_receipt_info.borrow_unchecked_mut() })?;
+    let group_receipt = load_mut_initialized::<GroupReceiptHeader>(unsafe {
+        group_receipt_info.borrow_unchecked_mut()
+    })?;
     group_receipt.transfer_complete();
     if group_receipt.transfers_left() == 0 {
         let _ = group_receipt;
@@ -197,7 +198,7 @@ pub fn init_group_receipt_id(
     }
 
     // Account does not exist yet — create it, paying from the queue PDA.
-    let lamports = Rent::get()?.try_minimum_balance(GroupReceipt::LEN)?;
+    let lamports = Rent::get()?.try_minimum_balance(GroupReceiptHeader::LEN)?;
 
     // Build queue signer seeds from its stored header.
     let (header, _) = queue_views_checked(unsafe { queue_info.borrow_unchecked() })?;
@@ -223,7 +224,7 @@ pub fn init_group_receipt_id(
     CreateAccount {
         from: queue_info,
         to: group_receipt,
-        space: GroupReceipt::LEN as u64,
+        space: GroupReceiptHeader::LEN as u64,
         lamports,
         owner: &id_address(),
     }
@@ -231,8 +232,8 @@ pub fn init_group_receipt_id(
 
     // Write initial state into the newly allocated account.
     let data = unsafe { group_receipt.borrow_unchecked_mut() };
-    let receipt = load_mut::<GroupReceipt>(data)?;
-    *receipt = GroupReceipt::new(
+    let receipt = load_mut::<GroupReceiptHeader>(data)?;
+    *receipt = GroupReceiptHeader::new(
         callback_args.group_id,
         group_receipt_bump,
         callback_args.splits,
