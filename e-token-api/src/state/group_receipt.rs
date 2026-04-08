@@ -23,9 +23,9 @@ impl<'a> GroupReceipt<'a> {
         // Parse header
         let header = GroupReceiptHeader::from_data_mut(header_data)?;
 
-        // Narmalize and store items data
+        // Normalize and store items data
         let items_capacity = Self::calculate_items_capacity(items_data);
-        let items_data = &mut items_data[..items_capacity];
+        let items_data = &mut items_data[..items_capacity * TransferReceipt::size()];
         Ok(Self {
             header,
             items_data,
@@ -192,4 +192,94 @@ pub fn initialize_group_receipt(
     data[..GroupReceiptHeader::size()].copy_from_slice(bytemuck::bytes_of(&header));
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    extern crate std;
+
+    fn init_data(id: u32, splits: u32, bump: u8) -> std::vec::Vec<u8> {
+        let mut data = std::vec![0u8; GroupReceipt::required_size(splits as usize)];
+        let header = GroupReceiptHeader::new(id, bump, splits);
+        data[..GroupReceiptHeader::size()].copy_from_slice(bytemuck::bytes_of(&header));
+        data
+    }
+
+    #[test]
+    fn from_data_mut_parses_header() {
+        let mut data = init_data(7, 3, 5);
+        let gr = unsafe { GroupReceipt::from_data_mut(&mut data) }.unwrap();
+        assert_eq!(gr.id(), 7);
+        assert_eq!(gr.transfers_left(), 3);
+    }
+
+    #[test]
+    fn from_data_mut_too_small_returns_error() {
+        let mut data = std::vec![0u8; GroupReceiptHeader::size() - 1];
+        assert!(unsafe { GroupReceipt::from_data_mut(&mut data) }.is_err());
+    }
+
+    #[test]
+    fn record_transfer_decrements_transfers_left() {
+        let mut data = init_data(1, 2, 0);
+        let mut gr = unsafe { GroupReceipt::from_data_mut(&mut data) }.unwrap();
+        gr.record_transfer(TransferReceipt::new(None, 100, true))
+            .unwrap();
+        assert_eq!(gr.transfers_left(), 1);
+        gr.record_transfer(TransferReceipt::new(None, 50, false))
+            .unwrap();
+        assert_eq!(gr.transfers_left(), 0);
+    }
+
+    #[test]
+    fn record_transfer_fails_when_exhausted() {
+        let mut data = init_data(1, 1, 0);
+        let mut gr = unsafe { GroupReceipt::from_data_mut(&mut data) }.unwrap();
+        gr.record_transfer(TransferReceipt::new(None, 100, true))
+            .unwrap();
+        assert!(gr
+            .record_transfer(TransferReceipt::new(None, 50, false))
+            .is_err());
+    }
+
+    #[test]
+    fn items_is_empty_before_any_transfer() {
+        let mut data = init_data(1, 2, 0);
+        let gr = unsafe { GroupReceipt::from_data_mut(&mut data) }.unwrap();
+        assert_eq!(gr.items().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn items_reflects_recorded_transfers() {
+        let mut data = init_data(1, 2, 0);
+        let sig = Signature::from([3u8; 64]);
+        {
+            let mut gr = unsafe { GroupReceipt::from_data_mut(&mut data) }.unwrap();
+            gr.record_transfer(TransferReceipt::new(Some(sig), 200, true))
+                .unwrap();
+            gr.record_transfer(TransferReceipt::new(None, 300, false))
+                .unwrap();
+        }
+        let gr = unsafe { GroupReceipt::from_data_mut(&mut data) }.unwrap();
+        let items = gr.items().unwrap();
+        assert_eq!(items.len(), 2);
+
+        assert_eq!(items[0].amount(), 200);
+        assert!(items[0].ok());
+        assert!(items[0].signature().is_some());
+
+        assert_eq!(items[1].amount(), 300);
+        assert!(!items[1].ok());
+        assert!(items[1].signature().is_none());
+    }
+
+    #[test]
+    fn record_transfer_fails_with_zero_splits() {
+        let mut data = init_data(1, 0, 0);
+        let mut gr = unsafe { GroupReceipt::from_data_mut(&mut data) }.unwrap();
+        assert!(gr
+            .record_transfer(TransferReceipt::new(None, 0, false))
+            .is_err());
+    }
 }
