@@ -35,24 +35,24 @@ impl<'a> GroupReceipt<'a> {
 
     /// Calculates required size in bytes for given number of items
     pub fn required_size(items: usize) -> usize {
-        GroupReceiptHeader::size() + Item::size() * items
+        GroupReceiptHeader::size() + TransferReceipt::size() * items
     }
 
-    pub fn items(&self) -> Result<&[Item], ProgramError> {
+    pub fn items(&self) -> Result<&[TransferReceipt], ProgramError> {
         let initialized_items_bytes = self.initialized_items_bytes();
         bytemuck::try_cast_slice(&self.items_data[..initialized_items_bytes])
             .map_err(|_| ProgramError::InvalidAccountData)
     }
 
     /// Records transfer, adding item and updating state accordingly
-    pub fn record_transfer(&mut self, item: Item) -> ProgramResult {
+    pub fn record_transfer(&mut self, item: TransferReceipt) -> ProgramResult {
         if self.transfers_left() > 0 {
             Ok(())
         } else {
             Err(ProgramError::InvalidInstructionData)
         }?;
         let item_start = self.initialized_items_bytes();
-        let item_range = item_start..item_start + Item::size();
+        let item_range = item_start..item_start + TransferReceipt::size();
         self.items_data[item_range].copy_from_slice(bytemuck::bytes_of(&item));
         self.header.transfers_left -= 1;
 
@@ -61,7 +61,7 @@ impl<'a> GroupReceipt<'a> {
 
     fn initialized_items_bytes(&self) -> usize {
         let initialized_items = self.items_capacity - self.transfers_left() as usize;
-        initialized_items * Item::size()
+        initialized_items * TransferReceipt::size()
     }
 
     pub fn id(&self) -> u32 {
@@ -73,7 +73,7 @@ impl<'a> GroupReceipt<'a> {
     }
 
     pub fn calculate_items_capacity(data: &[u8]) -> usize {
-        data.len() / Item::size()
+        data.len() / TransferReceipt::size()
     }
 }
 
@@ -132,7 +132,7 @@ impl GroupReceiptHeader {
 
 #[repr(C)]
 #[derive(Copy, Clone, Pod, Zeroable)]
-pub struct Item {
+pub struct TransferReceipt {
     /// Signature of transfer action, or zeros if signature was absent
     signature: Signature,
     /// Amount transferred in the action
@@ -142,7 +142,7 @@ pub struct Item {
     _reserved: [u8; 7],
 }
 
-impl Item {
+impl TransferReceipt {
     pub fn new(signature: Option<Signature>, amount: u64, ok: bool) -> Self {
         Self {
             signature: signature.unwrap_or(Signature::zeroed()),

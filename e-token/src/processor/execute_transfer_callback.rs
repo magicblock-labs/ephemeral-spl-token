@@ -1,7 +1,9 @@
 use crate::processor::ephemeral_account::{close_ephemeral_account, create_ephemeral_account};
 use crate::processor::process_transfer_queue_tick::derive_associated_token_address;
 use ephemeral_spl_api::program::id_address;
-use ephemeral_spl_api::state::group_receipt::{initialize_group_receipt, GroupReceipt, Item};
+use ephemeral_spl_api::state::group_receipt::{
+    initialize_group_receipt, GroupReceipt, TransferReceipt,
+};
 use ephemeral_spl_api::state::transfer_queue::{
     queue_views_checked, TransferQueueHeader, QUEUE_SEED,
 };
@@ -160,7 +162,7 @@ fn handle_group_receipt(
     )?;
     // Update receipt recording transfer
     let mut group_receipt = GroupReceipt::new(group_receipt_info)?;
-    group_receipt.record_transfer(Item::new(
+    group_receipt.record_transfer(TransferReceipt::new(
         response.signature.copied(),
         args.amount,
         response.ok,
