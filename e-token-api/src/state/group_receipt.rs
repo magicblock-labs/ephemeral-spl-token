@@ -12,9 +12,7 @@ pub struct GroupReceipt<'a> {
 impl<'a> GroupReceipt<'a> {
     pub fn new(info: &'a AccountView) -> Result<Self, ProgramError> {
         let data = unsafe { info.borrow_unchecked_mut() };
-        Ok(unsafe {
-            Self::from_data_mut(data)?
-        })
+        Ok(unsafe { Self::from_data_mut(data)? })
     }
 
     pub unsafe fn from_data_mut(data: &'a mut [u8]) -> Result<Self, ProgramError> {
@@ -37,27 +35,27 @@ impl<'a> GroupReceipt<'a> {
 
     /// Calculates required size in bytes for given number of items
     pub fn required_size(items: usize) -> usize {
-        GroupReceiptHeader::size() + Self::item_size() * items
+        GroupReceiptHeader::size() + Item::size() * items
     }
 
-    pub fn items(&self) -> Result<&[Signature], ProgramError> {
+    pub fn items(&self) -> Result<&[Item], ProgramError> {
         let initialized_items_bytes = self.initialized_items_bytes();
         bytemuck::try_cast_slice(&self.items_data[..initialized_items_bytes])
             .map_err(|_| ProgramError::InvalidAccountData)
     }
 
     /// Records transfer, adding item and updating state accordingly
-    pub fn record_transfer(&mut self, item: Option<Signature>) -> ProgramResult {
+    pub fn record_transfer(&mut self, signature: Option<Signature>) -> ProgramResult {
         if self.transfers_left() > 0 {
             Ok(())
         } else {
             Err(ProgramError::InvalidInstructionData)
         }?;
 
-        let item = item.unwrap_or(Signature::zeroed());
+        let item = Item::new(signature);
         let item_start = self.initialized_items_bytes();
-        let item_range = (item_start..item_start + Self::item_size());
-        self.items_data[item_range].copy_from_slice(item.as_array());
+        let item_range = item_start..item_start + Item::size();
+        self.items_data[item_range].copy_from_slice(bytemuck::bytes_of(&item));
         self.header.transfers_left -= 1;
 
         Ok(())
@@ -65,19 +63,15 @@ impl<'a> GroupReceipt<'a> {
 
     fn initialized_items_bytes(&self) -> usize {
         let initialized_items = self.items_capacity - self.transfers_left() as usize;
-        initialized_items * Self::item_size()
+        initialized_items * Item::size()
     }
 
     pub fn transfers_left(&self) -> u32 {
         self.header.transfers_left
     }
 
-    pub const fn item_size() -> usize {
-        size_of::<Signature>()
-    }
-
     pub fn calculate_items_capacity(data: &[u8]) -> usize {
-        data.len() / Self::item_size()
+        data.len() / Item::size()
     }
 }
 
@@ -134,7 +128,37 @@ impl GroupReceiptHeader {
     }
 }
 
-pub fn initialize_group_receipt(account: &AccountView, group_id: u32, splits: u32, bump: u8) -> ProgramResult {
+#[repr(C)]
+#[derive(Copy, Clone, Pod, Zeroable)]
+pub struct Item {
+    /// Signature of transfer action, or zeros if signature was absent
+    signature: Signature,
+    _reserved: [u8; 8],
+}
+
+impl Item {
+    pub fn new(signature: Option<Signature>) -> Self {
+        Self {
+            signature: signature.unwrap_or(Signature::zeroed()),
+            _reserved: [0; 8],
+        }
+    }
+
+    pub fn signature(&self) -> &Signature {
+        &self.signature
+    }
+
+    pub const fn size() -> usize {
+        size_of::<Self>()
+    }
+}
+
+pub fn initialize_group_receipt(
+    account: &AccountView,
+    group_id: u32,
+    splits: u32,
+    bump: u8,
+) -> ProgramResult {
     let data = unsafe { account.borrow_unchecked_mut() };
     let required_data = GroupReceipt::required_size(splits as usize);
 
