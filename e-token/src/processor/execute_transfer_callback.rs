@@ -1,16 +1,13 @@
+use crate::processor::ephemeral_account::{close_ephemeral_account, create_ephemeral_account};
 use crate::processor::process_transfer_queue_tick::derive_associated_token_address;
 use ephemeral_spl_api::program::id_address;
-use ephemeral_spl_api::state::group_receipt::GroupReceiptHeader;
+use ephemeral_spl_api::state::group_receipt::{initialize_group_receipt, GroupReceipt, Item};
 use ephemeral_spl_api::state::transfer_queue::{
     queue_views_checked, TransferQueueHeader, QUEUE_SEED,
 };
-use ephemeral_spl_api::state::{load_initialized, load_mut, load_mut_initialized, RawType};
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::error::ProgramError;
-use pinocchio::sysvars::rent::Rent;
-use pinocchio::sysvars::Sysvar;
 use pinocchio::{AccountView, Address, ProgramResult};
-use pinocchio_system::instructions::CreateAccount;
 use solana_signature::Signature;
 
 pub const GROUP_RECEIPT_SEED: &[u8] = b"group-receipt";
@@ -60,7 +57,7 @@ pub fn process_execute_transfer_callback(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let [validator, group_receipt, queue_info, vault, mint, vault_token_account, source_token_account, token_program] =
+    let [validator, group_receipt, queue_info, vault, mint, vault_token_account, source_token_account, token_program, magic_vault] =
         accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
@@ -83,29 +80,8 @@ pub fn process_execute_transfer_callback(
     let response = MagicResponseView::deserialize(instruction_data)?;
     let args = TransferCallbackArgs::try_from_bytes(response.data)?;
 
-    // #[cfg(feature = "logging")]
-    match response.signature {
-        Some(sig) => pinocchio_log::log!(
-            "TransferCallback group_id: {}, status: {}, signature: {}",
-            args.group_id,
-            response.ok,
-            sig.as_ref(),
-        ),
-        None => pinocchio_log::log!(
-            "TransferCallback group_id: {}, status: {}, signature: None",
-            args.group_id,
-            response.ok,
-        ),
-    }
-
-    if response.ok {
-        pinocchio_log::log!("Action succeeded!");
-    } else {
-        pinocchio_log::log!("Action failed!");
-    }
-
     // Handles group receipt flow
-    handle_group_receipt(queue_info, group_receipt, &args)?;
+    handle_group_receipt(queue_info, group_receipt, magic_vault, &args, response.signature)?;
     // Handle transfer status
     // handle_transfer_status(..)?;
 
@@ -150,13 +126,15 @@ fn validate(
 }
 
 /// Handles group receipt flow
-/// Receipt doesn't exist - create
-/// Update receipt
-/// Closes if this is the last transfer
+/// 1. Receipt doesn't exist - create
+/// 2. Update receipt
+/// 3. Closes if this is the last transfer
 fn handle_group_receipt(
     queue_info: &AccountView,
     group_receipt_info: &AccountView,
+    magic_vault: &AccountView,
     args: &TransferCallbackArgs,
+    signature: Option<&Signature>,
 ) -> ProgramResult {
     let (group_receipt_id, group_receipt_bump) =
         derive_group_receipt_id(queue_info.address(), args.group_id);
@@ -166,15 +144,16 @@ fn handle_group_receipt(
         return Err(ProgramError::InvalidSeeds);
     }
 
-    init_group_receipt_id(queue_info, group_receipt_info, group_receipt_bump, args)?;
+    // Create receipt idempotently
+    init_group_receipt_id(queue_info, group_receipt_info, magic_vault, group_receipt_bump, args)?;
+    // Update receipt recording transfer
+    let mut group_receipt = GroupReceipt::new(group_receipt_info)?;
+    group_receipt.record_transfer(Item::new(signature.copied()))?;
 
-    let group_receipt = load_mut_initialized::<GroupReceiptHeader>(unsafe {
-        group_receipt_info.borrow_unchecked_mut()
-    })?;
-    group_receipt.transfer_complete();
+    // If no transfers left - close account
     if group_receipt.transfers_left() == 0 {
-        let _ = group_receipt;
-        close_group_receipt(queue_info, group_receipt_info)
+        pinocchio_log::log!("All transaction complete: {}", group_receipt);
+        close_group_receipt(queue_info, group_receipt_info, magic_vault)
     } else {
         Ok(())
     }
@@ -189,6 +168,7 @@ fn handle_group_receipt(
 pub fn init_group_receipt_id(
     queue_info: &AccountView,
     group_receipt: &AccountView,
+    magic_vault: &AccountView,
     group_receipt_bump: u8,
     callback_args: &TransferCallbackArgs,
 ) -> ProgramResult {
@@ -196,9 +176,6 @@ pub fn init_group_receipt_id(
     if group_receipt.owned_by(&id_address()) {
         return Ok(());
     }
-
-    // Account does not exist yet — create it, paying from the queue PDA.
-    let lamports = Rent::get()?.try_minimum_balance(GroupReceiptHeader::LEN)?;
 
     // Build queue signer seeds from its stored header.
     let (header, _) = queue_views_checked(unsafe { queue_info.borrow_unchecked() })?;
@@ -221,29 +198,41 @@ pub fn init_group_receipt_id(
     ];
     let receipt_signer = Signer::from(&receipt_signer_seeds);
 
-    CreateAccount {
-        from: queue_info,
-        to: group_receipt,
-        space: GroupReceiptHeader::LEN as u64,
-        lamports,
-        owner: &id_address(),
-    }
-    .invoke_signed(&[queue_signer, receipt_signer])?;
+    // Account does not exist yet — create it as an ephemeral account, paying from the queue PDA.
+    let space = GroupReceipt::required_size(callback_args.splits as usize);
+    create_ephemeral_account(
+        queue_info,
+        group_receipt,
+        magic_vault,
+        space as u32,
+        &[queue_signer, receipt_signer],
+    )?;
 
     // Write initial state into the newly allocated account.
-    let data = unsafe { group_receipt.borrow_unchecked_mut() };
-    let receipt = load_mut::<GroupReceiptHeader>(data)?;
-    *receipt = GroupReceiptHeader::new(
+    initialize_group_receipt(
+        group_receipt,
         callback_args.group_id,
-        group_receipt_bump,
         callback_args.splits,
-    );
-
-    Ok(())
+        group_receipt_bump,
+    )
 }
 
-pub fn close_group_receipt(payer: &AccountView, group_receipt: &AccountView) -> ProgramResult {
-    todo!()
+pub fn close_group_receipt(
+    queue_info: &AccountView,
+    group_receipt: &AccountView,
+    magic_vault: &AccountView,
+) -> ProgramResult {
+    let (header, _) = queue_views_checked(unsafe { queue_info.borrow_unchecked() })?;
+    let queue_bump_seed = [header.bump];
+    let queue_signer_seeds = [
+        Seed::from(QUEUE_SEED),
+        Seed::from(header.mint.as_ref()),
+        Seed::from(header.validator.as_ref()),
+        Seed::from(&queue_bump_seed),
+    ];
+    let queue_signer = Signer::from(&queue_signer_seeds);
+
+    close_ephemeral_account(queue_info, group_receipt, magic_vault, &[queue_signer])
 }
 
 /// Deserialize the bincode-encoded `MagicResponse` from a byte slice without

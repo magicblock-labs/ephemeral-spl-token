@@ -45,14 +45,12 @@ impl<'a> GroupReceipt<'a> {
     }
 
     /// Records transfer, adding item and updating state accordingly
-    pub fn record_transfer(&mut self, signature: Option<Signature>) -> ProgramResult {
+    pub fn record_transfer(&mut self, item: Item) -> ProgramResult {
         if self.transfers_left() > 0 {
             Ok(())
         } else {
             Err(ProgramError::InvalidInstructionData)
         }?;
-
-        let item = Item::new(signature);
         let item_start = self.initialized_items_bytes();
         let item_range = item_start..item_start + Item::size();
         self.items_data[item_range].copy_from_slice(bytemuck::bytes_of(&item));
