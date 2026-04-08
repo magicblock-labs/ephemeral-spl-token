@@ -12,6 +12,12 @@ pub struct GroupReceipt<'a> {
 impl<'a> GroupReceipt<'a> {
     pub fn new(info: &'a AccountView) -> Result<Self, ProgramError> {
         let data = unsafe { info.borrow_unchecked_mut() };
+        Ok(unsafe {
+            Self::from_data_mut(data)?
+        })
+    }
+
+    pub unsafe fn from_data_mut(data: &'a mut [u8]) -> Result<Self, ProgramError> {
         let (header_data, items_data) = data
             .split_at_mut_checked(GroupReceiptHeader::size())
             .ok_or(ProgramError::InvalidAccountData)?;
@@ -83,21 +89,21 @@ impl<'a> GroupReceipt<'a> {
 pub struct GroupReceiptHeader {
     /// Group ID
     pub id: u32,
-    /// PDA bump for receipt.
-    pub bump: u8,
-    /// Explicit padding
-    pub _pad: [u8; 3],
     /// How many transfers in this group are still outstanding.
     pub transfers_left: u32,
+    /// PDA bump for receipt.
+    pub bump: u8,
+    /// Reserved for future fields without migration.
+    pub _reserved: [u8; 7],
 }
 
 impl GroupReceiptHeader {
     pub fn new(id: u32, bump: u8, splits: u32) -> Self {
         Self {
             id,
-            bump,
-            _pad: [0; 3],
             transfers_left: splits,
+            bump,
+            _reserved: [0; 7],
         }
     }
 
@@ -111,8 +117,16 @@ impl GroupReceiptHeader {
             .map_err(|_| ProgramError::InvalidAccountData)
     }
 
+    pub fn id(&self) -> u32 {
+        self.id
+    }
+
     pub fn transfers_left(&self) -> u32 {
         self.transfers_left
+    }
+
+    pub fn bump(&self) -> u8 {
+        self.bump
     }
 
     pub const fn size() -> usize {
@@ -120,7 +134,7 @@ impl GroupReceiptHeader {
     }
 }
 
-fn initialize_group_receipt(account: &AccountView, group_id: u32, splits: u32, bump: u8) -> ProgramResult {
+pub fn initialize_group_receipt(account: &AccountView, group_id: u32, splits: u32, bump: u8) -> ProgramResult {
     let data = unsafe { account.borrow_unchecked_mut() };
     let required_data = GroupReceipt::required_size(splits as usize);
 
