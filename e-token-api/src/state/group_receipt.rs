@@ -135,14 +135,20 @@ impl GroupReceiptHeader {
 pub struct Item {
     /// Signature of transfer action, or zeros if signature was absent
     signature: Signature,
-    _reserved: [u8; 8],
+    /// Amount transferred in the action
+    amount: u64,
+    /// Whether the transfer action succeeded (1) or failed (0)
+    ok: u8,
+    _reserved: [u8; 7],
 }
 
 impl Item {
-    pub fn new(signature: Option<Signature>) -> Self {
+    pub fn new(signature: Option<Signature>, amount: u64, ok: bool) -> Self {
         Self {
             signature: signature.unwrap_or(Signature::zeroed()),
-            _reserved: [0; 8],
+            amount,
+            ok: ok as u8,
+            _reserved: [0; 7],
         }
     }
 
@@ -152,6 +158,14 @@ impl Item {
         } else {
             Some(&self.signature)
         }
+    }
+
+    pub fn amount(&self) -> u64 {
+        self.amount
+    }
+
+    pub fn ok(&self) -> bool {
+        self.ok != 0
     }
 
     pub const fn size() -> usize {

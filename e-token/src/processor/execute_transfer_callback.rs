@@ -20,7 +20,7 @@ pub struct TransferCallbackArgs {
     /// Number of splits in group
     splits: u32,
     // Flags
-    flag: u8,
+    _flag: u8,
 }
 
 impl TransferCallbackArgs {
@@ -35,7 +35,7 @@ impl TransferCallbackArgs {
             amount,
             group_id,
             splits,
-            flag,
+            _flag: flag,
         })
     }
 }
@@ -81,13 +81,13 @@ pub fn process_execute_transfer_callback(
     let args = TransferCallbackArgs::try_from_bytes(response.data)?;
 
     // Handles group receipt flow
-    handle_group_receipt(
-        queue_info,
-        group_receipt,
-        magic_vault,
-        &args,
-        response.signature,
-    )?;
+    handle_group_receipt(queue_info, group_receipt, magic_vault, &args, &response)?;
+    if !response.ok {
+        if let Ok(value) = core::str::from_utf8(response.error) {
+            pinocchio_log::log!("Action failed: {}", value);
+        }
+    }
+
     // Handle transfer status
     // handle_transfer_status(..)?;
 
@@ -140,7 +140,7 @@ fn handle_group_receipt(
     group_receipt_info: &AccountView,
     magic_vault: &AccountView,
     args: &TransferCallbackArgs,
-    signature: Option<&Signature>,
+    response: &MagicResponseView,
 ) -> ProgramResult {
     let (group_receipt_id, group_receipt_bump) =
         derive_group_receipt_id(queue_info.address(), args.group_id);
@@ -160,7 +160,11 @@ fn handle_group_receipt(
     )?;
     // Update receipt recording transfer
     let mut group_receipt = GroupReceipt::new(group_receipt_info)?;
-    group_receipt.record_transfer(Item::new(signature.copied()))?;
+    group_receipt.record_transfer(Item::new(
+        response.signature.copied(),
+        args.amount,
+        response.ok,
+    ))?;
 
     // If no transfers left - close account
     if group_receipt.transfers_left() == 0 {
@@ -177,8 +181,19 @@ fn log_group_receipt(group_receipt: &GroupReceipt) {
     if let Ok(items) = group_receipt.items() {
         for (i, item) in items.iter().enumerate() {
             match item.signature() {
-                Some(sig) => pinocchio_log::log!("transfer[{}] sig: {}", i as u32, sig.as_ref()),
-                None => pinocchio_log::log!("transfer[{}] sig: None", i as u32),
+                Some(sig) => pinocchio_log::log!(
+                    "transfer[{}] ok:{} amount:{} sig:{}",
+                    i as u32,
+                    item.ok(),
+                    item.amount(),
+                    sig.as_ref()
+                ),
+                None => pinocchio_log::log!(
+                    "transfer[{}] ok:{} amount:{} sig:None",
+                    i as u32,
+                    item.ok(),
+                    item.amount()
+                ),
             }
         }
     }
