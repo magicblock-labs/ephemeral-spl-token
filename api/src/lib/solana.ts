@@ -470,6 +470,37 @@ function getRequiredSigners(feePayer: PublicKey, instructions: TransactionInstru
   return [...signers];
 }
 
+function isTransactionTooLargeMessage(message: string) {
+  const normalized = message.toLowerCase();
+
+  return normalized.includes("transaction too large")
+    || normalized.includes("too many signatures")
+    || normalized.includes("too many signers")
+    || normalized.includes("encoding overruns uint8array");
+}
+
+function throwTransactionBuildError(error: unknown): never {
+  if (error instanceof ApiError) {
+    throw error;
+  }
+
+  if (!(error instanceof Error)) {
+    throw new ApiError(400, "TRANSACTION_BUILD_ERROR", "Failed to build transaction");
+  }
+
+  const message = error.message.trim() || "Failed to build transaction";
+
+  if (message.includes("transferSpl route not implemented")) {
+    throw new ApiError(400, "UNSUPPORTED_TRANSFER_ROUTE", message);
+  }
+
+  if (isTransactionTooLargeMessage(message)) {
+    throw new ApiError(400, "TRANSACTION_TOO_LARGE", message);
+  }
+
+  throw new ApiError(400, "TRANSACTION_BUILD_ERROR", message);
+}
+
 function serializeTransaction(
   kind: TransactionResponse["kind"],
   sendTo: SendTarget,
@@ -502,205 +533,220 @@ function serializeTransaction(
 }
 
 export async function buildDepositTransaction(env: AppEnv, input: DepositInput) {
-  const config = resolveRpcConfig(env, input.cluster);
-  const owner = parsePublicKey(input.owner, "owner");
-  const mint = parsePublicKey(
-    input.mint ?? (config.cluster === "devnet" ? DEFAULT_DEPOSIT_DEVNET_MINT : DEFAULT_DEPOSIT_MINT),
-    "mint",
-  );
-  const amount = parseAmount(input.amount, "amount");
-  const payer = owner;
-  const feePayer = owner;
-  const validator = await resolveDepositValidator(config, input.validator);
-  const blockhash = await getBlockhash(config, "base");
+  try {
+    const config = resolveRpcConfig(env, input.cluster);
+    const owner = parsePublicKey(input.owner, "owner");
+    const mint = parsePublicKey(
+      input.mint ?? (config.cluster === "devnet" ? DEFAULT_DEPOSIT_DEVNET_MINT : DEFAULT_DEPOSIT_MINT),
+      "mint",
+    );
+    const amount = parseAmount(input.amount, "amount");
+    const payer = owner;
+    const feePayer = owner;
+    const validator = await resolveDepositValidator(config, input.validator);
+    const blockhash = await getBlockhash(config, "base");
 
-  const instructions = await delegateSpl(owner, mint, amount, {
-    payer,
-    validator,
-    initIfMissing: input.initIfMissing,
-    initVaultIfMissing: input.initVaultIfMissing,
-    initAtasIfMissing: input.initAtasIfMissing,
-    shuttleId: createRandomShuttleId(),
-    escrowIndex: 0,
-    idempotent: input.idempotent,
-  });
+    const instructions = await delegateSpl(owner, mint, amount, {
+      payer,
+      validator,
+      initIfMissing: input.initIfMissing,
+      initVaultIfMissing: input.initVaultIfMissing,
+      initAtasIfMissing: input.initAtasIfMissing,
+      shuttleId: createRandomShuttleId(),
+      escrowIndex: 0,
+      idempotent: input.idempotent,
+    });
 
-  return serializeTransaction(
-    "deposit",
-    "base",
-    instructions,
-    feePayer,
-    blockhash,
-    validator,
-  );
+    return serializeTransaction(
+      "deposit",
+      "base",
+      instructions,
+      feePayer,
+      blockhash,
+      validator,
+    );
+  }
+  catch (error) {
+    throwTransactionBuildError(error);
+  }
 }
 
 export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawInput) {
-  const config = resolveRpcConfig(env, input.cluster);
-  const owner = parsePublicKey(input.owner, "owner");
-  const mint = parsePublicKey(input.mint, "mint");
-  const amount = parseAmount(input.amount, "amount");
-  const payer = owner;
-  const feePayer = owner;
-  const validator = await resolveValidator(config, input.validator);
-  const blockhash = await getBlockhash(config, "base");
+  try {
+    const config = resolveRpcConfig(env, input.cluster);
+    const owner = parsePublicKey(input.owner, "owner");
+    const mint = parsePublicKey(input.mint, "mint");
+    const amount = parseAmount(input.amount, "amount");
+    const payer = owner;
+    const feePayer = owner;
+    const validator = await resolveValidator(config, input.validator);
+    const blockhash = await getBlockhash(config, "base");
 
-  const instructions = await withdrawSpl(owner, mint, amount, {
-    payer,
-    validator,
-    initIfMissing: input.initIfMissing,
-    initAtasIfMissing: input.initAtasIfMissing,
-    shuttleId: createRandomShuttleId(),
-    escrowIndex: input.escrowIndex,
-    idempotent: input.idempotent,
-  });
+    const instructions = await withdrawSpl(owner, mint, amount, {
+      payer,
+      validator,
+      initIfMissing: input.initIfMissing,
+      initAtasIfMissing: input.initAtasIfMissing,
+      shuttleId: createRandomShuttleId(),
+      escrowIndex: input.escrowIndex,
+      idempotent: input.idempotent,
+    });
 
-  return serializeTransaction(
-    "withdraw",
-    "base",
-    instructions,
-    feePayer,
-    blockhash,
-    validator,
-  );
+    return serializeTransaction(
+      "withdraw",
+      "base",
+      instructions,
+      feePayer,
+      blockhash,
+      validator,
+    );
+  }
+  catch (error) {
+    throwTransactionBuildError(error);
+  }
 }
 
 export async function buildInitializeMintTransaction(
   env: AppEnv,
   input: InitializeMintTransactionInput,
 ): Promise<InitializeMintTransactionResponse> {
-  const config = resolveRpcConfig(env, input.cluster);
-  const payer = parsePublicKey(input.payer, "payer");
-  const mint = parsePublicKey(input.mint, "mint");
-  const validator = await resolveRequiredValidator(config, input.validator);
-  const [transferQueue] = deriveTransferQueue(mint, validator);
-  const [rentPda] = deriveRentPda();
-  const [vault] = deriveVault(mint);
-  const [vaultEphemeralAta] = deriveEphemeralAta(vault, mint);
-  const vaultAta = deriveVaultAta(mint, vault);
-  const blockhash = await getBlockhash(config, "base");
+  try {
+    const config = resolveRpcConfig(env, input.cluster);
+    const payer = parsePublicKey(input.payer, "payer");
+    const mint = parsePublicKey(input.mint, "mint");
+    const validator = await resolveRequiredValidator(config, input.validator);
+    const [transferQueue] = deriveTransferQueue(mint, validator);
+    const [rentPda] = deriveRentPda();
+    const [vault] = deriveVault(mint);
+    const [vaultEphemeralAta] = deriveEphemeralAta(vault, mint);
+    const vaultAta = deriveVaultAta(mint, vault);
+    const blockhash = await getBlockhash(config, "base");
 
-  const instructions = [
-    initTransferQueueIx(
+    const instructions = [
+      initTransferQueueIx(
+        payer,
+        transferQueue,
+        mint,
+        validator,
+      ),
+      initRentPdaIx(
+        payer,
+        rentPda,
+      ),
+      SystemProgram.transfer({
+        fromPubkey: payer,
+        toPubkey: rentPda,
+        lamports: TRANSFER_QUEUE_RENT_LAMPORTS,
+      }),
+      delegateTransferQueueIx(
+        transferQueue,
+        payer,
+        mint,
+      ),
+      initVaultIx(vault, mint, payer),
+      initVaultAtaIx(payer, vaultAta, vault, mint),
+      delegateEphemeralAtaIx(payer, vaultEphemeralAta, validator),
+    ];
+
+    const response = serializeTransaction(
+      "initializeMint",
+      "base",
+      instructions,
       payer,
-      transferQueue,
-      mint,
+      blockhash,
       validator,
-    ),
-    initRentPdaIx(
-      payer,
-      rentPda,
-    ),
-    SystemProgram.transfer({
-      fromPubkey: payer,
-      toPubkey: rentPda,
-      lamports: TRANSFER_QUEUE_RENT_LAMPORTS,
-    }),
-    delegateTransferQueueIx(
-      transferQueue,
-      payer,
-      mint,
-    ),
-    initVaultIx(vault, mint, payer),
-    initVaultAtaIx(payer, vaultAta, vault, mint),
-    delegateEphemeralAtaIx(payer, vaultEphemeralAta, validator),
-  ];
+    );
 
-  const response = serializeTransaction(
-    "initializeMint",
-    "base",
-    instructions,
-    payer,
-    blockhash,
-    validator,
-  );
-
-  return {
-    ...response,
-    kind: "initializeMint",
-    version: "legacy",
-    sendTo: "base",
-    recentBlockhash: blockhash.blockhash,
-    lastValidBlockHeight: blockhash.lastValidBlockHeight,
-    instructionCount: instructions.length,
-    requiredSigners: response.requiredSigners,
-    transactionBase64: response.transactionBase64,
-    validator: validator.toBase58(),
-    transferQueue: transferQueue.toBase58(),
-    rentPda: rentPda.toBase58(),
-  };
+    return {
+      ...response,
+      kind: "initializeMint",
+      version: "legacy",
+      sendTo: "base",
+      recentBlockhash: blockhash.blockhash,
+      lastValidBlockHeight: blockhash.lastValidBlockHeight,
+      instructionCount: instructions.length,
+      requiredSigners: response.requiredSigners,
+      transactionBase64: response.transactionBase64,
+      validator: validator.toBase58(),
+      transferQueue: transferQueue.toBase58(),
+      rentPda: rentPda.toBase58(),
+    };
+  }
+  catch (error) {
+    throwTransactionBuildError(error);
+  }
 }
 
 export async function buildTransferTransaction(env: AppEnv, input: TransferInput, authToken?: string) {
-  const config = resolveRpcConfig(env, input.cluster);
-  const from = parsePublicKey(input.from, "from");
-  const to = parsePublicKey(input.to, "to");
-  const mint = parsePublicKey(input.mint, "mint");
-  const amount = parseAmount(input.amount, "amount");
-  const payer = from;
-  const feePayer = from;
-  const shuttleId = createRandomShuttleId();
-
-  const minDelayMs = parseOptionalAmount(input.minDelayMs, "minDelayMs");
-  const maxDelayMs = parseOptionalAmount(input.maxDelayMs, "maxDelayMs");
-  const clientRefId = parseOptionalAmount(input.clientRefId, "clientRefId");
-  const split = input.split;
-
-  if (minDelayMs !== undefined && minDelayMs < 0n) {
-    throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "minDelayMs must be non-negative");
-  }
-
-  if (maxDelayMs !== undefined && maxDelayMs < 0n) {
-    throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "maxDelayMs must be non-negative");
-  }
-
-  if (clientRefId !== undefined && clientRefId < 0n) {
-    throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "clientRefId must be non-negative");
-  }
-
-  if (
-    minDelayMs !== undefined
-    && maxDelayMs !== undefined
-    && maxDelayMs < minDelayMs
-  ) {
-    throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "maxDelayMs must be greater than or equal to minDelayMs");
-  }
-
-  const maxDelayMsForValidation = maxDelayMs ?? minDelayMs;
-
-  // Temporary cap while private transfer delay windows stay limited.
-  if (
-    input.visibility === "private"
-    && maxDelayMsForValidation !== undefined
-    && maxDelayMsForValidation > PRIVATE_TRANSFER_MAX_DELAY_MS_LIMIT
-  ) {
-    throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "maxDelayMs must be less than or equal to 600000");
-  }
-
-  if (
-    split !== undefined
-    && (!Number.isSafeInteger(split) || split <= 0 || split > 15)
-  ) {
-    throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "split must be an integer between 1 and 15");
-  }
-
-  if (split !== undefined && BigInt(split) > amount) {
-    throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "split cannot exceed amount");
-  }
-
-  const shouldResolveValidator = input.validator
-    || input.visibility === "private"
-    || input.fromBalance === "base"
-    || input.initVaultIfMissing;
-
-  const validator = shouldResolveValidator
-    ? await resolveValidator(config, input.validator)
-    : undefined;
-
-  const sendTo: SendTarget = input.fromBalance === "ephemeral" ? "ephemeral" : "base";
-  const blockhash = await getBlockhash(config, sendTo, authToken);
-
   try {
+    const config = resolveRpcConfig(env, input.cluster);
+    const from = parsePublicKey(input.from, "from");
+    const to = parsePublicKey(input.to, "to");
+    const mint = parsePublicKey(input.mint, "mint");
+    const amount = parseAmount(input.amount, "amount");
+    const payer = from;
+    const feePayer = from;
+    const shuttleId = createRandomShuttleId();
+
+    const minDelayMs = parseOptionalAmount(input.minDelayMs, "minDelayMs");
+    const maxDelayMs = parseOptionalAmount(input.maxDelayMs, "maxDelayMs");
+    const clientRefId = parseOptionalAmount(input.clientRefId, "clientRefId");
+    const split = input.split;
+
+    if (minDelayMs !== undefined && minDelayMs < 0n) {
+      throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "minDelayMs must be non-negative");
+    }
+
+    if (maxDelayMs !== undefined && maxDelayMs < 0n) {
+      throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "maxDelayMs must be non-negative");
+    }
+
+    if (clientRefId !== undefined && clientRefId < 0n) {
+      throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "clientRefId must be non-negative");
+    }
+
+    if (
+      minDelayMs !== undefined
+      && maxDelayMs !== undefined
+      && maxDelayMs < minDelayMs
+    ) {
+      throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "maxDelayMs must be greater than or equal to minDelayMs");
+    }
+
+    const maxDelayMsForValidation = maxDelayMs ?? minDelayMs;
+
+    // Temporary cap while private transfer delay windows stay limited.
+    if (
+      input.visibility === "private"
+      && maxDelayMsForValidation !== undefined
+      && maxDelayMsForValidation > PRIVATE_TRANSFER_MAX_DELAY_MS_LIMIT
+    ) {
+      throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "maxDelayMs must be less than or equal to 600000");
+    }
+
+    if (
+      split !== undefined
+      && (!Number.isSafeInteger(split) || split <= 0 || split > 15)
+    ) {
+      throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "split must be an integer between 1 and 15");
+    }
+
+    if (split !== undefined && BigInt(split) > amount) {
+      throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "split cannot exceed amount");
+    }
+
+    const shouldResolveValidator = input.validator
+      || input.visibility === "private"
+      || input.fromBalance === "base"
+      || input.initVaultIfMissing;
+
+    const validator = shouldResolveValidator
+      ? await resolveValidator(config, input.validator)
+      : undefined;
+
+    const sendTo: SendTarget = input.fromBalance === "ephemeral" ? "ephemeral" : "base";
+    const blockhash = await getBlockhash(config, sendTo, authToken);
+
     const instructions = [
       createNoopInstruction(),
       ...(await transferSpl(from, to, mint, amount, {
@@ -738,11 +784,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
     );
   }
   catch (error) {
-    if (error instanceof Error && error.message.includes("transferSpl route not implemented")) {
-      throw new ApiError(400, "UNSUPPORTED_TRANSFER_ROUTE", error.message);
-    }
-
-    throw error;
+    throwTransactionBuildError(error);
   }
 }
 
