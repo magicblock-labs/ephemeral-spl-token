@@ -57,7 +57,7 @@ pub fn process_execute_transfer_callback(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let [validator, group_receipt, queue_info, vault, mint, vault_token_account, source_token_account, token_program, magic_vault] =
+    let [validator, group_receipt, queue_info, vault, mint, vault_token_account, _, _, magic_vault] =
         accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
@@ -81,7 +81,13 @@ pub fn process_execute_transfer_callback(
     let args = TransferCallbackArgs::try_from_bytes(response.data)?;
 
     // Handles group receipt flow
-    handle_group_receipt(queue_info, group_receipt, magic_vault, &args, response.signature)?;
+    handle_group_receipt(
+        queue_info,
+        group_receipt,
+        magic_vault,
+        &args,
+        response.signature,
+    )?;
     // Handle transfer status
     // handle_transfer_status(..)?;
 
@@ -102,7 +108,7 @@ fn validate(
     // TODO(edwin): verify
     // Under condition that queue can be created only by validator
     // Verifies both validator & queue
-    let (derived_queue, queue_bump) = Address::find_program_address(
+    let (derived_queue, _) = Address::find_program_address(
         &[
             QUEUE_SEED,
             mint.address().as_ref(),
@@ -145,17 +151,36 @@ fn handle_group_receipt(
     }
 
     // Create receipt idempotently
-    init_group_receipt_id(queue_info, group_receipt_info, magic_vault, group_receipt_bump, args)?;
+    init_group_receipt_id(
+        queue_info,
+        group_receipt_info,
+        magic_vault,
+        group_receipt_bump,
+        args,
+    )?;
     // Update receipt recording transfer
     let mut group_receipt = GroupReceipt::new(group_receipt_info)?;
     group_receipt.record_transfer(Item::new(signature.copied()))?;
 
     // If no transfers left - close account
     if group_receipt.transfers_left() == 0 {
-        pinocchio_log::log!("All transaction complete: {}", group_receipt);
+        log_group_receipt(&group_receipt);
         close_group_receipt(queue_info, group_receipt_info, magic_vault)
     } else {
         Ok(())
+    }
+}
+
+#[inline(never)]
+fn log_group_receipt(group_receipt: &GroupReceipt) {
+    pinocchio_log::log!("All transfers complete for group id:{}", group_receipt.id());
+    if let Ok(items) = group_receipt.items() {
+        for (i, item) in items.iter().enumerate() {
+            match item.signature() {
+                Some(sig) => pinocchio_log::log!("transfer[{}] sig: {}", i as u32, sig.as_ref()),
+                None => pinocchio_log::log!("transfer[{}] sig: None", i as u32),
+            }
+        }
     }
 }
 

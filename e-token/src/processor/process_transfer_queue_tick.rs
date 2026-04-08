@@ -1,6 +1,9 @@
 #[cfg(feature = "logging")]
 use alloc::string::ToString;
 
+use crate::processor::ephemeral_account::MAGIC_VAULT_ID;
+use crate::processor::execute_transfer_callback::derive_group_receipt_id;
+use crate::processor::rent_pda::RENT_PDA;
 use dlp_api::pda::magic_fee_vault_pda_from_validator;
 use ephemeral_rollups_pinocchio::intent_bundle::{
     ActionArgs, ActionCallback, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
@@ -16,11 +19,7 @@ use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::clock::Clock;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
-use pinocchio::address::address;
 use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
-use crate::processor::ephemeral_account::MAGIC_VAULT_ID;
-use crate::processor::execute_transfer_callback::derive_group_receipt_id;
-use crate::processor::rent_pda::RENT_PDA;
 pub(crate) const EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX: u8 = 0;
 
 const ASSOCIATED_TOKEN_PROGRAM_ID: ephemeral_spl_api::Address =
@@ -109,7 +108,7 @@ pub fn process_transfer_queue_tick(
     callback_data[12] = queued_transfer.flags;
 
     let standalone_action_callback_accounts =
-        create_action_callback_accounts(&validator, queue_info.address(), &queued_transfer, &vault, &mint);
+        create_action_callback_accounts(queue_info.address(), &queued_transfer, &vault, &mint);
     let standalone_action_callback =
         create_action_callback(&standalone_action_callback_accounts, &callback_data);
 
@@ -234,7 +233,6 @@ fn create_action_accounts(
 
 #[inline(never)]
 fn create_action_callback_accounts(
-    validator: &Address,
     queue_address: &Address,
     queued_transfer: &QueuedTransfer,
     vault: &Address,
@@ -242,15 +240,16 @@ fn create_action_callback_accounts(
 ) -> [ShortAccountMeta; 8] {
     let vault_token_account = derive_associated_token_address(vault, mint);
     let source_token_account = derive_associated_token_address(&queued_transfer.source, mint);
-    let (group_receipt_account, _) = derive_group_receipt_id(queue_address, queued_transfer.group_id());
+    let (group_receipt_account, _) =
+        derive_group_receipt_id(queue_address, queued_transfer.group_id());
     let callback_accounts = [
         ShortAccountMeta {
             pubkey: group_receipt_account,
-            is_writable: false
+            is_writable: false,
         },
         ShortAccountMeta {
             pubkey: queue_address.clone(),
-            is_writable: true
+            is_writable: true,
         },
         ShortAccountMeta {
             pubkey: vault.clone(),
@@ -275,7 +274,7 @@ fn create_action_callback_accounts(
         ShortAccountMeta {
             pubkey: MAGIC_VAULT_ID,
             is_writable: false,
-        }
+        },
     ];
 
     callback_accounts

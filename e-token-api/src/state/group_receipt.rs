@@ -64,6 +64,10 @@ impl<'a> GroupReceipt<'a> {
         initialized_items * Item::size()
     }
 
+    pub fn id(&self) -> u32 {
+        self.header.id
+    }
+
     pub fn transfers_left(&self) -> u32 {
         self.header.transfers_left
     }
@@ -142,8 +146,12 @@ impl Item {
         }
     }
 
-    pub fn signature(&self) -> &Signature {
-        &self.signature
+    pub fn signature(&self) -> Option<&Signature> {
+        if self.signature == Signature::zeroed() {
+            None
+        } else {
+            Some(&self.signature)
+        }
     }
 
     pub const fn size() -> usize {

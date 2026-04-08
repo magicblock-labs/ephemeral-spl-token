@@ -11,6 +11,7 @@ pub mod deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transf
 pub mod deposit_and_queue_transfer;
 pub mod deposit_spl_tokens;
 pub mod ensure_transfer_queue_crank;
+mod ephemeral_account;
 pub mod execute_ready_queued_transfer;
 pub mod execute_transfer_callback;
 pub mod initialize_ephemeral_ata;
@@ -30,7 +31,6 @@ pub mod undelegation_callback;
 pub(crate) mod utils;
 pub mod withdraw_spl_tokens;
 pub mod withdraw_through_delegated_shuttle_with_merge;
-mod ephemeral_account;
 
 pub use allocate_transfer_queue::process_allocate_transfer_queue;
 pub use close_ephemeral_ata::process_close_ephemeral_ata;
