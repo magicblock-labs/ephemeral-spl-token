@@ -2,6 +2,9 @@ import { AppEnv } from "../env";
 import { ApiError } from "./errors";
 import { resolveRpcConfig } from "./solana";
 
+export const MOCK_AUTH_TOKEN = "mock-auth-token";
+export const MOCK_CHALLENGE = "mock-challenge";
+
 export type ChallengeInput = {
     pubkey: string;
     cluster?: string;
@@ -51,6 +54,12 @@ export function parseAuthToken(headers: Record<string, string>): string | undefi
 }
 
 export async function getChallenge(env: AppEnv, input: ChallengeInput): Promise<ChallengeResponse> {
+    if (env.MOCK_PER) {
+        return {
+            challenge: MOCK_CHALLENGE,
+        };
+    }
+
     const config = resolveRpcConfig(env, input.cluster);
     const url = buildAuthUrl(config.ephemeralRpcUrl, "auth/challenge");
     url.searchParams.set("pubkey", input.pubkey);
@@ -76,6 +85,12 @@ export async function getChallenge(env: AppEnv, input: ChallengeInput): Promise<
 }
 
 export async function login(env: AppEnv, input: LoginInput): Promise<LoginResponse> {
+    if (env.MOCK_PER) {
+        return {
+            token: MOCK_AUTH_TOKEN,
+        };
+    }
+
     const config = resolveRpcConfig(env, input.cluster);
     const { pubkey, challenge, signature } = input;
     const url = buildAuthUrl(config.ephemeralRpcUrl, "auth/login");
