@@ -9,7 +9,7 @@ const TRANSFER_CHECKED_DISCRIMINATOR: u8 = 12;
 use crate::alloc::string::ToString;
 
 use crate::processor::{
-    deposit_and_delegate_shuttle_ephemeral_ata_with_merge::{
+    internal::shuttle_delegation::{
         build_undelegate_and_close_shuttle_instruction,
         delegate_sponsored_shuttle_with_post_actions, prepare_sponsored_shuttle_delegation,
         DepositAndDelegateShuttleArgs,
@@ -17,7 +17,7 @@ use crate::processor::{
     utils::{read_mint_decimals, validate_token_account},
 };
 
-pub(crate) struct WithdrawThroughDelegatedShuttleAccounts<'a> {
+struct WithdrawThroughDelegatedShuttleAccounts<'a> {
     pub(crate) payer_info: &'a AccountView,
     pub(crate) rent_pda_info: &'a AccountView,
     pub(crate) shuttle_info: &'a AccountView,

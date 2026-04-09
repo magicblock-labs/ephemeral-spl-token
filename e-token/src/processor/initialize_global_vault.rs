@@ -1,4 +1,4 @@
-use crate::processor::initialize_ephemeral_ata::process_initialize_ephemeral_ata;
+use crate::processor::internal::ephemeral_ata::initialize_ephemeral_ata_with_sponsor;
 use ephemeral_spl_api::state::RawType;
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
@@ -90,13 +90,13 @@ pub fn process_initialize_global_vault(
         .invoke_signed(&[signer_seeds])?;
     }
 
-    let vault_eata_init_accounts = [
-        vault_ephemeral_ata_info.clone(),
-        payer_info.clone(),
-        vault_info.clone(),
-        mint_info.clone(),
-    ];
-    process_initialize_ephemeral_ata(&vault_eata_init_accounts, &[])?;
+    initialize_ephemeral_ata_with_sponsor(
+        vault_ephemeral_ata_info,
+        payer_info,
+        None,
+        vault_info,
+        mint_info,
+    )?;
 
     pinocchio_associated_token_account::instructions::CreateIdempotent {
         funding_account: payer_info,

@@ -11,11 +11,11 @@ use {
 use crate::{
     assert_owner, assert_signer,
     processor::{
-        rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
+        initialize_rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
+        internal::token_vault::validate_vault_for_mint,
         utils::read_mint_decimals,
     },
 };
-use ephemeral_spl_api::state::load_initialized;
 use pinocchio::{
     address::address_eq,
     cpi::{Seed, Signer},
@@ -121,28 +121,6 @@ pub fn process_execute_ready_queued_transfer(
     }
 
     Ok(())
-}
-
-#[inline(always)]
-pub(crate) fn validate_vault_for_mint(
-    vault_info: &AccountView,
-    mint_info: &AccountView,
-    vault_token_acc_info: &AccountView,
-) -> Result<u8, ProgramError> {
-    assert_owner!(vault_info, &crate::ID);
-
-    let vault = load_initialized::<GlobalVault>(unsafe { vault_info.borrow_unchecked() })?;
-    let derived_vault = GlobalVault::derive_pda(mint_info.address(), vault.bump)?;
-    if !address_eq(&derived_vault, vault_info.address()) {
-        return Err(ProgramError::InvalidSeeds);
-    }
-    if !address_eq(&vault.mint, mint_info.address())
-        || !address_eq(&vault.token_account, vault_token_acc_info.address())
-    {
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    Ok(vault.bump)
 }
 
 ///

@@ -18,13 +18,15 @@ use solana_instruction::{AccountMeta, Instruction};
 use dlp_api::{args::PostDelegationActions, compact::ClearTextWithInsertable};
 
 use crate::assert_owner;
-use crate::processor::deposit_and_delegate_shuttle_ephemeral_ata_with_merge::undelegate_and_close_shuttle_action;
-use crate::processor::deposit_and_delegate_shuttle_ephemeral_ata_with_merge::{
-    merge_shuttle_into_token_account_action,
-    process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions,
-    DepositAndDelegateShuttleAccounts, DepositAndDelegateShuttleCommonArgs,
+use crate::processor::{
+    internal::shuttle_delegation::{
+        merge_shuttle_into_token_account_action,
+        process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions,
+        undelegate_and_close_shuttle_action, DepositAndDelegateShuttleAccounts,
+        DepositAndDelegateShuttleCommonArgs,
+    },
+    utils::read_mint_decimals,
 };
-use crate::processor::utils::read_mint_decimals;
 
 const BASIS_POINTS_DENOMINATOR: u128 = 10_000;
 const TRANSFER_CHECKED_DISCRIMINATOR: u8 = 12;
