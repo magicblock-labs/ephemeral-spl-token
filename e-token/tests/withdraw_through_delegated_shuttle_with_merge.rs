@@ -4,14 +4,14 @@ use std::{
 };
 
 use dlp_api::state::DelegationRecord;
-use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
-use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
-use ephemeral_spl_api::state::{load, Initializable, RawType};
 use ephemeral_spl_api::{
     instruction::{self, internal},
-    state::load_mut,
+    state::{
+        ephemeral_ata::EphemeralAta, load, load_mut, shuttle_ephemeral_ata::ShuttleMetadata,
+        Initializable, RawType,
+    },
 };
-use ephemeral_spl_api::{program::ID, state::load_initialized};
+use ephemeral_spl_api::{state::load_initialized, ID as PROGRAM};
 use magicblock_magic_program_api::{
     args::{MagicIntentBundleArgs, UndelegateTypeArgs},
     instruction::MagicBlockInstruction,
@@ -19,22 +19,20 @@ use magicblock_magic_program_api::{
 };
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
-use solana_keypair::Keypair;
 use solana_program::{
-    account_info::AccountInfo, bpf_loader, entrypoint::ProgramResult, program_error::ProgramError,
-    rent::Rent,
+    account_info::AccountInfo, entrypoint::ProgramResult, program_error::ProgramError, rent::Rent,
 };
 use solana_program_pack::Pack;
-use solana_program_test::{processor, read_file, tokio, ProgramTest};
+use solana_program_test::{processor, tokio, ProgramTest};
 use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use solana_system_interface::instruction::transfer;
 use solana_transaction::Transaction;
 use spl_token_interface::state::Account as SplAccount;
 
+mod common;
 mod utils;
 
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 const RENT_PDA_SEED: &[u8] = b"rent";
 const DECIMALS: u8 = 6;
 const STARTING_BALANCE: u64 = 1_000 * 10u64.pow(DECIMALS as u32);
@@ -136,42 +134,37 @@ fn associated_token_create_idempotent_ix(
 
 #[tokio::test]
 async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_cleanup_actions() {
-    let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-    utils::add_associated_token_program(&mut pt);
-    pt.prefer_bpf(true);
-
-    let data = read_file("tests/fixtures/dlp.so");
-    pt.add_account(
-        ephemeral_rollups_pinocchio::ID,
-        Account {
-            lamports: Rent::default().minimum_balance(data.len()).max(1),
-            data,
-            owner: bpf_loader::id(),
-            executable: true,
-            rent_epoch: 0,
-        },
+    let owner = utils::test_keypair(
+        "withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_cleanup_actions::owner",
+    );
+    let owner_token = utils::test_keypair(
+        "withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_cleanup_actions::owner_token",
     );
 
-    let owner = Keypair::new();
-    let owner_token = Keypair::new();
-    pt.add_account(
-        owner.pubkey(),
-        Account {
-            lamports: Rent::default().minimum_balance(0).max(1),
-            data: vec![],
-            owner: solana_system_interface::program::ID,
-            executable: false,
-            rent_epoch: 0,
-        },
+    let mut context = utils::start_program_test_with(PROGRAM, |pt| {
+        pt.add_account(
+            owner.pubkey(),
+            Account {
+                lamports: Rent::default().minimum_balance(0).max(1),
+                data: vec![],
+                owner: solana_system_interface::program::ID,
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+    })
+    .await;
+
+    let payer_kp = utils::fixed_payer_keypair();
+    let payer = payer_kp.pubkey();
+    let mint_kp = utils::test_keypair(
+        "withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_cleanup_actions::mint",
     );
-
-    let mut context = pt.start_with_context().await;
-
-    let payer = context.payer.pubkey();
-    let mint_kp = Keypair::new();
     let mint = mint_kp.pubkey();
     let shuttle_id = 9_u32;
-    let validator = Pubkey::new_unique();
+    let validator = utils::test_pubkey(
+        "withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_cleanup_actions::validator",
+    );
     let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
 
     let (shuttle_metadata, _) =
@@ -208,7 +201,7 @@ async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_clean
     ix_init_owner_source.program_id = spl_token_interface::ID;
     let _setup = utils::setup_mint_and_token_accounts(
         &mut context,
-        payer,
+        &payer_kp,
         &mint_kp,
         DECIMALS,
         STARTING_BALANCE,
@@ -235,7 +228,7 @@ async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_clean
             ix_mint_owner_source,
         ],
         Some(&payer),
-        &[&context.payer, &owner_token],
+        &[&payer_kp, &owner_token],
         context.banks_client.get_latest_blockhash().await.unwrap(),
     );
     context
@@ -244,10 +237,8 @@ async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_clean
         .await
         .unwrap();
 
-    let (buffer_pda, _) = Pubkey::find_program_address(
-        &[b"buffer", shuttle_eata.as_ref()],
-        &ephemeral_spl_api::program::id().into(),
-    );
+    let (buffer_pda, _) =
+        Pubkey::find_program_address(&[b"buffer", shuttle_eata.as_ref()], &PROGRAM.into());
     let (delegation_record_pda, _) = Pubkey::find_program_address(
         &[b"delegation", shuttle_eata.as_ref()],
         &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,
@@ -288,14 +279,16 @@ async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_clean
     let tx_withdraw = Transaction::new_signed_with_payer(
         &[ix_withdraw],
         Some(&payer),
-        &[&context.payer, &owner],
+        &[&payer_kp, &owner],
         context.banks_client.get_latest_blockhash().await.unwrap(),
     );
-    context
-        .banks_client
-        .process_transaction(tx_withdraw)
-        .await
-        .unwrap();
+    common::metrics::process_transaction_record_cu(
+        &context.banks_client,
+        tx_withdraw,
+        "wd_shuttle::withdraw",
+    )
+    .await
+    .unwrap();
 
     let shuttle_account = context
         .banks_client
@@ -360,8 +353,12 @@ async fn undelegate_and_close_shuttle_ephemeral_ata_schedules_close_action() {
     let magic_context = convert_magic_pubkey(MAGIC_CONTEXT_PUBKEY);
     clear_captured_intent_bundles(magic_program);
 
-    let owner = Keypair::new();
-    let mint_kp = Keypair::new();
+    let owner = utils::test_keypair(
+        "undelegate_withdraw_and_close_shuttle_ephemeral_ata_schedules_close_action::owner",
+    );
+    let mint_kp = utils::test_keypair(
+        "undelegate_withdraw_and_close_shuttle_ephemeral_ata_schedules_close_action::mint",
+    );
     let mint = mint_kp.pubkey();
     let shuttle_id = 4_u32;
     let (vault, _) = Pubkey::find_program_address(&[mint.as_ref()], &PROGRAM);
@@ -385,66 +382,67 @@ async fn undelegate_and_close_shuttle_ephemeral_ata_schedules_close_action() {
     shuttle_eata_state.mint = mint;
     shuttle_eata_state.amount = 0;
 
-    let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-    utils::add_associated_token_program(&mut pt);
-    add_magic_program_mock(&mut pt, magic_program);
-    pt.add_account(
-        owner.pubkey(),
-        Account {
-            lamports: Rent::default().minimum_balance(0).max(1),
-            data: vec![],
-            owner: solana_system_interface::program::ID,
-            executable: false,
-            rent_epoch: 0,
-        },
-    );
-    pt.add_account(
-        rent_pda,
-        Account {
-            lamports: Rent::default().minimum_balance(0).max(1),
-            data: vec![],
-            owner: solana_system_interface::program::ID,
-            executable: false,
-            rent_epoch: 0,
-        },
-    );
-    pt.add_account(
-        shuttle_metadata,
-        Account {
-            lamports: Rent::default().minimum_balance(ShuttleMetadata::LEN).max(1),
-            data: shuttle_data,
-            owner: PROGRAM,
-            executable: false,
-            rent_epoch: 0,
-        },
-    );
-    pt.add_account(
-        shuttle_eata,
-        Account {
-            lamports: Rent::default().minimum_balance(EphemeralAta::LEN).max(1),
-            data: shuttle_eata_data,
-            owner: PROGRAM,
-            executable: false,
-            rent_epoch: 0,
-        },
-    );
-    pt.add_account(
-        magic_context,
-        Account {
-            lamports: 1_000_000,
-            data: vec![0; 8],
-            owner: magic_program,
-            executable: false,
-            rent_epoch: 0,
-        },
-    );
+    let mut context = utils::start_program_test_with(PROGRAM, |mut pt| {
+        pt.add_account(
+            owner.pubkey(),
+            Account {
+                lamports: Rent::default().minimum_balance(0).max(1),
+                data: vec![],
+                owner: solana_system_interface::program::ID,
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+        pt.add_account(
+            rent_pda,
+            Account {
+                lamports: Rent::default().minimum_balance(0).max(1),
+                data: vec![],
+                owner: solana_system_interface::program::ID,
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+        pt.add_account(
+            shuttle_metadata,
+            Account {
+                lamports: Rent::default().minimum_balance(ShuttleMetadata::LEN).max(1),
+                data: shuttle_data,
+                owner: PROGRAM,
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+        pt.add_account(
+            shuttle_eata,
+            Account {
+                lamports: Rent::default().minimum_balance(EphemeralAta::LEN).max(1),
+                data: shuttle_eata_data,
+                owner: PROGRAM,
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+        pt.add_account(
+            magic_context,
+            Account {
+                lamports: 1_000_000,
+                data: vec![0; 8],
+                owner: magic_program,
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+        add_magic_program_mock(&mut pt, magic_program);
+    })
+    .await;
 
-    let mut context = pt.start_with_context().await;
-    let payer = context.payer.pubkey();
+    let payer_kp = utils::fixed_payer_keypair();
+    let payer = payer_kp.pubkey();
 
     utils::setup_mint_and_token_accounts(
         &mut context,
-        payer,
+        &payer_kp,
         &mint_kp,
         DECIMALS,
         STARTING_BALANCE,
@@ -459,7 +457,7 @@ async fn undelegate_and_close_shuttle_ephemeral_ata_schedules_close_action() {
     let tx_create_token_accounts = Transaction::new_signed_with_payer(
         &[ix_create_owner_destination, ix_create_shuttle_wallet],
         Some(&payer),
-        &[&context.payer],
+        &[&payer_kp],
         context.last_blockhash,
     );
     context
@@ -486,14 +484,16 @@ async fn undelegate_and_close_shuttle_ephemeral_ata_schedules_close_action() {
     let tx_undelegate = Transaction::new_signed_with_payer(
         &[ix_undelegate],
         Some(&payer),
-        &[&context.payer],
+        &[&payer_kp],
         context.banks_client.get_latest_blockhash().await.unwrap(),
     );
-    context
-        .banks_client
-        .process_transaction(tx_undelegate)
-        .await
-        .unwrap();
+    common::metrics::process_transaction_record_cu(
+        &context.banks_client,
+        tx_undelegate,
+        "ud_wd_close::undelegate",
+    )
+    .await
+    .unwrap();
 
     let captured_bundles = peek_captured_intent_bundles(magic_program);
     assert_eq!(captured_bundles.len(), 1);

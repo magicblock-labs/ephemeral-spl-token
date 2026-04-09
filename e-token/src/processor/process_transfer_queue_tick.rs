@@ -62,7 +62,7 @@ pub fn process_transfer_queue_tick(
     }
 
     let tick_accounts = parse_tick_accounts(accounts)?;
-    let program_id = ephemeral_spl_api::program::id_address();
+    let program_id = crate::ID;
     let clock = Clock::get()?;
     let queue_state = read_queue_tick_state(tick_accounts.queue_info, &program_id)?;
 
@@ -178,7 +178,7 @@ fn try_schedule_queue_refill(
         },
     ];
     let standalone_actions = [CallHandler {
-        destination_program: ephemeral_spl_api::program::id_address(),
+        destination_program: crate::ID,
         escrow_authority: tick_accounts.queue_info.clone(),
         args: ActionArgs::new(&refill_data)
             .with_escrow_index(MARK_TRANSFER_QUEUE_REFILL_PENDING_ESCROW_INDEX),
@@ -293,7 +293,7 @@ fn schedule_execute_ready_transfer(
         },
     ];
     let standalone_actions = [CallHandler {
-        destination_program: ephemeral_spl_api::program::id_address(),
+        destination_program: crate::ID,
         escrow_authority: tick_accounts.queue_info.clone(),
         args: ActionArgs::new(&execute_data[..execute_data_len])
             .with_escrow_index(EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX),

@@ -338,8 +338,8 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
         });
     }
 
-    assert_owner!(shuttle_info, &ephemeral_spl_api::program::id_address());
-    assert_owner!(shuttle_eata_info, &ephemeral_spl_api::program::id_address());
+    assert_owner!(shuttle_info, &crate::ID);
+    assert_owner!(shuttle_eata_info, &crate::ID);
 
     let shuttle = load_initialized::<ShuttleMetadata>(unsafe { shuttle_info.borrow_unchecked() })?;
     if shuttle.owner != *owner_info.address() || shuttle.payer != *rent_pda_info.address() {
@@ -352,49 +352,14 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
         if shuttle_eata.owner != *shuttle_info.address() {
             return Err(ProgramError::InvalidAccountData);
         }
-
-        #[cfg(feature = "logging")]
-        {
-            let shuttle_owner = shuttle_eata.owner.to_string();
-            let shuttle_mint = shuttle_eata.mint.to_string();
-            pinocchio_log::log!(
-                "PrepareShuttleDelegation shuttle_eata_state data_len={} owner={} mint={} bump={}",
-                shuttle_eata_info.data_len(),
-                shuttle_owner.as_str(),
-                shuttle_mint.as_str(),
-                shuttle_eata.bump,
-            );
-        }
-
-        (shuttle_eata.mint, [shuttle_eata.bump])
+        (shuttle_eata.mint, shuttle_eata.bump)
     };
 
     if mint != *mint_info.address() {
         return Err(ProgramError::InvalidAccountData);
     }
 
-    let derived_shuttle_eata = match ephemeral_spl_api::Address::create_program_address(
-        &[shuttle_info.address().as_ref(), mint.as_ref(), &bump],
-        &ephemeral_spl_api::program::id_address(),
-    ) {
-        Ok(address) => address,
-        Err(err) => {
-            #[cfg(feature = "logging")]
-            {
-                let shuttle = shuttle_info.address().to_string();
-                let shuttle_eata = shuttle_eata_info.address().to_string();
-                let mint = mint.to_string();
-                pinocchio_log::log!(
-                    "PrepareShuttleDelegation failed deriving shuttle_eata shuttle={} mint={} bump={} actual={}",
-                    shuttle.as_str(),
-                    mint.as_str(),
-                    bump[0],
-                    shuttle_eata.as_str(),
-                );
-            }
-            return Err(err.into());
-        }
-    };
+    let derived_shuttle_eata = EphemeralAta::derive_pda(shuttle_info.address(), &mint, bump)?;
     if derived_shuttle_eata != *shuttle_eata_info.address() {
         #[cfg(feature = "logging")]
         {
@@ -484,7 +449,7 @@ pub(crate) fn merge_shuttle_into_token_account_action(
     destination_token_info: &AccountView,
 ) -> Instruction {
     Instruction {
-        program_id: Pubkey::from(ephemeral_spl_api::program::ID),
+        program_id: crate::ID,
         accounts: alloc::vec![
             AccountMeta::new_readonly(*accounts.owner_info.address(), true),
             AccountMeta::new(*destination_token_info.address(), false),
@@ -521,7 +486,7 @@ pub(crate) fn build_undelegate_and_close_shuttle_instruction(
     token_program: &Address,
 ) -> Instruction {
     Instruction {
-        program_id: Pubkey::from(ephemeral_spl_api::program::ID),
+        program_id: crate::ID,
         accounts: alloc::vec![
             AccountMeta::new(*payer, true),
             AccountMeta::new(*rent_pda, false),

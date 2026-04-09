@@ -32,10 +32,7 @@ pub fn process_deposit_spl_tokens(
     };
 
     // Validate EphemeralAta ownership first, before reading raw data.
-    assert_owner!(
-        ephemeral_ata_info,
-        &ephemeral_spl_api::program::id_address()
-    );
+    assert_owner!(ephemeral_ata_info, &crate::ID);
 
     let ephemeral_ata_mint = {
         let ephemeral_ata =
@@ -76,7 +73,7 @@ pub(crate) fn transfer_to_vault_for_mint(
     expected_mint: &Address,
     amount: u64,
 ) -> ProgramResult {
-    assert_owner!(vault_info, &ephemeral_spl_api::program::id_address());
+    assert_owner!(vault_info, &crate::ID);
 
     let vault = load_initialized::<GlobalVault>(unsafe { vault_info.borrow_unchecked() })?;
     if vault.mint != *mint_info.address()

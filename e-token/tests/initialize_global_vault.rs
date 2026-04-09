@@ -1,40 +1,34 @@
-use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::global_vault::GlobalVault;
 use ephemeral_spl_api::state::{load_initialized, RawType};
+use ephemeral_spl_api::ID as PROGRAM;
 use solana_account::Account as SolanaAccount;
 use solana_instruction::Instruction;
-use solana_keypair::Keypair;
 use solana_program::rent::Rent;
 use {
-    ephemeral_spl_api::instruction,
-    solana_instruction::AccountMeta,
-    solana_program_test::{tokio, ProgramTest},
-    solana_pubkey::Pubkey,
-    solana_signer::Signer,
-    solana_transaction::Transaction,
+    ephemeral_spl_api::instruction, solana_instruction::AccountMeta, solana_program_test::tokio,
+    solana_signer::Signer, solana_transaction::Transaction,
 };
+mod common;
 mod utils;
 
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 const DECIMALS: u8 = 6;
 const STARTING_BALANCE: u64 = 1;
 
 #[tokio::test]
 async fn initialize_global_vault() {
-    let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-    utils::add_associated_token_program(&mut pt);
-    let mut context = pt.start_with_context().await;
+    let mut context = utils::start_program_test(PROGRAM).await;
 
-    let payer = context.payer.pubkey();
+    let payer_kp = utils::fixed_payer_keypair();
+    let payer = payer_kp.pubkey();
     let user = payer;
-    let mint_kp = Keypair::new();
+    let mint_kp = utils::test_keypair("initialize_global_vault::mint");
     let mint = mint_kp.pubkey();
 
     let pdas = utils::derive_pdas(PROGRAM, user, mint);
     let _setup = utils::setup_mint_and_token_accounts(
         &mut context,
-        payer,
+        &payer_kp,
         &mint_kp,
         DECIMALS,
         STARTING_BALANCE,
@@ -43,8 +37,7 @@ async fn initialize_global_vault() {
     .await;
 
     let vault_token_acc = utils::derive_associated_token_address(pdas.vault, mint);
-    let (vault_eata, _) =
-        Pubkey::find_program_address(&[pdas.vault.as_ref(), mint.as_ref()], &PROGRAM);
+    let (vault_eata, _) = EphemeralAta::find_pda(&pdas.vault, &mint);
 
     // Build instruction
     let ix = Instruction {
@@ -64,11 +57,13 @@ async fn initialize_global_vault() {
 
     let tx = Transaction::new_signed_with_payer(
         &[ix],
-        Some(&context.payer.pubkey()),
-        &[&context.payer],
+        Some(&payer),
+        &[&payer_kp],
         context.last_blockhash,
     );
-    context.banks_client.process_transaction(tx).await.unwrap();
+    common::metrics::process_transaction_record_cu(&context.banks_client, tx, "init_gvault::init")
+        .await
+        .unwrap();
 
     // Verify account
     let account = context
@@ -105,31 +100,32 @@ async fn initialize_global_vault() {
 
 #[tokio::test]
 async fn initialize_global_vault_migrates_legacy_layout() {
-    let user = Pubkey::new_unique();
-    let mint_kp = Keypair::new();
+    let user = utils::test_pubkey("initialize_global_vault_migrates_legacy_layout::user");
+    let mint_kp = utils::test_keypair("initialize_global_vault_migrates_legacy_layout::mint");
     let mint = mint_kp.pubkey();
     let pdas = utils::derive_pdas(PROGRAM, user, mint);
 
     let legacy_lamports = Rent::default().minimum_balance(32);
-    let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-    utils::add_associated_token_program(&mut pt);
-    pt.add_account(
-        pdas.vault,
-        SolanaAccount {
-            lamports: legacy_lamports,
-            data: mint.to_bytes().to_vec(),
-            owner: PROGRAM,
-            executable: false,
-            rent_epoch: 0,
-        },
-    );
+    let mut context = utils::start_program_test_with(PROGRAM, |pt| {
+        pt.add_account(
+            pdas.vault,
+            SolanaAccount {
+                lamports: legacy_lamports,
+                data: mint.to_bytes().to_vec(),
+                owner: PROGRAM,
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+    })
+    .await;
 
-    let mut context = pt.start_with_context().await;
-    let payer = context.payer.pubkey();
+    let payer_kp = utils::fixed_payer_keypair();
+    let payer = payer_kp.pubkey();
 
     let _setup = utils::setup_mint_and_token_accounts(
         &mut context,
-        payer,
+        &payer_kp,
         &mint_kp,
         DECIMALS,
         STARTING_BALANCE,
@@ -138,8 +134,7 @@ async fn initialize_global_vault_migrates_legacy_layout() {
     .await;
 
     let vault_token_acc = utils::derive_associated_token_address(pdas.vault, mint);
-    let (vault_eata, _) =
-        Pubkey::find_program_address(&[pdas.vault.as_ref(), mint.as_ref()], &PROGRAM);
+    let (vault_eata, _) = EphemeralAta::find_pda(&pdas.vault, &mint);
 
     let ix = Instruction {
         program_id: PROGRAM,
@@ -159,10 +154,16 @@ async fn initialize_global_vault_migrates_legacy_layout() {
     let tx = Transaction::new_signed_with_payer(
         &[ix],
         Some(&payer),
-        &[&context.payer],
+        &[&payer_kp],
         context.last_blockhash,
     );
-    context.banks_client.process_transaction(tx).await.unwrap();
+    common::metrics::process_transaction_record_cu(
+        &context.banks_client,
+        tx,
+        "init_gvault::migrate",
+    )
+    .await
+    .unwrap();
 
     let account = context
         .banks_client

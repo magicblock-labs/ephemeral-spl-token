@@ -6,8 +6,9 @@ use crate::{assert_associated_token_address, assert_owner, assert_signer};
 #[cfg(feature = "logging")]
 use ephemeral_spl_api::state::transfer_queue::queue_peek_next_task_id_from_data;
 use ephemeral_spl_api::state::transfer_queue::{
-    capacity_from_data_len, queue_allocate_group_id_from_data, queue_len_for_mint_with_capacity,
-    queue_push_from_data, QueuedTransfer, QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA, QUEUE_SEED,
+    capacity_from_data_len, queue_allocate_group_id_from_data,
+    queue_len_and_bump_for_mint_with_capacity, queue_push_from_data, QueuedTransfer, TransferQueue,
+    QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
 };
 use pinocchio::address::address_eq;
 use pinocchio::sysvars::clock::Clock;
@@ -41,7 +42,7 @@ pub fn process_deposit_and_queue_transfer(
     };
 
     assert_signer!(user_authority);
-    assert_owner!(queue_info, &ephemeral_spl_api::program::id_address());
+    assert_owner!(queue_info, &crate::ID);
 
     let amount = args.amount();
     validate_deposit_and_queue_transfer_params(
@@ -54,15 +55,17 @@ pub fn process_deposit_and_queue_transfer(
     let split = args.split() as usize;
     let decimals = read_mint_decimals(mint_info, token_program_info)?;
 
-    let (queue_len_before, validator, queue_capacity) = {
+    let (queue_len_before, validator, bump, queue_capacity) = {
         let data = unsafe { queue_info.borrow_unchecked() };
         let queue_capacity = capacity_from_data_len(data.len());
-        match queue_len_for_mint_with_capacity(data, mint_info.address(), split) {
-            Ok((queue_len_before, validator)) => (queue_len_before, validator, queue_capacity),
+        match queue_len_and_bump_for_mint_with_capacity(data, mint_info.address(), split) {
+            Ok((queue_len_before, validator, bump)) => {
+                (queue_len_before, validator, bump, queue_capacity)
+            }
             Err(ProgramError::AccountDataTooSmall) => {
                 #[cfg(feature = "logging")]
                 pinocchio_log::log!("Queue is full");
-                if !address_eq(reimbursement_token_info.address(), &crate::ID.into()) {
+                if !address_eq(reimbursement_token_info.address(), &crate::ID) {
                     TransferChecked {
                         mint: mint_info,
                         from: user_source_token_acc,
@@ -80,11 +83,7 @@ pub fn process_deposit_and_queue_transfer(
         }
     };
 
-    let program_id = ephemeral_spl_api::program::id_address();
-    let (derived_queue, _) = ephemeral_spl_api::Address::find_program_address(
-        &[QUEUE_SEED, mint_info.address().as_ref(), validator.as_ref()],
-        &program_id,
-    );
+    let derived_queue = TransferQueue::derive_pda(mint_info.address(), &validator, bump)?;
     if derived_queue != *queue_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }

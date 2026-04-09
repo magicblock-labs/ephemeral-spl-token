@@ -7,9 +7,9 @@ use ephemeral_rollups_pinocchio::crank::{
 use ephemeral_spl_api::instruction::internal::PROCESS_TRANSFER_QUEUE_TICK;
 use ephemeral_spl_api::state::transfer_queue::{
     queue_crank_task_id_from_data, queue_set_crank_task_id_from_data, queue_views_checked,
-    QUEUE_SEED,
+    TransferQueue,
 };
-use pinocchio::cpi::{invoke_signed_with_bounds, Seed, Signer};
+use pinocchio::cpi::{invoke_signed_with_bounds, Signer};
 use pinocchio::instruction::{InstructionAccount, InstructionView};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
@@ -43,9 +43,8 @@ pub fn process_ensure_transfer_queue_crank(
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
-    let program_id = ephemeral_spl_api::program::id_address();
     assert_signer!(payer_info);
-    assert_owner!(queue_info, &program_id);
+    assert_owner!(queue_info, &crate::ID);
 
     if magic_program_info.address() != &ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID {
         return Err(ProgramError::IncorrectProgramId);
@@ -57,17 +56,7 @@ pub fn process_ensure_transfer_queue_crank(
         (header.mint, header.bump, header.validator)
     };
 
-    let bump_seed = [bump];
-    let derived_queue = ephemeral_spl_api::Address::create_program_address(
-        &[
-            QUEUE_SEED,
-            mint.as_ref(),
-            validator.as_ref(),
-            bump_seed.as_ref(),
-        ],
-        &program_id,
-    )
-    .map_err(|_| ProgramError::InvalidAccountData)?;
+    let derived_queue = TransferQueue::derive_pda(&mint, &validator, bump)?;
     if derived_queue != *queue_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
@@ -76,12 +65,8 @@ pub fn process_ensure_transfer_queue_crank(
         return Err(ProgramError::InvalidSeeds);
     }
 
-    let queue_signer_seeds = [
-        Seed::from(QUEUE_SEED),
-        Seed::from(mint.as_ref()),
-        Seed::from(validator.as_ref()),
-        Seed::from(&bump_seed),
-    ];
+    let bump_seed = [bump];
+    let queue_signer_seeds = TransferQueue::signer_seeds(&mint, &validator, &bump_seed);
     let queue_signers = [Signer::from(&queue_signer_seeds)];
 
     let crank_task_id = derive_queue_crank_task_id(queue_info.address());
@@ -119,11 +104,7 @@ pub fn process_ensure_transfer_queue_crank(
             is_writable: false,
         },
     ];
-    let crank_instruction = [CrankInstruction::new(
-        ephemeral_spl_api::program::id_address(),
-        &tick_accounts,
-        &tick_data,
-    )];
+    let crank_instruction = [CrankInstruction::new(crate::ID, &tick_accounts, &tick_data)];
     let mut crank_data = [0_u8; SCHEDULE_CRANK_DATA_LEN];
     let schedule_cpi = ScheduleCrankCpi::new(
         queue_info.clone(),

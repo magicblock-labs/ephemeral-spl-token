@@ -2,33 +2,34 @@ use dlp_api::state::DelegationRecord;
 use ephemeral_rollups_pinocchio::acl::{
     permission_pda_from_permissioned_account, PERMISSION_PROGRAM_ID,
 };
+use ephemeral_rollups_pinocchio::pda::{
+    delegate_buffer_pda_from_delegated_account_and_owner_program,
+    delegation_metadata_pda_from_delegated_account, delegation_record_pda_from_delegated_account,
+};
 use ephemeral_spl_api::consts::{
     PRIVATE_TRANSFER_FEE_BASIS_POINTS, SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS,
     SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS,
 };
 use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
-use ephemeral_spl_api::state::transfer_queue::{header_len, TransferQueueHeader, QUEUE_SEED};
+use ephemeral_spl_api::state::transfer_queue::{header_len, TransferQueue, TransferQueueHeader};
 use ephemeral_spl_api::state::{load, Initializable};
+use ephemeral_spl_api::ID as PROGRAM;
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
-use solana_keypair::Keypair;
-use solana_program::{bpf_loader, rent::Rent};
+use solana_program::rent::Rent;
 use solana_program_pack::Pack;
-use solana_program_test::{read_file, tokio, ProgramTest};
+use solana_program_test::tokio;
 use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use solana_system_interface::instruction::transfer;
 use solana_transaction::Transaction;
 use spl_token_interface::state::Account as SplAccount;
 
+mod common;
 mod utils;
 
-use crate::utils::add_permission_program;
-
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 const RENT_PDA_SEED: &[u8] = b"rent";
 const DECIMALS: u8 = 6;
 const STARTING_BALANCE: u64 = 1_000 * 10u64.pow(DECIMALS as u32);
@@ -47,48 +48,44 @@ fn read_header_unaligned(data: &[u8]) -> TransferQueueHeader {
 #[tokio::test]
 async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer_stores_third_action(
 ) {
-    let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-    utils::add_associated_token_program(&mut pt);
-    pt.prefer_bpf(true);
-    add_permission_program(&mut pt);
-    let data = read_file("tests/fixtures/dlp.so");
-    pt.add_account(
-        ephemeral_rollups_pinocchio::ID,
-        Account {
-            lamports: Rent::default().minimum_balance(data.len()).max(1),
-            data,
-            owner: bpf_loader::id(),
-            executable: true,
-            rent_epoch: 0,
-        },
+    let owner = utils::test_keypair(
+        "deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer::owner",
+    );
+    let owner_token = utils::test_keypair(
+        "deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer::owner_token",
     );
 
-    let owner = Keypair::new();
-    let owner_token = Keypair::new();
-    pt.add_account(
-        owner.pubkey(),
-        Account {
-            lamports: Rent::default().minimum_balance(0).max(1),
-            data: vec![],
-            owner: solana_system_interface::program::ID,
-            executable: false,
-            rent_epoch: 0,
-        },
+    let mut context = utils::start_program_test_with(PROGRAM, |pt| {
+        pt.add_account(
+            owner.pubkey(),
+            Account {
+                lamports: Rent::default().minimum_balance(0).max(1),
+                data: vec![],
+                owner: solana_system_interface::program::ID,
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+    })
+    .await;
+
+    let payer_kp = utils::fixed_payer_keypair();
+    let payer = payer_kp.pubkey();
+    let mint_kp = utils::test_keypair(
+        "deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer::mint",
     );
-
-    let mut context = pt.start_with_context().await;
-
-    let payer = context.payer.pubkey();
-    let mint_kp = Keypair::new();
     let mint = mint_kp.pubkey();
     let shuttle_id = 9_u32;
-    let validator = Keypair::new().pubkey();
+    let validator = utils::test_keypair(
+        "deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer::validator",
+    )
+    .pubkey();
 
     let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
 
     let _setup = utils::setup_mint_and_token_accounts(
         &mut context,
-        payer,
+        &payer_kp,
         &mint_kp,
         DECIMALS,
         STARTING_BALANCE,
@@ -97,17 +94,15 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
     .await;
     let destination_owner = payer;
 
-    let (shuttle_metadata, _) =
-        utils::derive_shuttle_ephemeral_ata(PROGRAM, owner.pubkey(), mint, shuttle_id);
-    let (shuttle_eata, _) = utils::derive_shuttle_eata(PROGRAM, shuttle_metadata, mint);
+    let (shuttle_metadata, _) = ShuttleMetadata::find_pda(&owner.pubkey(), &mint, shuttle_id);
+    let (shuttle_eata, _) = EphemeralAta::find_pda(&shuttle_metadata, &mint);
     let shuttle_wallet_ata = utils::derive_associated_token_address(shuttle_metadata, mint);
     let pdas = utils::derive_pdas(PROGRAM, owner.pubkey(), mint);
     let vault = pdas.vault;
-    let (vault_eata, _) = Pubkey::find_program_address(&[vault.as_ref(), mint.as_ref()], &PROGRAM);
+    let (vault_eata, _) = EphemeralAta::find_pda(&vault, &mint);
     let vault_ata = utils::derive_associated_token_address(vault, mint);
     let owner_source_ata = owner_token.pubkey();
-    let queue =
-        Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref(), validator.as_ref()], &PROGRAM).0;
+    let (queue, _) = TransferQueue::find_pda(&mint, &validator);
     let queue_permission = permission_pda_from_permissioned_account(&queue);
     let ix_init_rent = Instruction {
         program_id: PROGRAM,
@@ -184,7 +179,7 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
             ix_mint_owner_source,
         ],
         Some(&payer),
-        &[&context.payer, &owner_token],
+        &[&payer_kp, &owner_token],
         context.last_blockhash,
     );
     context
@@ -200,28 +195,14 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
         .unwrap()
         .expect("rent pda must exist");
 
-    let (buffer_pda, _) = Pubkey::find_program_address(
-        &[b"buffer", shuttle_eata.as_ref()],
-        &ephemeral_spl_api::program::id().into(),
-    );
-    let (queue_buffer_pda, _) =
-        Pubkey::find_program_address(&[b"buffer", queue.as_ref()], &PROGRAM);
-    let (queue_delegation_record_pda, _) = Pubkey::find_program_address(
-        &[b"delegation", queue.as_ref()],
-        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,
-    );
-    let (queue_delegation_metadata_pda, _) = Pubkey::find_program_address(
-        &[b"delegation-metadata", queue.as_ref()],
-        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,
-    );
-    let (delegation_record_pda, _) = Pubkey::find_program_address(
-        &[b"delegation", shuttle_eata.as_ref()],
-        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,
-    );
-    let (delegation_metadata_pda, _) = Pubkey::find_program_address(
-        &[b"delegation-metadata", shuttle_eata.as_ref()],
-        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,
-    );
+    let buffer_pda =
+        delegate_buffer_pda_from_delegated_account_and_owner_program(&shuttle_eata, &PROGRAM);
+    let queue_buffer_pda =
+        delegate_buffer_pda_from_delegated_account_and_owner_program(&queue, &PROGRAM);
+    let queue_delegation_record_pda = delegation_record_pda_from_delegated_account(&queue);
+    let queue_delegation_metadata_pda = delegation_metadata_pda_from_delegated_account(&queue);
+    let delegation_record_pda = delegation_record_pda_from_delegated_account(&shuttle_eata);
+    let delegation_metadata_pda = delegation_metadata_pda_from_delegated_account(&shuttle_eata);
 
     let mut delegate_data = vec![
         instruction::DEPOSIT_AND_DELEGATE_SHUTTLE_EPHEMERAL_ATA_WITH_MERGE_AND_PRIVATE_TRANSFER,
@@ -313,26 +294,30 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
     let tx_delegate_queue = Transaction::new_signed_with_payer(
         &[ix_delegate_queue],
         Some(&payer),
-        &[&context.payer],
+        &[&payer_kp],
         context.banks_client.get_latest_blockhash().await.unwrap(),
     );
-    context
-        .banks_client
-        .process_transaction(tx_delegate_queue)
-        .await
-        .unwrap();
+    common::metrics::process_transaction_record_cu(
+        &context.banks_client,
+        tx_delegate_queue,
+        "del_shuttle_priv::queue",
+    )
+    .await
+    .unwrap();
 
     let tx_delegate = Transaction::new_signed_with_payer(
         &[ix_delegate],
         Some(&payer),
-        &[&context.payer, &owner],
+        &[&payer_kp, &owner],
         context.banks_client.get_latest_blockhash().await.unwrap(),
     );
-    context
-        .banks_client
-        .process_transaction(tx_delegate)
-        .await
-        .unwrap();
+    common::metrics::process_transaction_record_cu(
+        &context.banks_client,
+        tx_delegate,
+        "del_shuttle_priv::shuttle",
+    )
+    .await
+    .unwrap();
 
     let shuttle_account = context
         .banks_client

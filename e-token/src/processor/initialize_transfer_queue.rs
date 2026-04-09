@@ -5,9 +5,10 @@ use ephemeral_rollups_pinocchio::acl::{
 };
 use ephemeral_spl_api::consts::TRANSFER_QUEUE_INITIAL_BUFFER_LAMPORTS;
 use ephemeral_spl_api::state::transfer_queue::{
-    capacity_from_data_len, header_len, init_queue, item_len, queue_views_mut_checked, QUEUE_SEED,
+    capacity_from_data_len, header_len, init_queue, item_len, queue_views_mut_checked,
+    TransferQueue,
 };
-use pinocchio::cpi::{Seed, Signer};
+use pinocchio::cpi::Signer;
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
@@ -51,15 +52,9 @@ pub fn process_initialize_transfer_queue(
         return Err(ProgramError::InvalidInstructionData);
     };
 
-    let program_id = ephemeral_spl_api::program::id_address();
-    let (derived_queue, bump) = ephemeral_spl_api::Address::find_program_address(
-        &[
-            QUEUE_SEED,
-            mint_info.address().as_ref(),
-            validator_info.address().as_ref(),
-        ],
-        &program_id,
-    );
+    let program_id = crate::ID;
+    let (derived_queue, bump) =
+        TransferQueue::find_pda(mint_info.address(), validator_info.address());
     if derived_queue != *queue_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
@@ -91,12 +86,8 @@ pub fn process_initialize_transfer_queue(
         }
 
         let bump_seed = [bump];
-        let signer_seeds = [
-            Seed::from(QUEUE_SEED),
-            Seed::from(mint_info.address().as_ref()),
-            Seed::from(validator_info.address().as_ref()),
-            Seed::from(&bump_seed),
-        ];
+        let signer_seeds =
+            TransferQueue::signer_seeds(mint_info.address(), validator_info.address(), &bump_seed);
         let signer = Signer::from(&signer_seeds);
 
         CreateAccount {
@@ -121,11 +112,10 @@ pub fn process_initialize_transfer_queue(
             &PERMISSION_PROGRAM_ID,
         )
         .members(MembersArgs { members: Some(&[]) })
-        .seeds(&[
-            QUEUE_SEED,
-            mint_info.address().as_ref(),
-            validator_info.address().as_ref(),
-        ])
+        .seeds(&TransferQueue::seeds(
+            mint_info.address(),
+            validator_info.address(),
+        ))
         .bump(bump)
         .invoke()?;
     }

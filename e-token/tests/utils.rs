@@ -1,11 +1,15 @@
+//! Shared helpers for integration tests. Each `tests/*.rs` binary only uses a subset; suppress
+//! `dead_code` for the rest.
 #![allow(dead_code)]
 
-use ephemeral_rollups_pinocchio::acl::PERMISSION_PROGRAM_ID;
+use solana_account::Account;
 use solana_keypair::Keypair;
 use solana_program::{
     account_info::AccountInfo,
     bpf_loader,
     entrypoint::ProgramResult,
+    hash::hash,
+    native_token::LAMPORTS_PER_SOL,
     program::{invoke, invoke_signed},
     program_error::ProgramError,
     rent::Rent,
@@ -35,6 +39,104 @@ const ASSOCIATED_TOKEN_PROGRAM_ID: Pubkey = pubkey!("ATokenGPvbdGVxr1b2hvZbsiqW5
 
 pub fn associated_token_program_id() -> Pubkey {
     ASSOCIATED_TOKEN_PROGRAM_ID
+}
+
+/// Deterministic pubkey for integration tests (SHA-256 over `e-token::pubkey::{label}`).
+pub fn test_pubkey(label: &str) -> Pubkey {
+    let input = format!("e-token::pubkey::{label}");
+    Pubkey::new_from_array(hash(input.as_bytes()).to_bytes())
+}
+
+/// Deterministic signing keypair for integration tests (SHA-256 over `e-token::keypair::{label}`).
+pub fn test_keypair(label: &str) -> Keypair {
+    let input = format!("e-token::keypair::{label}");
+    Keypair::new_from_array(hash(input.as_bytes()).to_bytes())
+}
+
+/// Label for [`fixed_payer_keypair`] (stable across runs for reproducible CU metrics).
+pub const FIXED_PAYER_LABEL: &str = "e_token::fixed_payer";
+
+/// Genesis-funded payer shared by integration tests. Prefer this over [`ProgramTestContext::payer`]
+/// for signing and for pubkeys used in PDA seeds so compute-unit measurements match across runs.
+pub fn fixed_payer_keypair() -> Keypair {
+    test_keypair(FIXED_PAYER_LABEL)
+}
+
+/// Fund [`fixed_payer_keypair`] at genesis (same order of lamports as the default mint in
+/// `solana-program-test`). Call after [`ProgramTest::new`] and before [`ProgramTest::start_with_context`].
+pub fn fund_fixed_payer_genesis(pt: &mut ProgramTest) {
+    let payer = fixed_payer_keypair();
+    pt.add_genesis_account(
+        payer.pubkey(),
+        Account {
+            lamports: 1_000_000 * LAMPORTS_PER_SOL,
+            data: vec![],
+            owner: solana_system_interface::program::ID,
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+}
+
+/// Permission program id (matches `tests/fixtures/acl.so`).
+pub fn permission_program_id() -> Pubkey {
+    let bytes: [u8; 32] = ephemeral_rollups_pinocchio::acl::consts::PERMISSION_PROGRAM_ID
+        .as_ref()
+        .try_into()
+        .expect("PERMISSION_PROGRAM_ID must be 32 bytes");
+    Pubkey::new_from_array(bytes)
+}
+
+/// Load a BPF `.so` from `tests/fixtures` (or `BPF_OUT_DIR`) as an executable account.
+pub fn add_executable_bpf_fixture(
+    pt: &mut ProgramTest,
+    program_address: Pubkey,
+    fixture_path: &str,
+) {
+    let data = read_file(fixture_path);
+    let rent = Rent::default();
+    pt.add_account(
+        program_address,
+        Account {
+            lamports: rent.minimum_balance(data.len()).max(1),
+            data,
+            owner: bpf_loader::id(),
+            executable: true,
+            rent_epoch: 0,
+        },
+    );
+}
+
+/// Prefer BPF, fund [`fixed_payer_keypair`] at genesis, add the SPL ATA mock, and load `acl.so` / `dlp.so`.
+pub fn configure_standard_program_test(pt: &mut ProgramTest) {
+    pt.prefer_bpf(true);
+    fund_fixed_payer_genesis(pt);
+    add_associated_token_program(pt);
+    add_executable_bpf_fixture(pt, permission_program_id(), "tests/fixtures/acl.so");
+    add_executable_bpf_fixture(pt, ephemeral_rollups_pinocchio::ID, "tests/fixtures/dlp.so");
+}
+
+/// Same as [`start_program_test_with`] with no extra setup.
+pub async fn start_program_test(program_id: Pubkey) -> ProgramTestContext {
+    start_program_test_with(program_id, |_| {}).await
+}
+
+/// Build [`ProgramTest`], apply [`configure_standard_program_test`], then `configure`, then start.
+///
+/// Sign with [`fixed_payer_keypair`] and use its pubkey for fee payer / seeds. The harness
+/// `context.payer` remains random and should not be used.
+pub async fn start_program_test_with<F: FnOnce(&mut ProgramTest)>(
+    program_id: Pubkey,
+    configure: F,
+) -> ProgramTestContext {
+    // `ProgramTest::new` calls `add_program` before any `prefer_bpf` override; default `prefer_bpf`
+    // is false unless BPF_OUT_DIR is set, so the main program would hit "processor not available".
+    let mut pt = ProgramTest::default();
+    pt.prefer_bpf(true);
+    pt.add_program("ephemeral_token_program", program_id, None);
+    configure_standard_program_test(&mut pt);
+    configure(&mut pt);
+    pt.start_with_context().await
 }
 
 fn process_associated_token_program_mock(
@@ -120,7 +222,7 @@ pub fn add_associated_token_program(pt: &mut ProgramTest) {
 pub fn add_permission_program(pt: &mut ProgramTest) {
     let data = read_file("tests/fixtures/acl.so");
     pt.add_account(
-        PERMISSION_PROGRAM_ID,
+        permission_program_id(),
         solana_account::Account {
             lamports: Rent::default().minimum_balance(data.len()).max(1),
             data,
@@ -182,7 +284,7 @@ pub fn derive_shuttle_eata(program: Pubkey, shuttle: Pubkey, mint: Pubkey) -> (P
 // Submits a single transaction for all instructions.
 pub async fn setup_mint_and_token_accounts(
     context: &mut ProgramTestContext,
-    payer: Pubkey,
+    payer_signer: &Keypair,
     mint_kp: &Keypair,
     decimals: u8,
     starting_balance: u64,
@@ -193,6 +295,7 @@ pub async fn setup_mint_and_token_accounts(
         "at least one user token account required"
     );
 
+    let payer = payer_signer.pubkey();
     let mint = mint_kp.pubkey();
 
     let rent = context.banks_client.get_rent().await.unwrap();
@@ -201,7 +304,7 @@ pub async fn setup_mint_and_token_accounts(
     let mint_lamports = rent.minimum_balance(mint_space);
 
     let mut instructions = vec![];
-    let mut signers: Vec<&Keypair> = vec![&context.payer, mint_kp];
+    let mut signers: Vec<&Keypair> = vec![payer_signer, mint_kp];
 
     // Create and init mint
     instructions.push(create_account(
@@ -230,8 +333,11 @@ pub async fn setup_mint_and_token_accounts(
     let mut user_tokens: Vec<Pubkey> = vec![];
     let mut user_token_kps: Vec<Keypair> = vec![];
 
-    for _ in 0..user_accounts {
-        let kp = Keypair::new();
+    for i in 0..user_accounts {
+        let kp = test_keypair(&format!(
+            "setup_mint_and_token_accounts::user_token_{i}_{}",
+            mint_kp.pubkey()
+        ));
         let pk = kp.pubkey();
         user_token_kps.push(kp);
         user_tokens.push(pk);

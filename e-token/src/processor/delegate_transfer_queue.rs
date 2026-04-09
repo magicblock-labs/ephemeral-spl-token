@@ -1,6 +1,6 @@
 use ephemeral_rollups_pinocchio::instruction::DelegateAccountCpiBuilder;
 use ephemeral_rollups_pinocchio::types::DelegateConfig;
-use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, QUEUE_SEED};
+use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, TransferQueue, QUEUE_SEED};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
 use crate::assert_signer;
@@ -31,9 +31,8 @@ pub fn process_delegate_transfer_queue(
 
     assert_signer!(payer_info);
 
-    let program_id = ephemeral_spl_api::program::id_address();
     let delegation_program = ephemeral_spl_api::program::DELEGATION_PROGRAM_ID;
-    if !queue_info.owned_by(&program_id) && !queue_info.owned_by(&delegation_program) {
+    if !queue_info.owned_by(&crate::ID) && !queue_info.owned_by(&delegation_program) {
         return Err(ProgramError::IllegalOwner);
     }
 
@@ -45,17 +44,8 @@ pub fn process_delegate_transfer_queue(
         }
 
         let bump = header.bump;
-        let bump_seed = [bump];
-        let derived_queue = ephemeral_spl_api::Address::create_program_address(
-            &[
-                QUEUE_SEED,
-                mint_info.address().as_ref(),
-                header.validator.as_ref(),
-                bump_seed.as_ref(),
-            ],
-            &program_id,
-        )
-        .map_err(|_| ProgramError::InvalidAccountData)?;
+        let derived_queue =
+            TransferQueue::derive_pda(mint_info.address(), &header.validator, bump)?;
         if derived_queue != *queue_info.address() {
             return Err(ProgramError::InvalidSeeds);
         }
@@ -67,7 +57,7 @@ pub fn process_delegate_transfer_queue(
         return Ok(());
     }
 
-    if owner_program.address() != &program_id {
+    if owner_program.address() != &crate::ID {
         return Err(ProgramError::IncorrectProgramId);
     }
     if system_program.address() != &pinocchio_system::ID {

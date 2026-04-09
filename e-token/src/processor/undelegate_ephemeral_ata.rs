@@ -43,19 +43,16 @@ pub fn process_undelegate_ephemeral_ata(
 
     // Read the Ephemeral ATA to get the mint and verify the PDA derivation for this payer.
     // Scope the borrow so it's released before any CPI.
-    let mint = {
+    let (mint, bump) = {
         let eata_data =
             load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
         #[allow(clippy::clone_on_copy)]
         let mint = eata_data.mint.clone();
-        mint
+        (mint, eata_data.bump)
     };
 
     // Derive PDA: seeds = [payer, mint], program id = e-token program id (ephemeral_spl_api::program::ID)
-    let (derived_pda, _) = ephemeral_spl_api::Address::find_program_address(
-        &[payer.address().as_ref(), mint.as_ref()],
-        &ephemeral_spl_api::program::id_address(),
-    );
+    let derived_pda = EphemeralAta::derive_pda(payer.address(), &mint, bump)?;
 
     if derived_pda != *ephemeral_ata_info.address() {
         return Err(ProgramError::InvalidSeeds);

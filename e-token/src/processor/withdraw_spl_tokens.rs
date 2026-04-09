@@ -1,7 +1,7 @@
 use crate::{assert_owner, assert_signer, processor::utils::read_mint_decimals};
 use core::marker::PhantomData;
 use ephemeral_spl_api::{error::EphemeralSplError, state::load_initialized};
-use pinocchio::cpi::{Seed, Signer};
+use pinocchio::cpi::Signer;
 
 use {
     ephemeral_spl_api::state::{
@@ -63,15 +63,12 @@ pub(crate) fn withdraw_ephemeral_ata_tokens(
     }
 
     // Validate EphemeralAta account (writable)
-    assert_owner!(
-        ephemeral_ata_info,
-        &ephemeral_spl_api::program::id_address()
-    );
+    assert_owner!(ephemeral_ata_info, &crate::ID);
     let mut ephemeral_ata =
         load_ephemeral_ata_compat_mut(unsafe { ephemeral_ata_info.borrow_unchecked_mut() })?;
 
     // Validate vault ownership before reading raw data.
-    assert_owner!(vault_info, &ephemeral_spl_api::program::id_address());
+    assert_owner!(vault_info, &crate::ID);
 
     // Validate Vault data account
     let vault = load_initialized::<GlobalVault>(unsafe { vault_info.borrow_unchecked() })?;
@@ -90,7 +87,7 @@ pub(crate) fn withdraw_ephemeral_ata_tokens(
 
     // Perform transfer from vault token account to user destination, signed by vault PDA
     let bump = [vault.bump];
-    let seeds = [Seed::from(mint_info.address().as_ref()), Seed::from(&bump)];
+    let seeds = GlobalVault::signer_seeds(mint_info.address(), &bump);
     let signer = Signer::from(&seeds);
 
     pinocchio_token_2022::instructions::TransferChecked {
