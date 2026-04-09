@@ -167,11 +167,11 @@ pub(crate) fn inner_process_instruction(
 
             process_withdraw_through_delegated_shuttle_with_merge(accounts, instruction_data)
         }
-        instruction::UNDELEGATE_SHUTTLE_EPHEMERAL_ATA => {
+        instruction::UNDELEGATE_AND_CLOSE_SHUTTLE_TO_OWNER => {
             #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: UndelegateShuttleEphemeralAta");
+            pinocchio_log::log!("Instruction: UndelegateAndCloseShuttleToOwner");
 
-            process_undelegate_and_close_shuttle_ephemeral_ata(accounts, instruction_data)
+            process_undelegate_and_close_shuttle_to_owner(accounts, instruction_data)
         }
         instruction::MERGE_SHUTTLE_INTO_EPHEMERAL_ATA => {
             #[cfg(feature = "logging")]
@@ -197,23 +197,11 @@ pub(crate) fn inner_process_instruction(
 
             process_delegate_transfer_queue(accounts, instruction_data)
         }
-        instruction::INITIALIZE_FEES_PDA => {
+        instruction::SPONSORED_LAMPORTS_TRANSFER => {
             #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: InitializeFeesPda");
+            pinocchio_log::log!("Instruction: SponsoredLamportsTransfer");
 
-            process_initialize_fees_pda(accounts, instruction_data)
-        }
-        instruction::DELEGATE_FEES_PDA => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: DelegateFeesPda");
-
-            process_delegate_fees_pda(accounts, instruction_data)
-        }
-        instruction::COMMIT_FEES_PDA => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: CommitFeesPda");
-
-            process_commit_fees_pda(accounts, instruction_data)
+            process_sponsored_lamports_transfer(accounts, instruction_data)
         }
         instruction::INITIALIZE_RENT_PDA => {
             #[cfg(feature = "logging")]
@@ -227,15 +215,21 @@ pub(crate) fn inner_process_instruction(
 
             process_allocate_transfer_queue(accounts, instruction_data)
         }
+        instruction::PROCESS_PENDING_TRANSFER_QUEUE_REFILL => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: ProcessPendingTransferQueueRefill");
+
+            process_pending_transfer_queue_refill(accounts, instruction_data)
+        }
         internal::UNDELEGATION_CALLBACK => {
             #[cfg(feature = "logging")]
             pinocchio_log::log!("Instruction: UndelegationCallback");
 
             process_undelegation_callback(accounts, instruction_data)
         }
-        internal::CLOSE_SHUTTLE_ATA_INTENT => {
+        internal::SETTLE_AND_CLOSE_SHUTTLE_INTENT => {
             #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: CloseShuttleAtaIntent");
+            pinocchio_log::log!("Instruction: SettleAndCloseShuttleIntent");
 
             process_close_shuttle_ata_intent(accounts, instruction_data)
         }
@@ -251,11 +245,29 @@ pub(crate) fn inner_process_instruction(
 
             process_transfer_queue_tick(accounts, instruction_data)
         }
-        internal::UNDELEGATE_WITHDRAW_AND_CLOSE_SHUTTLE_EPHEMERAL_ATA => {
+        internal::TRANSFER_LAMPORTS_PDA => {
             #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: UndelegateWithdrawAndCloseShuttleEphemeralAta");
+            pinocchio_log::log!("Instruction: TransferLamportsPda");
 
-            process_undelegate_withdraw_and_close_shuttle_ephemeral_ata(accounts, instruction_data)
+            process_transfer_lamports_pda(accounts, instruction_data)
+        }
+        internal::UNDELEGATE_LAMPORTS_PDA => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: UndelegateLamportsPda");
+
+            process_undelegate_lamports_pda(accounts, instruction_data)
+        }
+        internal::CLOSE_LAMPORTS_PDA_INTENT => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: CloseLamportsPdaIntent");
+
+            process_close_lamports_pda_intent(accounts, instruction_data)
+        }
+        internal::MARK_TRANSFER_QUEUE_REFILL_PENDING => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: MarkTransferQueueRefillPending");
+
+            process_mark_transfer_queue_refill_pending(accounts, instruction_data)
         }
         _ => Err(EphemeralSplError::InvalidInstruction.into()),
     }

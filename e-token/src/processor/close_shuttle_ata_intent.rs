@@ -15,7 +15,7 @@ const DLP_EPHEMERAL_BALANCE_TAG: &[u8] = b"balance";
 /// balance through the shared vault flow, then closes shuttle wallet ATA,
 /// shuttle EATA, and shuttle metadata, refunding rent to the stored payer.
 ///
-/// Expected leading accounts:
+/// Expected accounts:
 /// 0. [writable] Shuttle rent reimbursement account (must equal `ShuttleMetadata.payer`)
 /// 1. [writable] Shuttle metadata account
 /// 2. [writable] Shuttle EATA account (PDA [shuttle_metadata, mint])
@@ -25,35 +25,26 @@ const DLP_EPHEMERAL_BALANCE_TAG: &[u8] = b"balance";
 /// 6. []         Global Vault account
 /// 7. [writable] Vault source token account
 /// 8. []         Token program account
-///
-/// Expected trailing accounts from tail:
-/// - second to last: escrow authority
-/// - last:          escrow signer PDA
+/// 9. []         Source program (must equal this program)
+/// 10. []        Escrow authority
+/// 11. [signer]  Escrow signer PDA
 pub fn process_close_shuttle_ata_intent(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    // TODO(GabrielePicco): ensure we schedule this from the same program id
-
     let [escrow_index] = instruction_data else {
         return Err(ProgramError::InvalidInstructionData);
     };
 
-    if accounts.len() < 11 {
+    let [rent_reimbursement_info, shuttle_info, shuttle_ephemeral_ata_info, shuttle_wallet_ata_info, destination_token_info, mint_info, vault_info, vault_source_token_acc, token_program_info, source_program, escrow_authority, escrow_signer] =
+        accounts
+    else {
         return Err(ProgramError::NotEnoughAccountKeys);
-    }
+    };
 
-    let rent_reimbursement_info = &accounts[0];
-    let shuttle_info = &accounts[1];
-    let shuttle_ephemeral_ata_info = &accounts[2];
-    let shuttle_wallet_ata_info = &accounts[3];
-    let destination_token_info = &accounts[4];
-    let mint_info = &accounts[5];
-    let vault_info = &accounts[6];
-    let vault_source_token_acc = &accounts[7];
-    let token_program_info = &accounts[8];
-    let escrow_authority = &accounts[accounts.len() - 2];
-    let escrow_signer = &accounts[accounts.len() - 1];
+    if source_program.address() != &ephemeral_spl_api::program::id_address() {
+        return Err(ProgramError::IncorrectAuthority);
+    }
 
     assert_signer!(escrow_signer);
 

@@ -2,6 +2,10 @@ use dlp_api::state::DelegationRecord;
 use ephemeral_rollups_pinocchio::acl::{
     permission_pda_from_permissioned_account, PERMISSION_PROGRAM_ID,
 };
+use ephemeral_spl_api::consts::{
+    PRIVATE_TRANSFER_FEE_BASIS_POINTS, SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS,
+    SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS,
+};
 use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
@@ -29,6 +33,8 @@ const DEPOSIT_AMOUNT: u64 = 100 * 10u64.pow(DECIMALS as u32);
 const MIN_DELAY_MS: u64 = 5_000;
 const MAX_DELAY_MS: u64 = 15_000;
 const SPLIT: u32 = 4;
+const BASIS_POINTS_DENOMINATOR: u64 = 10_000;
+const TRANSFER_CHECKED_DISCRIMINATOR: u8 = 12;
 
 fn read_header_unaligned(data: &[u8]) -> TransferQueueHeader {
     assert!(data.len() >= header_len());
@@ -73,7 +79,7 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
 
     let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
 
-    let setup = utils::setup_mint_and_token_accounts(
+    let _setup = utils::setup_mint_and_token_accounts(
         &mut context,
         &payer_kp,
         &mint_kp,
@@ -82,7 +88,7 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
         1,
     )
     .await;
-    let destination_ata = setup.user_tokens[0];
+    let destination_owner = payer;
 
     let (shuttle_metadata, _) =
         utils::derive_shuttle_ephemeral_ata(PROGRAM, owner.pubkey(), mint, shuttle_id);
@@ -180,8 +186,17 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
         .await
         .unwrap();
 
-    let (buffer_pda, _) =
-        Pubkey::find_program_address(&[b"buffer", shuttle_eata.as_ref()], &PROGRAM);
+    let rent_pda_before = context
+        .banks_client
+        .get_account(rent_pda)
+        .await
+        .unwrap()
+        .expect("rent pda must exist");
+
+    let (buffer_pda, _) = Pubkey::find_program_address(
+        &[b"buffer", shuttle_eata.as_ref()],
+        &ephemeral_spl_api::program::id().into(),
+    );
     let (queue_buffer_pda, _) =
         Pubkey::find_program_address(&[b"buffer", queue.as_ref()], &PROGRAM);
     let (queue_delegation_record_pda, _) = Pubkey::find_program_address(
@@ -213,10 +228,10 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
         delegate_data.extend_from_slice(validator.as_array());
     }
 
-    // add encrypted_destination_token_account (varindex: 1)
+    // add encrypted destination owner (varindex: 1)
     {
         let data = dlp_api::encryption::encrypt_ed25519_recipient(
-            destination_ata.as_array(),
+            destination_owner.as_array(),
             &validator.to_bytes(),
         )
         .expect("validator key should be valid for encryption");
@@ -367,12 +382,24 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
     let queue_header = read_header_unaligned(&queue_account.data);
     assert_eq!(queue_header.length, 0);
 
+    let rent_pda_after = context
+        .banks_client
+        .get_account(rent_pda)
+        .await
+        .unwrap()
+        .expect("rent pda must still exist");
     let delegation_record_account = context
         .banks_client
         .get_account(delegation_record_pda)
         .await
         .unwrap()
         .expect("delegation record must exist");
+    let delegation_metadata_account = context
+        .banks_client
+        .get_account(delegation_metadata_pda)
+        .await
+        .unwrap()
+        .expect("delegation metadata must exist");
 
     let record_len = DelegationRecord::size_with_discriminator();
     let record = DelegationRecord::try_from_bytes_with_discriminator(
@@ -390,5 +417,45 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
     assert!(
         delegation_record_account.data.len() > record_len,
         "expected stored post-delegation payload bytes"
+    );
+    let action_payload = &delegation_record_account.data[record_len..];
+    let fee_amount = DEPOSIT_AMOUNT * PRIVATE_TRANSFER_FEE_BASIS_POINTS / BASIS_POINTS_DENOMINATOR;
+    let private_transfer_amount = DEPOSIT_AMOUNT - fee_amount;
+
+    let mut private_transfer_prefix = vec![instruction::DEPOSIT_AND_QUEUE_TRANSFER];
+    private_transfer_prefix.extend_from_slice(&private_transfer_amount.to_le_bytes());
+    assert!(
+        action_payload
+            .windows(private_transfer_prefix.len())
+            .any(|window| window == private_transfer_prefix.as_slice()),
+        "expected stored post-delegation payload to use the net private transfer amount"
+    );
+
+    let mut fee_transfer_data = vec![TRANSFER_CHECKED_DISCRIMINATOR];
+    fee_transfer_data.extend_from_slice(&fee_amount.to_le_bytes());
+    fee_transfer_data.push(DECIMALS);
+    assert!(
+        action_payload
+            .windows(fee_transfer_data.len())
+            .any(|window| window == fee_transfer_data.as_slice()),
+        "expected stored post-delegation payload to include the fee transfer action"
+    );
+
+    assert_eq!(
+        rent_pda_after.lamports,
+        rent_pda_before.lamports
+            + SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS
+            + SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS
+            - shuttle_account.lamports
+            - shuttle_eata_account.lamports
+            - context
+                .banks_client
+                .get_account(shuttle_wallet_ata)
+                .await
+                .unwrap()
+                .expect("shuttle wallet ata must exist")
+                .lamports
+            - delegation_record_account.lamports
+            - delegation_metadata_account.lamports
     );
 }

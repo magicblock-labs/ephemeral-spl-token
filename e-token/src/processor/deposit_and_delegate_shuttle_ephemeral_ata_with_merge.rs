@@ -32,7 +32,7 @@ use crate::{
     processor::{
         deposit_spl_tokens::transfer_to_vault_for_mint,
         initialize_shuttle_ephemeral_ata::initialize_shuttle_ephemeral_ata_with_sponsor,
-        rent_pda::derive_rent_pda,
+        rent_pda::{RENT_PDA, RENT_PDA_BUMP},
     },
 };
 
@@ -62,7 +62,6 @@ pub(crate) struct DepositAndDelegateShuttleWithMergeAccounts<'a> {
 
 pub(crate) struct PreparedShuttleDelegation {
     pub(crate) mint: Address,
-    pub(crate) rent_bump: u8,
     pub(crate) already_delegated: bool,
 }
 
@@ -84,6 +83,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge(
     process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions(
         &accounts.common,
         args.common_args(),
+        0,
         default_post_delegation_actions(&accounts).cleartext(),
     )
 }
@@ -193,6 +193,7 @@ pub(crate) fn default_post_delegation_actions(
 pub(crate) fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions(
     accounts: &DepositAndDelegateShuttleAccounts<'_>,
     args: DepositAndDelegateShuttleCommonArgs,
+    extra_setup_lamports: u64,
     post_actions: PostDelegationActions,
 ) -> ProgramResult {
     let prepared = prepare_sponsored_shuttle_delegation(
@@ -206,6 +207,7 @@ pub(crate) fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actio
         accounts.token_program_info,
         accounts.system_program,
         args.shuttle_id,
+        extra_setup_lamports,
     )?;
 
     if prepared.already_delegated {
@@ -245,7 +247,6 @@ pub(crate) fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actio
         args,
         &prepared.mint,
         shuttle_eata.bump,
-        prepared.rent_bump,
         post_actions,
     )
 }
@@ -262,6 +263,7 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
     token_program_info: &AccountView,
     system_program: &AccountView,
     shuttle_id: u32,
+    extra_setup_lamports: u64,
 ) -> Result<PreparedShuttleDelegation, ProgramError> {
     if !payer_info.is_signer() || !owner_info.is_signer() {
         return Err(ProgramError::MissingRequiredSignature);
@@ -289,22 +291,25 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
         );
     }
 
-    let (derived_rent_pda, rent_bump) = derive_rent_pda();
-    if derived_rent_pda != *rent_pda_info.address() {
+    if &RENT_PDA != rent_pda_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
     if rent_pda_info.data_len() != 0 {
         return Err(ProgramError::InvalidAccountData);
     }
 
+    let setup_lamports = ephemeral_spl_api::consts::SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS
+        .checked_add(extra_setup_lamports)
+        .ok_or(ProgramError::InvalidArgument)?;
+
     Transfer {
         from: payer_info,
         to: rent_pda_info,
-        lamports: ephemeral_spl_api::consts::SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS,
+        lamports: setup_lamports,
     }
     .invoke()?;
 
-    let rent_bump_seed = [rent_bump];
+    let rent_bump_seed = [RENT_PDA_BUMP];
     let rent_signer_seed = [
         Seed::from(crate::processor::rent_pda::RENT_PDA_SEED),
         Seed::from(&rent_bump_seed),
@@ -329,7 +334,6 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
     if shuttle_eata_info.owned_by(&delegation_program) {
         return Ok(PreparedShuttleDelegation {
             mint: *mint_info.address(),
-            rent_bump,
             already_delegated: true,
         });
     }
@@ -372,7 +376,6 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
 
     Ok(PreparedShuttleDelegation {
         mint,
-        rent_bump,
         already_delegated: false,
     })
 }
@@ -392,10 +395,9 @@ pub(crate) fn delegate_sponsored_shuttle_with_post_actions(
     args: DepositAndDelegateShuttleCommonArgs,
     mint: &Address,
     shuttle_eata_bump: u8,
-    rent_bump: u8,
     post_actions: PostDelegationActions,
 ) -> ProgramResult {
-    let rent_bump_seed = [rent_bump];
+    let rent_bump_seed = [RENT_PDA_BUMP];
     let rent_signer_seed = [
         Seed::from(crate::processor::rent_pda::RENT_PDA_SEED),
         Seed::from(&rent_bump_seed),
@@ -463,26 +465,46 @@ pub(crate) fn merge_shuttle_into_token_account_action(
 pub(crate) fn undelegate_and_close_shuttle_action(
     accounts: &DepositAndDelegateShuttleAccounts<'_>,
 ) -> Instruction {
+    build_undelegate_and_close_shuttle_instruction(
+        accounts.payer_info.address(),
+        accounts.rent_pda_info.address(),
+        accounts.shuttle_info.address(),
+        accounts.shuttle_eata_info.address(),
+        accounts.shuttle_wallet_ata_info.address(),
+        accounts.owner_source_token_info.address(),
+        accounts.token_program_info.address(),
+    )
+}
+
+pub(crate) fn build_undelegate_and_close_shuttle_instruction(
+    payer: &Address,
+    rent_pda: &Address,
+    shuttle: &Address,
+    shuttle_eata: &Address,
+    shuttle_wallet_ata: &Address,
+    refund_token: &Address,
+    token_program: &Address,
+) -> Instruction {
     Instruction {
         program_id: crate::ID,
         accounts: alloc::vec![
-            AccountMeta::new(*accounts.payer_info.address(), true),
-            AccountMeta::new(*accounts.rent_pda_info.address(), false),
-            AccountMeta::new_readonly(*accounts.shuttle_info.address(), false),
-            AccountMeta::new_readonly(*accounts.shuttle_eata_info.address(), false),
-            AccountMeta::new(*accounts.shuttle_wallet_ata_info.address(), false),
-            AccountMeta::new(*accounts.owner_source_token_info.address(), false),
-            AccountMeta::new_readonly(*accounts.token_program_info.address(), false),
+            AccountMeta::new(*payer, true),
+            AccountMeta::new(*rent_pda, false),
+            AccountMeta::new_readonly(*shuttle, false),
+            AccountMeta::new_readonly(*shuttle_eata, false),
+            AccountMeta::new(*shuttle_wallet_ata, false),
+            AccountMeta::new(*refund_token, false),
+            AccountMeta::new_readonly(*token_program, false),
             AccountMeta::new(Pubkey::from(MAGIC_CONTEXT_ID.to_bytes()), false),
             AccountMeta::new_readonly(Pubkey::from(MAGIC_PROGRAM_ID.to_bytes()), false),
         ],
-        data: alloc::vec![ephemeral_spl_api::instruction::UNDELEGATE_SHUTTLE_EPHEMERAL_ATA],
+        data: alloc::vec![ephemeral_spl_api::instruction::UNDELEGATE_AND_CLOSE_SHUTTLE_TO_OWNER],
     }
 }
 
 #[allow(clippy::too_many_arguments)]
 #[inline(never)]
-fn delegate_account_with_actions_from_sponsor(
+pub(crate) fn delegate_account_with_actions_from_sponsor(
     sponsor_info: &AccountView,
     sponsor_signer: Signer<'_, '_>,
     pda_acc: &AccountView,

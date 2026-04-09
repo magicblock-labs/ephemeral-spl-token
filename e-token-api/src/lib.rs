@@ -60,8 +60,9 @@ pub mod instruction {
     pub const INITIALIZE_TRANSFER_QUEUE: u8 = 12;
     /// 13 - DelegateShuttleEphemeralAta: delegate shuttle account to a DLP program using PDA seeds
     pub const DELEGATE_SHUTTLE_EPHEMERAL_ATA: u8 = 13;
-    /// 14 - UndelegateShuttleEphemeralAta: revoke delegation on shuttle ATA and close it when empty
-    pub const UNDELEGATE_SHUTTLE_EPHEMERAL_ATA: u8 = 14;
+    /// 14 - UndelegateAndCloseShuttleToOwner: revoke delegation on a shuttle ATA
+    ///      and schedule settlement/close using an owner-owned destination token account.
+    pub const UNDELEGATE_AND_CLOSE_SHUTTLE_TO_OWNER: u8 = 14;
     /// 15 - MergeShuttleIntoEphemeralAta: transfer all shuttle ATA funds into destination ATA and keep shuttle account open
     pub const MERGE_SHUTTLE_INTO_EPHEMERAL_ATA: u8 = 15;
     /// 16 - DepositAndQueueTransfer: transfer tokens from signer into the vault ATA and enqueue one or more delayed transfers
@@ -70,6 +71,9 @@ pub mod instruction {
     ///      [8..16]   min_delay_ms (u64 LE), 0 => immediate
     ///      [16..24]  max_delay_ms (u64 LE), must be >= min_delay_ms
     ///      [24..28]  split count (u32 LE), must be >= 1
+    ///      [28]      optional legacy flags (u8)
+    ///      [28..36]  optional client_ref_id (u64 LE) when flags are omitted
+    ///      [29..37]  optional client_ref_id (u64 LE) after legacy flags
     pub const DEPOSIT_AND_QUEUE_TRANSFER: u8 = 16;
     /// 17 - EnsureTransferQueueCrank: ensure the per-mint recurring queue crank is scheduled
     ///      Instruction data:
@@ -79,18 +83,14 @@ pub mod instruction {
     ///      Instruction data:
     ///      []        no instruction args
     pub const DELEGATE_TRANSFER_QUEUE: u8 = 19;
-    /// 20 - InitializeFeesPda: initialize the validator-scoped FEES PDA derived from ["FEES", validator]
+    /// 20 - SponsoredLamportsTransfer: create a zero-data PDA derived from
+    ///      [b"lamports", payer, destination, salt], fund it with the requested
+    ///      lamports plus sponsored rent from the global rent PDA, delegate it,
+    ///      then schedule post-delegation transfer + cleanup actions.
     ///      Instruction data:
-    ///      []        no instruction args
-    pub const INITIALIZE_FEES_PDA: u8 = 20;
-    /// 21 - DelegateFeesPda: delegate the validator-scoped FEES PDA to the delegation program
-    ///      Instruction data:
-    ///      []        no instruction args
-    pub const DELEGATE_FEES_PDA: u8 = 21;
-    /// 22 - CommitFeesPda: schedule a commit for the validator-scoped FEES PDA through the magic program
-    ///      Instruction data:
-    ///      []        no instruction args
-    pub const COMMIT_FEES_PDA: u8 = 22;
+    ///      [0..8]   amount (u64 LE)
+    ///      [8..40]  salt ([u8; 32])
+    pub const SPONSORED_LAMPORTS_TRANSFER: u8 = 20;
     /// 23 - InitializeRentPda: initialize the global rent-sponsoring PDA derived from ["rent"]
     ///      Instruction data:
     ///      []        no instruction args
@@ -119,7 +119,8 @@ pub mod instruction {
     ///      [12..]   len-prefixed optional validator pubkey bytes
     ///      [...]    len-prefixed encrypted destination owner pubkey bytes
     ///      [...]    len-prefixed encrypted packed suffix
-    ///               (min_delay_ms:u64, max_delay_ms:u64, split:u32, flags:u8)
+    ///               (min_delay_ms:u64, max_delay_ms:u64, split:u32, client_ref_id?:u64)
+    ///               Legacy payloads may still append flags before client_ref_id.
     pub const DEPOSIT_AND_DELEGATE_SHUTTLE_EPHEMERAL_ATA_WITH_MERGE_AND_PRIVATE_TRANSFER: u8 = 25;
     /// 26 - WithdrawThroughDelegatedShuttleWithMerge: initialize shuttle metadata/EATA/wallet ATA,
     ///      sponsor delegation from the global rent PDA, then schedule a post-delegation transfer
@@ -133,19 +134,37 @@ pub mod instruction {
     pub const WITHDRAW_THROUGH_DELEGATED_SHUTTLE_WITH_MERGE: u8 = 26;
     /// 27 - AllocateTransferQueue: allocates more space for the transfer queue
     pub const ALLOCATE_TRANSFER_QUEUE: u8 = 27;
+    /// 28 - ProcessPendingTransferQueueRefill: permissionless idempotent helper that
+    ///      checks the queue-refill-state PDA and, when pending, tops up the queue
+    ///      lamports from the global rent PDA.
+    ///      Instruction data:
+    ///      []        no instruction args
+    pub const PROCESS_PENDING_TRANSFER_QUEUE_REFILL: u8 = 28;
 
     /// Internal-only instruction discriminators used by the on-chain program.
     pub mod internal {
         /// 196 - UndelegationCallback: delegation-program callback used to restore delegated state.
         pub const UNDELEGATION_CALLBACK: u8 = 196;
-        /// 197 - CloseShuttleAtaIntent: Magic standalone action that closes an emptied shuttle ATA flow.
-        pub const CLOSE_SHUTTLE_ATA_INTENT: u8 = 197;
+        /// 197 - SettleAndCloseShuttleIntent: Magic standalone action that withdraws any
+        ///       remaining shuttle balance to the supplied destination token account, then
+        ///       closes the shuttle accounts.
+        pub const SETTLE_AND_CLOSE_SHUTTLE_INTENT: u8 = 197;
         /// 198 - ExecuteReadyQueuedTransfer: Magic standalone action that settles one queued transfer.
         pub const EXECUTE_READY_QUEUED_TRANSFER: u8 = 198;
         /// 199 - ProcessTransferQueueTick: recurring crank callback that checks a queue and schedules settlement.
         pub const PROCESS_TRANSFER_QUEUE_TICK: u8 = 199;
-        /// 201 - UndelegateWithdrawAndCloseShuttleEphemeralAta: internal post-delegation action that
-        ///       undelegates a shuttle and schedules the close/refund post-undelegate action.
-        pub const UNDELEGATE_WITHDRAW_AND_CLOSE_SHUTTLE_EPHEMERAL_ATA: u8 = 201;
+        /// 200 - TransferLamportsPda: post-delegation action that transfers the
+        ///       requested lamports from the delegated zero-data PDA to the
+        ///       destination base-layer account.
+        pub const TRANSFER_LAMPORTS_PDA: u8 = 200;
+        /// 202 - UndelegateLamportsPda: post-delegation action that commits and
+        ///       undelegates the lamports PDA, then schedules the close/refund intent.
+        pub const UNDELEGATE_LAMPORTS_PDA: u8 = 202;
+        /// 203 - CloseLamportsPdaIntent: post-undelegate Magic intent that
+        ///       refunds the sponsored rent to the global rent PDA and closes the PDA.
+        pub const CLOSE_LAMPORTS_PDA_INTENT: u8 = 203;
+        /// 204 - MarkTransferQueueRefillPending: Magic standalone action that
+        ///       sets the per-queue refill-state pending flag.
+        pub const MARK_TRANSFER_QUEUE_REFILL_PENDING: u8 = 204;
     }
 }

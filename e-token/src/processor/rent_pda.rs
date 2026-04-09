@@ -1,10 +1,15 @@
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
+use pinocchio::Address;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_system::instructions::CreateAccount;
 
 pub const RENT_PDA_SEED: &[u8] = b"rent";
+const RENT_PDA_AND_BUMP: ([u8; 32], u8) =
+    const_crypto::ed25519::derive_program_address(&[RENT_PDA_SEED], &crate::ID);
+pub const RENT_PDA: Address = Address::new_from_array(RENT_PDA_AND_BUMP.0);
+pub const RENT_PDA_BUMP: u8 = RENT_PDA_AND_BUMP.1;
 
 #[inline(always)]
 pub fn process_initialize_rent_pda(
@@ -24,8 +29,7 @@ pub fn process_initialize_rent_pda(
     };
 
     let required_lamports = Rent::get()?.try_minimum_balance(0)?;
-    let (derived_rent_pda, bump) = derive_rent_pda();
-    if derived_rent_pda != *rent_pda_info.address() {
+    if &RENT_PDA != rent_pda_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
 
@@ -40,7 +44,7 @@ pub fn process_initialize_rent_pda(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    let bump_seed = [bump];
+    let bump_seed = [RENT_PDA_BUMP];
     let signer_seeds = [Seed::from(RENT_PDA_SEED), Seed::from(&bump_seed)];
     let signer = Signer::from(&signer_seeds);
 
@@ -54,11 +58,6 @@ pub fn process_initialize_rent_pda(
     .invoke_signed(&[signer])?;
 
     Ok(())
-}
-
-#[inline(always)]
-pub fn derive_rent_pda() -> (ephemeral_spl_api::Address, u8) {
-    ephemeral_spl_api::Address::find_program_address(&[RENT_PDA_SEED], &crate::ID)
 }
 
 #[inline(always)]

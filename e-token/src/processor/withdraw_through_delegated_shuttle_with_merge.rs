@@ -1,12 +1,7 @@
 use dlp_api::compact::ClearText;
-use ephemeral_rollups_pinocchio::consts::{MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID};
-use ephemeral_spl_api::{
-    instruction::internal,
-    state::{ephemeral_ata::EphemeralAta, load},
-};
+use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use solana_instruction::{AccountMeta, Instruction};
-use solana_pubkey::Pubkey;
 
 const TRANSFER_CHECKED_DISCRIMINATOR: u8 = 12;
 
@@ -15,6 +10,7 @@ use crate::alloc::string::ToString;
 
 use crate::processor::{
     deposit_and_delegate_shuttle_ephemeral_ata_with_merge::{
+        build_undelegate_and_close_shuttle_instruction,
         delegate_sponsored_shuttle_with_post_actions, prepare_sponsored_shuttle_delegation,
         DepositAndDelegateShuttleArgs,
     },
@@ -57,6 +53,7 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
         accounts.token_program_info,
         accounts.system_program,
         args.shuttle_id(),
+        0,
     )?;
 
     #[cfg(feature = "logging")]
@@ -88,7 +85,15 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
     let decimals = read_mint_decimals(accounts.mint_info, accounts.token_program_info)?;
     let post_actions = alloc::vec![
         transfer_owner_tokens_into_shuttle_action(&accounts, args.amount(), decimals)?,
-        undelegate_withdraw_and_close_shuttle_action(&accounts),
+        build_undelegate_and_close_shuttle_instruction(
+            accounts.payer_info.address(),
+            accounts.rent_pda_info.address(),
+            accounts.shuttle_info.address(),
+            accounts.shuttle_eata_info.address(),
+            accounts.shuttle_wallet_ata_info.address(),
+            accounts.owner_token_info.address(),
+            accounts.token_program_info.address(),
+        ),
     ];
 
     // Shuttle has been initialized above
@@ -109,7 +114,6 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
         args.common_args(),
         &prepared.mint,
         shuttle_eata.bump,
-        prepared.rent_bump,
         post_actions.cleartext(),
     )
 }
@@ -160,25 +164,4 @@ fn transfer_owner_tokens_into_shuttle_action(
         ],
         data,
     })
-}
-
-fn undelegate_withdraw_and_close_shuttle_action(
-    accounts: &WithdrawThroughDelegatedShuttleAccounts<'_>,
-) -> Instruction {
-    Instruction {
-        program_id: crate::ID,
-        accounts: alloc::vec![
-            AccountMeta::new(*accounts.payer_info.address(), true),
-            AccountMeta::new(*accounts.rent_pda_info.address(), false),
-            AccountMeta::new_readonly(*accounts.shuttle_info.address(), false),
-            AccountMeta::new_readonly(*accounts.shuttle_eata_info.address(), false),
-            AccountMeta::new(*accounts.shuttle_wallet_ata_info.address(), false),
-            AccountMeta::new(*accounts.owner_token_info.address(), false),
-            AccountMeta::new_readonly(*accounts.mint_info.address(), false),
-            AccountMeta::new_readonly(*accounts.token_program_info.address(), false),
-            AccountMeta::new(Pubkey::from(MAGIC_CONTEXT_ID.to_bytes()), false),
-            AccountMeta::new_readonly(Pubkey::from(MAGIC_PROGRAM_ID.to_bytes()), false),
-        ],
-        data: alloc::vec![internal::UNDELEGATE_WITHDRAW_AND_CLOSE_SHUTTLE_EPHEMERAL_ATA],
-    }
 }

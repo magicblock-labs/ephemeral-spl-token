@@ -451,12 +451,23 @@ async fn setup_fixture() -> Fixture {
     }
 }
 
-async fn enqueue_transfer(fixture: &mut Fixture, min_delay_ms: u64, entry_key: &str) {
+async fn enqueue_transfer(fixture: &mut Fixture, min_delay_ms: u64) {
+    enqueue_transfer_with_client_ref_id(fixture, min_delay_ms, None).await;
+}
+
+async fn enqueue_transfer_with_client_ref_id(
+    fixture: &mut Fixture,
+    min_delay_ms: u64,
+    client_ref_id: Option<u64>,
+) {
     let mut data = vec![instruction::DEPOSIT_AND_QUEUE_TRANSFER];
     data.extend_from_slice(&QUEUED_AMOUNT.to_le_bytes());
     data.extend_from_slice(&min_delay_ms.to_le_bytes());
     data.extend_from_slice(&min_delay_ms.to_le_bytes());
     data.extend_from_slice(&1_u32.to_le_bytes());
+    if let Some(client_ref_id) = client_ref_id {
+        data.extend_from_slice(&client_ref_id.to_le_bytes());
+    }
 
     let ix = Instruction {
         program_id: PROGRAM,
@@ -466,7 +477,7 @@ async fn enqueue_transfer(fixture: &mut Fixture, min_delay_ms: u64, entry_key: &
             AccountMeta::new_readonly(fixture.mint, false),
             AccountMeta::new(fixture.source_ata, false),
             AccountMeta::new(fixture.vault_ata, false),
-            AccountMeta::new_readonly(fixture.destination_ata, false),
+            AccountMeta::new_readonly(fixture.payer, false),
             AccountMeta::new_readonly(fixture.payer, true),
             AccountMeta::new_readonly(spl_token_interface::ID, false),
             AccountMeta::new_readonly(PROGRAM, false),
@@ -1231,7 +1242,8 @@ async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
         EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
     ];
     expected_action_data.extend_from_slice(&expected_amount.to_le_bytes());
-    expected_action_data.push(0);
+    expected_action_data
+        .push(ephemeral_spl_api::state::transfer_queue::QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA);
     assert_eq!(standalone_action.args.data, expected_action_data);
     assert_eq!(standalone_action.accounts.len(), 9);
     let rent_pda = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM).0;
@@ -1303,4 +1315,78 @@ async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
         token_amount(&mut fixture.context, fixture.destination_ata).await,
         0
     );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn recurring_queue_crank_includes_client_ref_id_in_execute_action_when_present() {
+    let _test_guard = test_lock().lock().unwrap();
+    let mut fixture = setup_fixture().await;
+    enqueue_transfer_with_client_ref_id(&mut fixture, 0, Some(42)).await;
+
+    let queue_before = queue_account(&mut fixture.context, fixture.queue).await;
+    let queued = read_item_unaligned(&queue_before.data, 0);
+    let expected_amount = queued.amount;
+
+    let blockhash = latest_blockhash(&mut fixture.context).await;
+    let tx = Transaction::new_signed_with_payer(
+        &[ensure_queue_crank_ix(&fixture)],
+        Some(&fixture.payer),
+        &[&fixture.context.payer],
+        blockhash,
+    );
+    fixture
+        .context
+        .banks_client
+        .process_transaction(tx)
+        .await
+        .unwrap();
+
+    let captured = take_captured_schedules(fixture.magic_program);
+    assert_eq!(captured.len(), 1);
+
+    let scheduled_ix = Instruction {
+        program_id: convert_magic_pubkey(captured[0].args.instructions[0].program_id),
+        accounts: captured[0].args.instructions[0]
+            .accounts
+            .iter()
+            .map(|meta| AccountMeta {
+                pubkey: convert_magic_pubkey(meta.pubkey),
+                is_signer: meta.is_signer,
+                is_writable: meta.is_writable,
+            })
+            .collect(),
+        data: captured[0].args.instructions[0].data.clone(),
+    };
+    let blockhash = latest_blockhash(&mut fixture.context).await;
+    let tx = Transaction::new_signed_with_payer(
+        &[scheduled_ix],
+        Some(&fixture.payer),
+        &[&fixture.context.payer],
+        blockhash,
+    );
+    fixture
+        .context
+        .banks_client
+        .process_transaction(tx)
+        .await
+        .unwrap();
+
+    let captured_bundles = peek_captured_intent_bundles(fixture.magic_program);
+    assert_eq!(captured_bundles.len(), 1);
+    assert_eq!(captured_bundles[0].args.standalone_actions.len(), 1);
+
+    let transfer_action = &captured_bundles[0].args.standalone_actions[0];
+    assert_eq!(
+        transfer_action.destination_program.to_bytes(),
+        PROGRAM.to_bytes()
+    );
+    let mut expected_action_data = vec![
+        internal::EXECUTE_READY_QUEUED_TRANSFER,
+        EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
+    ];
+    expected_action_data.extend_from_slice(&expected_amount.to_le_bytes());
+    expected_action_data
+        .push(ephemeral_spl_api::state::transfer_queue::QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA);
+    expected_action_data.extend_from_slice(&42_u64.to_le_bytes());
+    assert_eq!(transfer_action.args.data, expected_action_data);
 }

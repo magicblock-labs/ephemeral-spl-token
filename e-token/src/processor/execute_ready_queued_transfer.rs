@@ -8,17 +8,17 @@ use {
     pinocchio::{error::ProgramError, AccountView, ProgramResult},
 };
 
-use ephemeral_spl_api::state::load_initialized;
-use pinocchio::cpi::{Seed, Signer};
-use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
-
 use crate::{
     assert_owner,
     processor::{
-        rent_pda::{derive_rent_pda, RENT_PDA_SEED},
+        rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
         utils::read_mint_decimals,
     },
 };
+use ephemeral_spl_api::program::id_address;
+use ephemeral_spl_api::state::load_initialized;
+use pinocchio::cpi::{Seed, Signer};
+use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
 
 #[inline(always)]
 pub fn process_execute_ready_queued_transfer(
@@ -37,25 +37,18 @@ pub fn process_execute_ready_queued_transfer(
     // 6. []         Token program
     // 7. []         Associated token program
     // 8. []         System program
-    //
-    // Expected trailing accounts from tail:
-    // - second to last: escrow authority
-    // - last:          escrow signer PDA
-    if accounts.len() < 11 {
+    // 9. []         Source program (must equal this program)
+    // 10. []        Queue PDA authority
+    // 11. [signer]  Escrow signer PDA
+    let [vault_info, mint_info, vault_token_acc_info, destination_owner_info, destination_token_acc_info, rent_pda_info, token_program_info, associated_token_program_info, system_program_info, source_program, escrow_authority, escrow_signer] =
+        accounts
+    else {
         return Err(ProgramError::NotEnoughAccountKeys);
-    }
+    };
 
-    let vault_info = &accounts[0];
-    let mint_info = &accounts[1];
-    let vault_token_acc_info = &accounts[2];
-    let destination_owner_info = &accounts[3];
-    let destination_token_acc_info = &accounts[4];
-    let rent_pda_info = &accounts[5];
-    let token_program_info = &accounts[6];
-    let associated_token_program_info = &accounts[7];
-    let system_program_info = &accounts[8];
-    let escrow_authority = &accounts[accounts.len() - 2];
-    let escrow_signer = &accounts[accounts.len() - 1];
+    if source_program.address() != &id_address() {
+        return Err(ProgramError::IncorrectAuthority);
+    }
 
     if !escrow_signer.is_signer() {
         return Err(ProgramError::MissingRequiredSignature);
@@ -69,8 +62,7 @@ pub fn process_execute_ready_queued_transfer(
 
     if args.should_create_destination_ata_idempotent() {
         assert_owner!(rent_pda_info, &SYSTEM_PROGRAM_ID);
-        let (derived_rent_pda, rent_bump) = derive_rent_pda();
-        if derived_rent_pda != *rent_pda_info.address() {
+        if &RENT_PDA != rent_pda_info.address() {
             return Err(ProgramError::InvalidSeeds);
         }
         if rent_pda_info.data_len() != 0 {
@@ -82,7 +74,7 @@ pub fn process_execute_ready_queued_transfer(
             return Err(ProgramError::InvalidAccountData);
         }
 
-        let rent_bump_seed = [rent_bump];
+        let rent_bump_seed = [RENT_PDA_BUMP];
         let rent_signer_seed = [Seed::from(RENT_PDA_SEED), Seed::from(&rent_bump_seed)];
         let rent_signer = Signer::from(&rent_signer_seed);
 
@@ -115,6 +107,12 @@ pub fn process_execute_ready_queued_transfer(
     }
     .invoke_signed(&[signer])?;
 
+    if let Some(client_ref_id) = args.client_ref_id() {
+        if client_ref_id != 0 {
+            pinocchio_log::log!("client_ref_id: {}", client_ref_id);
+        }
+    }
+
     Ok(())
 }
 
@@ -141,20 +139,23 @@ pub(crate) fn validate_vault_for_mint(
 
 pub struct ExecuteQueuedTransferArgs<'a> {
     raw: *const u8,
+    len: usize,
     _data: PhantomData<&'a [u8]>,
 }
 
 impl ExecuteQueuedTransferArgs<'_> {
     const LEN: usize = 10;
+    const LEN_WITH_CLIENT_REF_ID: usize = 18;
 
     #[inline]
     pub fn try_from_bytes(bytes: &[u8]) -> Result<ExecuteQueuedTransferArgs<'_>, ProgramError> {
-        if bytes.len() != Self::LEN {
+        if bytes.len() != Self::LEN && bytes.len() != Self::LEN_WITH_CLIENT_REF_ID {
             return Err(ProgramError::InvalidInstructionData);
         }
 
         Ok(ExecuteQueuedTransferArgs {
             raw: bytes.as_ptr(),
+            len: bytes.len(),
             _data: PhantomData,
         })
     }
@@ -181,5 +182,18 @@ impl ExecuteQueuedTransferArgs<'_> {
     #[inline]
     pub fn should_create_destination_ata_idempotent(&self) -> bool {
         self.flags() & QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA != 0
+    }
+
+    #[inline]
+    pub fn client_ref_id(&self) -> Option<u64> {
+        if self.len != Self::LEN_WITH_CLIENT_REF_ID {
+            return None;
+        }
+
+        let mut buf = [0u8; 8];
+        unsafe {
+            core::ptr::copy_nonoverlapping(self.raw.add(10), buf.as_mut_ptr(), 8);
+        }
+        Some(u64::from_le_bytes(buf))
     }
 }

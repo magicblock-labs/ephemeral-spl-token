@@ -39,11 +39,9 @@ Transfer queue and automation
 - `16` `DepositAndQueueTransfer` — deposit into the vault and enqueue one or more delayed transfers. Raw data is `amount:u64`, `min_delay_ms:u64`, `max_delay_ms:u64`, `split:u32`, with an optional trailing flags byte.
 - `17` `EnsureTransferQueueCrank` — ensure the recurring transfer-queue crank is scheduled.
 - `19` `DelegateTransferQueue` — delegate the per-mint transfer queue PDA.
+- `20` `SponsoredLamportsTransfer` — transfer lamports via the sponsored rent mechanism.
 
-Validator and rent PDAs
-- `20` `InitializeFeesPda` — initialize the validator-scoped FEES PDA derived from `["FEES", validator]`.
-- `21` `DelegateFeesPda` — delegate the validator-scoped FEES PDA.
-- `22` `CommitFeesPda` — schedule a commit for the validator-scoped FEES PDA through the magic program.
+Rent PDA
 - `23` `InitializeRentPda` — initialize the global rent-sponsoring PDA derived from `["rent"]`.
 
 Internal automation instructions
@@ -53,7 +51,7 @@ Internal automation instructions
 - `199` `ProcessTransferQueueTick` — internal recurring crank callback that checks a queue and schedules settlement.
 - `201` `UndelegateWithdrawAndCloseShuttleEphemeralAta` — internal post-delegation shuttle withdrawal and close/refund handler.
 
-Discriminator `18` is currently unused.
+Discriminators `18`, `21`, and `22` are currently unused.
 
 Program ID and external program
 - The Ephemeral SPL Token program ID is declared in `e-token-api/src/lib.rs` under `program::id_address()`.
@@ -83,7 +81,7 @@ You can run a single test by passing its name, for example:
 cargo test-sbf --features logging delegate_ephemeral_ata
 ```
 
-Tests live under `e-token/tests/` and cover balance accounting, delegation/undelegation, shuttle flows, permissions, fees/rent PDAs, and transfer-queue automation.
+Tests live under `e-token/tests/` and cover balance accounting, delegation/undelegation, shuttle flows, permissions, the rent PDA and lamports-PDA flows, and transfer-queue automation.
 
 ## Notes
 - The workspace depends on `ephemeral-rollups-pinocchio` and several Solana crates; ensure your local environment matches the versions declared in the workspace `Cargo.toml`.

@@ -1,12 +1,13 @@
 use bytemuck::{Pod, Zeroable};
 use pinocchio::{cpi::Seed, error::ProgramError, Address};
 
-/// Current queue version that stores inserted/ready timestamps in milliseconds.
+/// Current queue version that stores ready timestamps in milliseconds and client reference ids.
 /// Bump this value only when the on-chain layout changes or queue semantics require it.
 pub const TRANSFER_QUEUE_VERSION: u8 = 1;
 /// PDA seed prefix for transfer queues.
 pub const QUEUE_SEED: &[u8] = b"queue";
 pub const QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA: u8 = 1 << 0;
+pub const MAX_GROUP_ID: u32 = 0x00FF_FFFF;
 
 /// Header stored at the start of the queue account.
 /// The trailing bytes are interpreted as `[QueuedTransfer]` heap storage.
@@ -26,7 +27,8 @@ pub struct TransferQueueHeader {
 
 /// One queued transfer entry.
 ///
-/// `ready_at` and `inserted_at` are stored in milliseconds since unix epoch.
+/// `ready_at` is stored in milliseconds since unix epoch. `client_ref_id` is
+/// an opaque caller-provided correlation id, or zero when omitted.
 #[repr(C)]
 #[derive(Copy, Clone, Pod, Zeroable, PartialEq, Eq)]
 pub struct QueuedTransfer {
@@ -34,7 +36,7 @@ pub struct QueuedTransfer {
     pub destination_owner: Address,
     pub amount: u64,
     pub ready_at: i64,
-    pub inserted_at: i64,
+    pub client_ref_id: u64,
     pub task_id: u32,
     pub flags: u8,
     pub _pad0: [u8; 3],
@@ -95,6 +97,25 @@ impl QueuedTransfer {
     #[inline(always)]
     pub fn should_create_destination_ata_idempotent(&self) -> bool {
         self.flags & QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA != 0
+    }
+
+    #[inline(always)]
+    pub fn group_id(&self) -> u32 {
+        u32::from(self._pad0[0])
+            | (u32::from(self._pad0[1]) << 8)
+            | (u32::from(self._pad0[2]) << 16)
+    }
+
+    #[inline(always)]
+    pub fn set_group_id(&mut self, group_id: u32) -> Result<(), ProgramError> {
+        if group_id == 0 || group_id > MAX_GROUP_ID {
+            return Err(ProgramError::InvalidArgument);
+        }
+
+        self._pad0[0] = group_id as u8;
+        self._pad0[1] = (group_id >> 8) as u8;
+        self._pad0[2] = (group_id >> 16) as u8;
+        Ok(())
     }
 }
 
@@ -204,6 +225,46 @@ fn checked_active_len(length: u32, capacity: usize) -> Result<usize, ProgramErro
 }
 
 #[inline(always)]
+fn stored_next_group_id(header: &TransferQueueHeader) -> u32 {
+    let mut bytes = [0u8; 4];
+    bytes.copy_from_slice(&header._pad1[..4]);
+    u32::from_le_bytes(bytes)
+}
+
+#[inline(always)]
+fn set_stored_next_group_id(header: &mut TransferQueueHeader, group_id: u32) {
+    header._pad1[..4].copy_from_slice(&group_id.to_le_bytes());
+}
+
+#[inline(always)]
+fn normalize_group_id(group_id: u32) -> u32 {
+    if group_id == 0 || group_id > MAX_GROUP_ID {
+        1
+    } else {
+        group_id
+    }
+}
+
+#[inline(always)]
+fn next_group_id(group_id: u32) -> u32 {
+    if group_id >= MAX_GROUP_ID {
+        1
+    } else {
+        group_id + 1
+    }
+}
+
+#[inline(always)]
+fn group_id_in_use(
+    items: &[QueuedTransfer],
+    length: u32,
+    group_id: u32,
+) -> Result<bool, ProgramError> {
+    let len = checked_active_len(length, items.len())?;
+    Ok(items[..len].iter().any(|item| item.group_id() == group_id))
+}
+
+#[inline(always)]
 pub fn queue_views_checked(
     data: &[u8],
 ) -> Result<(&TransferQueueHeader, &[QueuedTransfer]), ProgramError> {
@@ -247,13 +308,25 @@ pub fn queue_len_and_bump_for_mint_with_capacity(
     Ok((queue_len, header.validator, header.bump))
 }
 
+pub fn queue_allocate_group_id_from_data(data: &mut [u8]) -> Result<u32, ProgramError> {
+    let (header, items) = queue_views_mut_checked(data)?;
+    let mut candidate = normalize_group_id(stored_next_group_id(header));
+
+    for _ in 0..MAX_GROUP_ID {
+        if !group_id_in_use(items, header.length, candidate)? {
+            set_stored_next_group_id(header, next_group_id(candidate));
+            return Ok(candidate);
+        }
+        candidate = next_group_id(candidate);
+    }
+
+    Err(ProgramError::InvalidAccountData)
+}
+
 #[inline(always)]
 fn higher_priority(a: &QueuedTransfer, b: &QueuedTransfer) -> bool {
     if a.ready_at != b.ready_at {
         return a.ready_at < b.ready_at;
-    }
-    if a.inserted_at != b.inserted_at {
-        return a.inserted_at < b.inserted_at;
     }
     if a.amount != b.amount {
         return a.amount < b.amount;
@@ -266,6 +339,21 @@ fn higher_priority(a: &QueuedTransfer, b: &QueuedTransfer) -> bool {
     }
 
     a.task_id < b.task_id
+}
+
+#[inline(always)]
+fn effective_next_task_id(length: u32, next_task_id: u32) -> u32 {
+    let next_task_id = if length == 0 && next_task_id > (u32::MAX / 2) {
+        0
+    } else {
+        next_task_id
+    };
+
+    if next_task_id == 0 {
+        1
+    } else {
+        next_task_id
+    }
 }
 
 #[inline(always)]
@@ -378,11 +466,7 @@ pub fn queue_push_from_data(
         return Err(ProgramError::AccountDataTooSmall);
     }
 
-    let task_id = if header.next_task_id == 0 {
-        1
-    } else {
-        header.next_task_id
-    };
+    let task_id = effective_next_task_id(header.length, header.next_task_id);
     transfer.task_id = task_id;
 
     heap_push(items, &mut header.length, transfer)?;
@@ -390,6 +474,12 @@ pub fn queue_push_from_data(
         .checked_add(1)
         .ok_or(ProgramError::InvalidArgument)?;
     Ok(())
+}
+
+/// Peek the effective next task id that would be assigned by `queue_push_from_data`.
+pub fn queue_peek_next_task_id_from_data(data: &[u8]) -> Result<u32, ProgramError> {
+    let (header, _) = queue_views_checked(data)?;
+    Ok(effective_next_task_id(header.length, header.next_task_id))
 }
 
 /// Peek the next transfer from the queue account.
@@ -438,14 +528,14 @@ mod tests {
         destination: u8,
         amount: u64,
         ready_at: i64,
-        inserted_at: i64,
+        client_ref_id: u64,
     ) -> QueuedTransfer {
         QueuedTransfer {
             source: addr(source),
             destination_owner: addr(destination),
             amount,
             ready_at,
-            inserted_at,
+            client_ref_id,
             task_id: 0,
             flags: 0,
             _pad0: [0; 3],
@@ -475,12 +565,12 @@ mod tests {
         assert_eq!(p1.task_id, 3);
 
         let p2 = queue_pop_from_data(data).unwrap().unwrap();
-        assert_eq!(p2.source, addr(3));
-        assert_eq!(p2.task_id, 2);
+        assert_eq!(p2.source, addr(2));
+        assert_eq!(p2.task_id, 1);
 
         let p3 = queue_pop_from_data(data).unwrap().unwrap();
-        assert_eq!(p3.source, addr(2));
-        assert_eq!(p3.task_id, 1);
+        assert_eq!(p3.source, addr(3));
+        assert_eq!(p3.task_id, 2);
 
         assert!(queue_pop_from_data(data).unwrap().is_none());
     }
@@ -518,6 +608,43 @@ mod tests {
     }
 
     #[test]
+    fn queued_transfer_group_id_round_trips() {
+        let mut transfer = item(1, 2, 10, 3, 2);
+        transfer.set_group_id(MAX_GROUP_ID).unwrap();
+        assert_eq!(transfer.group_id(), MAX_GROUP_ID);
+        assert_eq!(transfer.set_group_id(0), Err(ProgramError::InvalidArgument));
+        assert_eq!(
+            transfer.set_group_id(MAX_GROUP_ID + 1),
+            Err(ProgramError::InvalidArgument)
+        );
+    }
+
+    #[test]
+    fn queue_allocate_group_id_skips_live_ids_and_wraps() {
+        let data_len = header_len() + (3 * item_len());
+        let words = data_len.div_ceil(8);
+        let mut aligned = std::vec![0u64; words];
+        let data = &mut bytemuck::cast_slice_mut::<u64, u8>(&mut aligned)[..data_len];
+
+        init_queue(data, 1, addr(7), addr(10)).unwrap();
+        {
+            let (header, items) = queue_views_mut_checked(data).unwrap();
+            header.length = 2;
+            set_stored_next_group_id(header, MAX_GROUP_ID);
+            items[0] = item(1, 2, 10, 3, 2);
+            items[0].set_group_id(MAX_GROUP_ID).unwrap();
+            items[1] = item(3, 4, 20, 4, 3);
+            items[1].set_group_id(1).unwrap();
+        }
+
+        let group_id = queue_allocate_group_id_from_data(data).unwrap();
+        assert_eq!(group_id, 2);
+
+        let (header, _) = queue_views_checked(data).unwrap();
+        assert_eq!(stored_next_group_id(header), 3);
+    }
+
+    #[test]
     fn queue_push_resets_next_task_id_when_empty_and_past_half_max() {
         let data_len = header_len() + item_len();
         let words = data_len.div_ceil(8);
@@ -533,6 +660,20 @@ mod tests {
         let (header, items) = queue_views_checked(data).unwrap();
         assert_eq!(header.next_task_id, 2);
         assert_eq!(items[0].task_id, 1);
+    }
+
+    #[test]
+    fn queue_peek_next_task_id_applies_reset_rules() {
+        let data_len = header_len() + item_len();
+        let words = data_len.div_ceil(8);
+        let mut aligned = std::vec![0u64; words];
+        let data = &mut bytemuck::cast_slice_mut::<u64, u8>(&mut aligned)[..data_len];
+
+        init_queue(data, 1, addr(7), addr(10)).unwrap();
+        let (header, _) = queue_views_mut_checked(data).unwrap();
+        header.next_task_id = (u32::MAX / 2) + 1;
+
+        assert_eq!(queue_peek_next_task_id_from_data(data).unwrap(), 1);
     }
 
     #[test]
