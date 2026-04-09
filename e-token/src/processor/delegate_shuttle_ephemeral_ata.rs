@@ -52,7 +52,7 @@ pub fn process_delegate_shuttle_ephemeral_ata(
         (mint, ephemeral_ata.bump)
     };
 
-    let derived_ephemeral_ata = EphemeralAta::create_pda(shuttle_info.address(), &mint, eata_bump)?;
+    let derived_ephemeral_ata = EphemeralAta::derive_pda(shuttle_info.address(), &mint, eata_bump)?;
     if derived_ephemeral_ata != *ephemeral_ata_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }

@@ -83,7 +83,7 @@ pub fn process_deposit_and_queue_transfer(
         }
     };
 
-    let derived_queue = TransferQueue::create_pda(mint_info.address(), &validator, bump)?;
+    let derived_queue = TransferQueue::derive_pda(mint_info.address(), &validator, bump)?;
     if derived_queue != *queue_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }

@@ -26,7 +26,7 @@ pub fn process_allocate_transfer_queue(
     let realloc_size = {
         let (header, _) = queue_views_checked(unsafe { queue_info.borrow_unchecked() })?;
         let derived_queue =
-            TransferQueue::create_pda(&header.mint, &header.validator, header.bump)?;
+            TransferQueue::derive_pda(&header.mint, &header.validator, header.bump)?;
         if !address_eq(&derived_queue, queue_info.address()) {
             return Err(ProgramError::InvalidSeeds);
         }

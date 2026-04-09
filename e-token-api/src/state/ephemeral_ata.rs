@@ -33,7 +33,7 @@ impl Initializable for EphemeralAta {
 
 impl EphemeralAta {
     #[inline(always)]
-    pub fn create_pda(
+    pub fn derive_pda(
         owner: &Address,
         mint: &Address,
         bump_seed: u8,

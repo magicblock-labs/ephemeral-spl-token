@@ -109,7 +109,7 @@ pub fn process_close_shuttle_ata_intent(
 
         let shuttle_id_seed = shuttle_id.to_le_bytes();
         let derived_shuttle =
-            ShuttleMetadata::create_pda(shuttle_owner, mint, shuttle_id, shuttle_bump)?;
+            ShuttleMetadata::derive_pda(shuttle_owner, mint, shuttle_id, shuttle_bump)?;
         if derived_shuttle != *shuttle_info.address() {
             return Err(ProgramError::InvalidSeeds);
         }
@@ -167,13 +167,13 @@ pub fn process_close_shuttle_ata_intent(
         }
 
         let derived_shuttle =
-            ShuttleMetadata::create_pda(shuttle_owner, &mint, shuttle_id, shuttle_bump)?;
+            ShuttleMetadata::derive_pda(shuttle_owner, &mint, shuttle_id, shuttle_bump)?;
         if derived_shuttle != *shuttle_info.address() {
             return Err(ProgramError::InvalidSeeds);
         }
 
         let derived_shuttle_ephemeral_ata =
-            EphemeralAta::create_pda(shuttle_info.address(), &mint, shuttle_eata_bump)?;
+            EphemeralAta::derive_pda(shuttle_info.address(), &mint, shuttle_eata_bump)?;
         if derived_shuttle_ephemeral_ata != *shuttle_ephemeral_ata_info.address() {
             return Err(ProgramError::InvalidSeeds);
         }

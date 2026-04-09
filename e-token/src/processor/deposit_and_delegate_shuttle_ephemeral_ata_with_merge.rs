@@ -359,7 +359,7 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    let derived_shuttle_eata = EphemeralAta::create_pda(shuttle_info.address(), &mint, bump)?;
+    let derived_shuttle_eata = EphemeralAta::derive_pda(shuttle_info.address(), &mint, bump)?;
     if derived_shuttle_eata != *shuttle_eata_info.address() {
         #[cfg(feature = "logging")]
         {

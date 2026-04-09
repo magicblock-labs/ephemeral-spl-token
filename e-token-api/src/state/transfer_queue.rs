@@ -46,7 +46,7 @@ pub struct TransferQueue;
 
 impl TransferQueue {
     #[inline(always)]
-    pub fn create_pda(
+    pub fn derive_pda(
         mint: &Address,
         validator: &Address,
         bump_seed: u8,

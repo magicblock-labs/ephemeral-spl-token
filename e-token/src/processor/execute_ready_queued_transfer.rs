@@ -125,7 +125,7 @@ pub(crate) fn validate_vault_for_mint(
     assert_owner!(vault_info, &crate::ID);
 
     let vault = load_initialized::<GlobalVault>(unsafe { vault_info.borrow_unchecked() })?;
-    let derived_vault = GlobalVault::create_pda(mint_info.address(), vault.bump)?;
+    let derived_vault = GlobalVault::derive_pda(mint_info.address(), vault.bump)?;
     if derived_vault != *vault_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }

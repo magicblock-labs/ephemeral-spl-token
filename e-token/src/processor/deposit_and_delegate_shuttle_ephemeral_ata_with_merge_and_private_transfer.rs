@@ -85,7 +85,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
         (header.bump, header.validator)
     };
     let derived_queue =
-        TransferQueue::create_pda(common_accounts.mint_info.address(), &validator, bump)?;
+        TransferQueue::derive_pda(common_accounts.mint_info.address(), &validator, bump)?;
     if derived_queue != *queue_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }

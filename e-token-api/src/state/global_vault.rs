@@ -26,7 +26,7 @@ impl Initializable for GlobalVault {
 
 impl GlobalVault {
     #[inline(always)]
-    pub fn create_pda(mint: &Address, bump_seed: u8) -> Result<Address, ProgramError> {
+    pub fn derive_pda(mint: &Address, bump_seed: u8) -> Result<Address, ProgramError> {
         let bump = [bump_seed];
         let pda = Address::create_program_address(&Self::seeds_with_bump(mint, &bump), &crate::ID)?;
         Ok(pda)

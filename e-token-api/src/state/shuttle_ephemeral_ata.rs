@@ -29,7 +29,7 @@ impl Initializable for ShuttleMetadata {
 
 impl ShuttleMetadata {
     #[inline(always)]
-    pub fn create_pda(
+    pub fn derive_pda(
         owner: &Address,
         mint: &Address,
         id: u32,

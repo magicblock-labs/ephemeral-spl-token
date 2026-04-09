@@ -45,7 +45,7 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
 
     let shuttle_id_seed = shuttle_id.to_le_bytes();
     let derived_shuttle =
-        ShuttleMetadata::create_pda(&shuttle_owner, mint_info.address(), shuttle_id, bump)?;
+        ShuttleMetadata::derive_pda(&shuttle_owner, mint_info.address(), shuttle_id, bump)?;
     if derived_shuttle != *shuttle_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }

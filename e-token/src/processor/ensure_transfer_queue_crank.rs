@@ -56,7 +56,7 @@ pub fn process_ensure_transfer_queue_crank(
         (header.mint, header.bump, header.validator)
     };
 
-    let derived_queue = TransferQueue::create_pda(&mint, &validator, bump)?;
+    let derived_queue = TransferQueue::derive_pda(&mint, &validator, bump)?;
     if derived_queue != *queue_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
