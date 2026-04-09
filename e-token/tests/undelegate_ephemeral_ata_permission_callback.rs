@@ -1,5 +1,10 @@
 use dlp_api::pda::{fees_vault_pda, validator_fees_vault_pda_from_validator};
+use ephemeral_rollups_pinocchio::acl::permission_pda_from_permissioned_account;
 use ephemeral_rollups_pinocchio::consts::DELEGATION_PROGRAM_ID;
+use ephemeral_rollups_pinocchio::pda::{
+    delegation_metadata_pda_from_delegated_account, delegation_record_pda_from_delegated_account,
+};
+use ephemeral_rollups_pinocchio::spl::EphemeralAta;
 use ephemeral_spl_api::ID as PROGRAM;
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
@@ -15,18 +20,12 @@ mod utils;
 
 #[tokio::test]
 async fn undelegate_ephemeral_ata_permission_callback() {
-    let permission_program_id = utils::permission_program_id();
-
     let payer = utils::fixed_payer_keypair();
     let payer_pubkey = payer.pubkey();
     let mint = utils::test_keypair("undelegate_ephemeral_ata_permission_callback::mint").pubkey();
 
-    let (ephemeral_ata, _) =
-        Pubkey::find_program_address(&[payer_pubkey.as_ref(), mint.as_ref()], &PROGRAM);
-    let (permission_pda, _) = Pubkey::find_program_address(
-        &[b"permission:", ephemeral_ata.as_ref()],
-        &permission_program_id,
-    );
+    let (ephemeral_ata, _) = EphemeralAta::find_pda(&payer_pubkey, &mint);
+    let permission_pda = permission_pda_from_permissioned_account(&ephemeral_ata);
 
     let context = utils::start_program_test_with(PROGRAM, |pt| {
         pt.add_account(
@@ -55,11 +54,7 @@ async fn undelegate_ephemeral_ata_permission_callback() {
             .to_bytes_with_discriminator(&mut delegation_record_data)
             .unwrap();
         pt.add_account(
-            Pubkey::find_program_address(
-                &[b"delegation", permission_pda.to_bytes().as_slice()],
-                &DELEGATION_PROGRAM_ID,
-            )
-            .0,
+            delegation_record_pda_from_delegated_account(&permission_pda),
             Account {
                 lamports: Rent::default().minimum_balance(delegation_record_data.len()),
                 data: delegation_record_data,
@@ -80,11 +75,7 @@ async fn undelegate_ephemeral_ata_permission_callback() {
             .to_bytes_with_discriminator(&mut delegation_metadata_data)
             .unwrap();
         pt.add_account(
-            Pubkey::find_program_address(
-                &[b"delegation-metadata", permission_pda.to_bytes().as_slice()],
-                &DELEGATION_PROGRAM_ID,
-            )
-            .0,
+            delegation_metadata_pda_from_delegated_account(&permission_pda),
             Account {
                 lamports: Rent::default().minimum_balance(delegation_metadata_data.len()),
                 data: delegation_metadata_data,
@@ -156,16 +147,8 @@ async fn undelegate_ephemeral_ata_permission_callback() {
     .await
     .unwrap();
 
-    let delegation_pda = Pubkey::find_program_address(
-        &[b"delegation", permission_pda.to_bytes().as_slice()],
-        &DELEGATION_PROGRAM_ID,
-    )
-    .0;
-    let delegation_metadata_pda = Pubkey::find_program_address(
-        &[b"delegation-metadata", permission_pda.to_bytes().as_slice()],
-        &DELEGATION_PROGRAM_ID,
-    )
-    .0;
+    let delegation_pda = delegation_record_pda_from_delegated_account(&permission_pda);
+    let delegation_metadata_pda = delegation_metadata_pda_from_delegated_account(&permission_pda);
 
     let permission_account = context
         .banks_client

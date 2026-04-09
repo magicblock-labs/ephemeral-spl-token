@@ -6,8 +6,9 @@ use crate::{assert_associated_token_address, assert_owner, assert_signer};
 #[cfg(feature = "logging")]
 use ephemeral_spl_api::state::transfer_queue::queue_peek_next_task_id_from_data;
 use ephemeral_spl_api::state::transfer_queue::{
-    capacity_from_data_len, queue_allocate_group_id_from_data, queue_len_for_mint_with_capacity,
-    queue_push_from_data, QueuedTransfer, QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA, QUEUE_SEED,
+    capacity_from_data_len, queue_allocate_group_id_from_data,
+    queue_len_and_bump_for_mint_with_capacity, queue_push_from_data, QueuedTransfer, TransferQueue,
+    QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
 };
 use pinocchio::address::address_eq;
 use pinocchio::sysvars::clock::Clock;

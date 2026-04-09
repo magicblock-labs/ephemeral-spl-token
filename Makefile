@@ -18,9 +18,11 @@ help:
 	@echo "  test-baseline   Run tests with baseline metrics path"
 
 test-current:
+	rm -f $(CURRENT)
 	METRICS_PATH=$(CURRENT) cargo test-sbf
 
 test-baseline:
+	rm -f $(BASELINE)
 	METRICS_PATH=$(BASELINE) cargo test-sbf
 
 compare:

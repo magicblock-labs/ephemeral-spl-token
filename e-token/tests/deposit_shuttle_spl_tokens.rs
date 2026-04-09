@@ -6,10 +6,7 @@ use ephemeral_spl_api::ID as PROGRAM;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program_pack::Pack;
 use spl_token_interface::state::Account;
-use {
-    solana_program_test::tokio, solana_pubkey::Pubkey, solana_signer::Signer,
-    solana_transaction::Transaction,
-};
+use {solana_program_test::tokio, solana_signer::Signer, solana_transaction::Transaction};
 
 mod common;
 mod utils;
@@ -30,9 +27,8 @@ async fn deposit_spl_tokens_increments_shuttle_amount() {
     let mint = mint_kp.pubkey();
 
     let pdas = utils::derive_pdas(PROGRAM, owner, mint);
-    let (shuttle_ephemeral_ata, _) =
-        utils::derive_shuttle_ephemeral_ata(PROGRAM, owner, mint, shuttle_id);
-    let (shuttle_eata, _) = utils::derive_shuttle_eata(PROGRAM, shuttle_ephemeral_ata, mint);
+    let (shuttle_ephemeral_ata, _) = ShuttleMetadata::find_pda(&owner, &mint, shuttle_id);
+    let (shuttle_eata, _) = EphemeralAta::find_pda(&shuttle_ephemeral_ata, &mint);
     let shuttle_wallet_ata = utils::derive_associated_token_address(shuttle_ephemeral_ata, mint);
 
     let setup = utils::setup_mint_and_token_accounts(
@@ -47,7 +43,7 @@ async fn deposit_spl_tokens_increments_shuttle_amount() {
 
     let vault = pdas.vault;
     let user_ata = setup.user_tokens[0];
-    let (vault_eata, _) = Pubkey::find_program_address(&[vault.as_ref(), mint.as_ref()], &PROGRAM);
+    let (vault_eata, _) = EphemeralAta::find_pda(&vault, &mint);
     let vault_ata = utils::derive_associated_token_address(vault, mint);
 
     let mut shuttle_init_data = vec![instruction::INITIALIZE_SHUTTLE_EPHEMERAL_ATA];

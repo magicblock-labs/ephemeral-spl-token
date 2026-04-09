@@ -382,59 +382,60 @@ async fn undelegate_and_close_shuttle_ephemeral_ata_schedules_close_action() {
     shuttle_eata_state.mint = mint;
     shuttle_eata_state.amount = 0;
 
-    let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-    utils::add_associated_token_program(&mut pt);
-    add_magic_program_mock(&mut pt, magic_program);
-    pt.add_account(
-        owner.pubkey(),
-        Account {
-            lamports: Rent::default().minimum_balance(0).max(1),
-            data: vec![],
-            owner: solana_system_interface::program::ID,
-            executable: false,
-            rent_epoch: 0,
-        },
-    );
-    pt.add_account(
-        rent_pda,
-        Account {
-            lamports: Rent::default().minimum_balance(0).max(1),
-            data: vec![],
-            owner: solana_system_interface::program::ID,
-            executable: false,
-            rent_epoch: 0,
-        },
-    );
-    pt.add_account(
-        shuttle_metadata,
-        Account {
-            lamports: Rent::default().minimum_balance(ShuttleMetadata::LEN).max(1),
-            data: shuttle_data,
-            owner: PROGRAM,
-            executable: false,
-            rent_epoch: 0,
-        },
-    );
-    pt.add_account(
-        shuttle_eata,
-        Account {
-            lamports: Rent::default().minimum_balance(EphemeralAta::LEN).max(1),
-            data: shuttle_eata_data,
-            owner: PROGRAM,
-            executable: false,
-            rent_epoch: 0,
-        },
-    );
-    pt.add_account(
-        magic_context,
-        Account {
-            lamports: 1_000_000,
-            data: vec![0; 8],
-            owner: magic_program,
-            executable: false,
-            rent_epoch: 0,
-        },
-    );
+    let mut context = utils::start_program_test_with(PROGRAM, |mut pt| {
+        pt.add_account(
+            owner.pubkey(),
+            Account {
+                lamports: Rent::default().minimum_balance(0).max(1),
+                data: vec![],
+                owner: solana_system_interface::program::ID,
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+        pt.add_account(
+            rent_pda,
+            Account {
+                lamports: Rent::default().minimum_balance(0).max(1),
+                data: vec![],
+                owner: solana_system_interface::program::ID,
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+        pt.add_account(
+            shuttle_metadata,
+            Account {
+                lamports: Rent::default().minimum_balance(ShuttleMetadata::LEN).max(1),
+                data: shuttle_data,
+                owner: PROGRAM,
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+        pt.add_account(
+            shuttle_eata,
+            Account {
+                lamports: Rent::default().minimum_balance(EphemeralAta::LEN).max(1),
+                data: shuttle_eata_data,
+                owner: PROGRAM,
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+        pt.add_account(
+            magic_context,
+            Account {
+                lamports: 1_000_000,
+                data: vec![0; 8],
+                owner: magic_program,
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+        add_magic_program_mock(&mut pt, magic_program);
+    })
+    .await;
 
     let payer_kp = utils::fixed_payer_keypair();
     let payer = payer_kp.pubkey();

@@ -1,3 +1,6 @@
+use ephemeral_rollups_pinocchio::acl::permission_pda_from_permissioned_account;
+use ephemeral_rollups_pinocchio::acl::PERMISSION_PROGRAM_ID;
+use ephemeral_rollups_pinocchio::spl::EphemeralAta;
 use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::ID as PROGRAM;
 use solana_instruction::{AccountMeta, Instruction};
@@ -29,8 +32,6 @@ fn find_member_flag(data: &[u8], member_pubkey: &Pubkey, expected: u8) -> Option
 
 #[tokio::test]
 async fn reset_ephemeral_ata_permission() {
-    let permission_program_id = utils::permission_program_id();
-
     let context = utils::start_program_test(PROGRAM).await;
 
     let payer_kp = utils::fixed_payer_keypair();
@@ -38,12 +39,8 @@ async fn reset_ephemeral_ata_permission() {
     let user = payer;
     let mint = utils::test_pubkey("reset_ephemeral_ata_permission::mint");
 
-    let (ephemeral_ata, _) =
-        Pubkey::find_program_address(&[user.as_ref(), mint.as_ref()], &PROGRAM);
-    let (permission_pda, _) = Pubkey::find_program_address(
-        &[b"permission:", ephemeral_ata.as_ref()],
-        &permission_program_id,
-    );
+    let (ephemeral_ata, _) = EphemeralAta::find_pda(&user, &mint);
+    let permission_pda = permission_pda_from_permissioned_account(&ephemeral_ata);
 
     let ix_init = Instruction {
         program_id: PROGRAM,
@@ -64,7 +61,7 @@ async fn reset_ephemeral_ata_permission() {
             AccountMeta::new(permission_pda, false),
             AccountMeta::new(payer, true),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
-            AccountMeta::new_readonly(permission_program_id, false),
+            AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
         ],
         data: {
             let flag =
@@ -80,7 +77,7 @@ async fn reset_ephemeral_ata_permission() {
             AccountMeta::new(ephemeral_ata, false),
             AccountMeta::new(permission_pda, false),
             AccountMeta::new(payer, true),
-            AccountMeta::new_readonly(permission_program_id, false),
+            AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
         ],
         data: vec![instruction::RESET_EPHEMERAL_ATA_PERMISSION, reset_flag],
     };

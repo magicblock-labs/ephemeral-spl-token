@@ -7,7 +7,7 @@ use solana_instruction::Instruction;
 use solana_program::rent::Rent;
 use {
     ephemeral_spl_api::instruction, solana_instruction::AccountMeta, solana_program_test::tokio,
-    solana_pubkey::Pubkey, solana_signer::Signer, solana_transaction::Transaction,
+    solana_signer::Signer, solana_transaction::Transaction,
 };
 mod common;
 mod utils;
@@ -37,8 +37,7 @@ async fn initialize_global_vault() {
     .await;
 
     let vault_token_acc = utils::derive_associated_token_address(pdas.vault, mint);
-    let (vault_eata, _) =
-        Pubkey::find_program_address(&[pdas.vault.as_ref(), mint.as_ref()], &PROGRAM);
+    let (vault_eata, _) = EphemeralAta::find_pda(&pdas.vault, &mint);
 
     // Build instruction
     let ix = Instruction {
@@ -135,8 +134,7 @@ async fn initialize_global_vault_migrates_legacy_layout() {
     .await;
 
     let vault_token_acc = utils::derive_associated_token_address(pdas.vault, mint);
-    let (vault_eata, _) =
-        Pubkey::find_program_address(&[pdas.vault.as_ref(), mint.as_ref()], &PROGRAM);
+    let (vault_eata, _) = EphemeralAta::find_pda(&pdas.vault, &mint);
 
     let ix = Instruction {
         program_id: PROGRAM,

@@ -9,15 +9,17 @@ use {
 };
 
 use crate::{
-    assert_owner,
+    assert_owner, assert_signer,
     processor::{
         rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
         utils::read_mint_decimals,
     },
 };
-use ephemeral_spl_api::program::id_address;
 use ephemeral_spl_api::state::load_initialized;
-use pinocchio::cpi::{Seed, Signer};
+use pinocchio::{
+    address::address_eq,
+    cpi::{Seed, Signer},
+};
 use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
 
 #[inline(always)]
@@ -46,17 +48,15 @@ pub fn process_execute_ready_queued_transfer(
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
-    if source_program.address() != &id_address() {
+    if !address_eq(source_program.address(), &crate::ID) {
         return Err(ProgramError::IncorrectAuthority);
     }
 
-    if !escrow_signer.is_signer() {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
+    assert_signer!(escrow_signer);
 
     let expected_escrow =
         ephemeral_balance_pda_from_payer(escrow_authority.address(), args.escrow_index());
-    if expected_escrow != *escrow_signer.address() {
+    if !address_eq(&expected_escrow, escrow_signer.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
 

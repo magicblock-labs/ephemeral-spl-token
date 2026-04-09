@@ -39,7 +39,7 @@ pub fn process_undelegate_and_close_shuttle_to_owner(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    assert_owner!(shuttle_info, &ephemeral_spl_api::program::id_address());
+    assert_owner!(shuttle_info, &crate::ID);
 
     let shuttle = load_initialized::<ShuttleMetadata>(unsafe { shuttle_info.borrow_unchecked() })?;
     if shuttle.payer != *rent_reimbursement.address() {
@@ -60,7 +60,7 @@ pub fn process_undelegate_and_close_shuttle_to_owner(
 
     let (derived_shuttle_ephemeral_ata, _) = ephemeral_spl_api::Address::find_program_address(
         &[shuttle_info.address().as_ref(), mint.as_ref()],
-        &ephemeral_spl_api::program::id_address(),
+        &crate::ID,
     );
     if derived_shuttle_ephemeral_ata != *shuttle_ephemeral_ata_info.address() {
         return Err(ProgramError::InvalidSeeds);

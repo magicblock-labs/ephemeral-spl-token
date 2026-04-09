@@ -1,5 +1,8 @@
 use dlp_api::pda::{fees_vault_pda, validator_fees_vault_pda_from_validator};
 use ephemeral_rollups_pinocchio::consts::DELEGATION_PROGRAM_ID;
+use ephemeral_rollups_pinocchio::pda::{
+    delegation_metadata_pda_from_delegated_account, delegation_record_pda_from_delegated_account,
+};
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::{load_mut, RawType};
 use ephemeral_spl_api::ID as PROGRAM;
@@ -24,9 +27,7 @@ async fn undelegation_callback_restores_ephemeral_ata() {
     let mint = mint_kp.pubkey();
 
     let seeds: [&[u8]; 2] = [payer_pubkey.as_ref(), mint.as_ref()];
-    let (delegated_ata, _) = Pubkey::find_program_address(&seeds, &PROGRAM);
-
-    println!("Delegated ata: {:?}", delegated_ata);
+    let (delegated_ata, _) = EphemeralAta::find_pda(&payer_pubkey, &mint);
 
     let context = utils::start_program_test_with(PROGRAM, |pt| {
         let mut data = vec![0u8; EphemeralAta::LEN];
@@ -57,11 +58,7 @@ async fn undelegation_callback_restores_ephemeral_ata() {
             .to_bytes_with_discriminator(&mut delegation_record_data)
             .unwrap();
         pt.add_account(
-            Pubkey::find_program_address(
-                &[b"delegation", delegated_ata.to_bytes().as_slice()],
-                &DELEGATION_PROGRAM_ID,
-            )
-            .0,
+            delegation_record_pda_from_delegated_account(&delegated_ata),
             Account {
                 lamports: Rent::default().minimum_balance(delegation_record_data.len()),
                 data: delegation_record_data,
@@ -82,11 +79,7 @@ async fn undelegation_callback_restores_ephemeral_ata() {
             .to_bytes_with_discriminator(&mut delegation_metadata_data)
             .unwrap();
         pt.add_account(
-            Pubkey::find_program_address(
-                &[b"delegation-metadata", delegated_ata.to_bytes().as_slice()],
-                &DELEGATION_PROGRAM_ID,
-            )
-            .0,
+            delegation_metadata_pda_from_delegated_account(&delegated_ata),
             Account {
                 lamports: Rent::default().minimum_balance(delegation_metadata_data.len()),
                 data: delegation_metadata_data,

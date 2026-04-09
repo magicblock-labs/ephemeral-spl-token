@@ -11,9 +11,12 @@ use ephemeral_spl_api::state::{
 use ephemeral_spl_api::{
     consts::TRANSFER_QUEUE_REFILL_LAMPORTS, instruction::SPONSORED_LAMPORTS_TRANSFER,
 };
-use pinocchio::cpi::{invoke_signed_with_bounds, Seed, Signer};
 use pinocchio::instruction::{InstructionAccount, InstructionView};
 use pinocchio::sysvars::{rent::Rent, Sysvar};
+use pinocchio::{
+    address::address_eq,
+    cpi::{invoke_signed_with_bounds, Seed, Signer},
+};
 use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
 use pinocchio_system::instructions::{Allocate, Assign, CreateAccount, Transfer};
 
@@ -56,7 +59,7 @@ pub fn process_mark_transfer_queue_refill_pending(
     if system_program_info.address() != &pinocchio_system::ID {
         return Err(ProgramError::IncorrectProgramId);
     }
-    if source_program.address() != &ephemeral_spl_api::program::id_address() {
+    if !address_eq(source_program.address(), &crate::ID) {
         return Err(ProgramError::IncorrectAuthority);
     }
     assert_signer!(escrow_signer);
@@ -88,9 +91,7 @@ pub fn process_pending_transfer_queue_refill(
     };
 
     // Exit early if refill_state_info does not exist (refill was not requested)
-    if refill_state_info.lamports() == 0
-        || !refill_state_info.owned_by(&ephemeral_spl_api::program::id_address())
-    {
+    if refill_state_info.lamports() == 0 || !refill_state_info.owned_by(&crate::ID) {
         return Ok(());
     }
 
@@ -108,7 +109,7 @@ pub fn process_pending_transfer_queue_refill(
     if refill_lamports_pda != *lamports_pda_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
-    if owner_program_info.address() != &ephemeral_spl_api::program::id_address() {
+    if !address_eq(owner_program_info.address(), &crate::ID) {
         return Err(ProgramError::IncorrectProgramId);
     }
 
@@ -145,9 +146,8 @@ fn parse_escrow_index(instruction_data: &[u8]) -> Result<u8, ProgramError> {
 }
 
 fn validate_queue_account(queue_info: &AccountView) -> Result<(), ProgramError> {
-    let program_id = ephemeral_spl_api::program::id_address();
     let delegation_program = ephemeral_spl_api::program::DELEGATION_PROGRAM_ID;
-    if !queue_info.owned_by(&program_id) && !queue_info.owned_by(&delegation_program) {
+    if !queue_info.owned_by(&crate::ID) && !queue_info.owned_by(&delegation_program) {
         return Err(ProgramError::IllegalOwner);
     }
 
@@ -161,7 +161,7 @@ fn validate_queue_account(queue_info: &AccountView) -> Result<(), ProgramError> 
             header.validator.as_ref(),
             bump_seed.as_ref(),
         ],
-        &program_id,
+        &crate::ID,
     )
     .map_err(|_| ProgramError::InvalidAccountData)?;
     if derived_queue != *queue_info.address() {
@@ -273,7 +273,6 @@ fn ensure_queue_refill_state_exists(
 ) -> ProgramResult {
     validate_rent_pda(rent_pda_info)?;
 
-    let program_id = ephemeral_spl_api::program::id_address();
     let rent_bump_seed = [RENT_PDA_BUMP];
     let rent_signer_seeds = [Seed::from(RENT_PDA_SEED), Seed::from(&rent_bump_seed)];
     let rent_signer = Signer::from(&rent_signer_seeds);
@@ -292,7 +291,7 @@ fn ensure_queue_refill_state_exists(
             to: refill_state_info,
             space: size_of::<TransferQueueRefillState>() as u64,
             lamports: Rent::get()?.try_minimum_balance(size_of::<TransferQueueRefillState>())?,
-            owner: &program_id,
+            owner: &crate::ID,
         }
         .invoke_signed(&[rent_signer, refill_state_signer])?;
     } else if refill_state_info.owned_by(&pinocchio_system::ID) {
@@ -317,12 +316,12 @@ fn ensure_queue_refill_state_exists(
 
         Assign {
             account: refill_state_info,
-            owner: &program_id,
+            owner: &crate::ID,
         }
         .invoke_signed(&[refill_state_signer])?;
     }
 
-    assert_owner!(refill_state_info, &program_id);
+    assert_owner!(refill_state_info, &crate::ID);
     Ok(())
 }
 

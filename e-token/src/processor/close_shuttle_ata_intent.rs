@@ -6,6 +6,7 @@ use ephemeral_spl_api::state::{
     ephemeral_ata::read_ephemeral_ata_compat, load_initialized,
     shuttle_ephemeral_ata::ShuttleMetadata,
 };
+use pinocchio::address::address_eq;
 use pinocchio::cpi::Signer;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_token_2022::instructions::CloseAccount;
@@ -42,7 +43,7 @@ pub fn process_close_shuttle_ata_intent(
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
-    if source_program.address() != &ephemeral_spl_api::program::id_address() {
+    if !address_eq(source_program.address(), &crate::ID) {
         return Err(ProgramError::IncorrectAuthority);
     }
 
@@ -57,7 +58,7 @@ pub fn process_close_shuttle_ata_intent(
         ],
         &ephemeral_rollups_pinocchio::ID,
     );
-    if expected_escrow != *escrow_signer.address() {
+    if !address_eq(&expected_escrow, escrow_signer.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
 

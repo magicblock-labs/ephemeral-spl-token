@@ -77,12 +77,17 @@ pub fn record_compute_units(entry_key: &str, compute_units_consumed: u64) {
         } else {
             HashMap::new()
         };
-        map.insert(
+        if let Some(_) = map.insert(
             entry_key.to_string(),
             CuEntry {
                 compute_units_consumed,
             },
-        );
+        ) {
+            // If the env var is explicitly set, panic if the entry key already exists.
+            if std::env::var(ENV_METRICS_JSON_PATH).is_ok() {
+                panic!("entry_key already exists: {entry_key}");
+            }
+        };
         write_entries(&map);
     });
 }

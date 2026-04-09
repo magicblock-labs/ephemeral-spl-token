@@ -1,10 +1,13 @@
-use ephemeral_spl_api::instruction;
+use ephemeral_rollups_pinocchio::pda::{
+    delegate_buffer_pda_from_delegated_account_and_owner_program,
+    delegation_metadata_pda_from_delegated_account, delegation_record_pda_from_delegated_account,
+};
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::RawType;
 use ephemeral_spl_api::ID as PROGRAM;
+use ephemeral_spl_api::{instruction, state::shuttle_ephemeral_ata::ShuttleMetadata};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program_test::tokio;
-use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use solana_transaction::Transaction;
 
@@ -25,9 +28,8 @@ async fn delegate_shuttle_ephemeral_ata_succeeds() {
     let _setup =
         utils::setup_mint_and_token_accounts(&mut context, &payer_kp, &mint_kp, 6, 1_000, 1).await;
 
-    let (shuttle_ephemeral_ata, _) =
-        utils::derive_shuttle_ephemeral_ata(PROGRAM, owner, mint, shuttle_id);
-    let (shuttle_eata, _) = utils::derive_shuttle_eata(PROGRAM, shuttle_ephemeral_ata, mint);
+    let (shuttle_ephemeral_ata, _) = ShuttleMetadata::find_pda(&owner, &mint, shuttle_id);
+    let (shuttle_eata, _) = EphemeralAta::find_pda(&shuttle_ephemeral_ata, &mint);
     let shuttle_wallet_ata = utils::derive_associated_token_address(shuttle_ephemeral_ata, mint);
 
     let mut init_data = vec![instruction::INITIALIZE_SHUTTLE_EPHEMERAL_ATA];
@@ -79,16 +81,10 @@ async fn delegate_shuttle_ephemeral_ata_succeeds() {
         .expect("shuttle eata account must exist");
     assert_eq!(shuttle_eata_account.data.len(), EphemeralAta::LEN);
 
-    let (buffer_pda, _) =
-        Pubkey::find_program_address(&[b"buffer", shuttle_eata.as_ref()], &PROGRAM);
-    let (delegation_record_pda, _) = Pubkey::find_program_address(
-        &[b"delegation", shuttle_eata.as_ref()],
-        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,
-    );
-    let (delegation_metadata_pda, _) = Pubkey::find_program_address(
-        &[b"delegation-metadata", shuttle_eata.as_ref()],
-        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,
-    );
+    let buffer_pda =
+        delegate_buffer_pda_from_delegated_account_and_owner_program(&shuttle_eata, &PROGRAM);
+    let delegation_record_pda = delegation_record_pda_from_delegated_account(&shuttle_eata);
+    let delegation_metadata_pda = delegation_metadata_pda_from_delegated_account(&shuttle_eata);
 
     let ix_delegate = Instruction {
         program_id: PROGRAM,

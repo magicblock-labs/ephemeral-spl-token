@@ -5,10 +5,7 @@ use ephemeral_spl_api::ID as PROGRAM;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program_pack::Pack;
 use spl_token_interface::state::Account;
-use {
-    solana_program_test::tokio, solana_pubkey::Pubkey, solana_signer::Signer,
-    solana_transaction::Transaction,
-};
+use {solana_program_test::tokio, solana_signer::Signer, solana_transaction::Transaction};
 
 mod common;
 mod utils;
@@ -43,7 +40,7 @@ async fn withdraw_spl_tokens_decrements_ephemeral_amount() {
     let vault = pdas.vault;
     let user_source = setup.user_tokens[0];
     let user_dest = setup.user_tokens[1];
-    let (vault_eata, _) = Pubkey::find_program_address(&[vault.as_ref(), mint.as_ref()], &PROGRAM);
+    let (vault_eata, _) = EphemeralAta::find_pda(&vault, &mint);
     let vault_token = utils::derive_associated_token_address(vault, mint);
 
     // Initialize Ephemeral ATA

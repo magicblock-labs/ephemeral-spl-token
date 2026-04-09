@@ -4,14 +4,18 @@ use std::{
 };
 
 use dlp_api::pda::magic_fee_vault_pda_from_validator;
-use ephemeral_rollups_pinocchio::acl::{
-    permission_pda_from_permissioned_account, PERMISSION_PROGRAM_ID,
+use ephemeral_rollups_pinocchio::{
+    acl::{permission_pda_from_permissioned_account, PERMISSION_PROGRAM_ID},
+    spl::EphemeralAta,
 };
-use ephemeral_spl_api::instruction::{self, internal};
 use ephemeral_spl_api::state::transfer_queue::{
     header_len, item_len, QueuedTransfer, TransferQueueHeader, QUEUE_SEED,
 };
 use ephemeral_spl_api::ID as PROGRAM;
+use ephemeral_spl_api::{
+    instruction::{self, internal},
+    state::transfer_queue::TransferQueue,
+};
 use magicblock_magic_program_api::{
     args::{MagicIntentBundleArgs, ScheduleTaskArgs},
     instruction::MagicBlockInstruction,
@@ -327,7 +331,7 @@ async fn setup_fixture() -> Fixture {
 
     let payer_kp = utils::fixed_payer_keypair();
     let payer = payer_kp.pubkey();
-    let mint_kp = utils::test_keypair("transfer_queue_automation::setup_fixture::mint");
+    let mint_kp = utils::test_keypair("tq_auto::setup_fixture::mint");
     let mint = mint_kp.pubkey();
     let validator = automation_validator();
     let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
@@ -343,8 +347,7 @@ async fn setup_fixture() -> Fixture {
     )
     .await;
 
-    let queue =
-        Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref(), validator.as_ref()], &PROGRAM).0;
+    let (queue, _) = TransferQueue::find_pda(&mint, &validator);
     let magic_fee_vault = magic_fee_vault(&validator);
     context.set_account(
         &magic_fee_vault,
@@ -361,7 +364,7 @@ async fn setup_fixture() -> Fixture {
     let vault = pdas.vault;
     let source_ata = setup.user_tokens[0];
     let destination_ata = utils::derive_associated_token_address(payer, mint);
-    let (vault_eata, _) = Pubkey::find_program_address(&[vault.as_ref(), mint.as_ref()], &PROGRAM);
+    let (vault_eata, _) = EphemeralAta::find_pda(&vault, &mint);
     let vault_ata = utils::derive_associated_token_address(vault, mint);
 
     let ix_init_rent = Instruction {
@@ -451,14 +454,15 @@ async fn setup_fixture() -> Fixture {
     }
 }
 
-async fn enqueue_transfer(fixture: &mut Fixture, min_delay_ms: u64) {
-    enqueue_transfer_with_client_ref_id(fixture, min_delay_ms, None).await;
+async fn enqueue_transfer(fixture: &mut Fixture, min_delay_ms: u64, entry_key: &str) {
+    enqueue_transfer_with_client_ref_id(fixture, min_delay_ms, None, entry_key).await;
 }
 
 async fn enqueue_transfer_with_client_ref_id(
     fixture: &mut Fixture,
     min_delay_ms: u64,
     client_ref_id: Option<u64>,
+    entry_key: &str,
 ) {
     let mut data = vec![instruction::DEPOSIT_AND_QUEUE_TRANSFER];
     data.extend_from_slice(&QUEUED_AMOUNT.to_le_bytes());
@@ -697,7 +701,7 @@ async fn ensure_transfer_queue_crank_schedules_one_recurring_queue_crank() {
 #[tokio::test(flavor = "current_thread")]
 async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
     let _test_guard = test_lock().lock().unwrap();
-    let fake_magic_program = utils::test_pubkey("transfer_queue_automation::fake_magic_program");
+    let fake_magic_program = utils::test_pubkey("tq_auto::fake_magic_program");
 
     let mut fixture = {
         let magic_program = solana_pubkey::Pubkey::new_from_array(
@@ -726,9 +730,8 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
 
         let payer_kp = utils::fixed_payer_keypair();
         let payer = payer_kp.pubkey();
-        let mint_kp = utils::test_keypair(
-            "transfer_queue_automation::ensure_transfer_queue_crank_rejects_non_magic_program::mint",
-        );
+        let mint_kp =
+            utils::test_keypair("tq_auto::ensure_transfer_rejects_non_magic_program::mint");
         let mint = mint_kp.pubkey();
         let validator = automation_validator();
         let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
@@ -926,9 +929,8 @@ async fn process_transfer_queue_tick_is_noop_when_queue_is_empty() {
 #[tokio::test(flavor = "current_thread")]
 async fn process_transfer_queue_tick_rejects_non_magic_program() {
     let _test_guard = test_lock().lock().unwrap();
-    let fake_magic_program = utils::test_pubkey(
-        "transfer_queue_automation::process_transfer_queue_tick_rejects_non_magic_program::fake_magic",
-    );
+    let fake_magic_program =
+        utils::test_pubkey("tq_auto::process_tick_rejects_non_magic_program::fake_magic");
 
     let mut fixture = {
         let magic_program = solana_pubkey::Pubkey::new_from_array(
@@ -957,9 +959,7 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
 
         let payer_kp = utils::fixed_payer_keypair();
         let payer = payer_kp.pubkey();
-        let mint_kp = utils::test_keypair(
-            "transfer_queue_automation::process_transfer_queue_tick_rejects_non_magic_program::mint",
-        );
+        let mint_kp = utils::test_keypair("tq_auto::process_tick_rejects_non_magic_program::mint");
         let mint = mint_kp.pubkey();
         let validator = automation_validator();
         let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
@@ -975,11 +975,7 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
         )
         .await;
 
-        let queue = Pubkey::find_program_address(
-            &[QUEUE_SEED, mint.as_ref(), validator.as_ref()],
-            &PROGRAM,
-        )
-        .0;
+        let (queue, _) = TransferQueue::find_pda(&mint, &validator);
         let queue_permission = permission_pda_from_permissioned_account(&queue);
         let magic_fee_vault = magic_fee_vault(&validator);
         context.set_account(
@@ -996,8 +992,7 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
         let vault = pdas.vault;
         let source_ata = setup.user_tokens[0];
         let destination_ata = utils::derive_associated_token_address(payer, mint);
-        let (vault_eata, _) =
-            Pubkey::find_program_address(&[vault.as_ref(), mint.as_ref()], &PROGRAM);
+        let (vault_eata, _) = EphemeralAta::find_pda(&vault, &mint);
         let vault_ata = utils::derive_associated_token_address(vault, mint);
 
         let ix_init_rent = Instruction {
@@ -1202,7 +1197,7 @@ async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
     common::metrics::process_transaction_record_cu(
         &fixture.context.banks_client,
         tx,
-        "tq_auto::run_scheduled_tick",
+        "tq_auto::run_scheduled_tick_via_magic_bundle",
     )
     .await
     .unwrap();
@@ -1321,7 +1316,13 @@ async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
 async fn recurring_queue_crank_includes_client_ref_id_in_execute_action_when_present() {
     let _test_guard = test_lock().lock().unwrap();
     let mut fixture = setup_fixture().await;
-    enqueue_transfer_with_client_ref_id(&mut fixture, 0, Some(42)).await;
+    enqueue_transfer_with_client_ref_id(
+        &mut fixture,
+        0,
+        Some(42),
+        "tq_auto::enqueue_with_client_ref_id",
+    )
+    .await;
 
     let queue_before = queue_account(&mut fixture.context, fixture.queue).await;
     let queued = read_item_unaligned(&queue_before.data, 0);
@@ -1331,15 +1332,16 @@ async fn recurring_queue_crank_includes_client_ref_id_in_execute_action_when_pre
     let tx = Transaction::new_signed_with_payer(
         &[ensure_queue_crank_ix(&fixture)],
         Some(&fixture.payer),
-        &[&fixture.context.payer],
+        &[&fixture.payer_kp],
         blockhash,
     );
-    fixture
-        .context
-        .banks_client
-        .process_transaction(tx)
-        .await
-        .unwrap();
+    common::metrics::process_transaction_record_cu(
+        &fixture.context.banks_client,
+        tx,
+        "tq_auto::schedule_with_client_ref_id",
+    )
+    .await
+    .unwrap();
 
     let captured = take_captured_schedules(fixture.magic_program);
     assert_eq!(captured.len(), 1);
@@ -1361,15 +1363,16 @@ async fn recurring_queue_crank_includes_client_ref_id_in_execute_action_when_pre
     let tx = Transaction::new_signed_with_payer(
         &[scheduled_ix],
         Some(&fixture.payer),
-        &[&fixture.context.payer],
+        &[&fixture.payer_kp],
         blockhash,
     );
-    fixture
-        .context
-        .banks_client
-        .process_transaction(tx)
-        .await
-        .unwrap();
+    common::metrics::process_transaction_record_cu(
+        &fixture.context.banks_client,
+        tx,
+        "tq_auto::run_scheduled_tick",
+    )
+    .await
+    .unwrap();
 
     let captured_bundles = peek_captured_intent_bundles(fixture.magic_program);
     assert_eq!(captured_bundles.len(), 1);

@@ -4,7 +4,7 @@ use ephemeral_spl_api::ID as PROGRAM;
 use solana_instruction::Instruction;
 use {
     ephemeral_spl_api::instruction, solana_instruction::AccountMeta, solana_program_test::tokio,
-    solana_pubkey::Pubkey, solana_signer::Signer, solana_transaction::Transaction,
+    solana_signer::Signer, solana_transaction::Transaction,
 };
 
 mod common;
@@ -20,10 +20,7 @@ async fn initialize_ephemeral_ata() {
     let mint = utils::test_pubkey("initialize_ephemeral_ata::mint");
 
     // Create the ephemeral ATA account owned by our program with proper space
-    let (ephemeral_ata, _) = Pubkey::find_program_address(
-        &[user.to_bytes().as_slice(), mint.to_bytes().as_slice()],
-        &PROGRAM,
-    );
+    let (ephemeral_ata, _) = EphemeralAta::find_pda(&user, &mint);
 
     // Build our program instruction: discriminator 1 = InitializeEphemeralAta
     let ix = Instruction {

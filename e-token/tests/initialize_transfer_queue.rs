@@ -1,6 +1,6 @@
 use ephemeral_rollups_pinocchio::acl::permission_pda_from_permissioned_account;
 use ephemeral_spl_api::state::transfer_queue::{
-    capacity_from_data_len, header_len, item_len, TransferQueue, TransferQueueHeader, QUEUE_SEED,
+    capacity_from_data_len, header_len, item_len, TransferQueue, TransferQueueHeader,
     TRANSFER_QUEUE_VERSION,
 };
 use ephemeral_spl_api::ID as PROGRAM;
@@ -42,8 +42,7 @@ async fn initialize_transfer_queue_default_size() {
     let payer_kp = utils::fixed_payer_keypair();
     let payer = payer_kp.pubkey();
 
-    let (queue, bump) =
-        Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref(), VALIDATOR.as_ref()], &PROGRAM);
+    let (queue, bump) = TransferQueue::find_pda(&mint, &VALIDATOR);
     let queue_permission = permission_pda_from_permissioned_account(&queue);
 
     let ix = Instruction {

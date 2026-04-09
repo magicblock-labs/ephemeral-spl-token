@@ -2,9 +2,11 @@ use bytemuck::Zeroable;
 use ephemeral_rollups_pinocchio::acl::{
     permission_pda_from_permissioned_account, PERMISSION_PROGRAM_ID,
 };
+use ephemeral_rollups_pinocchio::spl::EphemeralAta;
 use ephemeral_spl_api::instruction;
+use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
 use ephemeral_spl_api::state::transfer_queue::{
-    header_len, item_len, queue_views_checked, QueuedTransfer, TransferQueueHeader, QUEUE_SEED,
+    header_len, item_len, queue_views_checked, QueuedTransfer, TransferQueue, TransferQueueHeader,
 };
 use ephemeral_spl_api::ID as PROGRAM;
 use solana_instruction::{AccountMeta, Instruction};
@@ -68,13 +70,12 @@ async fn setup_fixture(items: Option<u32>) -> Fixture {
     )
     .await;
 
-    let queue =
-        Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref(), validator.as_ref()], &PROGRAM).0;
+    let (queue, _) = TransferQueue::find_pda(&mint, &validator);
     let queue_permission = permission_pda_from_permissioned_account(&queue);
     let vault = pdas.vault;
     let user_source_ata = setup.user_tokens[0];
     let destination_ata = utils::derive_associated_token_address(payer, mint);
-    let (vault_eata, _) = Pubkey::find_program_address(&[vault.as_ref(), mint.as_ref()], &PROGRAM);
+    let (vault_eata, _) = EphemeralAta::find_pda(&vault, &mint);
     let vault_ata = utils::derive_associated_token_address(vault, mint);
 
     let ix_init_vault = Instruction {
@@ -398,7 +399,7 @@ async fn deposit_and_queue_transfer_assigns_distinct_group_ids_per_enqueue() {
     let first_ix = build_deposit_and_queue_ix(&fixture, 10, 0, 0, 2);
     let second_ix = build_deposit_and_queue_ix(&fixture, 12, 0, 0, 3);
 
-    for ix in [first_ix, second_ix] {
+    for (i, ix) in [first_ix, second_ix].into_iter().enumerate() {
         let blockhash = fixture
             .context
             .banks_client
@@ -408,15 +409,16 @@ async fn deposit_and_queue_transfer_assigns_distinct_group_ids_per_enqueue() {
         let tx = Transaction::new_signed_with_payer(
             &[ix],
             Some(&fixture.payer),
-            &[&fixture.context.payer],
+            &[&fixture.payer_kp],
             blockhash,
         );
-        fixture
-            .context
-            .banks_client
-            .process_transaction(tx)
-            .await
-            .unwrap();
+        common::metrics::process_transaction_record_cu(
+            &fixture.context.banks_client,
+            tx,
+            &format!("dep_queue::assign_group_id_{}", i),
+        )
+        .await
+        .unwrap();
     }
 
     let queue_account = fixture
@@ -464,15 +466,16 @@ async fn deposit_and_queue_transfer_uses_explicit_client_ref_id_for_all_splits()
     let tx = Transaction::new_signed_with_payer(
         &[ix],
         Some(&fixture.payer),
-        &[&fixture.context.payer],
+        &[&fixture.payer_kp],
         blockhash,
     );
-    fixture
-        .context
-        .banks_client
-        .process_transaction(tx)
-        .await
-        .unwrap();
+    common::metrics::process_transaction_record_cu(
+        &fixture.context.banks_client,
+        tx,
+        "dep_queue::all_splits_use_client_ref_id",
+    )
+    .await
+    .unwrap();
 
     let queue_account = fixture
         .context
@@ -511,15 +514,16 @@ async fn deposit_and_queue_transfer_accepts_legacy_destination_ata() {
     let tx = Transaction::new_signed_with_payer(
         &[ix],
         Some(&fixture.payer),
-        &[&fixture.context.payer],
+        &[&fixture.payer_kp],
         blockhash,
     );
-    fixture
-        .context
-        .banks_client
-        .process_transaction(tx)
-        .await
-        .unwrap();
+    common::metrics::process_transaction_record_cu(
+        &fixture.context.banks_client,
+        tx,
+        "dep_queue::accepts_legacy_destination_ata",
+    )
+    .await
+    .unwrap();
 
     let queue_account = fixture
         .context
@@ -815,9 +819,8 @@ async fn deposit_and_queue_transfer_return_to_shuttle() {
 
     let shuttle_id = 42_u32;
     let (shuttle_ephemeral_ata, _) =
-        utils::derive_shuttle_ephemeral_ata(PROGRAM, fixture.payer, fixture.mint, shuttle_id);
-    let (_shuttle_eata, _) =
-        utils::derive_shuttle_eata(PROGRAM, shuttle_ephemeral_ata, fixture.mint);
+        ShuttleMetadata::find_pda(&fixture.payer, &fixture.mint, shuttle_id);
+    let (_shuttle_eata, _) = EphemeralAta::find_pda(&shuttle_ephemeral_ata, &fixture.mint);
     let shuttle_wallet_ata =
         utils::derive_associated_token_address(shuttle_ephemeral_ata, fixture.mint);
     let ix_init_ata = Instruction {
@@ -890,12 +893,13 @@ async fn deposit_and_queue_transfer_return_to_shuttle() {
         &[&fixture.payer_kp],
         blockhash,
     );
-    fixture
-        .context
-        .banks_client
-        .process_transaction(tx)
-        .await
-        .unwrap();
+    common::metrics::process_transaction_record_cu(
+        &fixture.context.banks_client,
+        tx,
+        "dep_queue::return_to_shuttle",
+    )
+    .await
+    .unwrap();
 
     let queue_account = fixture
         .context
