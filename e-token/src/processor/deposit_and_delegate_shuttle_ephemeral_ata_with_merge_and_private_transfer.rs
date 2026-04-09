@@ -9,6 +9,7 @@ use dlp_api::args::{
     MaybeEncryptedPubkey,
 };
 use dlp_api::compact::{self};
+use pinocchio::address::address_eq;
 
 use ephemeral_spl_api::state::transfer_queue::{queue_views, TransferQueue};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
@@ -86,7 +87,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
     };
     let derived_queue =
         TransferQueue::derive_pda(common_accounts.mint_info.address(), &validator, bump)?;
-    if derived_queue != *queue_info.address() {
+    if !address_eq(&derived_queue, queue_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
 

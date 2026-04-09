@@ -62,14 +62,16 @@ pub fn process_execute_ready_queued_transfer(
 
     if args.should_create_destination_ata_idempotent() {
         assert_owner!(rent_pda_info, &SYSTEM_PROGRAM_ID);
-        if &RENT_PDA != rent_pda_info.address() {
+        if !address_eq(&RENT_PDA, rent_pda_info.address()) {
             return Err(ProgramError::InvalidSeeds);
         }
         if rent_pda_info.data_len() != 0 {
             return Err(ProgramError::InvalidAccountData);
         }
-        if associated_token_program_info.address() != &pinocchio_associated_token_account::ID
-            || system_program_info.address() != &SYSTEM_PROGRAM_ID
+        if !address_eq(
+            associated_token_program_info.address(),
+            &pinocchio_associated_token_account::ID,
+        ) || !address_eq(system_program_info.address(), &SYSTEM_PROGRAM_ID)
         {
             return Err(ProgramError::InvalidAccountData);
         }
@@ -126,10 +128,11 @@ pub(crate) fn validate_vault_for_mint(
 
     let vault = load_initialized::<GlobalVault>(unsafe { vault_info.borrow_unchecked() })?;
     let derived_vault = GlobalVault::derive_pda(mint_info.address(), vault.bump)?;
-    if derived_vault != *vault_info.address() {
+    if !address_eq(&derived_vault, vault_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
-    if vault.mint != *mint_info.address() || vault.token_account != *vault_token_acc_info.address()
+    if !address_eq(&vault.mint, mint_info.address())
+        || !address_eq(&vault.token_account, vault_token_acc_info.address())
     {
         return Err(ProgramError::InvalidAccountData);
     }

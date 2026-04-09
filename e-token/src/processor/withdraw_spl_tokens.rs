@@ -1,7 +1,7 @@
 use crate::{assert_owner, assert_signer, processor::utils::read_mint_decimals};
 use core::marker::PhantomData;
 use ephemeral_spl_api::{error::EphemeralSplError, state::load_initialized};
-use pinocchio::cpi::Signer;
+use pinocchio::{address::address_eq, cpi::Signer};
 
 use {
     ephemeral_spl_api::state::{
@@ -74,10 +74,10 @@ pub(crate) fn withdraw_ephemeral_ata_tokens(
     let vault = load_initialized::<GlobalVault>(unsafe { vault_info.borrow_unchecked() })?;
 
     // Check eata consistency
-    if ephemeral_ata.mint() != mint_info.address()
-        || vault.mint != *mint_info.address()
-        || ephemeral_ata.owner() != owner.address()
-        || vault.token_account != *vault_source_token_acc.address()
+    if !address_eq(ephemeral_ata.mint(), mint_info.address())
+        || !address_eq(&vault.mint, mint_info.address())
+        || !address_eq(ephemeral_ata.owner(), owner.address())
+        || !address_eq(&vault.token_account, vault_source_token_acc.address())
     {
         return Err(EphemeralSplError::EphemeralAtaMismatch.into());
     }

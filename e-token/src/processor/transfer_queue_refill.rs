@@ -56,7 +56,7 @@ pub fn process_mark_transfer_queue_refill_pending(
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
-    if system_program_info.address() != &pinocchio_system::ID {
+    if !address_eq(system_program_info.address(), &pinocchio_system::ID) {
         return Err(ProgramError::IncorrectProgramId);
     }
     if !address_eq(source_program.address(), &crate::ID) {
@@ -106,7 +106,7 @@ pub fn process_pending_transfer_queue_refill(
 
     let (_, refill_lamports) = refill_transfer_queue_amounts(queue_info.data_len())?;
     let (refill_lamports_pda, _, refill_salt) = queue_refill_lamports_pda(queue_info.address());
-    if refill_lamports_pda != *lamports_pda_info.address() {
+    if !address_eq(&refill_lamports_pda, lamports_pda_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
     if !address_eq(owner_program_info.address(), &crate::ID) {
@@ -164,7 +164,7 @@ fn validate_queue_account(queue_info: &AccountView) -> Result<(), ProgramError> 
         &crate::ID,
     )
     .map_err(|_| ProgramError::InvalidAccountData)?;
-    if derived_queue != *queue_info.address() {
+    if !address_eq(&derived_queue, queue_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
 
@@ -173,7 +173,7 @@ fn validate_queue_account(queue_info: &AccountView) -> Result<(), ProgramError> 
 
 fn validate_rent_pda(rent_pda_info: &AccountView) -> Result<(), ProgramError> {
     assert_owner!(rent_pda_info, &pinocchio_system::ID);
-    if RENT_PDA != *rent_pda_info.address() {
+    if !address_eq(&RENT_PDA, rent_pda_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
     if rent_pda_info.data_len() != 0 {
@@ -188,7 +188,7 @@ fn validate_queue_refill_state_address(
     queue: &Address,
 ) -> Result<(Address, u8), ProgramError> {
     let (expected_refill_state, bump) = derive_transfer_queue_refill_state_address(queue);
-    if expected_refill_state != *refill_state_info.address() {
+    if !address_eq(&expected_refill_state, refill_state_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
 
@@ -329,7 +329,7 @@ fn close_program_account_to_recipient(
     account: &AccountView,
     recipient: &AccountView,
 ) -> ProgramResult {
-    if *recipient.address() == *account.address() {
+    if address_eq(recipient.address(), account.address()) {
         return Err(ProgramError::InvalidArgument);
     }
 

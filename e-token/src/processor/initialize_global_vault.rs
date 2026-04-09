@@ -1,8 +1,8 @@
 use crate::processor::initialize_ephemeral_ata::process_initialize_ephemeral_ata;
 use ephemeral_spl_api::state::RawType;
-use pinocchio::cpi::Signer;
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
+use pinocchio::{address::address_eq, cpi::Signer};
 use pinocchio_system::instructions::{CreateAccount, Transfer};
 use {
     ephemeral_spl_api::state::global_vault::GlobalVault,
@@ -40,7 +40,7 @@ pub fn process_initialize_global_vault(
 
     let program_id = crate::ID;
     let (vault_derived_pda, vault_bump) = GlobalVault::find_pda(mint_info.address());
-    if vault_derived_pda != *vault_info.address() {
+    if !address_eq(&vault_derived_pda, vault_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
 
@@ -61,7 +61,7 @@ pub fn process_initialize_global_vault(
                 let legacy_data = unsafe { vault_info.borrow_unchecked() };
                 unsafe { *(legacy_data.as_ptr() as *const pinocchio::Address) }
             };
-            if legacy_mint.ne(mint_info.address()) {
+            if !address_eq(&legacy_mint, mint_info.address()) {
                 return Err(ProgramError::InvalidAccountData);
             }
 

@@ -3,7 +3,7 @@ use ephemeral_rollups_pinocchio::types::DelegateConfig;
 use ephemeral_spl_api::state::{
     ephemeral_ata::EphemeralAta, load_initialized, shuttle_ephemeral_ata::ShuttleMetadata,
 };
-use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
+use pinocchio::{address::address_eq, error::ProgramError, AccountView, Address, ProgramResult};
 
 use crate::assert_owner;
 
@@ -53,7 +53,7 @@ pub fn process_delegate_shuttle_ephemeral_ata(
     };
 
     let derived_ephemeral_ata = EphemeralAta::derive_pda(shuttle_info.address(), &mint, eata_bump)?;
-    if derived_ephemeral_ata != *ephemeral_ata_info.address() {
+    if !address_eq(&derived_ephemeral_ata, ephemeral_ata_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
 

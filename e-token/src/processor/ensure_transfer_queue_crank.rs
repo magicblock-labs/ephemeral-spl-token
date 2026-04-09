@@ -9,8 +9,10 @@ use ephemeral_spl_api::state::transfer_queue::{
     queue_crank_task_id_from_data, queue_set_crank_task_id_from_data, queue_views_checked,
     TransferQueue,
 };
+use pinocchio::address::address_eq;
 use pinocchio::cpi::{invoke_signed_with_bounds, Signer};
 use pinocchio::instruction::{InstructionAccount, InstructionView};
+use pinocchio::Address;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
 use crate::{assert_owner, assert_signer};
@@ -46,7 +48,10 @@ pub fn process_ensure_transfer_queue_crank(
     assert_signer!(payer_info);
     assert_owner!(queue_info, &crate::ID);
 
-    if magic_program_info.address() != &ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID {
+    if !address_eq(
+        magic_program_info.address(),
+        &ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID,
+    ) {
         return Err(ProgramError::IncorrectProgramId);
     }
 
@@ -57,11 +62,12 @@ pub fn process_ensure_transfer_queue_crank(
     };
 
     let derived_queue = TransferQueue::derive_pda(&mint, &validator, bump)?;
-    if derived_queue != *queue_info.address() {
+    if !address_eq(&derived_queue, queue_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
-    let derived_magic_fee_vault = magic_fee_vault_pda_from_validator(&validator.to_bytes().into());
-    if derived_magic_fee_vault.to_bytes() != magic_fee_vault_info.address().to_bytes() {
+    let derived_magic_fee_vault =
+        Address::from(magic_fee_vault_pda_from_validator(&validator.to_bytes().into()).to_bytes());
+    if !address_eq(&derived_magic_fee_vault, magic_fee_vault_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
 

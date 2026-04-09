@@ -1,3 +1,4 @@
+use pinocchio::address::address_eq;
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
@@ -29,7 +30,7 @@ pub fn process_initialize_rent_pda(
     };
 
     let required_lamports = Rent::get()?.try_minimum_balance(0)?;
-    if &RENT_PDA != rent_pda_info.address() {
+    if !address_eq(rent_pda_info.address(), &RENT_PDA) {
         return Err(ProgramError::InvalidSeeds);
     }
 

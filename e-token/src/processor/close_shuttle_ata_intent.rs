@@ -142,14 +142,14 @@ pub fn process_close_shuttle_ata_intent(
             let shuttle_ephemeral_ata_data = shuttle_ephemeral_ata_info.try_borrow()?;
             let (ephemeral_owner, mint, amount, shuttle_eata_bump) =
                 read_ephemeral_ata_compat(&shuttle_ephemeral_ata_data)?;
-            if ephemeral_owner != *shuttle_info.address() {
+            if !address_eq(&ephemeral_owner, shuttle_info.address()) {
                 return Err(ProgramError::InvalidAccountData);
             }
             (mint, amount, shuttle_eata_bump)
         };
 
         if shuttle_ephemeral_amount != 0 {
-            if mint != *mint_info.address() {
+            if !address_eq(&mint, mint_info.address()) {
                 return Err(ProgramError::InvalidAccountData);
             }
 
@@ -168,13 +168,16 @@ pub fn process_close_shuttle_ata_intent(
 
         let derived_shuttle =
             ShuttleMetadata::derive_pda(shuttle_owner, &mint, shuttle_id, shuttle_bump)?;
-        if derived_shuttle != *shuttle_info.address() {
+        if !address_eq(&derived_shuttle, shuttle_info.address()) {
             return Err(ProgramError::InvalidSeeds);
         }
 
         let derived_shuttle_ephemeral_ata =
             EphemeralAta::derive_pda(shuttle_info.address(), &mint, shuttle_eata_bump)?;
-        if derived_shuttle_ephemeral_ata != *shuttle_ephemeral_ata_info.address() {
+        if !address_eq(
+            &derived_shuttle_ephemeral_ata,
+            shuttle_ephemeral_ata_info.address(),
+        ) {
             return Err(ProgramError::InvalidSeeds);
         }
 
@@ -193,7 +196,7 @@ fn close_program_account_to_recipient(
     account: &AccountView,
     recipient: &AccountView,
 ) -> ProgramResult {
-    if *recipient.address() == *account.address() {
+    if address_eq(recipient.address(), account.address()) {
         return Err(ProgramError::InvalidArgument);
     }
 

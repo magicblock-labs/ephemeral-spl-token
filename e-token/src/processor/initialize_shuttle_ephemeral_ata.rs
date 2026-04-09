@@ -1,9 +1,9 @@
 use crate::processor::initialize_ephemeral_ata::initialize_ephemeral_ata_with_sponsor;
 use core::marker::PhantomData;
 use ephemeral_spl_api::state::{load_initialized, load_mut, RawType};
-use pinocchio::cpi::Signer;
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
+use pinocchio::{address::address_eq, cpi::Signer};
 use pinocchio_system::instructions::{CreateAccount, Transfer};
 use {
     ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata,
@@ -74,7 +74,7 @@ pub(crate) fn initialize_shuttle_ephemeral_ata_with_sponsor(
     let shuttle_id_seed = shuttle_id.to_le_bytes();
     let (derived_shuttle_pda, shuttle_bump) =
         ShuttleMetadata::find_pda(owner_info.address(), mint_info.address(), shuttle_id);
-    if derived_shuttle_pda != *shuttle_info.address() {
+    if !address_eq(&derived_shuttle_pda, shuttle_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
 
@@ -143,8 +143,8 @@ pub(crate) fn initialize_shuttle_ephemeral_ata_with_sponsor(
         let shuttle =
             load_initialized::<ShuttleMetadata>(unsafe { shuttle_info.borrow_unchecked() })?;
         if shuttle.id != shuttle_id
-            || shuttle.owner != *owner_info.address()
-            || shuttle.payer != *refund_recipient_info.address()
+            || !address_eq(&shuttle.owner, owner_info.address())
+            || !address_eq(&shuttle.payer, refund_recipient_info.address())
         {
             return Err(ProgramError::InvalidAccountData);
         }
