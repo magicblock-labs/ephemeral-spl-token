@@ -13,6 +13,7 @@ use dlp_api::consts::DEFAULT_VALIDATOR_IDENTITY;
 
 use ephemeral_spl_api::state::transfer_queue::QUEUE_SEED;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use solana_instruction::{AccountMeta, Instruction};
 
 use dlp_api::{args::PostDelegationActions, compact::ClearTextWithInsertable};
 
@@ -23,6 +24,10 @@ use crate::processor::deposit_and_delegate_shuttle_ephemeral_ata_with_merge::{
     process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions,
     DepositAndDelegateShuttleAccounts, DepositAndDelegateShuttleCommonArgs,
 };
+use crate::processor::utils::read_mint_decimals;
+
+const BASIS_POINTS_DENOMINATOR: u128 = 10_000;
+const TRANSFER_CHECKED_DISCRIMINATOR: u8 = 12;
 
 #[inline(never)]
 pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer(
@@ -100,15 +105,30 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
         return Err(ProgramError::InvalidSeeds);
     }
 
+    let fee_amount = private_transfer_fee_amount(args.amount())?;
+    let private_transfer_amount = args
+        .amount()
+        .checked_sub(fee_amount)
+        .ok_or(ProgramError::InvalidInstructionData)?;
+    let mint_decimals = read_mint_decimals(
+        common_accounts.mint_info,
+        common_accounts.token_program_info,
+    )?;
+
     let actions = {
-        let private_transfer =
-            private_transfer_action_encrypted(&common_accounts, queue_info, &args)?;
+        let private_transfer = private_transfer_action_encrypted(
+            &common_accounts,
+            queue_info,
+            &args,
+            private_transfer_amount,
+        )?;
 
         alloc::vec![
             merge_shuttle_into_token_account_action(
                 &common_accounts,
                 common_accounts.owner_source_token_info,
             ),
+            private_transfer_fee_action(&common_accounts, fee_amount, mint_decimals),
             undelegate_and_close_shuttle_action(&common_accounts),
         ]
         .cleartext_with_insertable(private_transfer, 1)
@@ -253,6 +273,7 @@ fn private_transfer_action_encrypted(
     common_accounts: &DepositAndDelegateShuttleAccounts<'_>,
     queue_info: &AccountView,
     args: &DepositAndDelegateShuttleWithPrivateTransferArgs<'_>,
+    amount: u64,
 ) -> Result<PostDelegationActions, ProgramError> {
     Ok(PostDelegationActions {
         inserted_signers: 0,
@@ -294,13 +315,43 @@ fn private_transfer_action_encrypted(
                 prefix: {
                     let mut data_prefix = Vec::with_capacity(1 + 8);
                     data_prefix.push(ephemeral_spl_api::instruction::DEPOSIT_AND_QUEUE_TRANSFER);
-                    data_prefix.extend_from_slice(&args.amount().to_le_bytes());
+                    data_prefix.extend_from_slice(&amount.to_le_bytes());
                     data_prefix
                 },
                 suffix: EncryptedBuffer::new(args.encrypted_data_suffix()?.into()),
             },
         }],
     })
+}
+
+#[inline(always)]
+fn private_transfer_fee_amount(amount: u64) -> Result<u64, ProgramError> {
+    Ok((amount as u128)
+        .checked_mul(ephemeral_spl_api::consts::PRIVATE_TRANSFER_FEE_BASIS_POINTS as u128)
+        .ok_or(ProgramError::InvalidInstructionData)?
+        .checked_div(BASIS_POINTS_DENOMINATOR)
+        .ok_or(ProgramError::InvalidInstructionData)? as u64)
+}
+
+fn private_transfer_fee_action(
+    common_accounts: &DepositAndDelegateShuttleAccounts<'_>,
+    fee_amount: u64,
+    mint_decimals: u8,
+) -> Instruction {
+    let mut data = alloc::vec![TRANSFER_CHECKED_DISCRIMINATOR];
+    data.extend_from_slice(&fee_amount.to_le_bytes());
+    data.push(mint_decimals);
+
+    Instruction {
+        program_id: *common_accounts.token_program_info.address(),
+        accounts: alloc::vec![
+            AccountMeta::new(*common_accounts.owner_source_token_info.address(), false),
+            AccountMeta::new_readonly(*common_accounts.mint_info.address(), false),
+            AccountMeta::new(*common_accounts.vault_token_info.address(), false),
+            AccountMeta::new_readonly(*common_accounts.owner_info.address(), true),
+        ],
+        data,
+    }
 }
 
 fn parse_deposit_and_delegate_shuttle_private_transfer_accounts(

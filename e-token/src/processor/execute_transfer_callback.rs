@@ -30,7 +30,8 @@ impl TransferCallbackArgs {
         let mut cur = 0;
         let amount = read_u64_le(data, &mut cur).ok_or(ProgramError::InvalidInstructionData)?;
         let group_id = read_u32_le(data, &mut cur).ok_or(ProgramError::InvalidAccountData)?;
-        let splits = read_u32_le(data, &mut cur).ok_or(ProgramError::InvalidAccountData)?;
+        let splits = 2;
+        // let splits = read_u32_le(data, &mut cur).ok_or(ProgramError::InvalidAccountData)?;
         let flag = read_u8(data, &mut cur).ok_or(ProgramError::InvalidInstructionData)?;
 
         Ok(Self {
@@ -59,7 +60,7 @@ pub fn process_execute_transfer_callback(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let [validator, group_receipt, queue_info, vault, mint, vault_token_account, _, _, magic_vault] =
+    let [validator, group_receipt, queue_info, vault, mint, vault_token_account, _, _, magic_vault, _magic_program] =
         accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);

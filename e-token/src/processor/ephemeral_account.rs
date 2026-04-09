@@ -18,9 +18,9 @@ const CLOSE_EPHEMERAL_VARIANT: [u8; 4] = [14, 0, 0, 0];
 /// Creates an ephemeral account via the magic program.
 ///
 /// # Account references
-/// - `sponsor`  `[WRITE, SIGNER]` Pays rent (can be a PDA)
-/// - `account`  `[WRITE, SIGNER]` Ephemeral account to create (must have 0 lamports)
-/// - `vault`    `[WRITE]` Magic vault account (`EPHEMERAL_VAULT_ID`)
+/// - `sponsor`       `[WRITE, SIGNER]` Pays rent (can be a PDA)
+/// - `account`       `[WRITE, SIGNER]` Ephemeral account to create (must have 0 lamports)
+/// - `vault`         `[WRITE]`      Magic vault account (`EPHEMERAL_VAULT_ID`)
 pub fn create_ephemeral_account(
     sponsor: &AccountView,
     account: &AccountView,
@@ -52,9 +52,9 @@ pub fn create_ephemeral_account(
 /// Closes an ephemeral account via the magic program, refunding rent to the sponsor.
 ///
 /// # Account references
-/// - `sponsor`  `[WRITE, SIGNER]` Receives rent refund (can be a PDA)
-/// - `account`  `[WRITE]` Ephemeral account to close
-/// - `vault`    `[WRITE]` Magic vault account (`EPHEMERAL_VAULT_ID`)
+/// - `sponsor`       `[WRITE, SIGNER]` Receives rent refund (can be a PDA)
+/// - `account`       `[WRITE]`      Ephemeral account to close
+/// - `vault`         `[WRITE]`      Magic vault account (`EPHEMERAL_VAULT_ID`)
 pub fn close_ephemeral_account(
     sponsor: &AccountView,
     account: &AccountView,

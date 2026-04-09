@@ -3,7 +3,8 @@ use ephemeral_rollups_pinocchio::acl::{
     permission_pda_from_permissioned_account, PERMISSION_PROGRAM_ID,
 };
 use ephemeral_spl_api::consts::{
-    SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS, SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS,
+    PRIVATE_TRANSFER_FEE_BASIS_POINTS, SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS,
+    SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS,
 };
 use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::program::ID;
@@ -35,6 +36,8 @@ const DEPOSIT_AMOUNT: u64 = 100 * 10u64.pow(DECIMALS as u32);
 const MIN_DELAY_MS: u64 = 5_000;
 const MAX_DELAY_MS: u64 = 15_000;
 const SPLIT: u32 = 4;
+const BASIS_POINTS_DENOMINATOR: u64 = 10_000;
+const TRANSFER_CHECKED_DISCRIMINATOR: u8 = 12;
 
 fn read_header_unaligned(data: &[u8]) -> TransferQueueHeader {
     assert!(data.len() >= header_len());
@@ -418,6 +421,29 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
         delegation_record_account.data.len() > record_len,
         "expected stored post-delegation payload bytes"
     );
+    let action_payload = &delegation_record_account.data[record_len..];
+    let fee_amount = DEPOSIT_AMOUNT * PRIVATE_TRANSFER_FEE_BASIS_POINTS / BASIS_POINTS_DENOMINATOR;
+    let private_transfer_amount = DEPOSIT_AMOUNT - fee_amount;
+
+    let mut private_transfer_prefix = vec![instruction::DEPOSIT_AND_QUEUE_TRANSFER];
+    private_transfer_prefix.extend_from_slice(&private_transfer_amount.to_le_bytes());
+    assert!(
+        action_payload
+            .windows(private_transfer_prefix.len())
+            .any(|window| window == private_transfer_prefix.as_slice()),
+        "expected stored post-delegation payload to use the net private transfer amount"
+    );
+
+    let mut fee_transfer_data = vec![TRANSFER_CHECKED_DISCRIMINATOR];
+    fee_transfer_data.extend_from_slice(&fee_amount.to_le_bytes());
+    fee_transfer_data.push(DECIMALS);
+    assert!(
+        action_payload
+            .windows(fee_transfer_data.len())
+            .any(|window| window == fee_transfer_data.as_slice()),
+        "expected stored post-delegation payload to include the fee transfer action"
+    );
+
     assert_eq!(
         rent_pda_after.lamports,
         rent_pda_before.lamports

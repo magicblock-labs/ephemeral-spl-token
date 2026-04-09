@@ -139,6 +139,12 @@ pub mod instruction {
     pub const WITHDRAW_THROUGH_DELEGATED_SHUTTLE_WITH_MERGE: u8 = 26;
     /// 27 - AllocateTransferQueue: allocates more space for the transfer queue
     pub const ALLOCATE_TRANSFER_QUEUE: u8 = 27;
+    /// 28 - ProcessPendingTransferQueueRefill: permissionless idempotent helper that
+    ///      checks the queue-refill-state PDA and, when pending, tops up the queue
+    ///      lamports from the global rent PDA.
+    ///      Instruction data:
+    ///      []        no instruction args
+    pub const PROCESS_PENDING_TRANSFER_QUEUE_REFILL: u8 = 28;
 
     /// Internal-only instruction discriminators used by the on-chain program.
     pub mod internal {
@@ -162,9 +168,12 @@ pub mod instruction {
         /// 203 - CloseLamportsPdaIntent: post-undelegate Magic intent that
         ///       refunds the sponsored rent to the global rent PDA and closes the PDA.
         pub const CLOSE_LAMPORTS_PDA_INTENT: u8 = 203;
-        //// 204 - ExecuteTransferCallback: callback with result of `EXECUTE_READY_QUEUED_TRANSFER`
+        /// 204 - MarkTransferQueueRefillPending: Magic standalone action that
+        ///       sets the per-queue refill-state pending flag.
+        pub const MARK_TRANSFER_QUEUE_REFILL_PENDING: u8 = 204;
+        //// 205 - ExecuteTransferCallback: callback with result of `EXECUTE_READY_QUEUED_TRANSFER`
         ///        TODO(edwin): proper description
-        pub const EXECUTE_TRANSFER_CALLBACK: u8 = 204;
+        pub const EXECUTE_TRANSFER_CALLBACK: u8 = 205;
     }
 }
 

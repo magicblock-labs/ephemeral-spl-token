@@ -215,6 +215,12 @@ pub(crate) fn inner_process_instruction(
 
             process_allocate_transfer_queue(accounts, instruction_data)
         }
+        instruction::PROCESS_PENDING_TRANSFER_QUEUE_REFILL => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: ProcessPendingTransferQueueRefill");
+
+            process_pending_transfer_queue_refill(accounts, instruction_data)
+        }
         internal::UNDELEGATION_CALLBACK => {
             #[cfg(feature = "logging")]
             pinocchio_log::log!("Instruction: UndelegationCallback");
@@ -256,6 +262,12 @@ pub(crate) fn inner_process_instruction(
             pinocchio_log::log!("Instruction: CloseLamportsPdaIntent");
 
             process_close_lamports_pda_intent(accounts, instruction_data)
+        }
+        internal::MARK_TRANSFER_QUEUE_REFILL_PENDING => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: MarkTransferQueueRefillPending");
+
+            process_mark_transfer_queue_refill_pending(accounts, instruction_data)
         }
         internal::EXECUTE_TRANSFER_CALLBACK => {
             #[cfg(feature = "logging")]
