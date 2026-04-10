@@ -1001,6 +1001,32 @@ describe("app", () => {
     expect(privateJson.balance).toBe("9");
   });
 
+  it("redacts RPC URLs from balance error details", async () => {
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockRejectedValue(
+      new Error("HTTP status server error (503 Service Unavailable) for url (https://devnet.helius-rpc.com/?api-key=secret-value)"),
+    );
+
+    const response = await app.request(
+      `/v1/spl/balance?address=${owner}&mint=So11111111111111111111111111111111111111112`,
+      {},
+      env,
+    );
+
+    expect(response.status).toBe(502);
+
+    const json = await response.json() as {
+      error: {
+        details?: {
+          message?: string;
+        };
+      };
+    };
+
+    expect(json.error.details?.message).toContain("[redacted-url]");
+    expect(json.error.details?.message).not.toContain("https://devnet.helius-rpc.com/");
+    expect(json.error.details?.message).not.toContain("api-key=secret-value");
+  });
+
   it("returns a clearer validation error when required balance query params are missing", async () => {
     const response = await app.request("/v1/spl/balance", {}, env);
 
