@@ -1,5 +1,5 @@
 use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_initialized};
-use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use pinocchio::{address::address_eq, error::ProgramError, AccountView, ProgramResult};
 
 use crate::{assert_owner, assert_signer};
 
@@ -35,11 +35,11 @@ pub fn process_close_ephemeral_ata(
     };
 
     let derived_pda = EphemeralAta::derive_pda(owner_info.address(), &mint, bump)?;
-    if derived_pda != *ephemeral_ata_info.address() {
+    if !address_eq(&derived_pda, ephemeral_ata_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
 
-    if *recipient_info.address() == *ephemeral_ata_info.address() {
+    if address_eq(recipient_info.address(), ephemeral_ata_info.address()) {
         return Err(ProgramError::InvalidArgument);
     }
 

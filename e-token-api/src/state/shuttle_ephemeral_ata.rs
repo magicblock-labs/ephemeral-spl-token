@@ -1,4 +1,5 @@
 use pinocchio::{cpi::Seed, error::ProgramError, Address};
+use solana_address::address_eq;
 
 use super::{Initializable, RawType};
 
@@ -23,7 +24,7 @@ impl RawType for ShuttleMetadata {
 impl Initializable for ShuttleMetadata {
     #[inline(always)]
     fn is_initialized(&self) -> bool {
-        self.owner != Address::default()
+        !address_eq(&self.owner, &Address::default())
     }
 }
 

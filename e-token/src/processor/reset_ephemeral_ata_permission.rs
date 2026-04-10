@@ -5,7 +5,7 @@ use ephemeral_rollups_pinocchio::acl::{
     types::{Member, MemberFlags, MembersArgs},
 };
 use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_initialized};
-use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use pinocchio::{address::address_eq, error::ProgramError, AccountView, ProgramResult};
 
 #[inline(always)]
 pub fn process_reset_ephemeral_ata_permission(
@@ -30,14 +30,14 @@ pub fn process_reset_ephemeral_ata_permission(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    if *permission_program.address() != PERMISSION_PROGRAM_ID {
+    if !address_eq(permission_program.address(), &PERMISSION_PROGRAM_ID) {
         return Err(ProgramError::InvalidAccountData);
     }
 
     let ephemeral_ata =
         load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
 
-    if ephemeral_ata.owner != *owner_info.address() {
+    if !address_eq(&ephemeral_ata.owner, owner_info.address()) {
         return Err(ProgramError::IncorrectAuthority);
     }
 

@@ -1,4 +1,5 @@
 use ephemeral_spl_api::state::{load_initialized, load_mut_initialized};
+use pinocchio::address::address_eq;
 
 use core::marker::PhantomData;
 
@@ -76,9 +77,9 @@ pub(crate) fn transfer_to_vault_for_mint(
     assert_owner!(vault_info, &crate::ID);
 
     let vault = load_initialized::<GlobalVault>(unsafe { vault_info.borrow_unchecked() })?;
-    if vault.mint != *mint_info.address()
-        || vault.token_account != *vault_token_acc.address()
-        || vault.mint != *expected_mint
+    if !address_eq(&vault.mint, mint_info.address())
+        || !address_eq(&vault.token_account, vault_token_acc.address())
+        || !address_eq(&vault.mint, expected_mint)
     {
         return Err(ProgramError::InvalidAccountData);
     }

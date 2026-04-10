@@ -1,7 +1,7 @@
 use ephemeral_rollups_pinocchio::instruction::DelegateAccountCpiBuilder;
 use ephemeral_rollups_pinocchio::types::DelegateConfig;
 use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, TransferQueue, QUEUE_SEED};
-use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use pinocchio::{address::address_eq, error::ProgramError, AccountView, ProgramResult};
 
 use crate::assert_signer;
 
@@ -39,14 +39,14 @@ pub fn process_delegate_transfer_queue(
     let (bump, validator) = {
         let data = unsafe { queue_info.borrow_unchecked() };
         let (header, _) = queue_views_checked(data)?;
-        if header.mint != *mint_info.address() {
+        if !address_eq(&header.mint, mint_info.address()) {
             return Err(ProgramError::InvalidAccountData);
         }
 
         let bump = header.bump;
         let derived_queue =
             TransferQueue::derive_pda(mint_info.address(), &header.validator, bump)?;
-        if derived_queue != *queue_info.address() {
+        if !address_eq(&derived_queue, queue_info.address()) {
             return Err(ProgramError::InvalidSeeds);
         }
 
@@ -57,10 +57,10 @@ pub fn process_delegate_transfer_queue(
         return Ok(());
     }
 
-    if owner_program.address() != &crate::ID {
+    if !address_eq(owner_program.address(), &crate::ID) {
         return Err(ProgramError::IncorrectProgramId);
     }
-    if system_program.address() != &pinocchio_system::ID {
+    if !address_eq(system_program.address(), &pinocchio_system::ID) {
         return Err(ProgramError::IncorrectProgramId);
     }
 

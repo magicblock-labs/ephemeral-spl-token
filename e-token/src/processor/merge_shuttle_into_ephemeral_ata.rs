@@ -1,5 +1,6 @@
 use ephemeral_spl_api::state::load_initialized;
 use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
+use pinocchio::address::address_eq;
 use pinocchio::cpi::Signer;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
@@ -46,7 +47,7 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
     let shuttle_id_seed = shuttle_id.to_le_bytes();
     let derived_shuttle =
         ShuttleMetadata::derive_pda(&shuttle_owner, mint_info.address(), shuttle_id, bump)?;
-    if derived_shuttle != *shuttle_info.address() {
+    if !address_eq(&derived_shuttle, shuttle_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
 
