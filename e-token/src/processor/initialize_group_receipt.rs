@@ -1,5 +1,6 @@
 use crate::processor::execute_transfer_callback::{
     close_group_receipt, derive_group_receipt_id, log_group_receipt, read_u32_le,
+    GroupReceiptController,
 };
 use ephemeral_spl_api::program::id_address;
 use ephemeral_spl_api::state::group_receipt::GroupReceipt;
@@ -30,7 +31,13 @@ pub fn process_initialize_group_receipt(
 
     if group_receipt.owned_by(&id_address()) {
         pinocchio_log::log!("Group receipt was initialized already!");
-        todo!()
+        handle_already_initialized_receipt(
+            queue_info,
+            group_receipt,
+            magic_vault,
+            magic_program,
+            args.splits,
+        )
     } else {
         todo!()
     }
@@ -82,16 +89,19 @@ fn handle_already_initialized_receipt(
     queue_info: &AccountView,
     group_receipt_info: &AccountView,
     magic_vault: &AccountView,
-    args: &InitializeGroupReceiptArgs,
+    magic_program: &AccountView,
+    splits: u32,
 ) -> ProgramResult {
-    let mut group_receipt = GroupReceipt::new(group_receipt_info)?;
-    if args.splits as usize == group_receipt.items()?.len() {
+    let mut group_receipt =
+        GroupReceiptController::new(group_receipt_info, queue_info, magic_vault, magic_program)?;
+    if splits as usize <= group_receipt.items()?.len() {
         // All callbacks executed
         log_group_receipt(&group_receipt);
         close_group_receipt(queue_info, group_receipt_info, magic_vault)
     } else {
         // Some callbacks got executed
-        todo!()
+        // Set splits
+        group_receipt.set_splits(splits)
     }
 }
 

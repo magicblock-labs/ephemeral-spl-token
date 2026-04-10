@@ -17,6 +17,11 @@ impl<'a> GroupReceipt<'a> {
         Ok(unsafe { Self::from_data_mut(data)? })
     }
 
+    /// Returns `true` if splits are set and not 0
+    pub fn is_fully_initialized(&self) -> bool {
+        return self.header.splits != 0
+    }
+
     pub unsafe fn from_data_mut(data: &'a mut [u8]) -> Result<Self, ProgramError> {
         let (header_data, items_data) = data
             .split_at_mut_checked(GroupReceiptHeader::size())
@@ -25,7 +30,7 @@ impl<'a> GroupReceipt<'a> {
         // Parse header
         let header = GroupReceiptHeader::from_data_mut(header_data)?;
 
-        // Normalize and store items data
+        // NOTE: maybe uninitialized
         let capacity = header.splits as usize;
         let length = header.transfers_completed as usize;
         let items_data = &mut items_data[..length * TransferReceipt::size()];
@@ -41,6 +46,7 @@ impl<'a> GroupReceipt<'a> {
         GroupReceiptHeader::size() + TransferReceipt::size() * items
     }
 
+    /// Returns slice of completed transfer's receipts
     pub fn items(&self) -> Result<&[TransferReceipt], ProgramError> {
         let initialized_items_bytes = self.initialized_items_bytes();
         bytemuck::try_cast_slice(&self.items_data[..initialized_items_bytes])
@@ -65,15 +71,11 @@ impl<'a> GroupReceipt<'a> {
         Ok(())
     }
 
-    /// Increase capacity `by` some number
-    /// Note this shall
-
-    /// Resize group receipt
-    /// TODO(edwin): maybe move it into e-token and handle CPIs too?
-    pub fn resize(&mut self, size: usize) -> ProgramResult {
-        todo!()
+    /// Can be encreased only what more momory was allocated
+    /// and receipt is not fully initialized
+    pub unsafe fn force_capacity_increase(&mut self, by: usize) {
+        self.capacity += by;
     }
-
 
     fn initialized_items_bytes(&self) -> usize {
         self.header.transfers_completed as usize * TransferReceipt::size()
@@ -81,14 +83,6 @@ impl<'a> GroupReceipt<'a> {
 
     pub fn id(&self) -> u32 {
         self.header.id
-    }
-
-    // pub fn transfers_left(&self) -> u32 {
-    //     self.header.transfers_left
-    // }
-
-    fn calculate_items_capacity(data: &[u8]) -> usize {
-        data.len() / TransferReceipt::size()
     }
 }
 
@@ -138,12 +132,6 @@ impl GroupReceiptHeader {
 
     pub fn bump(&self) -> u8 {
         self.bump
-    }
-
-    /// Returns number of splits if initialized
-    /// Otherwise returns `None`
-    pub fn splits(&self) -> Option<NonZeroU32> {
-        NonZeroU32::new(self.splits)
     }
 
     pub const fn size() -> usize {

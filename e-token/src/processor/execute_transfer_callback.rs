@@ -1,5 +1,8 @@
-use crate::processor::ephemeral_account::{close_ephemeral_account, create_ephemeral_account};
+use crate::processor::ephemeral_account::{
+    close_ephemeral_account, create_ephemeral_account, resize_ephemeral_account,
+};
 use crate::processor::process_transfer_queue_tick::derive_associated_token_address;
+use core::ops::Deref;
 use ephemeral_spl_api::program::id_address;
 use ephemeral_spl_api::state::group_receipt::{
     initialize_group_receipt, GroupReceipt, TransferReceipt,
@@ -385,4 +388,114 @@ pub(crate) fn read_slice<'a>(src: &'a [u8], cur: &mut usize, len: usize) -> Opti
     let slice = src.get(*cur..end)?;
     *cur = end;
     Some(slice)
+}
+
+pub struct GroupReceiptController<'a> {
+    // Required accounts for control over receipt
+    group_receipt_info: &'a AccountView,
+    queue_info: &'a AccountView,
+    magic_vault: &'a AccountView,
+    _magic_program: &'a AccountView,
+
+    // Current view on receipt
+    group_receipt: GroupReceipt<'a>,
+}
+
+impl<'a> GroupReceiptController<'a> {
+    pub fn new(
+        group_receipt_info: &'a AccountView,
+        sponsor: &'a AccountView,
+        magic_vault: &'a AccountView,
+        _magic_program: &'a AccountView,
+    ) -> Result<Self, ProgramError> {
+        let group_receipt = GroupReceipt::new(group_receipt_info)?;
+        Ok(Self {
+            group_receipt_info,
+            queue_info: sponsor,
+            magic_vault,
+            _magic_program,
+            group_receipt,
+        })
+    }
+
+    /// Returns `true` if splits are set and not 0
+    pub fn is_fully_initialized(&self) -> bool {
+        self.group_receipt.is_fully_initialized()
+    }
+
+    /// Fully initialized `GroupReceipt` with number of splits
+    pub fn set_splits(&mut self, splits: u32) -> ProgramResult {}
+
+    /// Returns slice of completed transfer's receipts
+    pub fn items(&self) -> Result<&[TransferReceipt], ProgramError> {
+        self.group_receipt.items()
+    }
+
+    pub fn record_transfer(&mut self, item: TransferReceipt) -> ProgramResult {
+        let Err(item) = self.group_receipt.record_transfer(item) else {
+            return Ok(());
+        };
+
+        if self.is_fully_initialized() {
+            // More results than splits :)
+            Err(ProgramError::InvalidInstructionData)
+        } else {
+            Ok(())
+        }?;
+
+        // Account not fully initialized, but we got callback result - record
+        self.allocate_items(1)?;
+        // Now there's capacity to record the transfer
+        self.group_receipt
+            .record_transfer(item)
+            .map_err(|_| ProgramError::InvalidAccountData)?;
+        Ok(())
+    }
+
+    /// Resizes account to hold `num` extra accounts
+    fn allocate_items(&mut self, num: usize) -> ProgramResult {
+        let current_len = self.group_receipt.items()?.len();
+        let new_len = GroupReceipt::required_size(
+            current_len
+                .checked_add(num)
+                .ok_or(ProgramError::ArithmeticOverflow)?,
+        );
+
+        // Create signer for resize
+        let data = unsafe { self.queue_info.borrow_unchecked() };
+        let (header, _) = queue_views_checked(data)?;
+        let queue_bump_seed = [header.bump];
+        let seeds = [
+            Seed::from(QUEUE_SEED),
+            Seed::from(header.mint.as_ref()),
+            Seed::from(header.validator.as_ref()),
+            Seed::from(&queue_bump_seed),
+        ];
+        let signer = Signer::from(&seeds);
+
+        resize_ephemeral_account(
+            self.queue_info,
+            self.group_receipt_info,
+            self.magic_vault,
+            new_len
+                .try_into()
+                .map_err(|_| ProgramError::ArithmeticOverflow)?,
+            &[signer],
+        )?;
+
+        self.group_receipt = GroupReceipt::new(self.group_receipt_info)?;
+        // SAFETY: necessary memory was allocated, add capacity
+        unsafe {
+            self.group_receipt.force_capacity_increase(num);
+        }
+
+        Ok(())
+    }
+}
+
+impl<'a> Deref for GroupReceiptController<'a> {
+    type Target = GroupReceipt<'a>;
+    fn deref(&self) -> &Self::Target {
+        &self.group_receipt
+    }
 }
