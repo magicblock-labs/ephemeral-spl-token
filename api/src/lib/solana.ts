@@ -303,6 +303,14 @@ function parseOptionalPublicKey(value: string | undefined, fieldName: string) {
   return value ? parsePublicKey(value, fieldName) : undefined;
 }
 
+function redactUrls(value: string) {
+  return value.replace(/https?:\/\/[^\s)]+/g, "[redacted-url]");
+}
+
+function getSanitizedErrorMessage(error: unknown) {
+  return redactUrls(error instanceof Error ? error.message : String(error));
+}
+
 function getAssociatedTokenAddressSync(
   mint: PublicKey,
   owner: PublicKey,
@@ -332,14 +340,6 @@ function parseTokenAmount(accountInfo: { data: Buffer | Uint8Array }) {
   }
 
   return data.readBigUInt64LE(64);
-}
-
-function createNoopInstruction() {
-  return new TransactionInstruction({
-    programId: NOOP_PROGRAM_ID,
-    keys: [],
-    data: Buffer.from(crypto.getRandomValues(new Uint8Array(5))),
-  });
 }
 
 function createMemoInstruction(memo: string) {
@@ -374,7 +374,7 @@ async function getValidatorFromRpc(endpoint: string) {
 
       if (!response.ok) {
         throw new ApiError(502, "RPC_ERROR", "Failed to resolve validator identity", {
-          endpoint,
+          endpoint: redactUrls(endpoint),
           status: response.status,
         });
       }
@@ -382,8 +382,8 @@ async function getValidatorFromRpc(endpoint: string) {
       const payload = await response.json() as RpcIdentityResponse;
 
       if (payload.error) {
-        throw new ApiError(502, "RPC_ERROR", payload.error.message || "Failed to resolve validator identity", {
-          endpoint,
+        throw new ApiError(502, "RPC_ERROR", redactUrls(payload.error.message || "Failed to resolve validator identity"), {
+          endpoint: redactUrls(endpoint),
         });
       }
 
@@ -426,7 +426,7 @@ async function resolveRequiredValidator(config: RpcConfig, explicitValidator?: s
 
   if (!validator) {
     throw new ApiError(502, "RPC_ERROR", "Failed to resolve validator identity", {
-      endpoint: config.ephemeralRpcUrl,
+      endpoint: redactUrls(config.ephemeralRpcUrl),
     });
   }
 
@@ -445,7 +445,7 @@ async function getBlockhash(config: RpcConfig, source: SendTarget): Promise<Bloc
   catch (error) {
     throw new ApiError(502, "RPC_ERROR", "Failed to fetch recent blockhash", {
       source,
-      message: error instanceof Error ? error.message : String(error),
+      message: getSanitizedErrorMessage(error),
     });
   }
 }
@@ -482,7 +482,7 @@ function throwTransactionBuildError(error: unknown): never {
     throw new ApiError(400, "TRANSACTION_BUILD_ERROR", "Failed to build transaction");
   }
 
-  const message = error.message.trim() || "Failed to build transaction";
+  const message = redactUrls(error.message.trim() || "Failed to build transaction");
 
   if (message.includes("transferSpl route not implemented")) {
     throw new ApiError(400, "UNSUPPORTED_TRANSFER_ROUTE", message);
@@ -742,7 +742,6 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
     const blockhash = await getBlockhash(config, sendTo);
 
     const instructions = [
-      createNoopInstruction(),
       ...(await transferSpl(from, to, mint, amount, {
         visibility: input.visibility,
         fromBalance: input.fromBalance,
@@ -810,7 +809,7 @@ async function getBalanceInternal(
   catch (error) {
     throw new ApiError(502, "RPC_ERROR", "Failed to fetch token balance", {
       location,
-      message: error instanceof Error ? error.message : String(error),
+      message: getSanitizedErrorMessage(error),
     });
   }
 }
@@ -907,7 +906,7 @@ function scheduleTransferQueueCrank(
       console.error("Failed to ensure transfer queue crank", {
         transferQueue: transferQueue.toBase58(),
         validator: validator.toBase58(),
-        message: error instanceof Error ? error.message : String(error),
+        message: getSanitizedErrorMessage(error),
       });
     }),
   );
@@ -941,7 +940,7 @@ export async function getMintInitializationStatus(
   }
   catch (error) {
     throw new ApiError(502, "RPC_ERROR", "Failed to fetch transfer queue account", {
-      message: error instanceof Error ? error.message : String(error),
+      message: getSanitizedErrorMessage(error),
     });
   }
 }
