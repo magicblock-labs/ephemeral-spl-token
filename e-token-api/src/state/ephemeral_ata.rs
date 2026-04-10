@@ -1,4 +1,5 @@
 use pinocchio::{cpi::Seed, error::ProgramError, Address};
+use solana_address::address_eq;
 
 use crate::state::load_mut;
 
@@ -149,7 +150,7 @@ pub fn read_ephemeral_ata_compat(
 
     if bytes.len() == LEGACY_EPHEMERAL_ATA_LEN {
         let ephemeral_ata = load::<LegacyEphemeralAta>(bytes)?;
-        if ephemeral_ata.mint == Address::default() {
+        if address_eq(&ephemeral_ata.mint, &Address::default()) {
             return Err(ProgramError::UninitializedAccount);
         }
         #[allow(clippy::clone_on_copy)]

@@ -23,8 +23,8 @@
   "del_eata_perm::delegate": {
     "compute_units_consumed": 48480
   },
-  "del_eata_perm::non_owner": {
-    "compute_units_consumed": 52980
+  "dep_queue::return_to_shuttle": {
+    "compute_units_consumed": 7835
   },
   "del_eata_perm::redelegate": {
     "compute_units_consumed": 168
@@ -56,8 +56,8 @@
   "dep_queue::all_splits_use_client_ref_id": {
     "compute_units_consumed": 11031
   },
-  "dep_queue::assign_group_id_0": {
-    "compute_units_consumed": 10732
+  "del_tq::delegate": {
+    "compute_units_consumed": 22930
   },
   "dep_queue::assign_group_id_1": {
     "compute_units_consumed": 11232
@@ -104,8 +104,8 @@
   "init_gvault::migrate": {
     "compute_units_consumed": 13015
   },
-  "init_shuttle::init": {
-    "compute_units_consumed": 18991
+  "dep_queue::reject_zero_split": {
+    "compute_units_consumed": 323
   },
   "init_tq::custom": {
     "compute_units_consumed": 14984
@@ -143,8 +143,8 @@
   "tq_alloc::first_allocate": {
     "compute_units_consumed": 18880
   },
-  "tq_auto::crank_1": {
-    "compute_units_consumed": 5324
+  "tq_auto::tick_empty": {
+    "compute_units_consumed": 2105
   },
   "tq_auto::crank_2": {
     "compute_units_consumed": 6489

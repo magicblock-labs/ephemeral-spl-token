@@ -51,7 +51,7 @@ pub fn process_sponsored_lamports_transfer(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    if RENT_PDA != *rent_pda_info.address() {
+    if !address_eq(rent_pda_info.address(), &RENT_PDA) {
         return Err(ProgramError::InvalidSeeds);
     }
     if rent_pda_info.data_len() != 0 {
@@ -62,7 +62,7 @@ pub fn process_sponsored_lamports_transfer(
         read_destination_validator(destination_info, destination_delegation_record_info)?;
     let (derived_lamports_pda, lamports_pda_bump) =
         derive_lamports_pda(payer_info.address(), destination_info.address(), &salt);
-    if derived_lamports_pda != *lamports_pda_info.address() {
+    if !address_eq(&derived_lamports_pda, lamports_pda_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
     if lamports_pda_info.lamports() > 0 {
@@ -168,7 +168,7 @@ pub fn process_transfer_lamports_pda(
 
     let (derived_lamports_pda, _) =
         derive_lamports_pda(payer_info.address(), destination_info.address(), &salt);
-    if derived_lamports_pda != *lamports_pda_info.address() {
+    if !address_eq(&derived_lamports_pda, lamports_pda_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
 
@@ -204,7 +204,7 @@ pub fn process_undelegate_lamports_pda(
 
     let (derived_lamports_pda, _) =
         derive_lamports_pda(payer_info.address(), destination_info.address(), &salt);
-    if derived_lamports_pda != *lamports_pda_info.address() {
+    if !address_eq(&derived_lamports_pda, lamports_pda_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
 
@@ -285,7 +285,7 @@ pub fn process_close_lamports_pda_intent(
         return Err(ProgramError::InvalidSeeds);
     }
 
-    if RENT_PDA != *rent_pda_info.address() {
+    if !address_eq(rent_pda_info.address(), &RENT_PDA) {
         return Err(ProgramError::InvalidSeeds);
     }
     if rent_pda_info.data_len() != 0 || lamports_pda_info.data_len() != 0 {
@@ -294,7 +294,7 @@ pub fn process_close_lamports_pda_intent(
 
     let (derived_lamports_pda, _) =
         derive_lamports_pda(payer_info.address(), destination_info.address(), &salt);
-    if derived_lamports_pda != *lamports_pda_info.address() {
+    if !address_eq(&derived_lamports_pda, lamports_pda_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
 

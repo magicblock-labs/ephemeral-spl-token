@@ -8,6 +8,7 @@ use ephemeral_spl_api::state::transfer_queue::{
     capacity_from_data_len, header_len, init_queue, item_len, queue_views_mut_checked,
     TransferQueue,
 };
+use pinocchio::address::address_eq;
 use pinocchio::cpi::Signer;
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
@@ -55,15 +56,15 @@ pub fn process_initialize_transfer_queue(
     let program_id = crate::ID;
     let (derived_queue, bump) =
         TransferQueue::find_pda(mint_info.address(), validator_info.address());
-    if derived_queue != *queue_info.address() {
+    if !address_eq(&derived_queue, queue_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
 
-    if *permission_program_info.address() != PERMISSION_PROGRAM_ID {
+    if !address_eq(permission_program_info.address(), &PERMISSION_PROGRAM_ID) {
         return Err(ProgramError::IncorrectProgramId);
     }
     let expected_permission = permission_pda_from_permissioned_account(queue_info.address());
-    if expected_permission != *queue_permission_info.address() {
+    if !address_eq(&expected_permission, queue_permission_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
     let queue_permission_exists = queue_permission_info.lamports() > 0;
@@ -140,8 +141,8 @@ pub fn process_initialize_transfer_queue(
 
     let (header, _) = queue_views_mut_checked(data)?;
     if header.bump != bump
-        || header.mint != *mint_info.address()
-        || header.validator != *validator_info.address()
+        || !address_eq(&header.mint, mint_info.address())
+        || !address_eq(&header.validator, validator_info.address())
     {
         return Err(ProgramError::InvalidAccountData);
     }

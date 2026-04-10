@@ -1,5 +1,5 @@
 use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_initialized};
-use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use pinocchio::{address::address_eq, error::ProgramError, AccountView, ProgramResult};
 
 use crate::processor::utils::validate_token_account;
 
@@ -54,7 +54,7 @@ pub fn process_undelegate_ephemeral_ata(
     // Derive PDA: seeds = [payer, mint], program id = e-token program id (ephemeral_spl_api::program::ID)
     let derived_pda = EphemeralAta::derive_pda(payer.address(), &mint, bump)?;
 
-    if derived_pda != *ephemeral_ata_info.address() {
+    if !address_eq(&derived_pda, ephemeral_ata_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
 

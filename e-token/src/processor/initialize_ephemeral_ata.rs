@@ -1,7 +1,7 @@
 use ephemeral_spl_api::state::{load_initialized, load_mut, RawType};
-use pinocchio::cpi::Signer;
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
+use pinocchio::{address::address_eq, cpi::Signer};
 use pinocchio_system::instructions::{CreateAccount, Transfer};
 use {
     ephemeral_spl_api::state::ephemeral_ata::EphemeralAta,
@@ -44,7 +44,7 @@ pub(crate) fn initialize_ephemeral_ata_with_sponsor(
 ) -> ProgramResult {
     // Validate PDA derivation up front, even for idempotent re-initialization.
     let (derived_pda, eata_bump) = EphemeralAta::find_pda(user_info.address(), mint_info.address());
-    if derived_pda != *ephemeral_ata_info.address() {
+    if !address_eq(&derived_pda, ephemeral_ata_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
 
@@ -52,7 +52,8 @@ pub(crate) fn initialize_ephemeral_ata_with_sponsor(
     if let Ok(ephemeral_ata) =
         load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })
     {
-        if ephemeral_ata.owner == *user_info.address() && ephemeral_ata.mint == *mint_info.address()
+        if address_eq(&ephemeral_ata.owner, user_info.address())
+            && address_eq(&ephemeral_ata.mint, mint_info.address())
         {
             return Ok(());
         }

@@ -1,5 +1,6 @@
 use bytemuck::{Pod, Zeroable};
 use pinocchio::{cpi::Seed, error::ProgramError, Address};
+use solana_address::address_eq;
 
 /// Current queue version that stores ready timestamps in milliseconds and client reference ids.
 /// Bump this value only when the on-chain layout changes or queue semantics require it.
@@ -295,7 +296,7 @@ pub fn queue_len_and_bump_for_mint_with_capacity(
     required_slots: usize,
 ) -> Result<(usize, Address, u8), ProgramError> {
     let (header, items) = queue_views_checked(data)?;
-    if header.mint != *expected_mint {
+    if !address_eq(&header.mint, expected_mint) {
         return Err(ProgramError::InvalidAccountData);
     }
 
@@ -331,10 +332,10 @@ fn higher_priority(a: &QueuedTransfer, b: &QueuedTransfer) -> bool {
     if a.amount != b.amount {
         return a.amount < b.amount;
     }
-    if a.destination_owner.as_ref() != b.destination_owner.as_ref() {
+    if !address_eq(&a.destination_owner, &b.destination_owner) {
         return a.destination_owner.as_ref() < b.destination_owner.as_ref();
     }
-    if a.source.as_ref() != b.source.as_ref() {
+    if !address_eq(&a.source, &b.source) {
         return a.source.as_ref() < b.source.as_ref();
     }
 

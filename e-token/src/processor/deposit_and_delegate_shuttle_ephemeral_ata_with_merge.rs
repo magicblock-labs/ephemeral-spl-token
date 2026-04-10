@@ -18,6 +18,7 @@ use ephemeral_spl_api::state::{
     shuttle_ephemeral_ata::ShuttleMetadata,
 };
 use pinocchio::{
+    address::address_eq,
     cpi::{invoke_signed_with_bounds, Seed, Signer},
     error::ProgramError,
     instruction::{InstructionAccount, InstructionView},
@@ -291,7 +292,7 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
         );
     }
 
-    if &RENT_PDA != rent_pda_info.address() {
+    if !address_eq(&RENT_PDA, rent_pda_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
     if rent_pda_info.data_len() != 0 {
@@ -342,25 +343,27 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
     assert_owner!(shuttle_eata_info, &crate::ID);
 
     let shuttle = load_initialized::<ShuttleMetadata>(unsafe { shuttle_info.borrow_unchecked() })?;
-    if shuttle.owner != *owner_info.address() || shuttle.payer != *rent_pda_info.address() {
+    if !address_eq(&shuttle.owner, owner_info.address())
+        || !address_eq(&shuttle.payer, rent_pda_info.address())
+    {
         return Err(ProgramError::IncorrectAuthority);
     }
 
     let (mint, bump) = {
         let shuttle_eata =
             load_initialized::<EphemeralAta>(unsafe { shuttle_eata_info.borrow_unchecked() })?;
-        if shuttle_eata.owner != *shuttle_info.address() {
+        if !address_eq(&shuttle_eata.owner, shuttle_info.address()) {
             return Err(ProgramError::InvalidAccountData);
         }
         (shuttle_eata.mint, shuttle_eata.bump)
     };
 
-    if mint != *mint_info.address() {
+    if !address_eq(&mint, mint_info.address()) {
         return Err(ProgramError::InvalidAccountData);
     }
 
     let derived_shuttle_eata = EphemeralAta::derive_pda(shuttle_info.address(), &mint, bump)?;
-    if derived_shuttle_eata != *shuttle_eata_info.address() {
+    if !address_eq(&derived_shuttle_eata, shuttle_eata_info.address()) {
         #[cfg(feature = "logging")]
         {
             let expected = derived_shuttle_eata.to_string();
@@ -411,7 +414,7 @@ pub(crate) fn delegate_sponsored_shuttle_with_post_actions(
     };
 
     let mut action_signer_accounts = alloc::vec![owner_info];
-    if owner_info.address() != payer_info.address() {
+    if !address_eq(owner_info.address(), payer_info.address()) {
         action_signer_accounts.push(payer_info);
     }
 
@@ -561,11 +564,11 @@ pub(crate) fn delegate_account_with_actions_from_sponsor(
     let delegate_signer = Signer::from(filled);
 
     let current_owner = unsafe { pda_acc.owner() };
-    if current_owner != &pinocchio_system::ID {
+    if !address_eq(current_owner, &pinocchio_system::ID) {
         unsafe { pda_acc.assign(&pinocchio_system::ID) };
     }
     let current_owner = unsafe { pda_acc.owner() };
-    if current_owner != &DELEGATION_PROGRAM_ID {
+    if !address_eq(current_owner, &DELEGATION_PROGRAM_ID) {
         Assign {
             account: pda_acc,
             owner: &DELEGATION_PROGRAM_ID,
