@@ -90,10 +90,10 @@ async fn setup_fixture(items: Option<u32>) -> Fixture {
             AccountMeta::new_readonly(utils::associated_token_program_id(), false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_GLOBAL_VAULT],
+        data: instruction::ESplInstruction::InitializeGlobalVault.to_vec(),
     };
 
-    let mut queue_init_data = vec![instruction::INITIALIZE_TRANSFER_QUEUE];
+    let mut queue_init_data = instruction::ESplInstruction::InitializeTransferQueue.to_vec();
     if let Some(items) = items {
         queue_init_data.extend_from_slice(&items.to_le_bytes());
     }
@@ -198,7 +198,7 @@ fn build_deposit_and_queue_ix_for_destination(
     flags: Option<u8>,
     client_ref_id: Option<u64>,
 ) -> Instruction {
-    let mut data = vec![instruction::DEPOSIT_AND_QUEUE_TRANSFER];
+    let mut data = instruction::ESplInstruction::DepositAndQueueTransfer.to_vec();
     data.extend_from_slice(&amount.to_le_bytes());
     data.extend_from_slice(&min_delay_ms.to_le_bytes());
     data.extend_from_slice(&max_delay_ms.to_le_bytes());
@@ -858,7 +858,7 @@ async fn deposit_and_queue_transfer_return_to_shuttle() {
     let amount: u64 = 33_500_000;
     let split: u32 = 1000;
     let ix = {
-        let mut data = vec![instruction::DEPOSIT_AND_QUEUE_TRANSFER];
+        let mut data = instruction::ESplInstruction::DepositAndQueueTransfer.to_vec();
         data.extend_from_slice(&amount.to_le_bytes());
         data.extend_from_slice(&0_u64.to_le_bytes());
         data.extend_from_slice(&0_u64.to_le_bytes());

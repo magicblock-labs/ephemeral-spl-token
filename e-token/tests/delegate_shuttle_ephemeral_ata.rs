@@ -32,7 +32,7 @@ async fn delegate_shuttle_ephemeral_ata_succeeds() {
     let (shuttle_eata, _) = EphemeralAta::find_pda(&shuttle_ephemeral_ata, &mint);
     let shuttle_wallet_ata = utils::derive_associated_token_address(shuttle_ephemeral_ata, mint);
 
-    let mut init_data = vec![instruction::INITIALIZE_SHUTTLE_EPHEMERAL_ATA];
+    let mut init_data = instruction::ESplInstruction::InitializeShuttleEphemeralAta.to_vec();
     init_data.extend_from_slice(&shuttle_id.to_le_bytes());
 
     let ix_init_shuttle = Instruction {
@@ -99,7 +99,7 @@ async fn delegate_shuttle_ephemeral_ata_succeeds() {
             AccountMeta::new_readonly(ephemeral_rollups_pinocchio::ID, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::DELEGATE_SHUTTLE_EPHEMERAL_ATA],
+        data: instruction::ESplInstruction::DelegateShuttleEphemeralAta.to_vec(),
     };
 
     let tx = Transaction::new_signed_with_payer(

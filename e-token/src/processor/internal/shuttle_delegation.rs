@@ -12,6 +12,7 @@ use ephemeral_rollups_pinocchio::{
     types::{DelegateAccountArgs, DelegateConfig},
     utils::{close_pda_acc, make_seed_buf},
 };
+use ephemeral_spl_api::instruction::ESplInstruction;
 use ephemeral_spl_api::state::{
     ephemeral_ata::EphemeralAta, load_initialized, load_mut_initialized,
     shuttle_ephemeral_ata::ShuttleMetadata,
@@ -412,7 +413,7 @@ pub(crate) fn merge_shuttle_into_token_account_action(
             AccountMeta::new_readonly(*accounts.mint_info.address(), false),
             AccountMeta::new_readonly(*accounts.token_program_info.address(), false),
         ],
-        data: alloc::vec![ephemeral_spl_api::instruction::MERGE_SHUTTLE_INTO_EPHEMERAL_ATA],
+        data: ESplInstruction::MergeShuttleIntoEphemeralAta.to_vec(),
     }
 }
 
@@ -452,7 +453,7 @@ pub(crate) fn build_undelegate_and_close_shuttle_instruction(
             AccountMeta::new(Pubkey::from(MAGIC_CONTEXT_ID.to_bytes()), false),
             AccountMeta::new_readonly(Pubkey::from(MAGIC_PROGRAM_ID.to_bytes()), false),
         ],
-        data: alloc::vec![ephemeral_spl_api::instruction::UNDELEGATE_AND_CLOSE_SHUTTLE_TO_OWNER],
+        data: ESplInstruction::UndelegateAndCloseShuttleToOwner.to_vec(),
     }
 }
 

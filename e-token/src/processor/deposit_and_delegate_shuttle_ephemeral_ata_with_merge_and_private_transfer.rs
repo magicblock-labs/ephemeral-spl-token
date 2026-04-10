@@ -1,6 +1,5 @@
 #[cfg(feature = "logging")]
 use alloc::string::ToString;
-use alloc::vec::Vec;
 use core::marker::PhantomData;
 use core::ptr::read_unaligned;
 use core::slice;
@@ -10,6 +9,7 @@ use dlp_api::args::{
 };
 use dlp_api::compact::{self};
 
+use ephemeral_spl_api::instruction::ESplInstruction;
 use ephemeral_spl_api::state::transfer_queue::{queue_views, TransferQueue};
 use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
@@ -354,8 +354,7 @@ fn private_transfer_action_encrypted(
             ],
             data: MaybeEncryptedIxData {
                 prefix: {
-                    let mut data_prefix = Vec::with_capacity(1 + 8);
-                    data_prefix.push(ephemeral_spl_api::instruction::DEPOSIT_AND_QUEUE_TRANSFER);
+                    let mut data_prefix = ESplInstruction::DepositAndQueueTransfer.to_vec();
                     data_prefix.extend_from_slice(&amount.to_le_bytes());
                     data_prefix
                 },

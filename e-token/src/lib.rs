@@ -2,6 +2,7 @@
 extern crate alloc;
 
 mod entrypoint;
+mod instruction;
 mod processor;
 
 pub use crate::entrypoint::process_instruction;

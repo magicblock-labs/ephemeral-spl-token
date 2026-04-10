@@ -4,9 +4,7 @@ use ephemeral_rollups_pinocchio::pda::{
     delegation_metadata_pda_from_delegated_account, delegation_record_pda_from_delegated_account,
 };
 use ephemeral_spl_api::{
-    consts::SPONSORED_LAMPORTS_TRANSFER_SETUP_LAMPORTS,
-    instruction::{self, internal},
-    ID as PROGRAM,
+    consts::SPONSORED_LAMPORTS_TRANSFER_SETUP_LAMPORTS, instruction, ID as PROGRAM,
 };
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
@@ -16,6 +14,8 @@ use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use solana_system_interface::instruction::transfer;
 use solana_transaction::Transaction;
+
+use crate::utils::TestInternalInstruction;
 
 mod common;
 mod utils;
@@ -109,7 +109,7 @@ async fn sponsored_lamports_transfer_delegates_zero_data_pda_and_charges_fee() {
             AccountMeta::new(rent_pda, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_RENT_PDA],
+        data: instruction::ESplInstruction::InitializeRentPda.to_vec(),
     };
     let ix_fund_rent = transfer(&payer, &rent_pda, 100_000_000);
     let tx_init = Transaction::new_signed_with_payer(
@@ -131,7 +131,8 @@ async fn sponsored_lamports_transfer_delegates_zero_data_pda_and_charges_fee() {
         .unwrap()
         .expect("rent pda must exist");
 
-    let mut sponsored_transfer_data = vec![instruction::SPONSORED_LAMPORTS_TRANSFER];
+    let mut sponsored_transfer_data =
+        instruction::ESplInstruction::SponsoredLamportsTransfer.to_vec();
     sponsored_transfer_data.extend_from_slice(&TRANSFER_AMOUNT.to_le_bytes());
     sponsored_transfer_data.extend_from_slice(&SALT);
 
@@ -270,7 +271,7 @@ async fn transfer_lamports_pda_moves_requested_lamports_to_destination() {
         .into(),
     );
 
-    let mut transfer_lamports_data = vec![internal::TRANSFER_LAMPORTS_PDA];
+    let mut transfer_lamports_data = TestInternalInstruction::TransferLamportsPda.to_vec();
     transfer_lamports_data.extend_from_slice(&TRANSFER_AMOUNT.to_le_bytes());
     transfer_lamports_data.extend_from_slice(&SALT);
 
@@ -358,7 +359,7 @@ async fn transfer_lamports_pda_allows_extra_lamports_on_source() {
         .into(),
     );
 
-    let mut transfer_lamports_data = vec![internal::TRANSFER_LAMPORTS_PDA];
+    let mut transfer_lamports_data = TestInternalInstruction::TransferLamportsPda.to_vec();
     transfer_lamports_data.extend_from_slice(&TRANSFER_AMOUNT.to_le_bytes());
     transfer_lamports_data.extend_from_slice(&SALT);
 

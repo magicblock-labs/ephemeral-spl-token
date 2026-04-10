@@ -85,7 +85,7 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_deposits_and_stor
             AccountMeta::new(rent_pda, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_RENT_PDA],
+        data: instruction::ESplInstruction::InitializeRentPda.to_vec(),
     };
     let ix_fund_rent = transfer(&payer, &rent_pda, 100_000_000);
     let ix_init_vault = Instruction {
@@ -100,7 +100,7 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_deposits_and_stor
             AccountMeta::new_readonly(utils::associated_token_program_id(), false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_GLOBAL_VAULT],
+        data: instruction::ESplInstruction::InitializeGlobalVault.to_vec(),
     };
     let rent = context.banks_client.get_rent().await.unwrap();
     let ix_create_owner_source = solana_system_interface::instruction::create_account(
@@ -153,7 +153,8 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_deposits_and_stor
     let delegation_record_pda = delegation_record_pda_from_delegated_account(&shuttle_eata);
     let delegation_metadata_pda = delegation_metadata_pda_from_delegated_account(&shuttle_eata);
 
-    let mut delegate_data = vec![instruction::SETUP_AND_DELEGATE_SHUTTLE_EPHEMERAL_ATA_WITH_MERGE];
+    let mut delegate_data =
+        instruction::ESplInstruction::SetupAndDelegateShuttleEphemeralAtaWithMerge.to_vec();
     delegate_data.extend_from_slice(&shuttle_id.to_le_bytes());
     delegate_data.extend_from_slice(&DEPOSIT_AMOUNT.to_le_bytes());
     delegate_data.extend_from_slice(&validator.to_bytes());

@@ -61,7 +61,7 @@ async fn delegate_transfer_queue_succeeds_and_is_idempotent() {
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
             AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
         ],
-        data: vec![instruction::INITIALIZE_TRANSFER_QUEUE],
+        data: instruction::ESplInstruction::InitializeTransferQueue.to_vec(),
     };
 
     let tx_init = Transaction::new_signed_with_payer(
@@ -102,7 +102,7 @@ async fn delegate_transfer_queue_succeeds_and_is_idempotent() {
             AccountMeta::new_readonly(ephemeral_rollups_pinocchio::ID, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::DELEGATE_TRANSFER_QUEUE],
+        data: instruction::ESplInstruction::DelegateTransferQueue.to_vec(),
     };
 
     let tx_delegate = Transaction::new_signed_with_payer(

@@ -1,5 +1,5 @@
-use core::marker::PhantomData;
-use ephemeral_spl_api::{require, require_n_accounts};
+use bytemuck::{Pod, Zeroable};
+use ephemeral_spl_api::{require, require_n_accounts, PodView};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
 use crate::processor::internal::ephemeral_ata::initialize_shuttle_ephemeral_ata_with_sponsor;
@@ -19,7 +19,7 @@ use crate::processor::internal::ephemeral_ata::initialize_shuttle_ephemeral_ata_
 ///  7: []                  - SPL     : Associated token program.
 ///  8: []                  - Builtin : System program.
 ///
-/// Instruction Data: InitializeShuttleEphemeralAta
+/// Instruction Data: InitializeShuttleEphemeralAtaArgs
 ///
 #[inline(always)]
 pub fn process_initialize_shuttle_ephemeral_ata(
@@ -38,7 +38,7 @@ pub fn process_initialize_shuttle_ephemeral_ata(
         system_program_info,
     ] = require_n_accounts!(accounts, 9);
 
-    let args = InitializeShuttleEphemeralAta::try_from_bytes(instruction_data)?;
+    let args = InitializeShuttleEphemeralAtaArgs::try_view_from(instruction_data)?;
 
     require!(
         payer_info.is_signer(),
@@ -56,43 +56,14 @@ pub fn process_initialize_shuttle_ephemeral_ata(
         mint_info,
         token_program_info,
         system_program_info,
-        args.shuttle_id(),
+        args.shuttle_id,
     )?;
 
     Ok(())
 }
 
-///
-/// DataLayout:
-///
-///     00..04 : shuttle_id (u32)
-///
-/// ValidLength:
-///
-///     >= 04
-///
-pub struct InitializeShuttleEphemeralAta<'a> {
-    raw: *const u8,
-    _data: PhantomData<&'a [u8]>,
-}
-
-impl InitializeShuttleEphemeralAta<'_> {
-    #[inline]
-    pub fn try_from_bytes(bytes: &[u8]) -> Result<InitializeShuttleEphemeralAta<'_>, ProgramError> {
-        require!(bytes.len() >= 4, ProgramError::InvalidInstructionData);
-
-        Ok(InitializeShuttleEphemeralAta {
-            raw: bytes.as_ptr(),
-            _data: PhantomData,
-        })
-    }
-
-    #[inline]
-    pub fn shuttle_id(&self) -> u32 {
-        let mut buf = [0u8; 4];
-        unsafe {
-            core::ptr::copy_nonoverlapping(self.raw, buf.as_mut_ptr(), 4);
-        }
-        u32::from_le_bytes(buf)
-    }
+#[repr(C)]
+#[derive(Copy, Clone, Pod, Zeroable)]
+pub struct InitializeShuttleEphemeralAtaArgs {
+    shuttle_id: u32,
 }

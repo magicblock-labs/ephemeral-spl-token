@@ -4,7 +4,6 @@ use dlp_api::pda::magic_fee_vault_pda_from_validator;
 use ephemeral_rollups_pinocchio::crank::{
     CancelCrankCpi, CrankInstruction, ScheduleCrankArgs, ScheduleCrankCpi,
 };
-use ephemeral_spl_api::instruction::internal::PROCESS_TRANSFER_QUEUE_TICK;
 use ephemeral_spl_api::state::transfer_queue::{
     queue_crank_task_id_from_data, queue_set_crank_task_id_from_data, queue_views_checked,
     TransferQueue,
@@ -14,12 +13,14 @@ use pinocchio::cpi::{invoke_signed_with_bounds, Signer};
 use pinocchio::instruction::{InstructionAccount, InstructionView};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
+use crate::instruction::ESplInternalInstruction;
+
 pub const CRANK_EXECUTION_INTERVAL_MILLIS: i64 = 500;
 
 const PROCESS_QUEUE_TICK_CRANK_ACCOUNTS: usize = 4;
 const SCHEDULE_CRANK_CPI_ACCOUNTS: usize = 5;
 const SCHEDULE_CRANK_DATA_LEN: usize =
-    4 + 8 + 8 + 8 + 8 + 32 + 8 + (PROCESS_QUEUE_TICK_CRANK_ACCOUNTS * 34) + 8 + 1;
+    4 + 8 + 8 + 8 + 8 + 32 + 8 + (PROCESS_QUEUE_TICK_CRANK_ACCOUNTS * 34) + 8 + 8;
 
 ///
 /// Executes on:
@@ -113,7 +114,7 @@ pub fn process_ensure_transfer_queue_crank(
         .invoke_signed(&queue_signers)?;
     }
 
-    let tick_data = [PROCESS_TRANSFER_QUEUE_TICK];
+    let tick_data = ESplInternalInstruction::ProcessTransferQueueTick.to_bytes();
     let tick_accounts = [
         InstructionAccount {
             address: queue_info.address(),

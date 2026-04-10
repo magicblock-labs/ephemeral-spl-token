@@ -56,7 +56,7 @@ async fn initialize_transfer_queue_default_size() {
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
             AccountMeta::new_readonly(utils::permission_program_id(), false),
         ],
-        data: vec![instruction::INITIALIZE_TRANSFER_QUEUE],
+        data: instruction::ESplInstruction::InitializeTransferQueue.to_vec(),
     };
 
     let tx = Transaction::new_signed_with_payer(
@@ -119,7 +119,7 @@ async fn initialize_transfer_queue_custom_size_is_idempotent() {
     let queue_permission = permission_pda_from_permissioned_account(&queue);
 
     let items = 4_u32;
-    let mut data = vec![instruction::INITIALIZE_TRANSFER_QUEUE];
+    let mut data = instruction::ESplInstruction::InitializeTransferQueue.to_vec();
     data.extend_from_slice(&items.to_le_bytes());
 
     let ix_init_custom = Instruction {
@@ -162,7 +162,7 @@ async fn initialize_transfer_queue_custom_size_is_idempotent() {
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
             AccountMeta::new_readonly(utils::permission_program_id(), false),
         ],
-        data: vec![instruction::INITIALIZE_TRANSFER_QUEUE],
+        data: instruction::ESplInstruction::InitializeTransferQueue.to_vec(),
     };
     let tx_noop = Transaction::new_signed_with_payer(
         &[ix_noop],

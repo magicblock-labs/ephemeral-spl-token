@@ -14,6 +14,7 @@ use pinocchio_system::instructions::{CreateAccount, Transfer};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_pubkey::Pubkey;
 
+use crate::instruction::ESplInternalInstruction;
 use crate::processor::{
     initialize_rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
     internal::lamports_pda::{derive_lamports_pda, parse_amount_and_salt, LAMPORTS_PDA_SEED},
@@ -191,9 +192,10 @@ fn transfer_lamports_pda_action(
     amount: u64,
     salt: &[u8; 32],
 ) -> Instruction {
-    let mut data = alloc::vec![ephemeral_spl_api::instruction::internal::TRANSFER_LAMPORTS_PDA];
-    data.extend_from_slice(&amount.to_le_bytes());
-    data.extend_from_slice(salt);
+    let mut payload = [0_u8; 40];
+    payload[..8].copy_from_slice(&amount.to_le_bytes());
+    payload[8..].copy_from_slice(salt);
+    let data = ESplInternalInstruction::TransferLamportsPda.with_data(&payload);
 
     Instruction {
         program_id: crate::ID,
@@ -213,8 +215,7 @@ fn undelegate_lamports_pda_action(
     destination_info: &AccountView,
     salt: &[u8; 32],
 ) -> Instruction {
-    let mut data = alloc::vec![ephemeral_spl_api::instruction::internal::UNDELEGATE_LAMPORTS_PDA];
-    data.extend_from_slice(salt);
+    let data = ESplInternalInstruction::UndelegateLamportsPda.with_data(salt);
 
     Instruction {
         program_id: crate::ID,

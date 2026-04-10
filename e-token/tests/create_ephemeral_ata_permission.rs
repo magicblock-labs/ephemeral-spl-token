@@ -34,7 +34,7 @@ async fn create_ephemeral_ata_permission() {
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_EPHEMERAL_ATA],
+        data: instruction::ESplInstruction::InitializeEphemeralAta.to_vec(),
     };
 
     let ix_create_permission = Instruction {
@@ -49,7 +49,7 @@ async fn create_ephemeral_ata_permission() {
         data: {
             let flag =
                 ephemeral_rollups_pinocchio::acl::types::MemberFlags::default().to_acl_flag_byte();
-            vec![instruction::CREATE_EPHEMERAL_ATA_PERMISSION, flag]
+            instruction::ESplInstruction::CreateEphemeralAtaPermission.with_data(&[flag])
         },
     };
 
@@ -105,7 +105,7 @@ async fn create_ephemeral_ata_permission_permissionless_default() {
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_EPHEMERAL_ATA],
+        data: instruction::ESplInstruction::InitializeEphemeralAta.to_vec(),
     };
 
     let ix_create_permission = Instruction {
@@ -120,7 +120,7 @@ async fn create_ephemeral_ata_permission_permissionless_default() {
         data: {
             let flag =
                 ephemeral_rollups_pinocchio::acl::types::MemberFlags::default().to_acl_flag_byte();
-            vec![instruction::CREATE_EPHEMERAL_ATA_PERMISSION, flag]
+            instruction::ESplInstruction::CreateEphemeralAtaPermission.with_data(&[flag])
         },
     };
 

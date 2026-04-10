@@ -1,4 +1,4 @@
-use ephemeral_spl_api::instruction::SPONSORED_LAMPORTS_TRANSFER;
+use ephemeral_spl_api::instruction::ESplInstruction;
 use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::cpi::{invoke_signed_with_bounds, Seed, Signer};
 use pinocchio::instruction::{InstructionAccount, InstructionView};
@@ -15,7 +15,6 @@ use crate::processor::{
 };
 
 const SPONSORED_LAMPORTS_TRANSFER_CPI_ACCOUNTS: usize = 11;
-const SPONSORED_LAMPORTS_TRANSFER_DATA_LEN: usize = 1 + 8 + 32;
 
 ///
 /// Executes on:
@@ -116,10 +115,11 @@ fn trigger_queue_refill_via_sponsored_transfer(
     refill_lamports: u64,
     salt: &[u8; 32],
 ) -> ProgramResult {
-    let mut sponsored_transfer_data = [0_u8; SPONSORED_LAMPORTS_TRANSFER_DATA_LEN];
-    sponsored_transfer_data[0] = SPONSORED_LAMPORTS_TRANSFER;
-    sponsored_transfer_data[1..9].copy_from_slice(&refill_lamports.to_le_bytes());
-    sponsored_transfer_data[9..].copy_from_slice(salt);
+    let mut sponsored_transfer_payload = [0_u8; 40];
+    sponsored_transfer_payload[..8].copy_from_slice(&refill_lamports.to_le_bytes());
+    sponsored_transfer_payload[8..].copy_from_slice(salt);
+    let sponsored_transfer_data =
+        ESplInstruction::SponsoredLamportsTransfer.with_data(&sponsored_transfer_payload);
 
     let sponsored_transfer_accounts = [
         InstructionAccount::readonly_signer(rent_pda_info.address()),

@@ -1,5 +1,6 @@
 use alloc::vec::Vec;
 use core::mem::MaybeUninit;
+use ephemeral_spl_api::instruction::ESplInstruction;
 
 use ephemeral_spl_api::state::stash::StashPda;
 use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
@@ -158,7 +159,7 @@ pub fn process_scheduled_private_transfer(
     //   [25][shuttle_id:4][amount:8][vardata tail]
     let mut ix_data: Vec<u8> = Vec::with_capacity(1 + 4 + 8 + tail.len());
     ix_data.push(
-        ephemeral_spl_api::instruction::DEPOSIT_AND_DELEGATE_SHUTTLE_EPHEMERAL_ATA_WITH_MERGE_AND_PRIVATE_TRANSFER,
+        ESplInstruction::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer as u8,
     );
     ix_data.extend_from_slice(shuttle_id_bytes);
     ix_data.extend_from_slice(&effective_amount.to_le_bytes());

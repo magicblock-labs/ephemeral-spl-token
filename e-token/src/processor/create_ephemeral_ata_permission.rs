@@ -1,11 +1,11 @@
-use core::marker::PhantomData;
+use bytemuck::{Pod, Zeroable};
 use ephemeral_rollups_pinocchio::acl::{
     consts::PERMISSION_PROGRAM_ID,
     instruction::CreatePermissionCpiBuilder,
     pda::permission_pda_from_permissioned_account,
     types::{Member, MemberFlags, MembersArgs},
 };
-use ephemeral_spl_api::{require, require_eq_keys};
+use ephemeral_spl_api::{require, require_eq_keys, PodView};
 use ephemeral_spl_api::{
     require_n_accounts,
     state::{ephemeral_ata::EphemeralAta, load_initialized},
@@ -23,7 +23,7 @@ use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 ///  3: []                  - Builtin : System program.
 ///  4: []                  - Program : Permission program (ACL).
 ///
-/// Instruction Data: CreateEphemeralAtaPermission
+/// Instruction Data: CreateEphemeralAtaPermissionArgs
 ///
 #[inline(always)]
 pub fn process_create_ephemeral_ata_permission(
@@ -38,7 +38,7 @@ pub fn process_create_ephemeral_ata_permission(
         permission_program,
     ] = require_n_accounts!(accounts, 5);
 
-    let args = CreateEphemeralAtaPermission::try_from_bytes(instruction_data)?;
+    let args = CreateEphemeralAtaPermissionArgs::try_view_from(instruction_data)?;
 
     require!(
         payer_info.is_signer(),
@@ -54,7 +54,7 @@ pub fn process_create_ephemeral_ata_permission(
     let ephemeral_ata =
         load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
 
-    let flag_byte = args.flag_byte();
+    let flag_byte = args.flag_byte;
 
     // Valid in 2 cases:
     // - Payer is the owner of the eata
@@ -103,33 +103,8 @@ pub fn process_create_ephemeral_ata_permission(
         .invoke()
 }
 
-///
-/// DataLayout:
-///
-///     00..01 : flag_byte (u8)
-///
-/// ValidLength:
-///
-///     >= 01
-///
-pub struct CreateEphemeralAtaPermission<'a> {
-    raw: *const u8,
-    _data: PhantomData<&'a [u8]>,
-}
-
-impl CreateEphemeralAtaPermission<'_> {
-    #[inline]
-    pub fn try_from_bytes(bytes: &[u8]) -> Result<CreateEphemeralAtaPermission<'_>, ProgramError> {
-        require!(!bytes.is_empty(), ProgramError::InvalidInstructionData);
-
-        Ok(CreateEphemeralAtaPermission {
-            raw: bytes.as_ptr(),
-            _data: PhantomData,
-        })
-    }
-
-    #[inline]
-    pub fn flag_byte(&self) -> u8 {
-        unsafe { *self.raw }
-    }
+#[repr(C)]
+#[derive(Copy, Clone, Pod, Zeroable)]
+pub struct CreateEphemeralAtaPermissionArgs {
+    flag_byte: u8,
 }

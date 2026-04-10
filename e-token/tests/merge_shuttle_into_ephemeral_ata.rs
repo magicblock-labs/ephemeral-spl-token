@@ -41,7 +41,8 @@ async fn merge_shuttle_into_ephemeral_ata_transfers_from_shuttle_ata_to_destinat
     .await;
     let destination_ata = setup.user_tokens[0];
 
-    let mut shuttle_init_data = vec![instruction::INITIALIZE_SHUTTLE_EPHEMERAL_ATA];
+    let mut shuttle_init_data =
+        instruction::ESplInstruction::InitializeShuttleEphemeralAta.to_vec();
     shuttle_init_data.extend_from_slice(&shuttle_id.to_le_bytes());
     let ix_init_shuttle = Instruction {
         program_id: PROGRAM,
@@ -122,7 +123,7 @@ async fn merge_shuttle_into_ephemeral_ata_transfers_from_shuttle_ata_to_destinat
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new_readonly(spl_token_interface::ID, false),
         ],
-        data: vec![instruction::MERGE_SHUTTLE_INTO_EPHEMERAL_ATA],
+        data: instruction::ESplInstruction::MergeShuttleIntoEphemeralAta.to_vec(),
     };
 
     let tx_merge = Transaction::new_signed_with_payer(

@@ -51,7 +51,7 @@ async fn allocate_transfer_queue_succeeds_and_is_idempotent() {
             AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
         ],
         data: [
-            vec![instruction::INITIALIZE_TRANSFER_QUEUE],
+            instruction::ESplInstruction::InitializeTransferQueue.to_vec(),
             (N_ITEMS as u32).to_le_bytes().to_vec(),
         ]
         .concat(),
@@ -75,7 +75,7 @@ async fn allocate_transfer_queue_succeeds_and_is_idempotent() {
             AccountMeta::new(queue, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::ALLOCATE_TRANSFER_QUEUE],
+        data: instruction::ESplInstruction::AllocateTransferQueue.to_vec(),
     };
 
     let mut previous_data_len = 0usize;

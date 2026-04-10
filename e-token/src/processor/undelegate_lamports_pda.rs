@@ -6,6 +6,7 @@ use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
+use crate::instruction::ESplInternalInstruction;
 use crate::processor::internal::lamports_pda::derive_lamports_pda;
 
 const DEFAULT_ESCROW_INDEX: u8 = u8::MAX;
@@ -108,12 +109,11 @@ pub fn process_undelegate_lamports_pda(
     .build_and_invoke(&mut intent_bundle_data)
 }
 
-fn close_lamports_handler_data(escrow_index: u8, salt: &[u8; 32]) -> [u8; 34] {
-    let mut data = [0u8; 34];
-    data[0] = ephemeral_spl_api::instruction::internal::CLOSE_LAMPORTS_PDA_INTENT;
-    data[1] = escrow_index;
-    data[2..].copy_from_slice(salt);
-    data
+fn close_lamports_handler_data(escrow_index: u8, salt: &[u8; 32]) -> alloc::vec::Vec<u8> {
+    let mut payload = [0u8; 33];
+    payload[0] = escrow_index;
+    payload[1..].copy_from_slice(salt);
+    ESplInternalInstruction::CloseLamportsPdaIntent.with_data(&payload)
 }
 
 fn parse_salt(instruction_data: &[u8]) -> Result<[u8; 32], ProgramError> {
