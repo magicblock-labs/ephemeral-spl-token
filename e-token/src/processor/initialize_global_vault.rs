@@ -1,8 +1,9 @@
 use crate::processor::internal::ephemeral_ata::initialize_ephemeral_ata_with_sponsor;
 use ephemeral_spl_api::state::RawType;
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts_with_ignored};
+use pinocchio::cpi::Signer;
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
-use pinocchio::{address::address_eq, cpi::Signer};
 use pinocchio_system::instructions::{CreateAccount, Transfer};
 use {
     ephemeral_spl_api::state::global_vault::GlobalVault,
@@ -34,21 +35,29 @@ pub fn process_initialize_global_vault(
     accounts: &[AccountView],
     _instruction_data: &[u8],
 ) -> ProgramResult {
-    let [vault_info, payer_info, mint_info, vault_ephemeral_ata_info, vault_token_acc_info, token_program_info, associated_token_program_info, system_program_info, ..] =
-        accounts
-    else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
+    let [
+        vault_info, // force multi-line
+        payer_info,
+        mint_info,
+        vault_ephemeral_ata_info,
+        vault_token_acc_info,
+        token_program_info,
+        associated_token_program_info,
+        system_program_info,
+    ] = require_n_accounts_with_ignored!(accounts, 8);
 
-    if !pinocchio_associated_token_account::check_id(associated_token_program_info.address()) {
-        return Err(ProgramError::IncorrectProgramId);
-    }
+    require!(
+        pinocchio_associated_token_account::check_id(associated_token_program_info.address()),
+        ProgramError::IncorrectProgramId
+    );
 
     let program_id = crate::ID;
     let (vault_derived_pda, vault_bump) = GlobalVault::find_pda(mint_info.address());
-    if !address_eq(&vault_derived_pda, vault_info.address()) {
-        return Err(ProgramError::InvalidSeeds);
-    }
+    require_eq_keys!(
+        &vault_derived_pda,
+        vault_info.address(),
+        ProgramError::InvalidSeeds
+    );
 
     let bump = [vault_bump];
     let seed = GlobalVault::signer_seeds(mint_info.address(), &bump);
@@ -57,6 +66,12 @@ pub fn process_initialize_global_vault(
 
     if vault_info.owned_by(&program_id) {
         let vault_data_len = vault_info.data_len();
+        require!(
+            vault_data_len == GlobalVault::LEN
+                || vault_data_len == LEGACY_GLOBAL_VAULT_LEN
+                || vault_data_len == GLOBAL_VAULT_V0_LEN,
+            ProgramError::InvalidAccountData
+        );
         if vault_data_len == GlobalVault::LEN {
             // Already on current layout.
         } else if vault_data_len == LEGACY_GLOBAL_VAULT_LEN || vault_data_len == GLOBAL_VAULT_V0_LEN
@@ -67,9 +82,11 @@ pub fn process_initialize_global_vault(
                 let legacy_data = unsafe { vault_info.borrow_unchecked() };
                 unsafe { *(legacy_data.as_ptr() as *const pinocchio::Address) }
             };
-            if !address_eq(&legacy_mint, mint_info.address()) {
-                return Err(ProgramError::InvalidAccountData);
-            }
+            require_eq_keys!(
+                &legacy_mint,
+                mint_info.address(),
+                ProgramError::InvalidAccountData
+            );
 
             let current_lamports = vault_info.lamports();
             if current_lamports < required_lamports {
@@ -82,8 +99,6 @@ pub fn process_initialize_global_vault(
             }
 
             vault_info.resize(GlobalVault::LEN)?;
-        } else {
-            return Err(ProgramError::InvalidAccountData);
         }
     } else {
         CreateAccount {

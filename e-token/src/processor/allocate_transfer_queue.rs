@@ -1,10 +1,8 @@
 use ephemeral_spl_api::state::transfer_queue::{item_len, queue_views_checked, TransferQueue};
-use pinocchio::address::address_eq;
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts_with_ignored};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
-
-use crate::assert_owner;
 
 pub const MAX_ITEMS_PER_REALLOC: usize = 10_240 / item_len();
 
@@ -23,19 +21,25 @@ pub fn process_allocate_transfer_queue(
     accounts: &[AccountView],
     _instruction_data: &[u8],
 ) -> ProgramResult {
-    let [queue_info, _system_program_info, ..] = accounts else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
+    let [
+        queue_info, // force multi-line
+        _system_program_info,
+    ] = require_n_accounts_with_ignored!(accounts, 2);
 
-    assert_owner!(queue_info, &crate::ID);
+    require!(
+        queue_info.owned_by(&crate::ID),
+        ProgramError::InvalidAccountOwner
+    );
 
     let realloc_size = {
         let (header, _) = queue_views_checked(unsafe { queue_info.borrow_unchecked() })?;
         let derived_queue =
             TransferQueue::derive_pda(&header.mint, &header.validator, header.bump)?;
-        if !address_eq(&derived_queue, queue_info.address()) {
-            return Err(ProgramError::InvalidSeeds);
-        }
+        require_eq_keys!(
+            &derived_queue,
+            queue_info.address(),
+            ProgramError::InvalidSeeds
+        );
 
         let rent = Rent::get()?;
         let cost_per_item = rent.try_minimum_balance(item_len())? - rent.try_minimum_balance(0)?;

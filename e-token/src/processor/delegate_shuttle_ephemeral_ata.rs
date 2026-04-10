@@ -3,9 +3,8 @@ use ephemeral_rollups_pinocchio::types::DelegateConfig;
 use ephemeral_spl_api::state::{
     ephemeral_ata::EphemeralAta, load_initialized, shuttle_ephemeral_ata::ShuttleMetadata,
 };
-use pinocchio::{address::address_eq, error::ProgramError, AccountView, Address, ProgramResult};
-
-use crate::assert_owner;
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts_with_ignored};
+use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
 
 ///
 /// Executes on:
@@ -28,41 +27,57 @@ pub fn process_delegate_shuttle_ephemeral_ata(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let args = DelegateShuttleArgs::try_from_bytes(instruction_data)?;
+    let [
+        payer_info, // force multi-line
+        shuttle_info,
+        ephemeral_ata_info,
+        owner_program,
+        buffer_acc,
+        delegation_record,
+        delegation_metadata,
+        _delegation_program,
+        system_program,
+    ] = require_n_accounts_with_ignored!(accounts, 9);
 
-    let [payer_info, shuttle_info, ephemeral_ata_info, owner_program, buffer_acc, delegation_record, delegation_metadata, _delegation_program, system_program, ..] =
-        accounts
-    else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
+    let args = DelegateShuttleArgs::try_from_bytes(instruction_data)?;
 
     let delegation_program = ephemeral_spl_api::program::DELEGATION_PROGRAM_ID;
     if ephemeral_ata_info.owned_by(&delegation_program) {
         return Ok(());
     }
 
-    assert_owner!(shuttle_info, &crate::ID);
+    require!(
+        shuttle_info.owned_by(&crate::ID),
+        ProgramError::InvalidAccountOwner
+    );
 
     // Loading the account to check if the shuttle is correctly initialized
     load_initialized::<ShuttleMetadata>(unsafe { shuttle_info.borrow_unchecked() })?;
 
-    assert_owner!(ephemeral_ata_info, &crate::ID);
+    require!(
+        ephemeral_ata_info.owned_by(&crate::ID),
+        ProgramError::InvalidAccountOwner
+    );
 
     let (mint, eata_bump) = {
         let ephemeral_ata =
             load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
-        if ephemeral_ata.owner != *shuttle_info.address() {
-            return Err(ProgramError::InvalidAccountData);
-        }
+        require_eq_keys!(
+            &ephemeral_ata.owner,
+            shuttle_info.address(),
+            ProgramError::InvalidAccountData
+        );
         #[allow(clippy::clone_on_copy)]
         let mint = ephemeral_ata.mint.clone();
         (mint, ephemeral_ata.bump)
     };
 
     let derived_ephemeral_ata = EphemeralAta::derive_pda(shuttle_info.address(), &mint, eata_bump)?;
-    if !address_eq(&derived_ephemeral_ata, ephemeral_ata_info.address()) {
-        return Err(ProgramError::InvalidSeeds);
-    }
+    require_eq_keys!(
+        &derived_ephemeral_ata,
+        ephemeral_ata_info.address(),
+        ProgramError::InvalidSeeds
+    );
 
     let seeds: &[&[u8]] = &[shuttle_info.address().as_ref(), mint.as_ref()];
 

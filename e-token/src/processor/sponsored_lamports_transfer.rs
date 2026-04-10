@@ -5,7 +5,7 @@ use ephemeral_rollups_pinocchio::{
     consts::{DELEGATION_PROGRAM_ID, MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID},
     types::DelegateConfig,
 };
-use pinocchio::address::address_eq;
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts_with_ignored};
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
@@ -14,13 +14,10 @@ use pinocchio_system::instructions::{CreateAccount, Transfer};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_pubkey::Pubkey;
 
-use crate::{
-    assert_owner, assert_signer,
-    processor::{
-        initialize_rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
-        internal::lamports_pda::{derive_lamports_pda, parse_amount_and_salt, LAMPORTS_PDA_SEED},
-        internal::shuttle_delegation::delegate_account_with_actions_from_sponsor,
-    },
+use crate::processor::{
+    initialize_rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
+    internal::lamports_pda::{derive_lamports_pda, parse_amount_and_salt, LAMPORTS_PDA_SEED},
+    internal::shuttle_delegation::delegate_account_with_actions_from_sponsor,
 };
 
 ///
@@ -47,41 +44,65 @@ pub fn process_sponsored_lamports_transfer(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
+    let [
+        payer_info, // force multi-line
+        rent_pda_info,
+        lamports_pda_info,
+        owner_program,
+        buffer_acc,
+        delegation_record,
+        delegation_metadata,
+        _delegation_program,
+        system_program,
+        destination_info,
+        destination_delegation_record_info,
+    ] = require_n_accounts_with_ignored!(accounts, 11);
+
     let (amount, salt) = parse_amount_and_salt(instruction_data)?;
-    let [payer_info, rent_pda_info, lamports_pda_info, owner_program, buffer_acc, delegation_record, delegation_metadata, _delegation_program, system_program, destination_info, destination_delegation_record_info, ..] =
-        accounts
-    else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
 
-    if amount == 0 {
-        return Err(ProgramError::InvalidArgument);
-    }
-    assert_signer!(payer_info);
-    assert_owner!(rent_pda_info, &pinocchio_system::ID);
-    assert_owner!(destination_info, &DELEGATION_PROGRAM_ID);
+    require!(amount != 0, ProgramError::InvalidArgument);
+    require!(
+        payer_info.is_signer(),
+        ProgramError::MissingRequiredSignature
+    );
+    require!(
+        rent_pda_info.owned_by(&pinocchio_system::ID),
+        ProgramError::InvalidAccountOwner
+    );
+    require!(
+        destination_info.owned_by(&DELEGATION_PROGRAM_ID),
+        ProgramError::InvalidAccountOwner
+    );
 
-    if !address_eq(owner_program.address(), &crate::ID) {
-        return Err(ProgramError::IncorrectProgramId);
-    }
+    require_eq_keys!(
+        owner_program.address(),
+        &crate::ID,
+        ProgramError::IncorrectProgramId
+    );
 
-    if RENT_PDA != *rent_pda_info.address() {
-        return Err(ProgramError::InvalidSeeds);
-    }
-    if rent_pda_info.data_len() != 0 {
-        return Err(ProgramError::InvalidAccountData);
-    }
+    require_eq_keys!(
+        &RENT_PDA,
+        rent_pda_info.address(),
+        ProgramError::InvalidSeeds
+    );
+    require!(
+        rent_pda_info.data_len() == 0,
+        ProgramError::InvalidAccountData
+    );
 
     let validator =
         read_destination_validator(destination_info, destination_delegation_record_info)?;
     let (derived_lamports_pda, lamports_pda_bump) =
         derive_lamports_pda(payer_info.address(), destination_info.address(), &salt);
-    if derived_lamports_pda != *lamports_pda_info.address() {
-        return Err(ProgramError::InvalidSeeds);
-    }
-    if lamports_pda_info.lamports() > 0 {
-        return Err(ProgramError::InvalidAccountData);
-    }
+    require_eq_keys!(
+        &derived_lamports_pda,
+        lamports_pda_info.address(),
+        ProgramError::InvalidSeeds
+    );
+    require!(
+        lamports_pda_info.lamports() == 0,
+        ProgramError::InvalidAccountData
+    );
 
     Transfer {
         from: payer_info,

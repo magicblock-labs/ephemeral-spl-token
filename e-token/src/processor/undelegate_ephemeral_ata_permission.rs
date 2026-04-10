@@ -2,9 +2,8 @@ use ephemeral_rollups_pinocchio::acl::{
     consts::PERMISSION_PROGRAM_ID, instruction::commit_and_undelegate_permission,
 };
 use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_initialized};
-use pinocchio::{address::address_eq, error::ProgramError, AccountView, ProgramResult};
-
-use crate::assert_signer;
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts_with_ignored};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
 ///
 /// Executes on:
@@ -24,24 +23,34 @@ pub fn process_undelegate_ephemeral_ata_permission(
     accounts: &[AccountView],
     _instruction_data: &[u8],
 ) -> ProgramResult {
-    let [payer_info, ephemeral_ata_info, permission_info, permission_program, magic_program, magic_context, ..] =
-        accounts
-    else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
+    let [
+        payer_info, // force multi-line
+        ephemeral_ata_info,
+        permission_info,
+        permission_program,
+        magic_program,
+        magic_context,
+    ] = require_n_accounts_with_ignored!(accounts, 6);
 
-    assert_signer!(payer_info);
+    require!(
+        payer_info.is_signer(),
+        ProgramError::MissingRequiredSignature
+    );
 
-    if !address_eq(permission_program.address(), &PERMISSION_PROGRAM_ID) {
-        return Err(ProgramError::InvalidAccountData);
-    }
+    require_eq_keys!(
+        &PERMISSION_PROGRAM_ID,
+        permission_program.address(),
+        ProgramError::InvalidAccountData
+    );
 
     let ephemeral_ata =
         load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
 
-    if !address_eq(&ephemeral_ata.owner, payer_info.address()) {
-        return Err(ProgramError::InvalidAccountData);
-    }
+    require_eq_keys!(
+        &ephemeral_ata.owner,
+        payer_info.address(),
+        ProgramError::InvalidAccountData
+    );
 
     commit_and_undelegate_permission(
         &[

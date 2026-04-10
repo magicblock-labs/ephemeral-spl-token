@@ -1,3 +1,4 @@
+use crate::processor::utils::{get_associated_token_address, validate_token_account};
 use ephemeral_rollups_pinocchio::intent_bundle::{
     ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
 };
@@ -5,11 +6,8 @@ use ephemeral_spl_api::instruction::internal::SETTLE_AND_CLOSE_SHUTTLE_INTENT;
 use ephemeral_spl_api::state::{
     ephemeral_ata::EphemeralAta, load_initialized, shuttle_ephemeral_ata::ShuttleMetadata,
 };
-use pinocchio::address::address_eq;
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts_with_ignored};
 use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
-
-use crate::assert_owner;
-use crate::processor::utils::{get_associated_token_address, validate_token_account};
 
 const DEFAULT_ESCROW_INDEX: u8 = u8::MAX;
 const INTENT_BUNDLE_DATA_BUF_SIZE: usize = 1536;
@@ -36,13 +34,19 @@ pub fn process_undelegate_and_close_shuttle_to_owner(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let escrow_index = parse_escrow_index(instruction_data)?;
+    let [
+        executor, // force multi-line
+        rent_reimbursement,
+        shuttle_info,
+        shuttle_ephemeral_ata_info,
+        shuttle_wallet_ata_info,
+        refund_token_info,
+        token_program_info,
+        magic_context,
+        magic_program,
+    ] = require_n_accounts_with_ignored!(accounts, 9);
 
-    let [executor, rent_reimbursement, shuttle_info, shuttle_ephemeral_ata_info, shuttle_wallet_ata_info, refund_token_info, token_program_info, magic_context, magic_program, ..] =
-        accounts
-    else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
+    let escrow_index = parse_escrow_index(instruction_data)?;
 
     // TODO (snawaz):  unauthorized third-party cleanup/cancellation is possible.
     //
@@ -50,24 +54,29 @@ pub fn process_undelegate_and_close_shuttle_to_owner(
     // force undelegate-and-close shuttle of other users and force shuttle into refund/cleanup.
     //
     // enforce: executor == shuttle.owner
-    if !executor.is_signer() {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
+    require!(executor.is_signer(), ProgramError::MissingRequiredSignature);
 
-    assert_owner!(shuttle_info, &crate::ID);
+    require!(
+        shuttle_info.owned_by(&crate::ID),
+        ProgramError::InvalidAccountOwner
+    );
 
     let shuttle = load_initialized::<ShuttleMetadata>(unsafe { shuttle_info.borrow_unchecked() })?;
-    if shuttle.payer != *rent_reimbursement.address() {
-        return Err(ProgramError::IncorrectAuthority);
-    }
+    require_eq_keys!(
+        &shuttle.payer,
+        rent_reimbursement.address(),
+        ProgramError::IncorrectAuthority
+    );
 
     let mint = {
         let shuttle_ephemeral_ata = load_initialized::<EphemeralAta>(unsafe {
             shuttle_ephemeral_ata_info.borrow_unchecked()
         })?;
-        if !address_eq(&shuttle_ephemeral_ata.owner, shuttle_info.address()) {
-            return Err(ProgramError::InvalidAccountData);
-        }
+        require_eq_keys!(
+            &shuttle_ephemeral_ata.owner,
+            shuttle_info.address(),
+            ProgramError::InvalidAccountData
+        );
         #[allow(clippy::clone_on_copy)]
         let mint = shuttle_ephemeral_ata.mint.clone();
         mint
@@ -77,21 +86,19 @@ pub fn process_undelegate_and_close_shuttle_to_owner(
         &[shuttle_info.address().as_ref(), mint.as_ref()],
         &crate::ID,
     );
-    if !address_eq(
+    require_eq_keys!(
         &derived_shuttle_ephemeral_ata,
         shuttle_ephemeral_ata_info.address(),
-    ) {
-        return Err(ProgramError::InvalidSeeds);
-    }
+        ProgramError::InvalidSeeds
+    );
 
     let expected_shuttle_wallet_ata =
         get_associated_token_address(shuttle_info.address(), &mint, token_program_info.address());
-    if !address_eq(
+    require_eq_keys!(
         &expected_shuttle_wallet_ata,
         shuttle_wallet_ata_info.address(),
-    ) {
-        return Err(ProgramError::InvalidAccountData);
-    }
+        ProgramError::InvalidAccountData
+    );
 
     validate_token_account(
         shuttle_wallet_ata_info,
@@ -126,9 +133,10 @@ fn parse_escrow_index(instruction_data: &[u8]) -> Result<u8, ProgramError> {
     if instruction_data.is_empty() {
         return Ok(DEFAULT_ESCROW_INDEX);
     }
-    if instruction_data.len() != 1 {
-        return Err(ProgramError::InvalidInstructionData);
-    }
+    require!(
+        instruction_data.len() == 1,
+        ProgramError::InvalidInstructionData
+    );
     Ok(instruction_data[0])
 }
 

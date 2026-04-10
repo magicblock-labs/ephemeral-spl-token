@@ -1,5 +1,6 @@
 use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_initialized};
-use pinocchio::{address::address_eq, error::ProgramError, AccountView, ProgramResult};
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts_with_ignored};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
 use crate::processor::utils::validate_token_account;
 
@@ -36,14 +37,16 @@ pub fn process_undelegate_ephemeral_ata(
     accounts: &[AccountView],
     _instruction_data: &[u8],
 ) -> ProgramResult {
-    let [payer, ata_info, ephemeral_ata_info, magic_context, magic_program, ..] = accounts else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
+    let [
+        payer, // force multi-line
+        ata_info,
+        ephemeral_ata_info,
+        magic_context,
+        magic_program,
+    ] = require_n_accounts_with_ignored!(accounts, 5);
 
     // Ensure the payer signed the transaction
-    if !payer.is_signer() {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
+    require!(payer.is_signer(), ProgramError::MissingRequiredSignature);
 
     // Read the Ephemeral ATA to get the mint and verify the PDA derivation for this payer.
     // Scope the borrow so it's released before any CPI.
@@ -58,9 +61,11 @@ pub fn process_undelegate_ephemeral_ata(
     // Derive PDA: seeds = [payer, mint], program id = e-token program id (ephemeral_spl_api::program::ID)
     let derived_pda = EphemeralAta::derive_pda(payer.address(), &mint, bump)?;
 
-    if !address_eq(&derived_pda, ephemeral_ata_info.address()) {
-        return Err(ProgramError::InvalidSeeds);
-    }
+    require_eq_keys!(
+        &derived_pda,
+        ephemeral_ata_info.address(),
+        ProgramError::InvalidSeeds
+    );
 
     // Validate that the provided ATA account is a valid SPL token account for [payer, mint].
     validate_token_account(ata_info, &mint, Some(payer.address()), None)?;

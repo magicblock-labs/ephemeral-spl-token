@@ -1,13 +1,13 @@
 use core::marker::PhantomData;
 
 use ephemeral_spl_api::state::{load_initialized, load_mut_initialized};
+use ephemeral_spl_api::{require, require_n_accounts_with_ignored};
 
 use {
     ephemeral_spl_api::state::ephemeral_ata::EphemeralAta,
     pinocchio::{error::ProgramError, AccountView, ProgramResult},
 };
 
-use crate::assert_owner;
 use crate::processor::internal::token_vault::transfer_to_vault_for_mint;
 
 ///
@@ -30,16 +30,23 @@ pub fn process_deposit_spl_tokens(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
+    let [
+        ephemeral_ata_info, // force multi-line
+        vault_info,
+        mint_info,
+        user_source_token_acc,
+        vault_token_acc,
+        user_authority,
+        token_program_info,
+    ] = require_n_accounts_with_ignored!(accounts, 7);
+
     let args = DepositArgs::try_from_bytes(instruction_data)?;
 
-    let [ephemeral_ata_info, vault_info, mint_info, user_source_token_acc, vault_token_acc, user_authority, token_program_info, ..] =
-        accounts
-    else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
-
     // Validate EphemeralAta ownership first, before reading raw data.
-    assert_owner!(ephemeral_ata_info, &crate::ID);
+    require!(
+        ephemeral_ata_info.owned_by(&crate::ID),
+        ProgramError::InvalidAccountOwner
+    );
 
     let ephemeral_ata_mint = {
         let ephemeral_ata =
@@ -85,9 +92,7 @@ pub struct DepositArgs<'a> {
 impl DepositArgs<'_> {
     #[inline]
     pub fn try_from_bytes(bytes: &[u8]) -> Result<DepositArgs<'_>, ProgramError> {
-        if bytes.len() < 8 {
-            return Err(ProgramError::InvalidInstructionData);
-        }
+        require!(bytes.len() >= 8, ProgramError::InvalidInstructionData);
         Ok(DepositArgs {
             raw: bytes.as_ptr(),
             _data: PhantomData,

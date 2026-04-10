@@ -6,32 +6,25 @@ use ephemeral_rollups_pinocchio::{
     intent_bundle::{ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta},
     spl::consts::TOKEN_PROGRAM_ID,
 };
-use ephemeral_spl_api::instruction::internal::{
-    EXECUTE_READY_QUEUED_TRANSFER, MARK_TRANSFER_QUEUE_REFILL_PENDING,
-};
 use ephemeral_spl_api::state::transfer_queue::{
     queue_peek_from_data, queue_pop_from_data, queue_views_checked, QueuedTransfer, QUEUE_SEED,
 };
-use pinocchio::{
-    address::address_eq,
-    cpi::{Seed, Signer},
+use ephemeral_spl_api::{
+    instruction::internal::{EXECUTE_READY_QUEUED_TRANSFER, MARK_TRANSFER_QUEUE_REFILL_PENDING},
+    require_n_accounts_with_ignored,
 };
+use ephemeral_spl_api::{require, require_eq_keys};
+use pinocchio::cpi::{Seed, Signer};
+use pinocchio::sysvars::{clock::Clock, Sysvar};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
-use pinocchio::{
-    sysvars::{clock::Clock, Sysvar},
-    Address,
-};
 use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
 
-use crate::{
-    assert_owner,
-    processor::{
-        initialize_rent_pda::RENT_PDA,
-        internal::transfer_queue_refill::{
-            queue_refill_state_address, refill_transfer_queue_amounts,
-            MARK_TRANSFER_QUEUE_REFILL_PENDING_COMPUTE_UNITS,
-            MARK_TRANSFER_QUEUE_REFILL_PENDING_ESCROW_INDEX,
-        },
+use crate::processor::{
+    initialize_rent_pda::RENT_PDA,
+    internal::transfer_queue_refill::{
+        queue_refill_state_address, refill_transfer_queue_amounts,
+        MARK_TRANSFER_QUEUE_REFILL_PENDING_COMPUTE_UNITS,
+        MARK_TRANSFER_QUEUE_REFILL_PENDING_ESCROW_INDEX,
     },
 };
 
@@ -75,11 +68,30 @@ pub fn process_transfer_queue_tick(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    if !instruction_data.is_empty() {
-        return Err(ProgramError::InvalidInstructionData);
-    }
+    require!(
+        instruction_data.is_empty(),
+        ProgramError::InvalidInstructionData
+    );
 
-    let tick_accounts = parse_tick_accounts(accounts)?;
+    let [
+        queue_info, // force multi-line
+        magic_fee_vault_info,
+        magic_context_info,
+        magic_program_info,
+    ] = require_n_accounts_with_ignored!(accounts, 4);
+
+    require_eq_keys!(
+        magic_program_info.address(),
+        &ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID,
+        ProgramError::IncorrectProgramId
+    );
+
+    let tick_accounts = TickAccounts {
+        queue_info,
+        magic_fee_vault_info,
+        magic_context_info,
+        magic_program_info,
+    };
     let program_id = crate::ID;
     let clock = Clock::get()?;
     let queue_state = read_queue_tick_state(tick_accounts.queue_info, &program_id)?;
@@ -112,28 +124,6 @@ fn derive_associated_token_address(
 }
 
 #[inline(always)]
-fn parse_tick_accounts(accounts: &[AccountView]) -> Result<TickAccounts<'_>, ProgramError> {
-    let [queue_info, magic_fee_vault_info, magic_context_info, magic_program_info, ..] = accounts
-    else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
-
-    if !address_eq(
-        magic_program_info.address(),
-        &ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID,
-    ) {
-        return Err(ProgramError::IncorrectProgramId);
-    }
-
-    Ok(TickAccounts {
-        queue_info,
-        magic_fee_vault_info,
-        magic_context_info,
-        magic_program_info,
-    })
-}
-
-#[inline(always)]
 fn read_queue_tick_state(
     queue_info: &AccountView,
     program_id: &ephemeral_spl_api::Address,
@@ -148,9 +138,11 @@ fn read_queue_tick_state(
         &[QUEUE_SEED, mint.as_ref(), validator.as_ref()],
         program_id,
     );
-    if !address_eq(&derived_queue, queue_info.address()) {
-        return Err(ProgramError::InvalidSeeds);
-    }
+    require_eq_keys!(
+        &derived_queue,
+        queue_info.address(),
+        ProgramError::InvalidSeeds
+    );
 
     Ok(QueueTickState {
         mint,
@@ -245,7 +237,10 @@ fn schedule_execute_ready_transfer(
     queued_transfer: &QueuedTransfer,
     program_id: &ephemeral_spl_api::Address,
 ) -> ProgramResult {
-    assert_owner!(tick_accounts.queue_info, program_id);
+    require!(
+        tick_accounts.queue_info.owned_by(program_id),
+        ProgramError::InvalidAccountOwner
+    );
 
     #[cfg(feature = "logging")]
     pinocchio_log::log!(
@@ -339,15 +334,13 @@ fn invoke_queue_standalone_action(
     ];
     let signers = [Signer::from(&signer_seeds)];
     let mut intent_bundle_data = [0_u8; MAGIC_INTENT_BUNDLE_DATA_LEN];
-    let derived_magic_fee_vault = Address::from(
-        magic_fee_vault_pda_from_validator(&queue_state.validator.to_bytes().into()).to_bytes(),
+    let derived_magic_fee_vault =
+        magic_fee_vault_pda_from_validator(&queue_state.validator.to_bytes().into());
+    require!(
+        derived_magic_fee_vault.to_bytes()
+            == tick_accounts.magic_fee_vault_info.address().to_bytes(),
+        ProgramError::InvalidSeeds
     );
-    if !address_eq(
-        &derived_magic_fee_vault,
-        tick_accounts.magic_fee_vault_info.address(),
-    ) {
-        return Err(ProgramError::InvalidSeeds);
-    }
 
     MagicIntentBundleBuilder::new(
         tick_accounts.queue_info.clone(),
@@ -368,9 +361,10 @@ fn pop_executed_transfer(
     // do not wait for actual payout. It is by design.
     let data = unsafe { queue_info.borrow_unchecked_mut() };
     let popped_transfer = queue_pop_from_data(data)?.ok_or(ProgramError::InvalidAccountData)?;
-    if popped_transfer.task_id != queued_transfer.task_id {
-        return Err(ProgramError::InvalidAccountData);
-    }
+    require!(
+        popped_transfer.task_id == queued_transfer.task_id,
+        ProgramError::InvalidAccountData
+    );
 
     #[cfg(feature = "logging")]
     {

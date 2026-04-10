@@ -9,13 +9,10 @@ use ephemeral_spl_api::state::transfer_queue::{
     queue_crank_task_id_from_data, queue_set_crank_task_id_from_data, queue_views_checked,
     TransferQueue,
 };
-use pinocchio::address::address_eq;
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::cpi::{invoke_signed_with_bounds, Signer};
 use pinocchio::instruction::{InstructionAccount, InstructionView};
-use pinocchio::Address;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
-
-use crate::{assert_owner, assert_signer};
 
 pub const CRANK_EXECUTION_INTERVAL_MILLIS: i64 = 500;
 
@@ -42,15 +39,18 @@ pub fn process_ensure_transfer_queue_crank(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    if !instruction_data.is_empty() {
-        return Err(ProgramError::InvalidInstructionData);
-    }
+    let [
+        payer_info, // force multi-line
+        queue_info,
+        magic_fee_vault_info,
+        magic_context_info,
+        magic_program_info,
+    ] = require_n_accounts!(accounts, 5);
 
-    let [payer_info, queue_info, magic_fee_vault_info, magic_context_info, magic_program_info, ..] =
-        accounts
-    else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
+    require!(
+        instruction_data.is_empty(),
+        ProgramError::InvalidInstructionData
+    );
 
     // TODO (snawaz): re-review this!
     //
@@ -60,15 +60,20 @@ pub fn process_ensure_transfer_queue_crank(
     //
     // What if attackers repeatedly invoke this current ix?
 
-    assert_signer!(payer_info);
-    assert_owner!(queue_info, &crate::ID);
+    require!(
+        payer_info.is_signer(),
+        ProgramError::MissingRequiredSignature
+    );
+    require!(
+        queue_info.owned_by(&crate::ID),
+        ProgramError::InvalidAccountOwner
+    );
 
-    if !address_eq(
+    require_eq_keys!(
         magic_program_info.address(),
         &ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID,
-    ) {
-        return Err(ProgramError::IncorrectProgramId);
-    }
+        ProgramError::IncorrectProgramId
+    );
 
     let (mint, bump, validator) = {
         let data = unsafe { queue_info.borrow_unchecked() };
@@ -77,14 +82,16 @@ pub fn process_ensure_transfer_queue_crank(
     };
 
     let derived_queue = TransferQueue::derive_pda(&mint, &validator, bump)?;
-    if !address_eq(&derived_queue, queue_info.address()) {
-        return Err(ProgramError::InvalidSeeds);
-    }
-    let derived_magic_fee_vault =
-        Address::from(magic_fee_vault_pda_from_validator(&validator.to_bytes().into()).to_bytes());
-    if !address_eq(&derived_magic_fee_vault, magic_fee_vault_info.address()) {
-        return Err(ProgramError::InvalidSeeds);
-    }
+    require_eq_keys!(
+        &derived_queue,
+        queue_info.address(),
+        ProgramError::InvalidSeeds
+    );
+    let derived_magic_fee_vault = magic_fee_vault_pda_from_validator(&validator.to_bytes().into());
+    require!(
+        derived_magic_fee_vault.to_bytes() == magic_fee_vault_info.address().to_bytes(),
+        ProgramError::InvalidSeeds
+    );
 
     let bump_seed = [bump];
     let queue_signer_seeds = TransferQueue::signer_seeds(&mint, &validator, &bump_seed);

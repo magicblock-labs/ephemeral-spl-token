@@ -9,15 +9,12 @@ use dlp_api::args::{
     MaybeEncryptedPubkey,
 };
 use dlp_api::compact::{self};
-use pinocchio::address::address_eq;
 
 use ephemeral_spl_api::state::transfer_queue::{queue_views, TransferQueue};
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts_with_ignored};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use solana_instruction::{AccountMeta, Instruction};
 
-use dlp_api::{args::PostDelegationActions, compact::ClearTextWithInsertable};
-
-use crate::assert_owner;
 use crate::processor::{
     internal::shuttle_delegation::{
         merge_shuttle_into_token_account_action,
@@ -27,6 +24,7 @@ use crate::processor::{
     },
     utils::read_mint_decimals,
 };
+use dlp_api::{args::PostDelegationActions, compact::ClearTextWithInsertable};
 
 const BASIS_POINTS_DENOMINATOR: u128 = 10_000;
 const TRANSFER_CHECKED_DISCRIMINATOR: u8 = 12;
@@ -63,18 +61,54 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let args = DepositAndDelegateShuttleWithPrivateTransferArgs::try_from_bytes(instruction_data)?;
-    if args.amount() == 0 {
-        return Err(ProgramError::InvalidInstructionData);
-    }
+    let [
+        payer_info, // force multi-line
+        rent_pda_info,
+        shuttle_info,
+        shuttle_eata_info,
+        shuttle_wallet_ata_info,
+        owner_info,
+        owner_program,
+        buffer_acc,
+        delegation_record,
+        delegation_metadata,
+        _delegation_program,
+        _associated_token_program,
+        system_program,
+        mint_info,
+        token_program_info,
+        global_vault_info,
+        owner_source_token_info,
+        vault_token_info,
+        queue_info,
+    ] = require_n_accounts_with_ignored!(accounts, 19);
 
-    let (common_accounts, queue_info) =
-        parse_deposit_and_delegate_shuttle_private_transfer_accounts(accounts)?;
+    let args = DepositAndDelegateShuttleWithPrivateTransferArgs::try_from_bytes(instruction_data)?;
+    require!(args.amount() != 0, ProgramError::InvalidInstructionData);
+
+    let common_accounts = DepositAndDelegateShuttleAccounts {
+        payer_info,
+        rent_pda_info,
+        shuttle_info,
+        shuttle_eata_info,
+        shuttle_wallet_ata_info,
+        owner_info,
+        owner_program,
+        buffer_acc,
+        delegation_record,
+        delegation_metadata,
+        system_program,
+        mint_info,
+        token_program_info,
+        global_vault_info,
+        owner_source_token_info,
+        vault_token_info,
+    };
 
     // require queue_info to already be delegated to the delegated program.
-    assert_owner!(
-        queue_info,
-        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID
+    require!(
+        queue_info.owned_by(&ephemeral_spl_api::program::DELEGATION_PROGRAM_ID),
+        ProgramError::InvalidAccountOwner
     );
 
     #[cfg(feature = "logging")]
@@ -113,9 +147,11 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
     };
     let derived_queue =
         TransferQueue::derive_pda(common_accounts.mint_info.address(), &validator, bump)?;
-    if !address_eq(&derived_queue, queue_info.address()) {
-        return Err(ProgramError::InvalidSeeds);
-    }
+    require_eq_keys!(
+        &derived_queue,
+        queue_info.address(),
+        ProgramError::InvalidSeeds
+    );
 
     let fee_amount = private_transfer_fee_amount(args.amount())?;
     let private_transfer_amount = args
@@ -185,9 +221,7 @@ impl DepositAndDelegateShuttleWithPrivateTransferArgs<'_> {
             1 + 8 + 8 + 4 // min len for mandatory (min_delay_ms + max_delay_ms + split) 
             ;
 
-        if bytes.len() < MIN_LEN {
-            return Err(ProgramError::InvalidInstructionData);
-        }
+        require!(bytes.len() >= MIN_LEN, ProgramError::InvalidInstructionData);
 
         Ok(DepositAndDelegateShuttleWithPrivateTransferArgs {
             raw: bytes.as_ptr(),
@@ -225,9 +259,8 @@ impl DepositAndDelegateShuttleWithPrivateTransferArgs<'_> {
 
         if data.is_empty() {
             return Ok(None);
-        } else if data.len() != 32 {
-            return Err(ProgramError::InvalidInstructionData);
         }
+        require!(data.len() == 32, ProgramError::InvalidInstructionData);
 
         let mut validator = [0u8; 32];
         unsafe {
@@ -254,18 +287,14 @@ impl DepositAndDelegateShuttleWithPrivateTransferArgs<'_> {
         let mut offset = 12; // index where first vardata starts
         let mut var = 0;
         while var < VARINDEX {
-            if offset >= self.len {
-                return Err(ProgramError::InvalidInstructionData);
-            }
+            require!(offset < self.len, ProgramError::InvalidInstructionData);
 
             let len = *self.raw.add(offset);
 
             offset += 1 + len as usize;
             var += 1;
         }
-        if offset >= self.len {
-            return Err(ProgramError::InvalidInstructionData);
-        }
+        require!(offset < self.len, ProgramError::InvalidInstructionData);
 
         let len = *self.raw.add(offset);
 
@@ -365,36 +394,4 @@ fn private_transfer_fee_action(
         ],
         data,
     }
-}
-
-fn parse_deposit_and_delegate_shuttle_private_transfer_accounts(
-    accounts: &[AccountView],
-) -> Result<(DepositAndDelegateShuttleAccounts<'_>, &AccountView), ProgramError> {
-    let [payer_info, rent_pda_info, shuttle_info, shuttle_eata_info, shuttle_wallet_ata_info, owner_info, owner_program, buffer_acc, delegation_record, delegation_metadata, _delegation_program, _associated_token_program, system_program, mint_info, token_program_info, global_vault_info, owner_source_token_info, vault_token_info, queue_info, ..] =
-        accounts
-    else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
-
-    Ok((
-        DepositAndDelegateShuttleAccounts {
-            payer_info,
-            rent_pda_info,
-            shuttle_info,
-            shuttle_eata_info,
-            shuttle_wallet_ata_info,
-            owner_info,
-            owner_program,
-            buffer_acc,
-            delegation_record,
-            delegation_metadata,
-            system_program,
-            mint_info,
-            token_program_info,
-            global_vault_info,
-            owner_source_token_info,
-            vault_token_info,
-        },
-        queue_info,
-    ))
 }

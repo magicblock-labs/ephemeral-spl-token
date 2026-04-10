@@ -1,11 +1,12 @@
 use ephemeral_rollups_pinocchio::intent_bundle::{
     ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
 };
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts_with_ignored};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
-use crate::{assert_owner, assert_signer, processor::internal::lamports_pda::derive_lamports_pda};
+use crate::processor::internal::lamports_pda::derive_lamports_pda;
 
 const DEFAULT_ESCROW_INDEX: u8 = u8::MAX;
 const INTENT_BUNDLE_DATA_BUF_SIZE: usize = 512;
@@ -30,29 +31,43 @@ pub fn process_undelegate_lamports_pda(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
+    let [
+        payer_info, // force multi-line
+        rent_pda_info,
+        lamports_pda_info,
+        destination_info,
+        magic_context,
+        magic_program,
+    ] = require_n_accounts_with_ignored!(accounts, 6);
+
     let salt = parse_salt(instruction_data)?;
-    let [payer_info, rent_pda_info, lamports_pda_info, destination_info, magic_context, magic_program, ..] =
-        accounts
-    else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
 
-    assert_signer!(payer_info);
-    assert_owner!(lamports_pda_info, &crate::ID);
+    require!(
+        payer_info.is_signer(),
+        ProgramError::MissingRequiredSignature
+    );
+    require!(
+        lamports_pda_info.owned_by(&crate::ID),
+        ProgramError::InvalidAccountOwner
+    );
 
-    if lamports_pda_info.data_len() != 0 {
-        return Err(ProgramError::InvalidAccountData);
-    }
+    require!(
+        lamports_pda_info.data_len() == 0,
+        ProgramError::InvalidAccountData
+    );
 
     let (derived_lamports_pda, _) =
         derive_lamports_pda(payer_info.address(), destination_info.address(), &salt);
-    if derived_lamports_pda != *lamports_pda_info.address() {
-        return Err(ProgramError::InvalidSeeds);
-    }
+    require_eq_keys!(
+        &derived_lamports_pda,
+        lamports_pda_info.address(),
+        ProgramError::InvalidSeeds
+    );
 
-    if lamports_pda_info.lamports() < Rent::get()?.try_minimum_balance(0)? {
-        return Err(ProgramError::InvalidArgument);
-    }
+    require!(
+        lamports_pda_info.lamports() >= Rent::get()?.try_minimum_balance(0)?,
+        ProgramError::InvalidArgument
+    );
 
     let close_handler_data = close_lamports_handler_data(DEFAULT_ESCROW_INDEX, &salt);
     let close_handler_accounts = [
@@ -102,9 +117,10 @@ fn close_lamports_handler_data(escrow_index: u8, salt: &[u8; 32]) -> [u8; 34] {
 }
 
 fn parse_salt(instruction_data: &[u8]) -> Result<[u8; 32], ProgramError> {
-    if instruction_data.len() != 32 {
-        return Err(ProgramError::InvalidInstructionData);
-    }
+    require!(
+        instruction_data.len() == 32,
+        ProgramError::InvalidInstructionData
+    );
 
     let mut salt = [0u8; 32];
     salt.copy_from_slice(instruction_data);

@@ -1,4 +1,5 @@
 use core::marker::PhantomData;
+use ephemeral_spl_api::{require, require_n_accounts_with_ignored};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
 use crate::processor::internal::token_vault::withdraw_ephemeral_ata_tokens;
@@ -23,13 +24,17 @@ pub fn process_withdraw_spl_tokens(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let args = WithdrawArgs::try_from_bytes(instruction_data)?;
+    let [
+        owner, // force multi-line
+        ephemeral_ata_info,
+        vault_info,
+        mint_info,
+        vault_source_token_acc,
+        user_dest_token_acc,
+        token_program_info,
+    ] = require_n_accounts_with_ignored!(accounts, 7);
 
-    let [owner, ephemeral_ata_info, vault_info, mint_info, vault_source_token_acc, user_dest_token_acc, token_program_info, ..] =
-        accounts
-    else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
+    let args = WithdrawArgs::try_from_bytes(instruction_data)?;
 
     withdraw_ephemeral_ata_tokens(
         owner,
@@ -61,9 +66,7 @@ pub struct WithdrawArgs<'a> {
 impl WithdrawArgs<'_> {
     #[inline]
     pub fn try_from_bytes(bytes: &[u8]) -> Result<WithdrawArgs<'_>, ProgramError> {
-        if bytes.len() != 8 {
-            return Err(ProgramError::InvalidInstructionData);
-        }
+        require!(bytes.len() == 8, ProgramError::InvalidInstructionData);
         Ok(WithdrawArgs {
             raw: bytes.as_ptr(),
             _data: PhantomData,

@@ -4,21 +4,16 @@ use ephemeral_rollups_pinocchio::pda::ephemeral_balance_pda_from_payer;
 use ephemeral_spl_api::state::transfer_queue_refill::{
     TransferQueueRefillState, QUEUE_REFILL_STATE_SEED,
 };
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
+use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::{rent::Rent, Sysvar};
-use pinocchio::{
-    address::address_eq,
-    cpi::{Seed, Signer},
-};
 use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
 use pinocchio_system::instructions::{Allocate, Assign, CreateAccount, Transfer};
 
-use crate::{
-    assert_owner, assert_signer,
-    processor::{
-        initialize_rent_pda::{RENT_PDA_BUMP, RENT_PDA_SEED},
-        internal::transfer_queue_refill::{
-            validate_queue_account, validate_queue_refill_state_address, validate_rent_pda,
-        },
+use crate::processor::{
+    initialize_rent_pda::{RENT_PDA_BUMP, RENT_PDA_SEED},
+    internal::transfer_queue_refill::{
+        validate_queue_account, validate_queue_refill_state_address, validate_rent_pda,
     },
 };
 
@@ -41,26 +36,39 @@ pub fn process_mark_transfer_queue_refill_pending(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let escrow_index = parse_escrow_index(instruction_data)?;
-    let [rent_pda_info, refill_state_info, system_program_info, source_program, escrow_authority, escrow_signer] =
-        accounts
-    else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
+    let [
+        rent_pda_info, // force multi-line
+        refill_state_info,
+        system_program_info,
+        source_program,
+        escrow_authority,
+        escrow_signer,
+    ] = require_n_accounts!(accounts, 6);
 
-    if system_program_info.address() != &pinocchio_system::ID {
-        return Err(ProgramError::IncorrectProgramId);
-    }
-    if !address_eq(source_program.address(), &crate::ID) {
-        return Err(ProgramError::IncorrectAuthority);
-    }
-    assert_signer!(escrow_signer);
+    let escrow_index = parse_escrow_index(instruction_data)?;
+
+    require_eq_keys!(
+        system_program_info.address(),
+        &pinocchio_system::ID,
+        ProgramError::IncorrectProgramId
+    );
+    require_eq_keys!(
+        source_program.address(),
+        &crate::ID,
+        ProgramError::IncorrectAuthority
+    );
+    require!(
+        escrow_signer.is_signer(),
+        ProgramError::MissingRequiredSignature
+    );
 
     let expected_escrow =
         ephemeral_balance_pda_from_payer(escrow_authority.address(), escrow_index);
-    if expected_escrow != *escrow_signer.address() {
-        return Err(ProgramError::InvalidSeeds);
-    }
+    require_eq_keys!(
+        &expected_escrow,
+        escrow_signer.address(),
+        ProgramError::InvalidSeeds
+    );
 
     validate_queue_account(escrow_authority)?;
     let (_, refill_state_bump) =
@@ -75,9 +83,10 @@ pub fn process_mark_transfer_queue_refill_pending(
 
 #[inline(always)]
 fn parse_escrow_index(instruction_data: &[u8]) -> Result<u8, ProgramError> {
-    if instruction_data.len() != 1 {
-        return Err(ProgramError::InvalidInstructionData);
-    }
+    require!(
+        instruction_data.len() == 1,
+        ProgramError::InvalidInstructionData
+    );
 
     Ok(instruction_data[0])
 }
@@ -138,6 +147,9 @@ fn ensure_queue_refill_state_exists(
         .invoke_signed(&[refill_state_signer])?;
     }
 
-    assert_owner!(refill_state_info, &crate::ID);
+    require!(
+        refill_state_info.owned_by(&crate::ID),
+        ProgramError::InvalidAccountOwner
+    );
     Ok(())
 }

@@ -5,10 +5,12 @@ use ephemeral_rollups_pinocchio::acl::{
     pda::permission_pda_from_permissioned_account,
     types::{Member, MemberFlags, MembersArgs},
 };
-use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_initialized};
-use pinocchio::{address::address_eq, error::ProgramError, AccountView, ProgramResult};
-
-use crate::assert_signer;
+use ephemeral_spl_api::{require, require_eq_keys};
+use ephemeral_spl_api::{
+    require_n_accounts_with_ignored,
+    state::{ephemeral_ata::EphemeralAta, load_initialized},
+};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
 ///
 /// Executes on:
@@ -28,19 +30,26 @@ pub fn process_create_ephemeral_ata_permission(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
+    let [
+        ephemeral_ata_info, // force multi-line
+        permission_info,
+        payer_info,
+        system_program,
+        permission_program,
+    ] = require_n_accounts_with_ignored!(accounts, 5);
+
     let args = CreateEphemeralAtaPermission::try_from_bytes(instruction_data)?;
 
-    let [ephemeral_ata_info, permission_info, payer_info, system_program, permission_program, ..] =
-        accounts
-    else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
+    require!(
+        payer_info.is_signer(),
+        ProgramError::MissingRequiredSignature
+    );
 
-    assert_signer!(payer_info);
-
-    if *permission_program.address() != PERMISSION_PROGRAM_ID {
-        return Err(ProgramError::InvalidAccountData);
-    }
+    require_eq_keys!(
+        &PERMISSION_PROGRAM_ID,
+        permission_program.address(),
+        ProgramError::InvalidAccountData
+    );
 
     let ephemeral_ata =
         load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
@@ -50,15 +59,18 @@ pub fn process_create_ephemeral_ata_permission(
     // Valid in 2 cases:
     // - Payer is the owner of the eata
     // - Permisionless, but permission are default (only readable for eata owner)
-    if ephemeral_ata.owner != *payer_info.address() && flag_byte != 0 {
-        return Err(ProgramError::IncorrectAuthority);
-    }
+    require!(
+        ephemeral_ata.owner == *payer_info.address() || flag_byte == 0,
+        ProgramError::IncorrectAuthority
+    );
 
     let expected_permission =
         permission_pda_from_permissioned_account(ephemeral_ata_info.address());
-    if !address_eq(&expected_permission, permission_info.address()) {
-        return Err(ProgramError::InvalidSeeds);
-    }
+    require_eq_keys!(
+        &expected_permission,
+        permission_info.address(),
+        ProgramError::InvalidSeeds
+    );
 
     // Idempotent create: if the permission account already exists, return Ok(())
     // for safe transaction batching rather than treating it as an error.
@@ -108,9 +120,7 @@ pub struct CreateEphemeralAtaPermission<'a> {
 impl CreateEphemeralAtaPermission<'_> {
     #[inline]
     pub fn try_from_bytes(bytes: &[u8]) -> Result<CreateEphemeralAtaPermission<'_>, ProgramError> {
-        if bytes.is_empty() {
-            return Err(ProgramError::InvalidInstructionData);
-        }
+        require!(!bytes.is_empty(), ProgramError::InvalidInstructionData);
 
         Ok(CreateEphemeralAtaPermission {
             raw: bytes.as_ptr(),

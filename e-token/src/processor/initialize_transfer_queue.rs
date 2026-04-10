@@ -4,10 +4,11 @@ use ephemeral_rollups_pinocchio::acl::{
     pda::permission_pda_from_permissioned_account, types::MembersArgs,
 };
 use ephemeral_spl_api::consts::TRANSFER_QUEUE_INITIAL_BUFFER_LAMPORTS;
+use ephemeral_spl_api::require_n_accounts;
 use ephemeral_spl_api::state::transfer_queue::{
     capacity_from_data_len, header_len, init_queue, item_len, queue_views_checked, TransferQueue,
 };
-use pinocchio::address::address_eq;
+use ephemeral_spl_api::{require, require_eq_keys};
 use pinocchio::cpi::Signer;
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
@@ -39,13 +40,17 @@ pub fn process_initialize_transfer_queue(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let args = InitializeTransferQueueArgs::try_from_bytes(instruction_data)?;
+    let [
+        payer_info, // force multi-line
+        queue_info,
+        queue_permission_info,
+        mint_info,
+        validator_info,
+        system_program_info,
+        permission_program_info,
+    ] = require_n_accounts!(accounts, 7);
 
-    let [payer_info, queue_info, queue_permission_info, mint_info, validator_info, system_program_info, permission_program_info, ..] =
-        accounts
-    else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
+    let args = InitializeTransferQueueArgs::try_from_bytes(instruction_data)?;
 
     let (requested_items, queue_size) = if let Some(items) = args.requested_items() {
         (items, header_len() + item_len() * items as usize)
@@ -55,29 +60,36 @@ pub fn process_initialize_transfer_queue(
             DEFAULT_TRANSFER_QUEUE_SIZE_BYTES as usize,
         )
     };
-    if requested_items == 0 {
-        return Err(ProgramError::InvalidInstructionData);
-    };
+    require!(requested_items != 0, ProgramError::InvalidInstructionData);
 
     let program_id = crate::ID;
     let (derived_queue, bump) =
         TransferQueue::find_pda(mint_info.address(), validator_info.address());
-    if !address_eq(&derived_queue, queue_info.address()) {
-        return Err(ProgramError::InvalidSeeds);
-    }
+    require_eq_keys!(
+        &derived_queue,
+        queue_info.address(),
+        ProgramError::InvalidSeeds
+    );
 
     // permission_program_info is needed by CreatePermissionCpiBuilder
-    if !address_eq(permission_program_info.address(), &PERMISSION_PROGRAM_ID) {
-        return Err(ProgramError::IncorrectProgramId);
-    }
+    require_eq_keys!(
+        &PERMISSION_PROGRAM_ID,
+        permission_program_info.address(),
+        ProgramError::IncorrectProgramId
+    );
+
     let expected_permission = permission_pda_from_permissioned_account(queue_info.address());
-    if !address_eq(&expected_permission, queue_permission_info.address()) {
-        return Err(ProgramError::InvalidSeeds);
-    }
+    require_eq_keys!(
+        &expected_permission,
+        queue_permission_info.address(),
+        ProgramError::InvalidSeeds
+    );
+
     let queue_permission_exists = queue_permission_info.lamports() > 0;
-    if queue_permission_exists && !queue_permission_info.owned_by(&PERMISSION_PROGRAM_ID) {
-        return Err(ProgramError::IncorrectProgramId);
-    }
+    require!(
+        !queue_permission_exists || queue_permission_info.owned_by(&PERMISSION_PROGRAM_ID),
+        ProgramError::IncorrectProgramId
+    );
 
     let rent = Rent::get()?;
     let target_lamports = rent
@@ -86,12 +98,11 @@ pub fn process_initialize_transfer_queue(
         .ok_or(ProgramError::ArithmeticOverflow)?;
 
     if !queue_info.owned_by(&program_id) {
-        if queue_info.lamports() > 0 {
-            return Err(ProgramError::IllegalOwner);
-        }
-        if !payer_info.is_signer() {
-            return Err(ProgramError::MissingRequiredSignature);
-        }
+        require!(queue_info.lamports() == 0, ProgramError::IllegalOwner);
+        require!(
+            payer_info.is_signer(),
+            ProgramError::MissingRequiredSignature
+        );
 
         let bump_seed = [bump];
         let signer_seeds =
@@ -109,9 +120,10 @@ pub fn process_initialize_transfer_queue(
     }
 
     if !queue_permission_exists {
-        if !payer_info.is_signer() {
-            return Err(ProgramError::MissingRequiredSignature);
-        }
+        require!(
+            payer_info.is_signer(),
+            ProgramError::MissingRequiredSignature
+        );
         CreatePermissionCpiBuilder::new(
             queue_info,
             queue_permission_info,
@@ -139,20 +151,21 @@ pub fn process_initialize_transfer_queue(
     }
 
     let data_len = queue_info.data_len();
-    if capacity_from_data_len(data_len) == 0 {
-        return Err(ProgramError::InvalidAccountData);
-    }
+    require!(
+        capacity_from_data_len(data_len) != 0,
+        ProgramError::InvalidAccountData
+    );
 
     let data = unsafe { queue_info.borrow_unchecked_mut() };
     init_queue(data, bump, *mint_info.address(), *validator_info.address())?;
 
     let (header, _) = queue_views_checked(data)?;
-    if header.bump != bump
-        || !address_eq(&header.mint, mint_info.address())
-        || !address_eq(&header.validator, validator_info.address())
-    {
-        return Err(ProgramError::InvalidAccountData);
-    }
+    require!(
+        header.bump == bump
+            && header.mint == *mint_info.address()
+            && header.validator == *validator_info.address(),
+        ProgramError::InvalidAccountData
+    );
 
     Ok(())
 }
@@ -175,9 +188,10 @@ pub struct InitializeTransferQueueArgs<'a> {
 impl InitializeTransferQueueArgs<'_> {
     #[inline]
     pub fn try_from_bytes(bytes: &[u8]) -> Result<InitializeTransferQueueArgs<'_>, ProgramError> {
-        if !bytes.is_empty() && bytes.len() != 4 {
-            return Err(ProgramError::InvalidInstructionData);
-        }
+        require!(
+            bytes.is_empty() || bytes.len() == 4,
+            ProgramError::InvalidInstructionData
+        );
 
         Ok(InitializeTransferQueueArgs {
             raw: bytes.as_ptr(),
