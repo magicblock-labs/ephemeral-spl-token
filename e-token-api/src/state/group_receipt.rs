@@ -1,12 +1,14 @@
+use core::num::{NonZeroU32, NonZeroUsize};
 use bytemuck::{Pod, Zeroable};
 use pinocchio::error::ProgramError;
 use pinocchio::{AccountView, ProgramResult};
 use solana_signature::Signature;
 
+// TODO(edwin): should move in e-token, too clumsy
 pub struct GroupReceipt<'a> {
     header: &'a mut GroupReceiptHeader,
     items_data: &'a mut [u8],
-    items_capacity: usize,
+    capacity: usize
 }
 
 impl<'a> GroupReceipt<'a> {
@@ -24,12 +26,13 @@ impl<'a> GroupReceipt<'a> {
         let header = GroupReceiptHeader::from_data_mut(header_data)?;
 
         // Normalize and store items data
-        let items_capacity = Self::calculate_items_capacity(items_data);
-        let items_data = &mut items_data[..items_capacity * TransferReceipt::size()];
+        let capacity = header.splits as usize;
+        let length = header.transfers_completed as usize;
+        let items_data = &mut items_data[..length * TransferReceipt::size()];
         Ok(Self {
             header,
             items_data,
-            items_capacity,
+            capacity
         })
     }
 
@@ -45,60 +48,76 @@ impl<'a> GroupReceipt<'a> {
     }
 
     /// Records transfer, adding item and updating state accordingly
-    pub fn record_transfer(&mut self, item: TransferReceipt) -> ProgramResult {
-        if self.transfers_left() > 0 {
+    pub fn record_transfer(&mut self, item: TransferReceipt) -> Result<(), TransferReceipt> {
+        // If current length >= capacity we can't push without extending capacity
+        let length = self.header.transfers_completed as usize;
+        if length < self.capacity {
             Ok(())
         } else {
-            Err(ProgramError::InvalidInstructionData)
+            Err(item)
         }?;
+
         let item_start = self.initialized_items_bytes();
         let item_range = item_start..item_start + TransferReceipt::size();
         self.items_data[item_range].copy_from_slice(bytemuck::bytes_of(&item));
-        self.header.transfers_left -= 1;
+        self.header.transfers_completed -= 1;
 
         Ok(())
     }
 
+    /// Increase capacity `by` some number
+    /// Note this shall
+
+    /// Resize group receipt
+    /// TODO(edwin): maybe move it into e-token and handle CPIs too?
+    pub fn resize(&mut self, size: usize) -> ProgramResult {
+        todo!()
+    }
+
+
     fn initialized_items_bytes(&self) -> usize {
-        let initialized_items = self.items_capacity - self.transfers_left() as usize;
-        initialized_items * TransferReceipt::size()
+        self.header.transfers_completed as usize * TransferReceipt::size()
     }
 
     pub fn id(&self) -> u32 {
         self.header.id
     }
 
-    pub fn transfers_left(&self) -> u32 {
-        self.header.transfers_left
-    }
+    // pub fn transfers_left(&self) -> u32 {
+    //     self.header.transfers_left
+    // }
 
-    pub fn calculate_items_capacity(data: &[u8]) -> usize {
+    fn calculate_items_capacity(data: &[u8]) -> usize {
         data.len() / TransferReceipt::size()
     }
 }
 
-/// On-chain record tracking how many transfers in a group remain to be
-/// confirmed.  One account is created per (queue, group_id) pair and is
-/// closed once all splits have been acknowledged.
+/// Header for group receipts
+/// It contains information in how many "sub-transfers" user split his transfer
+/// Note: this is plain data representation, `splits` may be 0(None),
+/// while `transfers_completed` can be > 0.Partialz initializationbacks
 #[repr(C)]
 #[derive(Copy, Clone, Pod, Zeroable)]
 pub struct GroupReceiptHeader {
     /// Group ID
-    pub id: u32,
+    id: u32,
+    /// Number of splits
+    splits: u32,
     /// How many transfers in this group are still outstanding.
-    pub transfers_left: u32,
+    transfers_completed: u32,
     /// PDA bump for receipt.
-    pub bump: u8,
+    bump: u8,
     /// Reserved for future fields without migration.
-    pub _reserved: [u8; 7],
+    _reserved: [u8; 7],
 }
 
 impl GroupReceiptHeader {
     pub fn new(id: u32, bump: u8, splits: u32) -> Self {
         Self {
             id,
-            transfers_left: splits,
+            splits,
             bump,
+            transfers_completed: 0,
             _reserved: [0; 7],
         }
     }
@@ -117,12 +136,14 @@ impl GroupReceiptHeader {
         self.id
     }
 
-    pub fn transfers_left(&self) -> u32 {
-        self.transfers_left
-    }
-
     pub fn bump(&self) -> u8 {
         self.bump
+    }
+
+    /// Returns number of splits if initialized
+    /// Otherwise returns `None`
+    pub fn splits(&self) -> Option<NonZeroU32> {
+        NonZeroU32::new(self.splits)
     }
 
     pub const fn size() -> usize {

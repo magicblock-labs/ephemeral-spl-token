@@ -16,6 +16,7 @@ pub mod execute_ready_queued_transfer;
 pub mod execute_transfer_callback;
 pub mod initialize_ephemeral_ata;
 pub mod initialize_global_vault;
+pub mod initialize_group_receipt;
 pub mod initialize_shuttle_ephemeral_ata;
 pub mod initialize_transfer_queue;
 pub mod lamports_pda;

@@ -1,8 +1,8 @@
-use core::{convert::TryFrom, marker::PhantomData};
-
 use crate::processor::deposit_spl_tokens::transfer_to_vault_for_mint;
 use crate::processor::utils::{read_mint_decimals, validate_token_account};
 use crate::{assert_associated_token_address, assert_owner, assert_signer};
+use core::{convert::TryFrom, marker::PhantomData};
+use ephemeral_rollups_pinocchio::crank::ScheduleCrankCpi;
 #[cfg(feature = "logging")]
 use ephemeral_spl_api::state::transfer_queue::queue_peek_next_task_id_from_data;
 use ephemeral_spl_api::state::transfer_queue::{
@@ -190,6 +190,15 @@ pub fn process_deposit_and_queue_transfer(
     );
 
     Ok(())
+}
+
+fn create_group_receipt(queue_info: &AccountView, magic_program: &AccountView) -> ProgramResult {
+    todo!()
+    // let schedule_cpi = ScheduleCrankCpi::new(
+    //     queue_info.clone(),
+    //     magic_program.clone(),
+    //
+    // )
 }
 
 pub struct DepositAndQueueTransferArgs<'a> {

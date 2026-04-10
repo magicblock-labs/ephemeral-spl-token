@@ -19,8 +19,6 @@ pub struct TransferCallbackArgs {
     amount: u64,
     /// Group ID of a transfer
     group_id: u32,
-    /// Number of splits in group
-    splits: u32,
     // Flags
     _flag: u8,
 }
@@ -30,14 +28,11 @@ impl TransferCallbackArgs {
         let mut cur = 0;
         let amount = read_u64_le(data, &mut cur).ok_or(ProgramError::InvalidInstructionData)?;
         let group_id = read_u32_le(data, &mut cur).ok_or(ProgramError::InvalidAccountData)?;
-        let splits = 2;
-        // let splits = read_u32_le(data, &mut cur).ok_or(ProgramError::InvalidAccountData)?;
         let flag = read_u8(data, &mut cur).ok_or(ProgramError::InvalidInstructionData)?;
 
         Ok(Self {
             amount,
             group_id,
-            splits,
             _flag: flag,
         })
     }
@@ -179,7 +174,7 @@ fn handle_group_receipt(
 }
 
 #[inline(never)]
-fn log_group_receipt(group_receipt: &GroupReceipt) {
+pub(crate) fn log_group_receipt(group_receipt: &GroupReceipt) {
     pinocchio_log::log!("All transfers complete for group id:{}", group_receipt.id());
     if let Ok(items) = group_receipt.items() {
         for (i, item) in items.iter().enumerate() {
@@ -347,14 +342,14 @@ impl<'a> MagicResponseView<'a> {
 }
 
 #[inline(always)]
-fn read_u8(src: &[u8], cur: &mut usize) -> Option<u8> {
+pub(crate) fn read_u8(src: &[u8], cur: &mut usize) -> Option<u8> {
     let val = *src.get(*cur)?;
     *cur += 1;
     Some(val)
 }
 
 #[inline(always)]
-fn read_u32_le(src: &[u8], cur: &mut usize) -> Option<u32> {
+pub(crate) fn read_u32_le(src: &[u8], cur: &mut usize) -> Option<u32> {
     let end = cur.checked_add(4)?;
     if end > src.len() {
         return None;
@@ -365,7 +360,7 @@ fn read_u32_le(src: &[u8], cur: &mut usize) -> Option<u32> {
 }
 
 #[inline(always)]
-fn read_u64_le(src: &[u8], cur: &mut usize) -> Option<u64> {
+pub(crate) fn read_u64_le(src: &[u8], cur: &mut usize) -> Option<u64> {
     let end = cur.checked_add(8)?;
     if end > src.len() {
         return None;
@@ -385,7 +380,7 @@ fn read_u64_le(src: &[u8], cur: &mut usize) -> Option<u64> {
 }
 
 #[inline(always)]
-fn read_slice<'a>(src: &'a [u8], cur: &mut usize, len: usize) -> Option<&'a [u8]> {
+pub(crate) fn read_slice<'a>(src: &'a [u8], cur: &mut usize, len: usize) -> Option<&'a [u8]> {
     let end = cur.checked_add(len)?;
     let slice = src.get(*cur..end)?;
     *cur = end;
