@@ -13,21 +13,27 @@ use {
 const LEGACY_GLOBAL_VAULT_LEN: usize = core::mem::size_of::<pinocchio::Address>();
 const GLOBAL_VAULT_V0_LEN: usize = 64;
 
+///
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [writable]          - PDA     : Global vault account (PDA derived from [mint]).
+///  1: [signer]            - Keypair : Payer.
+///  2: []                  - SPL     : Mint.
+///  3: [writable]          - PDA     : Vault Ephemeral ATA account (PDA derived from [vault, mint]).
+///  4: [writable]          - SPL     : Vault associated token account.
+///  5: []                  - SPL     : Token program.
+///  6: []                  - SPL     : Associated token program.
+///  7: []                  - Builtin : System program.
+///
+/// Instruction Data: None
+///
 #[inline(always)]
 pub fn process_initialize_global_vault(
     accounts: &[AccountView],
     _instruction_data: &[u8],
 ) -> ProgramResult {
-    // Expected accounts:
-    // 0. [writable] Global Vault account (PDA derived from [mint])
-    // 1. [signer]   Payer (funds the account creation)
-    // 2. []         Mint  (seed)
-    // 3. [writable] Vault Ephemeral ATA account (PDA derived from [vault, mint])
-    // 4. [writable] Vault associated token account
-    // 5. []         Token program
-    // 6. []         Associated token program
-    // 7. []         System program
-
     let [vault_info, payer_info, mint_info, vault_ephemeral_ata_info, vault_token_acc_info, token_program_info, associated_token_program_info, system_program_info, ..] =
         accounts
     else {

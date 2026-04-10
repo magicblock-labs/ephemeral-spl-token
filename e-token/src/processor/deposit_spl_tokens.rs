@@ -10,20 +10,26 @@ use {
 use crate::assert_owner;
 use crate::processor::internal::token_vault::transfer_to_vault_for_mint;
 
+///
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [writable]          - PDA     : Ephemeral ATA data account.
+///  1: []                  - PDA     : Global vault account.
+///  2: []                  - SPL     : Mint account.
+///  3: [writable]          - SPL     : User source token account.
+///  4: [writable]          - SPL     : Vault destination token account.
+///  5: [signer]            - Keypair : User authority.
+///  6: []                  - SPL     : Token program.
+///
+/// Instruction Data: DepositArgs
+///
 #[inline(always)]
 pub fn process_deposit_spl_tokens(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    // Expected accounts:
-    // 0. [writable] Ephemeral ATA data account (standard EATA or shuttle EATA)
-    // 1. []         Global Vault data account (PDA [mint])
-    // 2. []         Mint account (readonly)
-    // 3. [writable] User source token account (SPL Token)
-    // 4. [writable] Vault destination token account (SPL Token)
-    // 5. [signer]   User authority (owner of source token account)
-    // 6. []         Token program
-
     let args = DepositArgs::try_from_bytes(instruction_data)?;
 
     let [ephemeral_ata_info, vault_info, mint_info, user_source_token_acc, vault_token_acc, user_authority, token_program_info, ..] =

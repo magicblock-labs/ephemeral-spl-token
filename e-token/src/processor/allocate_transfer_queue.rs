@@ -8,15 +8,21 @@ use crate::assert_owner;
 
 pub const MAX_ITEMS_PER_REALLOC: usize = 10_240 / item_len();
 
+///
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [writable]          - PDA     : Transfer queue account (PDA derived from [QUEUE_SEED, mint, validator]).
+///  1: []                  - Builtin : System program.
+///
+/// Instruction Data: None
+///
 #[inline(always)]
 pub fn process_allocate_transfer_queue(
     accounts: &[AccountView],
     _instruction_data: &[u8],
 ) -> ProgramResult {
-    // Expected accounts:
-    // 1. [writable] Transfer queue account (PDA derived from [QUEUE_SEED, mint, validator])
-    // 2. []         System program
-
     let [queue_info, _system_program_info, ..] = accounts else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };

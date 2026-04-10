@@ -9,23 +9,29 @@ use pinocchio::{
 
 use crate::assert_signer;
 
+///
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [signer]            - Keypair : Payer (authority).
+///  1: [writable]          - PDA     : Ephemeral ATA account (permissioned account).
+///  2: []                  - Program : Permission program (ACL).
+///  3: [writable]          - PDA     : Permission PDA (derived from ["permission:", ephemeral_ata]).
+///  4: []                  - Builtin : System program.
+///  5: [writable]          - PDA     : Delegation buffer PDA.
+///  6: [writable]          - PDA     : Delegation record PDA.
+///  7: [writable]          - PDA     : Delegation metadata PDA.
+///  8: []                  - Program : Delegation program.
+///  9: []                  - Any     : Validator.
+///
+/// Instruction Data: None
+///
 #[inline(always)]
 pub fn process_delegate_ephemeral_ata_permission(
     accounts: &[AccountView],
     _instruction_data: &[u8],
 ) -> ProgramResult {
-    // Expected accounts:
-    // 0. [signer]   Payer (also authority)
-    // 1. [writable] Ephemeral ATA account (PDA derived from [owner, mint]) - signer via seeds
-    // 2. []         Permission program (ACL)
-    // 3. [writable] Permission PDA (derived from ["permission:", ephemeral_ata])
-    // 4. []         System program
-    // 5. [writable] Delegation buffer PDA (derived from [permission, permission_program])
-    // 6. [writable] Delegation record PDA
-    // 7. [writable] Delegation metadata PDA
-    // 8. []         Delegation program
-    // 9. []         Validator
-
     let [payer_info, ephemeral_ata_info, permission_program, permission_info, system_program, delegation_buffer, delegation_record, delegation_metadata, delegation_program, validator, ..] =
         accounts
     else {

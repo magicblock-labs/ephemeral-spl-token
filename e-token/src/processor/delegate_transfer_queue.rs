@@ -5,20 +5,27 @@ use pinocchio::{address::address_eq, error::ProgramError, AccountView, ProgramRe
 
 use crate::assert_signer;
 
+///
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [signer]            - Keypair : Payer.
+///  1: [writable]          - PDA     : Transfer queue account (PDA derived from [QUEUE_SEED, mint, validator]).
+///  2: []                  - SPL     : Mint account.
+///  3: []                  - Program : Owner program (this program).
+///  4: [writable]          - PDA     : Buffer account.
+///  5: [writable]          - PDA     : Delegation record account.
+///  6: [writable]          - PDA     : Delegation metadata account.
+///  7: []                  - Program : Delegation program.
+///  8: []                  - Builtin : System program.
+///
+/// Instruction Data: None
+///
 pub fn process_delegate_transfer_queue(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    // Expected accounts:
-    // 0. [signer]   Payer
-    // 1. [writable] Transfer queue PDA derived from [QUEUE_SEED, mint, validator]
-    // 2. []         Mint account
-    // 3. []         Owner program (this program)
-    // 4. [writable] Buffer account
-    // 5. [writable] Delegation record account
-    // 6. [writable] Delegation metadata account
-    // 7. []         Delegation program
-    // 8. []         System program
     if !instruction_data.is_empty() {
         return Err(ProgramError::InvalidInstructionData);
     }

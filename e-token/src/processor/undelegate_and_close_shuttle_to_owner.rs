@@ -15,20 +15,23 @@ const DEFAULT_ESCROW_INDEX: u8 = u8::MAX;
 const INTENT_BUNDLE_DATA_BUF_SIZE: usize = 1536;
 const CLOSE_SHUTTLE_ATA_COMPUTE_UNITS: u32 = 100_000;
 
-/// Commit and undelegate shuttle wallet ATA, then schedule a post-undelegate
-/// action that closes shuttle wallet ATA and shuttle EATA if amount == 0, then
-/// closes shuttle metadata account and sends rent to the stored reimbursement recipient.
 ///
-/// Expected accounts (in order used below):
-/// 0. [signer]   Executor payer
-/// 1. [writable] Rent reimbursement account (must match shuttle.payer)
-/// 2. []         Shuttle metadata account (PDA [owner, mint, shuttle_id])
-/// 3. []         Shuttle EATA account
-/// 4. [writable] Shuttle wallet ATA account (ATA for [shuttle_metadata, mint])
-/// 5. [writable] Refund token ATA
-/// 6. []         Token program account
-/// 7. [writable] Magic context account
-/// 8. []         Magic program
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [signer]            - Keypair : Executor payer.
+///  1: [writable]          - Any     : Rent reimbursement account (must match `shuttle.payer`).
+///  2: []                  - PDA     : Shuttle metadata account (PDA derived from [owner, mint, shuttle_id]).
+///  3: []                  - PDA     : Shuttle EATA account.
+///  4: [writable]          - SPL     : Shuttle wallet ATA account (ATA for [shuttle_metadata, mint]).
+///  5: [writable]          - SPL     : Refund token ATA.
+///  6: []                  - SPL     : Token program account.
+///  7: [writable]          - Any     : Magic context account.
+///  8: []                  - Program : Magic program.
+///
+/// Instruction Data: optional escrow_index (u8)
+///
 pub fn process_undelegate_and_close_shuttle_to_owner(
     accounts: &[AccountView],
     instruction_data: &[u8],

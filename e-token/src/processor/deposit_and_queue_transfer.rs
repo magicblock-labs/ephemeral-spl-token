@@ -21,21 +21,25 @@ const MILLIS_PER_SECOND: u64 = 1_000;
 ///
 /// Executes on: ER only.
 ///
+/// Accounts:
+///
+///  0: [writable]          - PDA     : Transfer queue account (PDA derived from [QUEUE_SEED, mint, validator]).
+///  1: []                  - PDA     : Global vault account (PDA derived from [mint]).
+///  2: []                  - SPL     : Mint account.
+///  3: [writable]          - SPL     : User source token account.
+///  4: [writable]          - SPL     : Vault destination token account.
+///  5: []                  - Any     : Destination owner or legacy destination ATA.
+///  6: [signer]            - Keypair : Sender authority.
+///  7: []                  - SPL     : Token program.
+///  8: [writable]          - SPL     : Reimbursement token account.
+///
+/// Instruction Data: DepositAndQueueTransferArgs
+///
 #[inline(always)]
 pub fn process_deposit_and_queue_transfer(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    // Expected accounts:
-    // 0. [writable]            Transfer queue PDA derived from [QUEUE_SEED, mint, validator]
-    // 1. []                    Global vault PDA derived from [mint]
-    // 2. []                    Mint account
-    // 3. [writable]            User source token account
-    // 4. [writable]            Vault destination token account
-    // 5. []                    Destination owner (preferred) or legacy destination ATA
-    // 6. [signer]              Sender authority
-    // 7. []                    Token program
-    // 8. [writable]            Reimbursement token account
     let args = DepositAndQueueTransferArgs::try_from_bytes(instruction_data)?;
 
     let [queue_info, vault_info, mint_info, user_source_token_acc, vault_token_acc, destination_info, user_authority, token_program_info, reimbursement_token_info, ..] =

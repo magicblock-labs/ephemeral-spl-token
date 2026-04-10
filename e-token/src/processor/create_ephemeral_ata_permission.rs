@@ -10,20 +10,24 @@ use pinocchio::{address::address_eq, error::ProgramError, AccountView, ProgramRe
 
 use crate::assert_signer;
 
+///
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [writable]          - PDA     : Ephemeral ATA account (PDA derived from [owner, mint]).
+///  1: [writable]          - PDA     : Permission PDA (derived from ["permission:", ephemeral_ata]).
+///  2: [signer]            - Keypair : Payer (must match the Ephemeral ATA owner).
+///  3: []                  - Builtin : System program.
+///  4: []                  - Program : Permission program (ACL).
+///
+/// Instruction Data: CreateEphemeralAtaPermission
+///
 #[inline(always)]
 pub fn process_create_ephemeral_ata_permission(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    // Expected accounts:
-    // 0. [writable] Ephemeral ATA account (PDA derived from [owner, mint]) - signer via seeds
-    // 1. [writable] Permission PDA (derived from ["permission:", ephemeral_ata])
-    // 2. [signer]   Payer (must match Ephemeral ATA owner)
-    // 3. []         System program
-    // 4. []         Permission program (ACL)
-
-    // Instruction data:
-    // [0] MemberFlags bitfield encoded via MemberFlags::to_acl_flag_byte.
     let args = CreateEphemeralAtaPermission::try_from_bytes(instruction_data)?;
 
     let [ephemeral_ata_info, permission_info, payer_info, system_program, permission_program, ..] =

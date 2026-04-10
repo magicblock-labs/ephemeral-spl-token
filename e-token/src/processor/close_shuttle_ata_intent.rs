@@ -12,23 +12,26 @@ use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_token_2022::instructions::CloseAccount;
 const DLP_EPHEMERAL_BALANCE_TAG: &[u8] = b"balance";
 
-/// Post-undelegate handler that first withdraws any remaining shuttle EATA
-/// balance through the shared vault flow, then closes shuttle wallet ATA,
-/// shuttle EATA, and shuttle metadata, refunding rent to the stored payer.
 ///
-/// Expected accounts:
-/// 0. [writable] Shuttle rent reimbursement account (must equal `ShuttleMetadata.payer`)
-/// 1. [writable] Shuttle metadata account
-/// 2. [writable] Shuttle EATA account (PDA [shuttle_metadata, mint])
-/// 3. [writable] Shuttle wallet ATA account
-/// 4. [writable] Destination token account
-/// 5. []         Mint account
-/// 6. []         Global Vault account
-/// 7. [writable] Vault source token account
-/// 8. []         Token program account
-/// 9. []         Source program (must equal this program)
-/// 10. []        Escrow authority
-/// 11. [signer]  Escrow signer PDA
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [writable]          - Any     : Shuttle rent reimbursement account (must equal `ShuttleMetadata.payer`).
+///  1: [writable]          - PDA     : Shuttle metadata account.
+///  2: [writable]          - PDA     : Shuttle EATA account (PDA derived from [shuttle_metadata, mint]).
+///  3: [writable]          - SPL     : Shuttle wallet ATA account.
+///  4: [writable]          - SPL     : Destination token account.
+///  5: []                  - SPL     : Mint account.
+///  6: []                  - PDA     : Global vault account.
+///  7: [writable]          - SPL     : Vault source token account.
+///  8: []                  - SPL     : Token program account.
+///  9: []                  - Program : Source program (must equal this program).
+/// 10: []                  - Any     : Escrow authority.
+/// 11: [signer]            - PDA     : Escrow signer PDA.
+///
+/// Instruction Data: escrow_index (u8)
+///
 pub fn process_close_shuttle_ata_intent(
     accounts: &[AccountView],
     instruction_data: &[u8],

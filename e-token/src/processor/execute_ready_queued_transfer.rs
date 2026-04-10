@@ -25,26 +25,29 @@ use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
 ///
 /// Executes on: BASE only.
 ///
+/// Accounts:
+///
+///  0: []                  - PDA     : Global vault account.
+///  1: []                  - SPL     : Mint account.
+///  2: [writable]          - SPL     : Vault token account.
+///  3: []                  - Any     : Destination owner.
+///  4: [writable]          - SPL     : Destination token account.
+///  5: [writable]          - PDA     : Global rent PDA.
+///  6: []                  - SPL     : Token program.
+///  7: []                  - SPL     : Associated token program.
+///  8: []                  - Builtin : System program.
+///  9: []                  - Program : Source program (must equal this program).
+/// 10: []                  - PDA     : Queue PDA authority.
+/// 11: [signer]            - PDA     : Escrow signer PDA.
+///
+/// Instruction Data: ExecuteQueuedTransferArgs
+///
 #[inline(always)]
 pub fn process_execute_ready_queued_transfer(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
     let args = ExecuteQueuedTransferArgs::try_from_bytes(instruction_data)?;
-
-    // Expected accounts:
-    // 0. []         Global vault PDA
-    // 1. []         Mint account
-    // 2. [writable] Vault token account
-    // 3. []         Destination owner
-    // 4. [writable] Destination token account
-    // 5. [writable] Global rent PDA
-    // 6. []         Token program
-    // 7. []         Associated token program
-    // 8. []         System program
-    // 9. []         Source program (must equal this program)
-    // 10. []        Queue PDA authority
-    // 11. [signer]  Escrow signer PDA
     let [vault_info, mint_info, vault_token_acc_info, destination_owner_info, destination_token_acc_info, rent_pda_info, token_program_info, associated_token_program_info, system_program_info, source_program, escrow_authority, escrow_signer] =
         accounts
     else {

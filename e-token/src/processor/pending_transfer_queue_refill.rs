@@ -19,6 +19,25 @@ use crate::processor::{
 const SPONSORED_LAMPORTS_TRANSFER_CPI_ACCOUNTS: usize = 11;
 const SPONSORED_LAMPORTS_TRANSFER_DATA_LEN: usize = 1 + 8 + 32;
 
+///
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [writable]          - PDA     : Transfer queue refill state account.
+///  1: [writable]          - PDA     : Transfer queue account.
+///  2: [writable]          - PDA     : Rent PDA account.
+///  3: [writable]          - PDA     : Lamports PDA account.
+///  4: []                  - Program : Owner program.
+///  5: [writable]          - PDA     : Buffer account.
+///  6: [writable]          - PDA     : Delegation record account.
+///  7: [writable]          - PDA     : Delegation metadata account.
+///  8: []                  - Program : Delegation program.
+///  9: []                  - Builtin : System program.
+/// 10: [writable]          - PDA     : Queue delegation record account.
+///
+/// Instruction Data: None
+///
 #[inline(never)]
 pub fn process_pending_transfer_queue_refill(
     accounts: &[AccountView],

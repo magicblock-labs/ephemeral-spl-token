@@ -11,6 +11,20 @@ const DEFAULT_ESCROW_INDEX: u8 = u8::MAX;
 const INTENT_BUNDLE_DATA_BUF_SIZE: usize = 512;
 const CLOSE_LAMPORTS_PDA_COMPUTE_UNITS: u32 = 50_000;
 
+///
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [signer]            - Keypair : Payer.
+///  1: [writable]          - PDA     : Rent PDA account.
+///  2: [writable]          - PDA     : Lamports PDA account.
+///  3: [writable]          - Any     : Destination account.
+///  4: [writable]          - Any     : Magic context account.
+///  5: []                  - Program : Magic program.
+///
+/// Instruction Data: salt ([u8; 32])
+///
 #[inline(never)]
 pub fn process_undelegate_lamports_pda(
     accounts: &[AccountView],

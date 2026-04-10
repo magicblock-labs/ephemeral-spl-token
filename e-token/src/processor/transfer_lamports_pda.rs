@@ -7,6 +7,17 @@ use crate::{
     processor::internal::lamports_pda::{derive_lamports_pda, parse_amount_and_salt},
 };
 
+///
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [signer]            - Keypair : Payer.
+///  1: [writable]          - PDA     : Lamports PDA account.
+///  2: [writable]          - Any     : Destination account.
+///
+/// Instruction Data: amount (u64) + salt ([u8; 32])
+///
 #[inline(never)]
 pub fn process_transfer_lamports_pda(
     accounts: &[AccountView],
