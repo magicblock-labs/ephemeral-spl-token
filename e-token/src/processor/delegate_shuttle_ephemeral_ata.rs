@@ -3,6 +3,7 @@ use alloc::vec::Vec;
 use data_layout::variable_offset_layout;
 use ephemeral_rollups_pinocchio::instruction::DelegateAccountCpiBuilder;
 use ephemeral_rollups_pinocchio::types::DelegateConfig;
+use ephemeral_spl_api::debug_log;
 use ephemeral_spl_api::state::{
     ephemeral_ata::EphemeralAta, load_initialized, shuttle_ephemeral_ata::ShuttleMetadata,
 };
@@ -91,10 +92,7 @@ pub fn process_delegate_shuttle_ephemeral_ata(
         ..DelegateConfig::default()
     };
 
-    #[cfg(feature = "logging")]
-    {
-        pinocchio_log::log!("Delegating shuttle");
-    }
+    debug_log!("Delegating shuttle");
 
     DelegateAccountCpiBuilder::new(
         payer_info,

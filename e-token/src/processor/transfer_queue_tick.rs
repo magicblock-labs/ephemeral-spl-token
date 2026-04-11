@@ -6,6 +6,7 @@ use ephemeral_rollups_pinocchio::{
     intent_bundle::{ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta},
     spl::consts::TOKEN_PROGRAM_ID,
 };
+use ephemeral_spl_api::debug_log;
 use ephemeral_spl_api::require_n_accounts;
 use ephemeral_spl_api::state::transfer_queue::{
     queue_peek_from_data, queue_pop_from_data, queue_views_checked, QueuedTransfer, QUEUE_SEED,
@@ -201,27 +202,22 @@ fn try_schedule_queue_refill(
 #[inline(always)]
 fn ready_queued_transfer(
     queued_transfer: Option<QueuedTransfer>,
-    queue_len: usize,
+    _queue_len: usize,
     clock: &Clock,
 ) -> Result<Option<QueuedTransfer>, ProgramError> {
     let Some(queued_transfer) = queued_transfer else {
-        #[cfg(feature = "logging")]
-        pinocchio_log::log!("ProcessTransferQueueTick queue length: {}", queue_len);
+        debug_log!("ProcessTransferQueueTick queue length: {}", _queue_len);
         return Ok(None);
     };
-
-    #[cfg(not(feature = "logging"))]
-    let _ = queue_len;
 
     let now = clock
         .unix_timestamp
         .checked_mul(MILLIS_PER_SECOND)
         .ok_or(ProgramError::InvalidInstructionData)?;
     if queued_transfer.ready_at > now {
-        #[cfg(feature = "logging")]
-        pinocchio_log::log!(
+        debug_log!(
             "ProcessTransferQueueTick queue length: {} (next not ready)",
-            queue_len
+            _queue_len
         );
         return Ok(None);
     }
@@ -241,8 +237,7 @@ fn schedule_execute_ready_transfer(
         ProgramError::InvalidAccountOwner
     );
 
-    #[cfg(feature = "logging")]
-    pinocchio_log::log!(
+    debug_log!(
         "ProcessTransferQueueTick queue length before pop: {}",
         queue_state.queue_len
     );
@@ -366,20 +361,15 @@ fn pop_executed_transfer(
         ProgramError::InvalidAccountData
     );
 
-    #[cfg(feature = "logging")]
-    {
-        let sender = popped_transfer.source.to_string();
-        let receiver = popped_transfer.destination_owner.to_string();
-        pinocchio_log::log!(
-            "ProcessTransferQueueTick group_id: {} task_id: {} client_ref_id: {} sender: {} receiver: {} amount: {}",
-            popped_transfer.group_id(),
-            popped_transfer.task_id,
-            popped_transfer.client_ref_id,
-            sender.as_str(),
-            receiver.as_str(),
-            popped_transfer.amount
-        );
-    }
+    debug_log!(
+        "ProcessTransferQueueTick group_id: {} task_id: {} client_ref_id: {} sender: {} receiver: {} amount: {}",
+        popped_transfer.group_id(),
+        popped_transfer.task_id,
+        popped_transfer.client_ref_id,
+        popped_transfer.source.to_string().as_str(),
+        popped_transfer.destination_owner.to_string().as_str(),
+        popped_transfer.amount
+    );
 
     Ok(())
 }

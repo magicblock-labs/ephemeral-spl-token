@@ -3,12 +3,14 @@ use alloc::string::ToString;
 use alloc::vec;
 use alloc::vec::Vec;
 use data_layout::variable_offset_layout;
+
 use dlp_api::args::{
     EncryptedBuffer, MaybeEncryptedAccountMeta, MaybeEncryptedInstruction, MaybeEncryptedIxData,
     MaybeEncryptedPubkey,
 };
 use dlp_api::compact::{self};
 
+use ephemeral_spl_api::debug_log;
 use ephemeral_spl_api::instruction::ESplInstruction;
 use ephemeral_spl_api::state::transfer_queue::{queue_views, TransferQueue};
 use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
@@ -111,8 +113,8 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
         ProgramError::InvalidAccountOwner
     );
 
-    #[cfg(feature = "logging")]
-    {
+    // CHECKPOINT: this entire log wont be printed because of message size (see logs on explorer)
+    debug_log!({
         let shuttle = common_accounts.shuttle_info.address().to_string();
         let shuttle_eata = common_accounts.shuttle_eata_info.address().to_string();
         let shuttle_wallet = common_accounts
@@ -137,7 +139,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
             vault_token.as_str(),
             queue.as_str(),
         );
-    }
+    });
 
     let (bump, validator) = {
         let data = unsafe { queue_info.borrow_unchecked() };

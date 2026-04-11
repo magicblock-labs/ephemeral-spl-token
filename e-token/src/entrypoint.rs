@@ -1,3 +1,4 @@
+use ephemeral_spl_api::debug_log;
 use ephemeral_spl_api::instruction::ESplInstruction;
 use ephemeral_spl_api::{error::EphemeralSplError, require};
 
@@ -70,98 +71,82 @@ fn process_public_instruction(accounts: &[AccountView], instruction_data: &[u8])
         .map_err(|_| EphemeralSplError::InstructionNotFound)?
     {
         ESplInstruction::InitializeEphemeralAta => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: InitializeEphemeralAta");
+            debug_log!("Instruction: InitializeEphemeralAta");
 
             process_initialize_ephemeral_ata(accounts, data)
         }
         ESplInstruction::InitializeGlobalVault => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: InitializeGlobalVault");
+            debug_log!("Instruction: InitializeGlobalVault");
 
             process_initialize_global_vault(accounts, data)
         }
         ESplInstruction::DepositSplTokens => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: DepositSplTokens");
+            debug_log!("Instruction: DepositSplTokens");
 
             process_deposit_spl_tokens(accounts, data)
         }
         ESplInstruction::WithdrawSplTokens => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: WithdrawSplTokens");
+            debug_log!("Instruction: WithdrawSplTokens");
 
             process_withdraw_spl_tokens(accounts, data)
         }
         ESplInstruction::DelegateEphemeralAta => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: DelegateEphemeralAta");
+            debug_log!("Instruction: DelegateEphemeralAta");
 
             process_delegate_ephemeral_ata(accounts, data)
         }
         ESplInstruction::UndelegateEphemeralAta => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: UndelegateEphemeralAta");
+            debug_log!("Instruction: UndelegateEphemeralAta");
 
             process_undelegate_ephemeral_ata(accounts, data)
         }
         ESplInstruction::CreateEphemeralAtaPermission => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: CreateEphemeralAtaPermission");
+            debug_log!("Instruction: CreateEphemeralAtaPermission");
 
             process_create_ephemeral_ata_permission(accounts, data)
         }
         ESplInstruction::DelegateEphemeralAtaPermission => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: DelegateEphemeralAtaPermission");
+            debug_log!("Instruction: DelegateEphemeralAtaPermission");
 
             process_delegate_ephemeral_ata_permission(accounts, data)
         }
         ESplInstruction::UndelegateEphemeralAtaPermission => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: UndelegateEphemeralAtaPermission");
+            debug_log!("Instruction: UndelegateEphemeralAtaPermission");
 
             process_undelegate_ephemeral_ata_permission(accounts, data)
         }
         ESplInstruction::ResetEphemeralAtaPermission => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: ResetEphemeralAtaPermission");
+            debug_log!("Instruction: ResetEphemeralAtaPermission");
 
             process_reset_ephemeral_ata_permission(accounts, data)
         }
         ESplInstruction::CloseEphemeralAta => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: CloseEphemeralAta");
+            debug_log!("Instruction: CloseEphemeralAta");
 
             process_close_ephemeral_ata(accounts, data)
         }
         ESplInstruction::InitializeShuttleEphemeralAta => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: InitializeShuttleEphemeralAta");
+            debug_log!("Instruction: InitializeShuttleEphemeralAta");
 
             process_initialize_shuttle_ephemeral_ata(accounts, data)
         }
         ESplInstruction::InitializeTransferQueue => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: InitializeTransferQueue");
+            debug_log!("Instruction: InitializeTransferQueue");
 
             process_initialize_transfer_queue(accounts, data)
         }
         ESplInstruction::DelegateShuttleEphemeralAta => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: DelegateShuttleEphemeralAta");
+            debug_log!("Instruction: DelegateShuttleEphemeralAta");
 
             process_delegate_shuttle_ephemeral_ata(accounts, data)
         }
         ESplInstruction::SetupAndDelegateShuttleEphemeralAtaWithMerge => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: SetupAndDelegateShuttleEphemeralAtaWithMerge");
+            debug_log!("Instruction: SetupAndDelegateShuttleEphemeralAtaWithMerge");
 
             process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge(accounts, data)
         }
         ESplInstruction::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!(
+            debug_log!(
                 "Instruction: DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer"
             );
 
@@ -170,62 +155,52 @@ fn process_public_instruction(accounts: &[AccountView], instruction_data: &[u8])
             )
         }
         ESplInstruction::WithdrawThroughDelegatedShuttleWithMerge => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: WithdrawThroughDelegatedShuttleWithMerge");
+            debug_log!("Instruction: WithdrawThroughDelegatedShuttleWithMerge");
 
             process_withdraw_through_delegated_shuttle_with_merge(accounts, data)
         }
         ESplInstruction::UndelegateAndCloseShuttleToOwner => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: UndelegateAndCloseShuttleToOwner");
+            debug_log!("Instruction: UndelegateAndCloseShuttleToOwner");
 
             process_undelegate_and_close_shuttle_to_owner(accounts, data)
         }
         ESplInstruction::MergeShuttleIntoEphemeralAta => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: MergeShuttleIntoEphemeralAta");
+            debug_log!("Instruction: MergeShuttleIntoEphemeralAta");
 
             process_merge_shuttle_into_ephemeral_ata(accounts, data)
         }
         ESplInstruction::DepositAndQueueTransfer => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: DepositAndQueueTransfer");
+            debug_log!("Instruction: DepositAndQueueTransfer");
 
             process_deposit_and_queue_transfer(accounts, data)
         }
         ESplInstruction::EnsureTransferQueueCrank => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: EnsureTransferQueueCrank");
+            debug_log!("Instruction: EnsureTransferQueueCrank");
 
             process_ensure_transfer_queue_crank(accounts, data)
         }
         ESplInstruction::DelegateTransferQueue => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: DelegateTransferQueue");
+            debug_log!("Instruction: DelegateTransferQueue");
 
             process_delegate_transfer_queue(accounts, data)
         }
         ESplInstruction::SponsoredLamportsTransfer => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: SponsoredLamportsTransfer");
+            debug_log!("Instruction: SponsoredLamportsTransfer");
 
             process_sponsored_lamports_transfer(accounts, data)
         }
         ESplInstruction::InitializeRentPda => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: InitializeRentPda");
+            debug_log!("Instruction: InitializeRentPda");
 
             process_initialize_rent_pda(accounts, data)
         }
         ESplInstruction::AllocateTransferQueue => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: AllocateTransferQueue");
+            debug_log!("Instruction: AllocateTransferQueue");
 
             process_allocate_transfer_queue(accounts, data)
         }
         ESplInstruction::ProcessPendingTransferQueueRefill => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: ProcessPendingTransferQueueRefill");
+            debug_log!("Instruction: ProcessPendingTransferQueueRefill");
 
             process_pending_transfer_queue_refill(accounts, data)
         }
@@ -256,49 +231,41 @@ fn process_internal_instruction(
         .map_err(|_| EphemeralSplError::InstructionNotFound)?
     {
         ESplInternalInstruction::UndelegationCallback => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: UndelegationCallback");
+            debug_log!("Instruction: UndelegationCallback");
             process_undelegation_callback(accounts, data)
         }
         ESplInternalInstruction::SettleAndCloseShuttleIntent => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: SettleAndCloseShuttleIntent");
+            debug_log!("Instruction: SettleAndCloseShuttleIntent");
 
             process_close_shuttle_ata_intent(accounts, data)
         }
         ESplInternalInstruction::ExecuteReadyQueuedTransfer => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: ExecuteReadyQueuedTransfer");
+            debug_log!("Instruction: ExecuteReadyQueuedTransfer");
 
             process_execute_ready_queued_transfer(accounts, data)
         }
         ESplInternalInstruction::ProcessTransferQueueTick => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: ProcessTransferQueueTick");
+            debug_log!("Instruction: ProcessTransferQueueTick");
 
             process_transfer_queue_tick(accounts, data)
         }
         ESplInternalInstruction::TransferLamportsPda => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: TransferLamportsPda");
+            debug_log!("Instruction: TransferLamportsPda");
 
             process_transfer_lamports_pda(accounts, data)
         }
         ESplInternalInstruction::UndelegateLamportsPda => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: UndelegateLamportsPda");
+            debug_log!("Instruction: UndelegateLamportsPda");
 
             process_undelegate_lamports_pda(accounts, data)
         }
         ESplInternalInstruction::CloseLamportsPdaIntent => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: CloseLamportsPdaIntent");
+            debug_log!("Instruction: CloseLamportsPdaIntent");
 
             process_close_lamports_pda_intent(accounts, data)
         }
         ESplInternalInstruction::MarkTransferQueueRefillPending => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: MarkTransferQueueRefillPending");
+            debug_log!("Instruction: MarkTransferQueueRefillPending");
 
             process_mark_transfer_queue_refill_pending(accounts, data)
         }
