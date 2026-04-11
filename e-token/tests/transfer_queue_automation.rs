@@ -9,7 +9,7 @@ use ephemeral_rollups_pinocchio::{
     spl::EphemeralAta,
 };
 use ephemeral_spl_api::state::transfer_queue::{
-    header_len, item_len, QueuedTransfer, TransferQueueHeader, QUEUE_SEED,
+    QueuedTransfer, TransferQueueHeader, HEADER_LEN, ITEM_LEN, QUEUE_SEED,
 };
 use ephemeral_spl_api::ID as PROGRAM;
 use ephemeral_spl_api::{
@@ -266,13 +266,13 @@ fn add_noop_program_mock(pt: &mut ProgramTest, program_id: Pubkey) {
 }
 
 fn read_header_unaligned(data: &[u8]) -> TransferQueueHeader {
-    assert!(data.len() >= header_len());
+    assert!(data.len() >= HEADER_LEN);
     unsafe { core::ptr::read_unaligned(data.as_ptr() as *const TransferQueueHeader) }
 }
 
 fn read_item_unaligned(data: &[u8], index: usize) -> QueuedTransfer {
-    let offset = header_len() + (index * item_len());
-    assert!(data.len() >= offset + item_len());
+    let offset = HEADER_LEN + (index * ITEM_LEN);
+    assert!(data.len() >= offset + ITEM_LEN);
     unsafe { core::ptr::read_unaligned(data[offset..].as_ptr() as *const QueuedTransfer) }
 }
 

@@ -1,6 +1,6 @@
 use ephemeral_rollups_pinocchio::acl::permission_pda_from_permissioned_account;
 use ephemeral_spl_api::state::transfer_queue::{
-    capacity_from_data_len, header_len, item_len, TransferQueue, TransferQueueHeader,
+    capacity_from_data_len, TransferQueue, TransferQueueHeader, HEADER_LEN, ITEM_LEN,
     TRANSFER_QUEUE_VERSION,
 };
 use ephemeral_spl_api::ID as PROGRAM;
@@ -15,7 +15,7 @@ mod common;
 mod utils;
 
 fn read_header_unaligned(data: &[u8]) -> TransferQueueHeader {
-    assert!(data.len() >= header_len());
+    assert!(data.len() >= HEADER_LEN);
     unsafe { core::ptr::read_unaligned(data.as_ptr() as *const TransferQueueHeader) }
 }
 
@@ -79,7 +79,7 @@ async fn initialize_transfer_queue_default_size() {
     assert_eq!(queue_account.owner, PROGRAM);
     assert_eq!(
         queue_account.data.len(),
-        header_len() + item_len() * DEFAULT_TRANSFER_QUEUE_ITEMS
+        HEADER_LEN + ITEM_LEN * DEFAULT_TRANSFER_QUEUE_ITEMS
     );
     assert_eq!(
         capacity_from_data_len(queue_account.data.len()),
@@ -183,7 +183,7 @@ async fn initialize_transfer_queue_custom_size_is_idempotent() {
 
     assert_eq!(
         queue_account.data.len(),
-        header_len() + item_len() * items as usize
+        HEADER_LEN + ITEM_LEN * items as usize
     );
     assert!(capacity_from_data_len(queue_account.data.len()) >= 1);
 

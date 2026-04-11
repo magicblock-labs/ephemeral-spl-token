@@ -13,7 +13,7 @@ use ephemeral_spl_api::consts::{
 use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
-use ephemeral_spl_api::state::transfer_queue::{header_len, TransferQueue, TransferQueueHeader};
+use ephemeral_spl_api::state::transfer_queue::{TransferQueue, TransferQueueHeader, HEADER_LEN};
 use ephemeral_spl_api::state::{load, Initializable};
 use ephemeral_spl_api::ID as PROGRAM;
 use solana_account::Account;
@@ -41,7 +41,7 @@ const BASIS_POINTS_DENOMINATOR: u64 = 10_000;
 const TRANSFER_CHECKED_DISCRIMINATOR: u8 = 12;
 
 fn read_header_unaligned(data: &[u8]) -> TransferQueueHeader {
-    assert!(data.len() >= header_len());
+    assert!(data.len() >= HEADER_LEN);
     unsafe { core::ptr::read_unaligned(data.as_ptr() as *const TransferQueueHeader) }
 }
 

@@ -2,7 +2,7 @@ use ephemeral_rollups_pinocchio::acl::{
     permission_pda_from_permissioned_account, PERMISSION_PROGRAM_ID,
 };
 use ephemeral_spl_api::state::transfer_queue::{
-    header_len, item_len, queue_views_checked, TransferQueue, TRANSFER_QUEUE_VERSION,
+    queue_views_checked, TransferQueue, HEADER_LEN, ITEM_LEN, TRANSFER_QUEUE_VERSION,
 };
 use ephemeral_spl_api::{instruction, ID as PROGRAM};
 use solana_account::Account;
@@ -124,7 +124,7 @@ async fn allocate_transfer_queue_succeeds_and_is_idempotent() {
         .await
         .unwrap()
         .expect("queue account must exist");
-    let final_capacity = (final_data_len - header_len()) / item_len();
+    let final_capacity = (final_data_len - HEADER_LEN) / ITEM_LEN;
     assert!(final_capacity >= N_ITEMS);
 
     let (header, items) = queue_views_checked(&queue_account.data).unwrap();

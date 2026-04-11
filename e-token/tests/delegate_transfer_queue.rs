@@ -8,7 +8,7 @@ use ephemeral_rollups_pinocchio::pda::{
 };
 use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::state::transfer_queue::{
-    header_len, TransferQueue, TransferQueueHeader, TRANSFER_QUEUE_VERSION,
+    TransferQueue, TransferQueueHeader, HEADER_LEN, TRANSFER_QUEUE_VERSION,
 };
 use ephemeral_spl_api::ID as PROGRAM;
 use solana_account::Account;
@@ -24,7 +24,7 @@ mod utils;
 pub const VALIDATOR: Pubkey = Pubkey::new_from_array([77; 32]);
 
 fn read_header_unaligned(data: &[u8]) -> TransferQueueHeader {
-    assert!(data.len() >= header_len());
+    assert!(data.len() >= HEADER_LEN);
     unsafe { core::ptr::read_unaligned(data.as_ptr() as *const TransferQueueHeader) }
 }
 

@@ -5,25 +5,30 @@ use solana_address::address_eq;
 /// Current queue version that stores ready timestamps in milliseconds and client reference ids.
 /// Bump this value only when the on-chain layout changes or queue semantics require it.
 pub const TRANSFER_QUEUE_VERSION: u8 = 1;
+
 /// PDA seed prefix for transfer queues.
 pub const QUEUE_SEED: &[u8] = b"queue";
+
 pub const QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA: u8 = 1 << 0;
 pub const MAX_GROUP_ID: u32 = 0x00FF_FFFF;
+
+pub const HEADER_LEN: usize = core::mem::size_of::<TransferQueueHeader>();
+pub const ITEM_LEN: usize = core::mem::size_of::<QueuedTransfer>();
 
 /// Header stored at the start of the queue account.
 /// The trailing bytes are interpreted as `[QueuedTransfer]` heap storage.
 #[repr(C)]
 #[derive(Copy, Clone, Pod, Zeroable)]
 pub struct TransferQueueHeader {
+    pub validator: Address,
+    pub mint: Address,
+    pub crank_task_id: i64,
+    pub next_task_id: u32, // CHECKPOINT: why do we have this field?
+    pub length: u32,
+    pub group_id: u32,
     pub version: u8,
     pub bump: u8,
-    pub _pad0: [u8; 6],
-    pub mint: Address,
-    pub length: u32,
-    pub _pad1: [u8; 8],
-    pub next_task_id: u32, // CHECKPOINT: why do we have this field?
-    pub crank_task_id: i64,
-    pub validator: Address,
+    pub _pad0: [u8; 2],
 }
 
 /// One queued transfer entry.
@@ -41,6 +46,26 @@ pub struct QueuedTransfer {
     pub task_id: u32,
     pub flags: u8,
     pub _pad0: [u8; 3],
+}
+
+impl QueuedTransfer {
+    #[inline(always)]
+    fn has_higher_priority_than(&self, b: &QueuedTransfer) -> bool {
+        // tuple elements are compared lexicographically (left to right).
+        (
+            self.ready_at,
+            self.amount,
+            self.destination_owner.as_ref(),
+            self.source.as_ref(),
+            self.task_id,
+        ) < (
+            b.ready_at,
+            b.amount,
+            b.destination_owner.as_ref(),
+            b.source.as_ref(),
+            b.task_id,
+        )
+    }
 }
 
 pub struct TransferQueue;
@@ -113,6 +138,7 @@ impl QueuedTransfer {
             return Err(ProgramError::InvalidArgument);
         }
 
+        // CHECKPOINT: if group_id is 4 bytes, why do we use 3 bytes here?
         self._pad0[0] = group_id as u8;
         self._pad0[1] = (group_id >> 8) as u8;
         self._pad0[2] = (group_id >> 16) as u8;
@@ -120,23 +146,12 @@ impl QueuedTransfer {
     }
 }
 
-// TODO (snawaz): make these constant.
-#[inline(always)]
-pub const fn header_len() -> usize {
-    core::mem::size_of::<TransferQueueHeader>()
-}
-
-#[inline(always)]
-pub const fn item_len() -> usize {
-    core::mem::size_of::<QueuedTransfer>()
-}
-
 #[inline(always)]
 pub fn capacity_from_data_len(data_len: usize) -> usize {
-    if data_len < header_len() {
+    if data_len < HEADER_LEN {
         0
     } else {
-        (data_len - header_len()) / item_len()
+        (data_len - HEADER_LEN) / ITEM_LEN
     }
 }
 
@@ -145,16 +160,16 @@ pub fn capacity_from_data_len(data_len: usize) -> usize {
 /// Returns `(header, full_capacity_items)`, where active heap elements are in
 /// `items[..header.length as usize]`.
 pub fn queue_views(data: &[u8]) -> Result<(&TransferQueueHeader, &[QueuedTransfer]), ProgramError> {
-    if data.len() < header_len() {
+    if data.len() < HEADER_LEN {
         return Err(ProgramError::InvalidAccountData);
     }
 
-    let (header_bytes, rest) = data.split_at(header_len());
+    let (header_bytes, rest) = data.split_at(HEADER_LEN);
     let header = bytemuck::try_from_bytes::<TransferQueueHeader>(header_bytes)
         .map_err(|_| ProgramError::InvalidAccountData)?;
 
-    let cap = rest.len() / item_len();
-    let items_bytes = &rest[..cap * item_len()];
+    let cap = rest.len() / ITEM_LEN;
+    let items_bytes = &rest[..cap * ITEM_LEN];
     let items = bytemuck::try_cast_slice::<u8, QueuedTransfer>(items_bytes)
         .map_err(|_| ProgramError::InvalidAccountData)?;
 
@@ -168,16 +183,16 @@ pub fn queue_views(data: &[u8]) -> Result<(&TransferQueueHeader, &[QueuedTransfe
 pub fn queue_views_mut(
     data: &mut [u8],
 ) -> Result<(&mut TransferQueueHeader, &mut [QueuedTransfer]), ProgramError> {
-    if data.len() < header_len() {
+    if data.len() < HEADER_LEN {
         return Err(ProgramError::InvalidAccountData);
     }
 
-    let (header_bytes, rest) = data.split_at_mut(header_len());
+    let (header_bytes, rest) = data.split_at_mut(HEADER_LEN);
     let header = bytemuck::try_from_bytes_mut::<TransferQueueHeader>(header_bytes)
         .map_err(|_| ProgramError::InvalidAccountData)?;
 
-    let cap = rest.len() / item_len();
-    let items_bytes = &mut rest[..cap * item_len()];
+    let cap = rest.len() / ITEM_LEN;
+    let items_bytes = &mut rest[..cap * ITEM_LEN];
     let items = bytemuck::try_cast_slice_mut::<u8, QueuedTransfer>(items_bytes)
         .map_err(|_| ProgramError::InvalidAccountData)?;
 
@@ -227,19 +242,20 @@ fn checked_active_len(length: u32, capacity: usize) -> Result<usize, ProgramErro
 }
 
 #[inline(always)]
-fn stored_next_group_id(header: &TransferQueueHeader) -> u32 {
-    let mut bytes = [0u8; 4];
-    bytes.copy_from_slice(&header._pad1[..4]);
-    u32::from_le_bytes(bytes)
-}
-
-#[inline(always)]
-fn set_stored_next_group_id(header: &mut TransferQueueHeader, group_id: u32) {
-    header._pad1[..4].copy_from_slice(&group_id.to_le_bytes());
+fn validate_header_and_active_len(
+    header: &TransferQueueHeader,
+    capacity: usize,
+) -> Result<(), ProgramError> {
+    if header.version != TRANSFER_QUEUE_VERSION {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    checked_active_len(header.length, capacity)?;
+    Ok(())
 }
 
 #[inline(always)]
 fn normalize_group_id(group_id: u32) -> u32 {
+    // CHECKPOINT: why group_id > MAX_GROUP_ID would ever be true?
     if group_id == 0 || group_id > MAX_GROUP_ID {
         1
     } else {
@@ -271,10 +287,7 @@ pub fn queue_views_checked(
     data: &[u8],
 ) -> Result<(&TransferQueueHeader, &[QueuedTransfer]), ProgramError> {
     let (header, items) = queue_views(data)?;
-    if header.version != TRANSFER_QUEUE_VERSION {
-        return Err(ProgramError::InvalidAccountData);
-    }
-    checked_active_len(header.length, items.len())?;
+    validate_header_and_active_len(header, items.len())?;
     Ok((header, items))
 }
 
@@ -283,10 +296,7 @@ pub fn queue_views_mut_checked(
     data: &mut [u8],
 ) -> Result<(&mut TransferQueueHeader, &mut [QueuedTransfer]), ProgramError> {
     let (header, items) = queue_views_mut(data)?;
-    if header.version != TRANSFER_QUEUE_VERSION {
-        return Err(ProgramError::InvalidAccountData);
-    }
-    checked_active_len(header.length, items.len())?;
+    validate_header_and_active_len(header, items.len())?;
     Ok((header, items))
 }
 
@@ -312,11 +322,11 @@ pub fn queue_len_and_bump_for_mint_with_capacity(
 
 pub fn queue_allocate_group_id_from_data(data: &mut [u8]) -> Result<u32, ProgramError> {
     let (header, items) = queue_views_mut_checked(data)?;
-    let mut candidate = normalize_group_id(stored_next_group_id(header));
+    let mut candidate = normalize_group_id(header.group_id);
 
     for _ in 0..MAX_GROUP_ID {
         if !group_id_in_use(items, header.length, candidate)? {
-            set_stored_next_group_id(header, next_group_id(candidate));
+            header.group_id = next_group_id(candidate);
             return Ok(candidate);
         }
         candidate = next_group_id(candidate);
@@ -326,46 +336,17 @@ pub fn queue_allocate_group_id_from_data(data: &mut [u8]) -> Result<u32, Program
 }
 
 #[inline(always)]
-fn higher_priority(a: &QueuedTransfer, b: &QueuedTransfer) -> bool {
-    // TODO (snawaz): simplify it (and make it performant).
-    if a.ready_at != b.ready_at {
-        return a.ready_at < b.ready_at;
+fn reset_next_task_id_if_empty(length: u32, next_task_id: u32) -> u32 {
+    if length == 0 && next_task_id > (u32::MAX / 2) {
+        0
+    } else {
+        next_task_id
     }
-    if a.amount != b.amount {
-        return a.amount < b.amount;
-    }
-    if !address_eq(&a.destination_owner, &b.destination_owner) {
-        return a.destination_owner.as_ref() < b.destination_owner.as_ref();
-    }
-    if !address_eq(&a.source, &b.source) {
-        return a.source.as_ref() < b.source.as_ref();
-    }
-
-    a.task_id < b.task_id
 }
 
 #[inline(always)]
 fn effective_next_task_id(length: u32, next_task_id: u32) -> u32 {
-    let next_task_id = if length == 0 && next_task_id > (u32::MAX / 2) {
-        0
-    } else {
-        next_task_id
-    };
-
-    if next_task_id == 0 {
-        1
-    } else {
-        next_task_id
-    }
-}
-
-#[inline(always)]
-fn maybe_reset_next_task_id(header: &mut TransferQueueHeader) {
-    // CHECKPOINT: why do we have this function to begin with? it is practically noop
-    // as the condition will never be true.
-    if header.length == 0 && header.next_task_id > (u32::MAX / 2) {
-        header.next_task_id = 0;
-    }
+    1.max(reset_next_task_id_if_empty(length, next_task_id))
 }
 
 // The queue items are stored as an array-backed binary min-heap.
@@ -398,18 +379,18 @@ fn heap_push(
         return Err(ProgramError::AccountDataTooSmall);
     }
 
-    items[len] = transfer;
-    *length = (len + 1) as u32;
-
-    let mut index = len;
-    while index > 0 {
-        let parent_index = parent(index);
-        if !higher_priority(&items[index], &items[parent_index]) {
+    let mut hole_index = len;
+    while hole_index > 0 {
+        let parent_index = parent(hole_index);
+        if !transfer.has_higher_priority_than(&items[parent_index]) {
             break;
         }
-        items.swap(index, parent_index);
-        index = parent_index;
+        items[hole_index] = items[parent_index]; // parent percolating down
+        hole_index = parent_index; // hole percolating up
     }
+
+    items[hole_index] = transfer;
+    *length = (len + 1) as u32;
 
     Ok(())
 }
@@ -430,33 +411,42 @@ fn heap_pop(items: &mut [QueuedTransfer], length: &mut u32) -> Option<QueuedTran
     }
 
     let popped = items[0];
-    let last_index = len - 1;
-    if last_index > 0 {
-        items[0] = items[last_index];
-    }
-    items[last_index] = QueuedTransfer::zeroed();
-    *length = last_index as u32;
+    let new_len = len - 1;
 
-    let mut index = 0usize;
+    // a detached element that needs to be re-inserted at the appropriate location.
+    // but unlike heap_push, this time the hole is created at the top (index 0), so it
+    // percolates down as long as a higher-priority child exists.
+    let detached = items[new_len];
+
+    let mut hole_index = 0;
     loop {
-        let left_index = left(index);
-        if left_index >= last_index {
+        let left_index = left(hole_index);
+        if left_index >= new_len {
             break;
         }
 
-        let right_index = right(index);
-        let mut best_index = left_index;
-        if right_index < last_index && higher_priority(&items[right_index], &items[left_index]) {
-            best_index = right_index;
-        }
+        let right_index = right(hole_index);
+        let best_index = if right_index < new_len
+            && items[right_index].has_higher_priority_than(&items[left_index])
+        {
+            right_index
+        } else {
+            left_index
+        };
 
-        if !higher_priority(&items[best_index], &items[index]) {
+        if !items[best_index].has_higher_priority_than(&detached) {
             break;
         }
 
-        items.swap(index, best_index);
-        index = best_index;
+        items[hole_index] = items[best_index];
+        hole_index = best_index;
     }
+
+    items[hole_index] = detached;
+    *length = new_len as u32;
+
+    // it is not absolutely necessary though
+    items[new_len] = QueuedTransfer::zeroed();
 
     Some(popped)
 }
@@ -467,7 +457,6 @@ pub fn queue_push_from_data(
     mut transfer: QueuedTransfer,
 ) -> Result<(), ProgramError> {
     let (header, items) = queue_views_mut_checked(data)?;
-    maybe_reset_next_task_id(header);
     if header.length as usize >= items.len() {
         return Err(ProgramError::AccountDataTooSmall);
     }
@@ -498,7 +487,7 @@ pub fn queue_peek_from_data(data: &[u8]) -> Result<Option<QueuedTransfer>, Progr
 pub fn queue_pop_from_data(data: &mut [u8]) -> Result<Option<QueuedTransfer>, ProgramError> {
     let (header, items) = queue_views_mut_checked(data)?;
     let popped = heap_pop(items, &mut header.length);
-    maybe_reset_next_task_id(header);
+    header.next_task_id = reset_next_task_id_if_empty(header.length, header.next_task_id);
     Ok(popped)
 }
 
@@ -550,7 +539,7 @@ mod tests {
 
     #[test]
     fn queue_push_peek_pop_respects_priority() {
-        let data_len = header_len() + (8 * item_len());
+        let data_len = HEADER_LEN + (8 * ITEM_LEN);
         let words = data_len.div_ceil(8);
         let mut aligned = std::vec![0u64; words];
         let data = &mut bytemuck::cast_slice_mut::<u64, u8>(&mut aligned)[..data_len];
@@ -583,7 +572,7 @@ mod tests {
 
     #[test]
     fn queue_amount_breaks_timestamp_ties_before_addresses() {
-        let data_len = header_len() + (4 * item_len());
+        let data_len = HEADER_LEN + (4 * ITEM_LEN);
         let words = data_len.div_ceil(8);
         let mut aligned = std::vec![0u64; words];
         let data = &mut bytemuck::cast_slice_mut::<u64, u8>(&mut aligned)[..data_len];
@@ -601,7 +590,7 @@ mod tests {
 
     #[test]
     fn queue_crank_task_id_round_trips() {
-        let data_len = header_len() + item_len();
+        let data_len = HEADER_LEN + ITEM_LEN;
         let words = data_len.div_ceil(8);
         let mut aligned = std::vec![0u64; words];
         let data = &mut bytemuck::cast_slice_mut::<u64, u8>(&mut aligned)[..data_len];
@@ -627,7 +616,7 @@ mod tests {
 
     #[test]
     fn queue_allocate_group_id_skips_live_ids_and_wraps() {
-        let data_len = header_len() + (3 * item_len());
+        let data_len = HEADER_LEN + (3 * ITEM_LEN);
         let words = data_len.div_ceil(8);
         let mut aligned = std::vec![0u64; words];
         let data = &mut bytemuck::cast_slice_mut::<u64, u8>(&mut aligned)[..data_len];
@@ -636,7 +625,7 @@ mod tests {
         {
             let (header, items) = queue_views_mut_checked(data).unwrap();
             header.length = 2;
-            set_stored_next_group_id(header, MAX_GROUP_ID);
+            header.group_id = MAX_GROUP_ID;
             items[0] = item(1, 2, 10, 3, 2);
             items[0].set_group_id(MAX_GROUP_ID).unwrap();
             items[1] = item(3, 4, 20, 4, 3);
@@ -647,12 +636,12 @@ mod tests {
         assert_eq!(group_id, 2);
 
         let (header, _) = queue_views_checked(data).unwrap();
-        assert_eq!(stored_next_group_id(header), 3);
+        assert_eq!(header.group_id, 3);
     }
 
     #[test]
     fn queue_push_resets_next_task_id_when_empty_and_past_half_max() {
-        let data_len = header_len() + item_len();
+        let data_len = HEADER_LEN + ITEM_LEN;
         let words = data_len.div_ceil(8);
         let mut aligned = std::vec![0u64; words];
         let data = &mut bytemuck::cast_slice_mut::<u64, u8>(&mut aligned)[..data_len];
@@ -670,7 +659,7 @@ mod tests {
 
     #[test]
     fn queue_peek_next_task_id_applies_reset_rules() {
-        let data_len = header_len() + item_len();
+        let data_len = HEADER_LEN + ITEM_LEN;
         let words = data_len.div_ceil(8);
         let mut aligned = std::vec![0u64; words];
         let data = &mut bytemuck::cast_slice_mut::<u64, u8>(&mut aligned)[..data_len];
@@ -684,7 +673,7 @@ mod tests {
 
     #[test]
     fn queue_pop_resets_next_task_id_when_empty_and_past_half_max() {
-        let data_len = header_len() + item_len();
+        let data_len = HEADER_LEN + ITEM_LEN;
         let words = data_len.div_ceil(8);
         let mut aligned = std::vec![0u64; words];
         let data = &mut bytemuck::cast_slice_mut::<u64, u8>(&mut aligned)[..data_len];
@@ -708,7 +697,7 @@ mod tests {
 
     #[test]
     fn unknown_version_is_rejected() {
-        let data_len = header_len() + item_len();
+        let data_len = HEADER_LEN + ITEM_LEN;
         let words = data_len.div_ceil(8);
         let mut aligned = std::vec![0u64; words];
         let data = &mut bytemuck::cast_slice_mut::<u64, u8>(&mut aligned)[..data_len];
