@@ -668,7 +668,7 @@ describe("app", () => {
 
     expect(json.sendTo).toBe("ephemeral");
     expect(json.recentBlockhash).toBe("11111111111111111111111111111111");
-    expect(json.instructionCount).toBe(2);
+    expect(json.instructionCount).toBe(1);
   });
 
   it("builds a private transfer with top-level split and delay options", async () => {
@@ -928,7 +928,7 @@ describe("app", () => {
     const transaction = Transaction.from(Buffer.from(json.transactionBase64, "base64"));
     const memoInstruction = transaction.instructions.at(-1);
 
-    expect(json.instructionCount).toBe(3);
+    expect(json.instructionCount).toBe(2);
     expect(memoInstruction?.programId.toBase58()).toBe("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
     expect(memoInstruction?.data.toString("utf8")).toBe(memo);
   });
