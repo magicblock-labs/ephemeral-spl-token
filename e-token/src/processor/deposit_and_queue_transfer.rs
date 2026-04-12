@@ -217,19 +217,19 @@ pub fn process_deposit_and_queue_transfer(
     Ok(())
 }
 
-///
-/// DataLayout:
-///
-///     00..08 : amount (u64)
-///     08..16 : min_delay_ms (u64)
-///     16..24 : max_delay_ms (u64)
-///     24..28 : split (u32)
-///     28..29 : flags (optional u8)
-///
-/// ValidLength:
-///
-///     28 | 29
-///
+//
+// DataLayout:
+//
+//     00..08 : amount (u64)
+//     08..16 : min_delay_ms (u64)
+//     16..24 : max_delay_ms (u64)
+//     24..28 : split (u32)
+//     28..29 : flags (optional u8)
+//
+// ValidLength:
+//
+//     28 | 29
+//
 pub struct DepositAndQueueTransferArgs<'a> {
     raw: *const u8,
     len: usize,

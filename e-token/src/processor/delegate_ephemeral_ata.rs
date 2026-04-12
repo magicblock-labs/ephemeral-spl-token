@@ -77,15 +77,15 @@ pub fn process_delegate_ephemeral_ata(
     .invoke()
 }
 
-///
-/// DataLayout:
-///
-///     00..32 : validator (optional [u8; 32])
-///
-/// ValidLength:
-///
-///     00 | 32
-///
+//
+// DataLayout:
+//
+//     00..32 : validator (optional [u8; 32])
+//
+// ValidLength:
+//
+//     00 | 32
+//
 pub struct DelegateArgs {
     validator: Option<[u8; 32]>,
 }

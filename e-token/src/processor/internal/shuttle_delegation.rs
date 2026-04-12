@@ -65,18 +65,18 @@ pub(crate) struct DepositAndDelegateShuttleCommonArgs {
     pub(crate) validator: Option<[u8; 32]>,
 }
 
-///
-/// DataLayout:
-///
-///     00..04 : shuttle_id (u32)
-///     04..12 : amount (u64)
-///     12..44 : validator (optional [u8; 32])
-///
-/// ValidLength:
-///
-///     12 (without validator)
-///     44 (with validator)
-///
+//
+// DataLayout:
+//
+//     00..04 : shuttle_id (u32)
+//     04..12 : amount (u64)
+//     12..44 : validator (optional [u8; 32])
+//
+// ValidLength:
+//
+//     12 (without validator)
+//     44 (with validator)
+//
 pub struct DepositAndDelegateShuttleArgs<'a> {
     raw: *const u8,
     len: usize,

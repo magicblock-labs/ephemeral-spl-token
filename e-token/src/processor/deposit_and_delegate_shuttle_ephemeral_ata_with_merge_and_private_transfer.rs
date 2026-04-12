@@ -1,8 +1,8 @@
+use alloc::borrow::ToOwned;
 #[cfg(feature = "logging")]
 use alloc::string::ToString;
-use core::marker::PhantomData;
-use core::ptr::read_unaligned;
-use core::slice;
+use alloc::vec::Vec;
+use data_layout::fixed_layout;
 use dlp_api::args::{
     EncryptedBuffer, MaybeEncryptedAccountMeta, MaybeEncryptedInstruction, MaybeEncryptedIxData,
     MaybeEncryptedPubkey,
@@ -83,7 +83,13 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
         queue_info,
     ] = require_n_accounts!(accounts, 19);
 
-    let args = DepositAndDelegateShuttleWithPrivateTransferArgs::try_from_bytes(instruction_data)?;
+    pinocchio_log::log!(
+        "IXDATA: {}, {}",
+        instruction_data.len(),
+        DepositAndDelegateShuttleWithPrivateTransferArgs::DATA_LEN
+    );
+
+    let args = DepositAndDelegateShuttleWithPrivateTransferArgs::try_view_from(instruction_data)?;
     require!(args.amount() != 0, ProgramError::InvalidInstructionData);
 
     let common_accounts = DepositAndDelegateShuttleAccounts {
@@ -189,131 +195,31 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
     )
 }
 
-///
-/// DataLayout:
-///
-///     00..04 : shuttle_id (u32)
-///     04..12 : amount (u64)
-///     12.... : validator ([len:u8; PubkeyData]; 0 => None, 32 => Some(Pubkey))
-///     ...... : encrypted_destination [len:u8; buffer: &u[8]]
-///     ...... : encrypted_data_suffix [len:u8; buffer: &u[8]]
-///
-/// `.....` means variable-length data, including empty/optional segments when len = 0.
-///
-struct DepositAndDelegateShuttleWithPrivateTransferArgs<'a> {
-    raw: *const u8,
-    len: usize,
-    _data: PhantomData<&'a [u8]>,
+#[fixed_layout]
+pub struct DepositAndDelegateShuttleWithPrivateTransferArgs {
+    pub shuttle_id: u32,
+    pub amount: u64,
+    pub validator: Option<[u8; 32]>,
+    #[capacity = 100]
+    pub encrypted_destination: Vec<u8>,
+    #[capacity = 80]
+    pub encrypted_data_suffix: Vec<u8>,
 }
 
-impl DepositAndDelegateShuttleWithPrivateTransferArgs<'_> {
-    #[inline]
-    fn try_from_bytes(
-        bytes: &[u8],
-    ) -> Result<DepositAndDelegateShuttleWithPrivateTransferArgs<'_>, ProgramError> {
-        // MIN_LEN is the sum of the legth of 3 mandatory fixed-size fields
-        //
-        const MIN_LEN: usize = 4 +  // shuttle_id 
-            8 +  // amount
-            1 +  // min len for optional validator 
-            1 + 32 +  // min len for mandatory destination_ata
-            1 + 8 + 8 + 4 // min len for mandatory (min_delay_ms + max_delay_ms + split) 
-            ;
-
-        require!(bytes.len() >= MIN_LEN, ProgramError::InvalidInstructionData);
-
-        Ok(DepositAndDelegateShuttleWithPrivateTransferArgs {
-            raw: bytes.as_ptr(),
-            len: bytes.len(),
-            _data: PhantomData,
-        })
-    }
-
-    #[inline]
-    fn shuttle_id(&self) -> u32 {
-        let mut buf = [0u8; 4];
-        unsafe {
-            core::ptr::copy_nonoverlapping(self.raw, buf.as_mut_ptr(), 4);
-        }
-        u32::from_le_bytes(buf)
-    }
-
-    #[inline]
-    fn amount(&self) -> u64 {
-        unsafe { read_unaligned(self.raw.add(4) as *const u64) }
-    }
-
-    #[inline]
+impl DepositAndDelegateShuttleWithPrivateTransferArgsView<'_> {
     fn common_args(&self) -> Result<DepositAndDelegateShuttleCommonArgs, ProgramError> {
         Ok(DepositAndDelegateShuttleCommonArgs {
             shuttle_id: self.shuttle_id(),
             amount: self.amount(),
-            validator: self.validator()?,
+            validator: self.validator().map(|r| r.to_owned()),
         })
-    }
-
-    #[inline]
-    fn validator(&self) -> Result<Option<[u8; 32]>, ProgramError> {
-        let data = unsafe { self.read_vardata::<0>()? };
-
-        if data.is_empty() {
-            return Ok(None);
-        }
-        require!(data.len() == 32, ProgramError::InvalidInstructionData);
-
-        let mut validator = [0u8; 32];
-        unsafe {
-            core::ptr::copy_nonoverlapping(data.as_ptr(), validator.as_mut_ptr(), 32);
-        }
-        Ok(Some(validator))
-    }
-
-    // decrypted { destination_owner: pubkey }
-    #[inline]
-    fn encrypted_destination(&self) -> Result<&[u8], ProgramError> {
-        unsafe { self.read_vardata::<1>() }
-    }
-
-    // decrypted { min_delay_ms: u64, max_delay_ms: u64, split: u32, client_ref_id?: u64 } :: PACKED
-    // Legacy payloads may still append flags before client_ref_id; the inner
-    // DepositAndQueueTransfer parser keeps that layout for backward compatibility.
-    #[inline]
-    fn encrypted_data_suffix(&self) -> Result<&[u8], ProgramError> {
-        unsafe { self.read_vardata::<2>() }
-    }
-
-    unsafe fn read_vardata<const VARINDEX: usize>(&self) -> Result<&[u8], ProgramError> {
-        let mut offset = 12; // index where first vardata starts
-        let mut var = 0;
-        while var < VARINDEX {
-            require!(offset < self.len, ProgramError::InvalidInstructionData);
-
-            let len = *self.raw.add(offset);
-
-            offset += 1 + len as usize;
-            var += 1;
-        }
-        require!(offset < self.len, ProgramError::InvalidInstructionData);
-
-        let len = *self.raw.add(offset);
-
-        if len == 0 {
-            Ok(&[])
-        } else if (offset + 1 + len as usize) <= self.len {
-            Ok(slice::from_raw_parts(
-                self.raw.add(offset + 1),
-                len as usize,
-            ))
-        } else {
-            Err(ProgramError::InvalidInstructionData)
-        }
     }
 }
 
 fn private_transfer_action_encrypted(
     common_accounts: &DepositAndDelegateShuttleAccounts<'_>,
     queue_info: &AccountView,
-    args: &DepositAndDelegateShuttleWithPrivateTransferArgs<'_>,
+    args: &DepositAndDelegateShuttleWithPrivateTransferArgsView<'_>,
     amount: u64,
 ) -> Result<PostDelegationActions, ProgramError> {
     Ok(PostDelegationActions {
@@ -330,7 +236,7 @@ fn private_transfer_action_encrypted(
             ), // 5
             MaybeEncryptedPubkey::ClearText(common_accounts.vault_token_info.address().to_bytes()), // 6
             MaybeEncryptedPubkey::Encrypted(EncryptedBuffer::new(
-                args.encrypted_destination()?.into()
+                args.encrypted_destination().into()
             )), // 7
             MaybeEncryptedPubkey::ClearText(
                 common_accounts.token_program_info.address().to_bytes()
@@ -358,7 +264,7 @@ fn private_transfer_action_encrypted(
                     data_prefix.extend_from_slice(&amount.to_le_bytes());
                     data_prefix
                 },
-                suffix: EncryptedBuffer::new(args.encrypted_data_suffix()?.into()),
+                suffix: EncryptedBuffer::new(args.encrypted_data_suffix().into()),
             },
         }],
     })

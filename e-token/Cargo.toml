@@ -9,7 +9,7 @@ edition = { workspace = true }
 readme = "./README.md"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [features]
 logging = []
@@ -31,6 +31,7 @@ magicblock-delegation-program-api = { workspace = true, default-features = false
 ] }
 hydra-api = { workspace = true }
 spl-token-interface = { workspace = true }
+data-layout = { path = "../data-layout" }
 
 [dev-dependencies]
 bytemuck = { workspace = true }

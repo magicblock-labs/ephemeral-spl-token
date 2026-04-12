@@ -16,6 +16,7 @@ use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
 use ephemeral_spl_api::state::transfer_queue::{TransferQueue, TransferQueueHeader, HEADER_LEN};
 use ephemeral_spl_api::state::{load, Initializable};
 use ephemeral_spl_api::ID as PROGRAM;
+use ephemeral_token_program::DepositAndDelegateShuttleWithPrivateTransferArgs;
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::rent::Rent;
@@ -204,35 +205,16 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
     let delegation_record_pda = delegation_record_pda_from_delegated_account(&shuttle_eata);
     let delegation_metadata_pda = delegation_metadata_pda_from_delegated_account(&shuttle_eata);
 
-    let mut delegate_data =
-        instruction::ESplInstruction::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer
-            .to_vec();
-    delegate_data.extend_from_slice(&shuttle_id.to_le_bytes());
-    delegate_data.extend_from_slice(&DEPOSIT_AMOUNT.to_le_bytes());
-
-    // add optional validator (varindex: 0)
-    {
-        delegate_data.push(32);
-        delegate_data.extend_from_slice(validator.as_array());
-    }
-
-    // add encrypted destination owner (varindex: 1)
-    {
-        let data = dlp_api::encryption::encrypt_ed25519_recipient(
+    let args = DepositAndDelegateShuttleWithPrivateTransferArgs {
+        shuttle_id,
+        amount: DEPOSIT_AMOUNT,
+        validator: Some(validator.as_array().to_owned()),
+        encrypted_destination: dlp_api::encryption::encrypt_ed25519_recipient(
             destination_owner.as_array(),
             &validator.to_bytes(),
         )
-        .expect("validator key should be valid for encryption");
-
-        println!("encrypted_destination: {:?}", data);
-
-        delegate_data.push(data.len().try_into().unwrap());
-        delegate_data.extend_from_slice(&data);
-    }
-
-    // add encrypted {min_delay_ms, max_delay_ms, split } (varindex: 2
-    {
-        let data = dlp_api::encryption::encrypt_ed25519_recipient(
+        .expect("validator key should be valid for encryption"),
+        encrypted_data_suffix: dlp_api::encryption::encrypt_ed25519_recipient(
             &[
                 &MIN_DELAY_MS.to_le_bytes()[..],
                 &MAX_DELAY_MS.to_le_bytes()[..],
@@ -241,13 +223,8 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
             .concat(),
             &validator.to_bytes(),
         )
-        .expect("validator key should be valid for encryption");
-
-        println!("encrypted_data_suffix: {:?}", data);
-
-        delegate_data.push(data.len().try_into().unwrap());
-        delegate_data.extend_from_slice(&data);
-    }
+        .expect("validator key should be valid for encryption"),
+    };
 
     let ix_delegate = Instruction {
         program_id: PROGRAM,
@@ -272,7 +249,7 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
             AccountMeta::new(vault_ata, false),
             AccountMeta::new(queue, false),
         ],
-        data: delegate_data,
+        data: instruction::ESplInstruction::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer.with_data(&args.encode().unwrap()),
     };
 
     let ix_delegate_queue = Instruction {

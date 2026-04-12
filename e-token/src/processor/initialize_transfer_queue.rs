@@ -170,15 +170,15 @@ pub fn process_initialize_transfer_queue(
     Ok(())
 }
 
-///
-/// DataLayout:
-///
-///     00..04 : requested_items (optional u32)
-///
-/// ValidLength:
-///
-///     00 | 04
-///
+//
+// DataLayout:
+//
+//     00..04 : requested_items (optional u32)
+//
+// ValidLength:
+//
+//     00 | 04
+//
 pub struct InitializeTransferQueueArgs<'a> {
     raw: *const u8,
     len: usize,

@@ -142,17 +142,17 @@ pub fn process_execute_ready_queued_transfer(
     Ok(())
 }
 
-///
-/// DataLayout:
-///
-///     00..01 : escrow_index (u8)
-///     01..09 : amount (u64)
-///     09..10 : flags (u8)
-///
-/// ValidLength:
-///
-///     10
-///
+//
+// DataLayout:
+//
+//     00..01 : escrow_index (u8)
+//     01..09 : amount (u64)
+//     09..10 : flags (u8)
+//
+// ValidLength:
+//
+//     10
+//
 pub struct ExecuteQueuedTransferArgs<'a> {
     raw: *const u8,
     len: usize,
