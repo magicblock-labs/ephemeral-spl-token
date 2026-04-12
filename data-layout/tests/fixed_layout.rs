@@ -95,7 +95,6 @@ fn fixed_layout_reserves_constant_space() {
     assert_eq!(view.client_ref_id(), Some(55));
 
     let _: &[u16] = view.recipients();
-    assert_eq!(view.recipients_len(), 2);
     assert_eq!(view.recipients_capacity(), 10);
     assert_eq!(view.recipients(), &[11, 13]);
 }

@@ -68,7 +68,7 @@ pub(crate) fn expand_fixed_layout(
         let slot_len = layout.slot_len_expr();
 
         validate_steps.push(layout.gen_validate_vec_len(offset, field_ident));
-        view_methods.push(layout.view_method(&field_offset, field_ident)?);
+        view_methods.push(layout.gen_view_methods(offset, field_ident)?);
 
         if let Some(bound) = layout.bound() {
             where_bounds.push(bound);
@@ -428,16 +428,16 @@ impl FixedFieldKind {
         }
     }
 
-    fn view_method(
+    fn gen_view_methods(
         &self,
-        offset: &proc_macro2::TokenStream,
+        offset: usize,
         field_ident: &Ident,
     ) -> syn::Result<proc_macro2::TokenStream> {
         match self {
             Self::Value { value, optional } => {
                 let ty = value.ty();
                 let access_mode = value.access_mode();
-                let getter_body = getter_tokens(value, quote!(self.bytes), offset.clone())?;
+                let getter_body = getter_tokens(value, offset)?;
 
                 match (optional, access_mode) {
                     (false, AccessMode::Copy) => Ok(quote! {
@@ -451,8 +451,7 @@ impl FixedFieldKind {
                         }
                     }),
                     (true, AccessMode::Copy) => {
-                        let value_offset = quote!((#offset) + 1usize);
-                        let value_body = getter_tokens(value, quote!(self.bytes), value_offset)?;
+                        let value_body = getter_tokens(value, offset + 1)?;
                         Ok(quote! {
                             pub fn #field_ident(&self) -> ::core::option::Option<#ty> {
                                 if self.bytes[(#offset)] == 0 {
@@ -464,8 +463,7 @@ impl FixedFieldKind {
                         })
                     }
                     (true, AccessMode::Ref) => {
-                        let value_offset = quote!((#offset) + 1usize);
-                        let value_body = getter_tokens(value, quote!(self.bytes), value_offset)?;
+                        let value_body = getter_tokens(value, offset + 1)?;
                         Ok(quote! {
                             pub fn #field_ident(&self) -> ::core::option::Option<&#ty> {
                                 if self.bytes[(#offset)] == 0 {
@@ -480,30 +478,21 @@ impl FixedFieldKind {
             }
             Self::Vec { elem, capacity } => {
                 let elem_ty = elem.ty();
-                let len_expr = read_len_expr(quote!(self.bytes), offset.clone());
+                let len_expr = read_len_expr(offset);
+                let offset = usize_lit(offset);
                 let len_width_lit = usize_lit(8);
                 let capacity_name = format_ident!("{}_capacity", accessor_ident(field_ident));
-                let len_name = format_ident!("{}_len", accessor_ident(field_ident));
-                let is_empty_name = format_ident!("{}_is_empty", accessor_ident(field_ident));
                 let capacity_lit = usize_lit(*capacity);
                 Ok(quote! {
                     pub fn #field_ident(&self) -> &[#elem_ty] {
                         let len = #len_expr;
-                        let start = (#offset) + (#len_width_lit);
+                        let start = #offset + #len_width_lit;
                         let end = start + (len * ::core::mem::size_of::<#elem_ty>());
                         ::bytemuck::cast_slice::<u8, #elem_ty>(&self.bytes[start..end])
                     }
 
-                    pub fn #len_name(&self) -> usize {
-                        #len_expr
-                    }
-
                     pub const fn #capacity_name(&self) -> usize {
                         #capacity_lit
-                    }
-
-                    pub fn #is_empty_name(&self) -> bool {
-                        self.#len_name() == 0
                     }
                 })
             }
@@ -757,12 +746,10 @@ fn accessor_ident(field_ident: &Ident) -> Ident {
     }
 }
 
-fn bytes_slice_expr(
-    bytes_expr: proc_macro2::TokenStream,
-    offset: proc_macro2::TokenStream,
-    len: proc_macro2::TokenStream,
-) -> proc_macro2::TokenStream {
-    quote!(&(#bytes_expr)[(#offset)..((#offset) + (#len))])
+fn bytes_slice_expr(offset: usize, len: usize) -> proc_macro2::TokenStream {
+    let offset = usize_lit(offset);
+    let len = usize_lit(len);
+    quote!(&self.bytes[#offset..#offset + #len])
 }
 
 fn parse_integer_expr(
@@ -844,13 +831,9 @@ fn read_copy_expr(
     }
 }
 
-fn getter_tokens(
-    value: &FixedValueKind,
-    bytes_expr: proc_macro2::TokenStream,
-    offset: proc_macro2::TokenStream,
-) -> syn::Result<proc_macro2::TokenStream> {
+fn getter_tokens(value: &FixedValueKind, offset: usize) -> syn::Result<proc_macro2::TokenStream> {
     let ty = value.ty();
-    let slice_expr = bytes_slice_expr(bytes_expr, offset, quote!(::core::mem::size_of::<#ty>()));
+    let slice_expr = bytes_slice_expr(offset, value.size());
     match value.access_mode() {
         AccessMode::Copy => read_copy_expr(value, slice_expr),
         AccessMode::Ref => Ok(borrow_ref_expr(ty, slice_expr)),
@@ -861,12 +844,9 @@ fn borrow_ref_expr(ty: &Type, bytes_expr: proc_macro2::TokenStream) -> proc_macr
     quote!(::bytemuck::from_bytes::<#ty>(#bytes_expr))
 }
 
-fn read_len_expr(
-    bytes_expr: proc_macro2::TokenStream,
-    offset: proc_macro2::TokenStream,
-) -> proc_macro2::TokenStream {
+fn read_len_expr(offset: usize) -> proc_macro2::TokenStream {
     quote!({
-        let raw: [u8; 8] = (#bytes_expr)[(#offset)..((#offset) + 8)]
+        let raw: [u8; 8] = self.bytes[#offset..#offset + 8]
             .try_into()
             .expect("validated len");
         u64::from_le_bytes(raw) as usize
