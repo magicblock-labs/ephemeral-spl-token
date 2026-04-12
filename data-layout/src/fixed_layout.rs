@@ -29,7 +29,8 @@ pub(crate) fn expand_fixed_layout(
     let mut offset = 0usize;
     let mut offsets = vec![0];
 
-    let mut offset_expr = quote!(0);
+    let mut total_len_expr = quote!();
+    let mut fields_encode_expr = quote!();
 
     let mut where_bounds = Vec::<proc_macro2::TokenStream>::new();
     let mut view_methods = Vec::new();
@@ -64,11 +65,10 @@ pub(crate) fn expand_fixed_layout(
             }
         }
 
-        let field_offset = offset_expr.clone();
-        let slot_len = layout.slot_len_expr();
-
         validate_steps.push(layout.gen_validate_vec_len(offset, field_ident));
         view_methods.push(layout.gen_view_methods(offset, field_ident)?);
+
+        fields_encode_expr = layout.gen_field_encode(fields_encode_expr, offset, field_ident);
 
         if let Some(bound) = layout.bound() {
             where_bounds.push(bound);
@@ -76,16 +76,20 @@ pub(crate) fn expand_fixed_layout(
 
         offset += layout.slot_len();
         offsets.push(offset);
-        offset_expr = quote!(#field_offset + #slot_len);
+
+        let slot_len = layout.slot_len_expr();
+        total_len_expr = if total_len_expr.is_empty() {
+            quote!(#slot_len)
+        } else {
+            quote!(#total_len_expr + #slot_len)
+        };
     }
 
-    let total_len_expr = offset_expr.clone();
-
     let count_expr = {
-        let count = usize_lit(offsets.len());
+        let count = usize_lit(offsets.len() - 1);
         quote!(#count)
     };
-    let offsets_expr = {
+    let (offsets_expr, datalen_const_expr) = {
         // I could use offsets directly but that generates the code littered
         // with usize suffixes, e.g:
         //
@@ -93,9 +97,13 @@ pub(crate) fn expand_fixed_layout(
         //
         // I hate this, which is why I'm converting Vec<usize> into Vec<LitInt>.
         //
-        let offsets: Vec<_> = offsets.into_iter().map(usize_lit).collect();
+        let mut offsets: Vec<_> = offsets.into_iter().map(usize_lit).collect();
 
-        quote! { [#(#offsets),*] }
+        // the last one isn't offset to any member, but
+        // actually represents the size of the struct
+        let datalen = offsets.pop().unwrap();
+
+        (quote! { [#(#offsets),*] }, quote!(#datalen))
     };
 
     if let Some(err) = layout_error {
@@ -104,33 +112,56 @@ pub(crate) fn expand_fixed_layout(
 
     let where_clause = impl_where_clause(&where_bounds);
 
+    let msg = format!("Sum of encodable-sizes must be {}.", datalen_const_expr);
+
     Ok(quote! {
         #emitted_input
 
         impl #struct_name {
+            #[doc = #msg]
             pub const DATA_LEN: usize = #total_len_expr;
 
+            #[doc = "Byte offsets marking the start of each field"]
             pub const OFFSETS: [usize; #count_expr] = #offsets_expr;
+
+            pub fn try_view_from(
+                bytes: &[u8],
+            ) -> core::result::Result<#view_name<'_>, pinocchio::error::ProgramError> {
+                Self::__validate_bytes(bytes)?;
+                Ok(#view_name { bytes })
+            }
+
+            pub fn encode_to(&self, bytes: &mut [u8; #datalen_const_expr]) -> core::result::Result<(), pinocchio::error::ProgramError> {
+                #fields_encode_expr;
+                Ok(())
+            }
+
+            pub fn encode(&self) -> core::result::Result<[u8; Self::DATA_LEN], pinocchio::error::ProgramError> {
+                let mut bytes = [0; Self::DATA_LEN];
+                self.encode_to(&mut bytes)?;
+                Ok(bytes)
+            }
 
             fn __validate_bytes(
                 bytes: &[u8],
-            ) -> ::core::result::Result<(), ::pinocchio::error::ProgramError> {
+            ) -> ::core::result::Result<(), pinocchio::error::ProgramError> {
                 if bytes.len() != Self::DATA_LEN {
+                    pinocchio_log::log!("bytes [len={}] cannot be deserialized to {} which needs exactly {} bytes", bytes.len(), stringify!(#struct_name), Self::DATA_LEN);
                     return Err(
-                        ::pinocchio::error::ProgramError::InvalidInstructionData,
+                        pinocchio::error::ProgramError::InvalidInstructionData,
                     );
                 }
 
                 #(#validate_steps)*
 
-                ::core::result::Result::Ok(())
+                Ok(())
             }
 
             fn __validate_option(
                 bytes: &[u8],
                 offset: usize,
                 field_name: &'static str,
-            ) -> ::core::result::Result<(), ::pinocchio::error::ProgramError> {
+            ) -> ::core::result::Result<(), pinocchio::error::ProgramError> {
                 match bytes[offset] {
                     0 | 1 => {}
 
@@ -143,7 +174,7 @@ pub(crate) fn expand_fixed_layout(
                             logger.append(tag);
                             logger.log();
                         };
-                        return Err(::pinocchio::error::ProgramError::InvalidInstructionData);
+                        return Err(pinocchio::error::ProgramError::InvalidInstructionData);
                     }
                 }
                 Ok(())
@@ -155,7 +186,7 @@ pub(crate) fn expand_fixed_layout(
                 capacity: usize,
                 field_name: &'static str,
                 expect_msg: &'static str
-            ) -> ::core::result::Result<(), ::pinocchio::error::ProgramError> {
+            ) -> ::core::result::Result<(), pinocchio::error::ProgramError> {
                 let len = {
                     let raw: [u8; 8] = bytes[offset..offset + 8] .try_into() .expect(expect_msg);
                     u64::from_le_bytes(raw) as usize
@@ -169,16 +200,9 @@ pub(crate) fn expand_fixed_layout(
                     logger.append(" > ");
                     logger.append(capacity);
                     logger.log();
-                    return Err(::pinocchio::error::ProgramError::InvalidInstructionData);
+                    return Err(pinocchio::error::ProgramError::InvalidInstructionData);
                 }
                 Ok(())
-            }
-
-            pub fn try_view_from(
-                bytes: &[u8],
-            ) -> ::core::result::Result<#view_name<'_>, ::pinocchio::error::ProgramError> {
-                Self::__validate_bytes(bytes)?;
-                Ok(#view_name { bytes })
             }
         }
 
@@ -423,6 +447,55 @@ impl FixedFieldKind {
                 let expect_msg = format!("validate encoded-len for field '{}'", field_name);
                 quote! {
                     Self::__validate_vec_len(bytes, #offset_expr, #capacity_lit, #field_name, #expect_msg)?;
+                }
+            }
+        }
+    }
+
+    fn gen_field_encode(
+        &self,
+        fields_encode_expr: proc_macro2::TokenStream,
+        offset: usize,
+        field_ident: &Ident,
+    ) -> proc_macro2::TokenStream {
+        let offset = usize_lit(offset);
+        match self {
+            Self::Value { value, optional } => {
+                let len = usize_lit(value.size());
+                if *optional {
+                    quote! {
+                        #fields_encode_expr
+
+                        if let Some(value) = &self.#field_ident {
+                            bytes[#offset] = 1;
+                            bytes[#offset + 1 .. #offset + 1 + #len].copy_from_slice(bytemuck::bytes_of(value));
+                        } else {
+                            bytes[#offset] = 0;
+                        }
+                    }
+                } else {
+                    quote! {
+                        #fields_encode_expr
+
+                        bytes[#offset..#offset + #len].copy_from_slice(bytemuck::bytes_of(&self.#field_ident));
+                    }
+                }
+            }
+            Self::Vec { elem, capacity } => {
+                let elem_len = usize_lit(elem.size());
+                let capacity = usize_lit(*capacity);
+                quote! {
+                    #fields_encode_expr
+
+                    if self.#field_ident.len() > #capacity {
+                        return Err(pinocchio::error::ProgramError::InvalidRealloc);
+                    }
+
+                    bytes[#offset..#offset + 8].copy_from_slice(bytemuck::bytes_of(&(self.#field_ident.len() as u64)));
+                    bytes[#offset + 8..#offset + 8 + self.#field_ident.len() * #elem_len].copy_from_slice(bytemuck::cast_slice(&self.#field_ident.as_slice()));
+                    if self.#field_ident.len() < #capacity {
+                         bytes[#offset + 8 + self.#field_ident.len() * #elem_len..#offset + #capacity * #elem_len].fill(0);
+                    }
                 }
             }
         }

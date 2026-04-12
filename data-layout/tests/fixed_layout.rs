@@ -14,6 +14,14 @@ struct DepositAndDelegateShuttleWithPrivateTransferArgs {
 
 #[test]
 fn fixed_layout_private_args() {
+    let value = DepositAndDelegateShuttleWithPrivateTransferArgs {
+        shuttle_id: 100,
+        amount: 200,
+        validator: Some([1; 32]),
+        encrypted_destination: vec![1, 2, 3, 4],
+        encrypted_data_suffix: vec![10, 20, 30, 40, 50, 60, 70, 80],
+    };
+
     let mut bytes = [0; DepositAndDelegateShuttleWithPrivateTransferArgs::DATA_LEN];
 
     // shuttle_id: u32 (offset: 0)
@@ -44,6 +52,8 @@ fn fixed_layout_private_args() {
         view.encrypted_data_suffix(),
         &[10, 20, 30, 40, 50, 60, 70, 80]
     );
+
+    assert_eq!(value.encode(), Ok(bytes));
 }
 
 #[fixed_layout]
