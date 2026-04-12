@@ -16,7 +16,6 @@ use pinocchio::sysvars::{clock::Clock, Sysvar};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
 
-use crate::instruction::ESplInternalInstruction;
 use crate::processor::{
     initialize_rent_pda::RENT_PDA,
     internal::transfer_queue_refill::{
@@ -24,6 +23,10 @@ use crate::processor::{
         MARK_TRANSFER_QUEUE_REFILL_PENDING_COMPUTE_UNITS,
         MARK_TRANSFER_QUEUE_REFILL_PENDING_ESCROW_INDEX,
     },
+};
+use crate::{
+    instruction::ESplInternalInstruction,
+    processor::execute_ready_queued_transfer::ExecuteQueuedTransferArgs,
 };
 
 const EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX: u8 = 0;
@@ -250,16 +253,18 @@ fn schedule_execute_ready_transfer(
     let destination_token_account =
         derive_associated_token_address(&queued_transfer.destination_owner, &queue_state.mint);
 
-    let mut execute_payload = [0_u8; 18];
-    execute_payload[0] = EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX;
-    execute_payload[1..9].copy_from_slice(&queued_transfer.amount.to_le_bytes());
-    execute_payload[9] = queued_transfer.flags;
-    let execute_data = if queued_transfer.client_ref_id != 0 {
-        execute_payload[10..18].copy_from_slice(&queued_transfer.client_ref_id.to_le_bytes());
-        ESplInternalInstruction::ExecuteReadyQueuedTransfer.with_data(&execute_payload)
-    } else {
-        ESplInternalInstruction::ExecuteReadyQueuedTransfer.with_data(&execute_payload[..10])
+    let args = ExecuteQueuedTransferArgs {
+        amount: queued_transfer.amount,
+        client_ref_id: if queued_transfer.client_ref_id != 0 {
+            Some(queued_transfer.client_ref_id)
+        } else {
+            None
+        },
+        escrow_index: EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
+        flags: queued_transfer.flags,
     };
+    let execute_data =
+        ESplInternalInstruction::ExecuteReadyQueuedTransfer.with_data(&args.encode().unwrap());
 
     // Note that we initialize CallHandler with 9 accounts only, and then 3 more accounts [source_program,
     // escrow_authority, escrow_signer] are appended by DLP's CallHandlerV2 instruction, which is

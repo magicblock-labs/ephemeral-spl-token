@@ -8,4 +8,4 @@ mod processor;
 pub use crate::entrypoint::process_instruction;
 pub use ephemeral_spl_api::ID;
 
-pub use processor::DepositAndDelegateShuttleWithPrivateTransferArgs;
+pub use processor::{DepositAndDelegateShuttleWithPrivateTransferArgs, ExecuteQueuedTransferArgs};

@@ -13,6 +13,7 @@ use ephemeral_spl_api::state::transfer_queue::{
 };
 use ephemeral_spl_api::ID as PROGRAM;
 use ephemeral_spl_api::{instruction, state::transfer_queue::TransferQueue};
+use ephemeral_token_program::ExecuteQueuedTransferArgs;
 use magicblock_magic_program_api::{
     args::{MagicIntentBundleArgs, ScheduleTaskArgs},
     instruction::MagicBlockInstruction,
@@ -1231,11 +1232,16 @@ async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
         standalone_action.args.escrow_index,
         EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX
     );
-    let mut expected_action_data = TestInternalInstruction::ExecuteReadyQueuedTransfer
-        .with_data(&[EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX]);
-    expected_action_data.extend_from_slice(&expected_amount.to_le_bytes());
-    expected_action_data
-        .push(ephemeral_spl_api::state::transfer_queue::QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA);
+
+    let args = ExecuteQueuedTransferArgs {
+        amount: expected_amount,
+        client_ref_id: None,
+        escrow_index: EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
+        flags: ephemeral_spl_api::state::transfer_queue::QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
+    };
+    let expected_action_data =
+        TestInternalInstruction::ExecuteReadyQueuedTransfer.with_data(&args.encode().unwrap());
+
     assert_eq!(standalone_action.args.data, expected_action_data);
     assert_eq!(standalone_action.accounts.len(), 9);
     let rent_pda = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM).0;
@@ -1380,11 +1386,13 @@ async fn recurring_queue_crank_includes_client_ref_id_in_execute_action_when_pre
         transfer_action.destination_program.to_bytes(),
         PROGRAM.to_bytes()
     );
-    let mut expected_action_data = TestInternalInstruction::ExecuteReadyQueuedTransfer
-        .with_data(&[EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX]);
-    expected_action_data.extend_from_slice(&expected_amount.to_le_bytes());
-    expected_action_data
-        .push(ephemeral_spl_api::state::transfer_queue::QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA);
-    expected_action_data.extend_from_slice(&42_u64.to_le_bytes());
+    let args = ExecuteQueuedTransferArgs {
+        amount: expected_amount,
+        client_ref_id: Some(42),
+        escrow_index: EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
+        flags: ephemeral_spl_api::state::transfer_queue::QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
+    };
+    let expected_action_data =
+        TestInternalInstruction::ExecuteReadyQueuedTransfer.with_data(&args.encode().unwrap());
     assert_eq!(transfer_action.args.data, expected_action_data);
 }

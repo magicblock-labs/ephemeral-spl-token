@@ -54,7 +54,9 @@ pub use deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transf
 pub use deposit_and_queue_transfer::process_deposit_and_queue_transfer;
 pub use deposit_spl_tokens::process_deposit_spl_tokens;
 pub use ensure_transfer_queue_crank::process_ensure_transfer_queue_crank;
-pub use execute_ready_queued_transfer::process_execute_ready_queued_transfer;
+pub use execute_ready_queued_transfer::{
+    process_execute_ready_queued_transfer, ExecuteQueuedTransferArgs,
+};
 pub use initialize_ephemeral_ata::process_initialize_ephemeral_ata;
 pub use initialize_global_vault::process_initialize_global_vault;
 pub use initialize_rent_pda::process_initialize_rent_pda;
