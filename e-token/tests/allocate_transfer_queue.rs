@@ -5,6 +5,7 @@ use ephemeral_spl_api::state::transfer_queue::{
     queue_views_checked, TransferQueue, HEADER_LEN, ITEM_LEN, TRANSFER_QUEUE_VERSION,
 };
 use ephemeral_spl_api::{instruction, ID as PROGRAM};
+use ephemeral_token_program::InitializeTransferQueueArgs;
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
@@ -50,11 +51,13 @@ async fn allocate_transfer_queue_succeeds_and_is_idempotent() {
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
             AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
         ],
-        data: [
-            instruction::ESplInstruction::InitializeTransferQueue.to_vec(),
-            (N_ITEMS as u32).to_le_bytes().to_vec(),
-        ]
-        .concat(),
+        data: instruction::ESplInstruction::InitializeTransferQueue.with_data(
+            &InitializeTransferQueueArgs {
+                requested_items: Some(N_ITEMS as u32),
+            }
+            .encode()
+            .unwrap(),
+        ),
     };
 
     let tx_init = Transaction::new_signed_with_payer(

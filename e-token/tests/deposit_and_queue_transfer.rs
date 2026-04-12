@@ -9,7 +9,7 @@ use ephemeral_spl_api::state::transfer_queue::{
     queue_views_checked, QueuedTransfer, TransferQueue, TransferQueueHeader, HEADER_LEN, ITEM_LEN,
 };
 use ephemeral_spl_api::ID as PROGRAM;
-use ephemeral_token_program::DepositAndQueueTransferArgs;
+use ephemeral_token_program::{DepositAndQueueTransferArgs, InitializeTransferQueueArgs};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::clock::Clock;
 use solana_program_pack::Pack;
@@ -94,10 +94,14 @@ async fn setup_fixture(items: Option<u32>) -> Fixture {
         data: instruction::ESplInstruction::InitializeGlobalVault.to_vec(),
     };
 
-    let mut queue_init_data = instruction::ESplInstruction::InitializeTransferQueue.to_vec();
-    if let Some(items) = items {
-        queue_init_data.extend_from_slice(&items.to_le_bytes());
-    }
+    let queue_init_data = instruction::ESplInstruction::InitializeTransferQueue.with_data(
+        &InitializeTransferQueueArgs {
+            requested_items: items,
+        }
+        .encode()
+        .unwrap(),
+    );
+
     let ix_init_queue = Instruction {
         program_id: PROGRAM,
         accounts: vec![

@@ -18,6 +18,7 @@ use ephemeral_spl_api::state::{load, Initializable};
 use ephemeral_spl_api::ID as PROGRAM;
 use ephemeral_token_program::{
     DepositAndDelegateShuttleWithPrivateTransferArgs, DepositAndQueueTransferArgs,
+    InitializeTransferQueueArgs,
 };
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
@@ -142,7 +143,13 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
             AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
         ],
-        data: instruction::ESplInstruction::InitializeTransferQueue.to_vec(),
+        data: instruction::ESplInstruction::InitializeTransferQueue.with_data(
+            &InitializeTransferQueueArgs {
+                requested_items: None,
+            }
+            .encode()
+            .unwrap(),
+        ),
     };
     let rent = context.banks_client.get_rent().await.unwrap();
     let ix_create_owner_source = solana_system_interface::instruction::create_account(

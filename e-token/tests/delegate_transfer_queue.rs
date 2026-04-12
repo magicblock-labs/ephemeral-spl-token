@@ -11,6 +11,7 @@ use ephemeral_spl_api::state::transfer_queue::{
     TransferQueue, TransferQueueHeader, HEADER_LEN, TRANSFER_QUEUE_VERSION,
 };
 use ephemeral_spl_api::ID as PROGRAM;
+use ephemeral_token_program::InitializeTransferQueueArgs;
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program_test::tokio;
@@ -61,7 +62,13 @@ async fn delegate_transfer_queue_succeeds_and_is_idempotent() {
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
             AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
         ],
-        data: instruction::ESplInstruction::InitializeTransferQueue.to_vec(),
+        data: instruction::ESplInstruction::InitializeTransferQueue.with_data(
+            &InitializeTransferQueueArgs {
+                requested_items: None,
+            }
+            .encode()
+            .unwrap(),
+        ),
     };
 
     let tx_init = Transaction::new_signed_with_payer(

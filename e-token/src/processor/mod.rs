@@ -63,7 +63,9 @@ pub use initialize_ephemeral_ata::process_initialize_ephemeral_ata;
 pub use initialize_global_vault::process_initialize_global_vault;
 pub use initialize_rent_pda::process_initialize_rent_pda;
 pub use initialize_shuttle_ephemeral_ata::process_initialize_shuttle_ephemeral_ata;
-pub use initialize_transfer_queue::process_initialize_transfer_queue;
+pub use initialize_transfer_queue::{
+    process_initialize_transfer_queue, InitializeTransferQueueArgs,
+};
 pub use mark_transfer_queue_refill_pending::process_mark_transfer_queue_refill_pending;
 pub use merge_shuttle_into_ephemeral_ata::process_merge_shuttle_into_ephemeral_ata;
 pub use pending_transfer_queue_refill::process_pending_transfer_queue_refill;

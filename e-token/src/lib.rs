@@ -10,5 +10,5 @@ pub use ephemeral_spl_api::ID;
 
 pub use processor::{
     DepositAndDelegateShuttleWithPrivateTransferArgs, DepositAndQueueTransferArgs,
-    ExecuteQueuedTransferArgs,
+    ExecuteQueuedTransferArgs, InitializeTransferQueueArgs,
 };

@@ -13,7 +13,9 @@ use ephemeral_spl_api::state::transfer_queue::{
 };
 use ephemeral_spl_api::ID as PROGRAM;
 use ephemeral_spl_api::{instruction, state::transfer_queue::TransferQueue};
-use ephemeral_token_program::{DepositAndQueueTransferArgs, ExecuteQueuedTransferArgs};
+use ephemeral_token_program::{
+    DepositAndQueueTransferArgs, ExecuteQueuedTransferArgs, InitializeTransferQueueArgs,
+};
 use magicblock_magic_program_api::{
     args::{MagicIntentBundleArgs, ScheduleTaskArgs},
     instruction::MagicBlockInstruction,
@@ -404,7 +406,13 @@ async fn setup_fixture() -> Fixture {
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
             AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
         ],
-        data: instruction::ESplInstruction::InitializeTransferQueue.to_vec(),
+        data: instruction::ESplInstruction::InitializeTransferQueue.with_data(
+            &InitializeTransferQueueArgs {
+                requested_items: None,
+            }
+            .encode()
+            .unwrap(),
+        ),
     };
 
     let ix_init_destination_ata = Instruction {
@@ -813,7 +821,13 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
                 AccountMeta::new_readonly(solana_system_interface::program::ID, false),
                 AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
             ],
-            data: instruction::ESplInstruction::InitializeTransferQueue.to_vec(),
+            data: instruction::ESplInstruction::InitializeTransferQueue.with_data(
+                &InitializeTransferQueueArgs {
+                    requested_items: None,
+                }
+                .encode()
+                .unwrap(),
+            ),
         };
 
         let ix_init_destination_ata = Instruction {
@@ -1036,7 +1050,13 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
                 AccountMeta::new_readonly(solana_system_interface::program::ID, false),
                 AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
             ],
-            data: instruction::ESplInstruction::InitializeTransferQueue.to_vec(),
+            data: instruction::ESplInstruction::InitializeTransferQueue.with_data(
+                &InitializeTransferQueueArgs {
+                    requested_items: None,
+                }
+                .encode()
+                .unwrap(),
+            ),
         };
 
         let ix_init_destination_ata = Instruction {
