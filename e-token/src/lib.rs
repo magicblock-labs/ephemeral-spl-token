@@ -9,6 +9,7 @@ pub use crate::entrypoint::process_instruction;
 pub use ephemeral_spl_api::ID;
 
 pub use processor::{
-    DelegateArgs, DelegateShuttleArgs, DepositAndDelegateShuttleWithPrivateTransferArgs,
-    DepositAndQueueTransferArgs, ExecuteQueuedTransferArgs, InitializeTransferQueueArgs,
+    DelegateArgs, DelegateShuttleArgs, DepositAndDelegateShuttleArgs,
+    DepositAndDelegateShuttleWithPrivateTransferArgs, DepositAndQueueTransferArgs,
+    ExecuteQueuedTransferArgs, InitializeTransferQueueArgs,
 };

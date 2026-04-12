@@ -8,6 +8,7 @@ use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::load_initialized;
 use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
 use ephemeral_spl_api::ID as PROGRAM;
+use ephemeral_token_program::DepositAndDelegateShuttleArgs;
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::rent::Rent;
@@ -153,12 +154,6 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_deposits_and_stor
     let delegation_record_pda = delegation_record_pda_from_delegated_account(&shuttle_eata);
     let delegation_metadata_pda = delegation_metadata_pda_from_delegated_account(&shuttle_eata);
 
-    let mut delegate_data =
-        instruction::ESplInstruction::SetupAndDelegateShuttleEphemeralAtaWithMerge.to_vec();
-    delegate_data.extend_from_slice(&shuttle_id.to_le_bytes());
-    delegate_data.extend_from_slice(&DEPOSIT_AMOUNT.to_le_bytes());
-    delegate_data.extend_from_slice(&validator.to_bytes());
-
     let ix_delegate = Instruction {
         program_id: PROGRAM,
         accounts: vec![
@@ -182,7 +177,15 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_deposits_and_stor
             AccountMeta::new(owner_source_ata, false),
             AccountMeta::new(vault_ata, false),
         ],
-        data: delegate_data,
+        data: instruction::ESplInstruction::SetupAndDelegateShuttleEphemeralAtaWithMerge.with_data(
+            &DepositAndDelegateShuttleArgs {
+                shuttle_id,
+                amount: DEPOSIT_AMOUNT,
+                validator: Some(validator.to_bytes()),
+            }
+            .encode()
+            .unwrap(),
+        ),
     };
 
     let tx_delegate = Transaction::new_signed_with_payer(

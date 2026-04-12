@@ -1,4 +1,4 @@
-use data_layout::fixed_layout;
+use data_layout::fixed_offset_layout;
 use ephemeral_rollups_pinocchio::instruction::DelegateAccountCpiBuilder;
 use ephemeral_rollups_pinocchio::types::DelegateConfig;
 use ephemeral_spl_api::require_n_accounts;
@@ -80,7 +80,7 @@ pub fn process_delegate_ephemeral_ata(
     .invoke()
 }
 
-#[fixed_layout]
+#[fixed_offset_layout]
 pub struct DelegateArgs {
     pub validator: Option<[u8; 32]>,
 }

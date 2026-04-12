@@ -37,6 +37,8 @@ pub(crate) mod utils;
 pub mod withdraw_spl_tokens;
 pub mod withdraw_through_delegated_shuttle_with_merge;
 
+pub use internal::DepositAndDelegateShuttleArgs;
+
 pub use allocate_transfer_queue::process_allocate_transfer_queue;
 pub use close_ephemeral_ata::process_close_ephemeral_ata;
 pub use close_lamports_pda_intent::process_close_lamports_pda_intent;

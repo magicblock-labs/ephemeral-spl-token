@@ -12,7 +12,7 @@ use crate::processor::{
     internal::token_vault::validate_vault_for_mint,
     utils::read_mint_decimals,
 };
-use data_layout::fixed_layout;
+use data_layout::fixed_offset_layout;
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
 
@@ -141,7 +141,7 @@ pub fn process_execute_ready_queued_transfer(
     Ok(())
 }
 
-#[fixed_layout]
+#[fixed_offset_layout]
 pub struct ExecuteQueuedTransferArgs {
     pub amount: u64,
     pub client_ref_id: Option<u64>,
@@ -154,59 +154,3 @@ impl ExecuteQueuedTransferArgsView<'_> {
         self.flags() & QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA != 0
     }
 }
-
-// impl ExecuteQueuedTransferArgs<'_> {
-//     const LEN: usize = 10;
-//     const LEN_WITH_CLIENT_REF_ID: usize = 18;
-//
-//     #[inline]
-//     pub fn try_from_bytes(bytes: &[u8]) -> Result<ExecuteQueuedTransferArgs<'_>, ProgramError> {
-//         require!(
-//             bytes.len() == Self::LEN || bytes.len() == Self::LEN_WITH_CLIENT_REF_ID,
-//             ProgramError::InvalidInstructionData
-//         );
-//
-//         Ok(ExecuteQueuedTransferArgs {
-//             raw: bytes.as_ptr(),
-//             len: bytes.len(),
-//             _data: PhantomData,
-//         })
-//     }
-//
-//     #[inline]
-//     pub fn amount(&self) -> u64 {
-//         let mut buf = [0u8; 8];
-//         unsafe {
-//             core::ptr::copy_nonoverlapping(self.raw.add(1), buf.as_mut_ptr(), 8);
-//         }
-//         u64::from_le_bytes(buf)
-//     }
-//
-//     #[inline]
-//     pub fn escrow_index(&self) -> u8 {
-//         unsafe { *self.raw }
-//     }
-//
-//     #[inline]
-//     pub fn flags(&self) -> u8 {
-//         unsafe { *self.raw.add(9) }
-//     }
-//
-//     #[inline]
-//     pub fn should_create_destination_ata_idempotent(&self) -> bool {
-//         self.flags() & QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA != 0
-//     }
-//
-//     #[inline]
-//     pub fn client_ref_id(&self) -> Option<u64> {
-//         if self.len != Self::LEN_WITH_CLIENT_REF_ID {
-//             return None;
-//         }
-//
-//         let mut buf = [0u8; 8];
-//         unsafe {
-//             core::ptr::copy_nonoverlapping(self.raw.add(10), buf.as_mut_ptr(), 8);
-//         }
-//         Some(u64::from_le_bytes(buf))
-//     }
-// }

@@ -12,6 +12,7 @@ use ephemeral_spl_api::{
     },
 };
 use ephemeral_spl_api::{state::load_initialized, ID as PROGRAM};
+use ephemeral_token_program::DepositAndDelegateShuttleArgs;
 use magicblock_magic_program_api::{
     args::{MagicIntentBundleArgs, UndelegateTypeArgs},
     instruction::MagicBlockInstruction,
@@ -250,12 +251,6 @@ async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_clean
         &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,
     );
 
-    let mut withdraw_data =
-        instruction::ESplInstruction::WithdrawThroughDelegatedShuttleWithMerge.to_vec();
-    withdraw_data.extend_from_slice(&shuttle_id.to_le_bytes());
-    withdraw_data.extend_from_slice(&TRANSFER_AMOUNT.to_le_bytes());
-    withdraw_data.extend_from_slice(&validator.to_bytes());
-
     let ix_withdraw = Instruction {
         program_id: PROGRAM,
         accounts: vec![
@@ -276,7 +271,15 @@ async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_clean
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new_readonly(spl_token_interface::ID, false),
         ],
-        data: withdraw_data,
+        data: instruction::ESplInstruction::WithdrawThroughDelegatedShuttleWithMerge.with_data(
+            &DepositAndDelegateShuttleArgs {
+                shuttle_id,
+                amount: TRANSFER_AMOUNT,
+                validator: Some(validator.to_bytes()),
+            }
+            .encode()
+            .unwrap(),
+        ),
     };
 
     let tx_withdraw = Transaction::new_signed_with_payer(

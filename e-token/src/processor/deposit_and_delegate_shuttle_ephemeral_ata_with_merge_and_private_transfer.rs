@@ -1,8 +1,8 @@
-use alloc::borrow::ToOwned;
 #[cfg(feature = "logging")]
 use alloc::string::ToString;
+use alloc::vec;
 use alloc::vec::Vec;
-use data_layout::fixed_layout;
+use data_layout::{fixed_offset_layout, variable_offset_layout};
 use dlp_api::args::{
     EncryptedBuffer, MaybeEncryptedAccountMeta, MaybeEncryptedInstruction, MaybeEncryptedIxData,
     MaybeEncryptedPubkey,
@@ -189,23 +189,30 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
     )
 }
 
-#[fixed_layout]
+#[variable_offset_layout]
 pub struct DepositAndDelegateShuttleWithPrivateTransferArgs {
     pub shuttle_id: u32,
     pub amount: u64,
     pub validator: Option<[u8; 32]>,
-    #[capacity = 100]
+    //
+    // [capacity = 80] is because sealed-box encryption adds 48 bytes of overhead
+    // irrespective of input bytes. So since encrypted_destination is encrypted
+    // pubkey, its len has to be exactly: 32 + 48 = 80
+    //
+    // ref: https://github.com/jedisct1/libsodium-rs/blob/b3ad9336c0/src/crypto_box/mod.rs#L229-L232
+    //
+    #[flexible = 1]
     pub encrypted_destination: Vec<u8>,
-    #[capacity = 120]
+    #[flexible = 1]
     pub encrypted_data_suffix: Vec<u8>,
 }
 
 impl DepositAndDelegateShuttleWithPrivateTransferArgsView<'_> {
-    fn common_args(&self) -> Result<DepositAndDelegateShuttleCommonArgs, ProgramError> {
+    fn common_args(&self) -> Result<DepositAndDelegateShuttleCommonArgs<'_>, ProgramError> {
         Ok(DepositAndDelegateShuttleCommonArgs {
             shuttle_id: self.shuttle_id(),
             amount: self.amount(),
-            validator: self.validator().map(|r| r.to_owned()),
+            validator: self.validator(),
         })
     }
 }
@@ -253,11 +260,7 @@ fn private_transfer_action_encrypted(
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(9, false)), // shuttle_wallet_ata_info
             ],
             data: MaybeEncryptedIxData {
-                prefix: {
-                    let mut data_prefix = ESplInstruction::DepositAndQueueTransfer.to_vec();
-                    data_prefix.extend_from_slice(&amount.to_le_bytes());
-                    data_prefix
-                },
+                prefix: ESplInstruction::DepositAndQueueTransfer.with_data(&amount.to_le_bytes()),
                 suffix: EncryptedBuffer::new(args.encrypted_data_suffix().into()),
             },
         }],

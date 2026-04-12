@@ -83,7 +83,7 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
         token_program_info,
     ] = require_n_accounts!(accounts, 16);
 
-    let args = DepositAndDelegateShuttleArgs::try_from_bytes(instruction_data)?;
+    let args = DepositAndDelegateShuttleArgs::try_view_from(instruction_data)?;
 
     let accounts = WithdrawThroughDelegatedShuttleAccounts {
         payer_info,
