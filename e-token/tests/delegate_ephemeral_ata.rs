@@ -5,6 +5,7 @@ use ephemeral_rollups_pinocchio::pda::{
 use ephemeral_spl_api::state::RawType;
 use ephemeral_spl_api::ID as PROGRAM;
 use ephemeral_spl_api::{instruction, state::ephemeral_ata::EphemeralAta};
+use ephemeral_token_program::DelegateArgs;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program_test::tokio;
 use solana_signer::Signer;
@@ -103,7 +104,8 @@ async fn delegate_ephemeral_ata_succeeds() {
             AccountMeta::new_readonly(ephemeral_rollups_pinocchio::ID, false), // delegation program
             AccountMeta::new_readonly(solana_system_interface::program::ID, false), // system program
         ],
-        data: instruction::ESplInstruction::DelegateEphemeralAta.to_vec(),
+        data: instruction::ESplInstruction::DelegateEphemeralAta
+            .with_data(&DelegateArgs { validator: None }.encode().unwrap()),
     };
 
     let tx = Transaction::new_signed_with_payer(
@@ -264,7 +266,8 @@ async fn delegate_ephemeral_ata_non_owner_succeeds() {
             AccountMeta::new_readonly(ephemeral_rollups_pinocchio::ID, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: instruction::ESplInstruction::DelegateEphemeralAta.to_vec(),
+        data: instruction::ESplInstruction::DelegateEphemeralAta
+            .with_data(&DelegateArgs { validator: None }.encode().unwrap()),
     };
 
     let tx = Transaction::new_signed_with_payer(

@@ -42,7 +42,7 @@ pub use close_ephemeral_ata::process_close_ephemeral_ata;
 pub use close_lamports_pda_intent::process_close_lamports_pda_intent;
 pub use close_shuttle_ata_intent::process_close_shuttle_ata_intent;
 pub use create_ephemeral_ata_permission::process_create_ephemeral_ata_permission;
-pub use delegate_ephemeral_ata::process_delegate_ephemeral_ata;
+pub use delegate_ephemeral_ata::{process_delegate_ephemeral_ata, DelegateArgs};
 pub use delegate_ephemeral_ata_permission::process_delegate_ephemeral_ata_permission;
 pub use delegate_shuttle_ephemeral_ata::process_delegate_shuttle_ephemeral_ata;
 pub use delegate_transfer_queue::process_delegate_transfer_queue;
