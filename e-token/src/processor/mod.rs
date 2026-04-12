@@ -51,7 +51,9 @@ pub use deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transf
     process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer,
     DepositAndDelegateShuttleWithPrivateTransferArgs,
 };
-pub use deposit_and_queue_transfer::process_deposit_and_queue_transfer;
+pub use deposit_and_queue_transfer::{
+    process_deposit_and_queue_transfer, DepositAndQueueTransferArgs,
+};
 pub use deposit_spl_tokens::process_deposit_spl_tokens;
 pub use ensure_transfer_queue_crank::process_ensure_transfer_queue_crank;
 pub use execute_ready_queued_transfer::{

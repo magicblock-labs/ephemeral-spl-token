@@ -83,12 +83,6 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
         queue_info,
     ] = require_n_accounts!(accounts, 19);
 
-    pinocchio_log::log!(
-        "IXDATA: {}, {}",
-        instruction_data.len(),
-        DepositAndDelegateShuttleWithPrivateTransferArgs::DATA_LEN
-    );
-
     let args = DepositAndDelegateShuttleWithPrivateTransferArgs::try_view_from(instruction_data)?;
     require!(args.amount() != 0, ProgramError::InvalidInstructionData);
 
@@ -202,7 +196,7 @@ pub struct DepositAndDelegateShuttleWithPrivateTransferArgs {
     pub validator: Option<[u8; 32]>,
     #[capacity = 100]
     pub encrypted_destination: Vec<u8>,
-    #[capacity = 80]
+    #[capacity = 120]
     pub encrypted_data_suffix: Vec<u8>,
 }
 

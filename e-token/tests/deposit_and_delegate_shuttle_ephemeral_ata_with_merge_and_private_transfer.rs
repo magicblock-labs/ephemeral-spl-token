@@ -16,7 +16,9 @@ use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
 use ephemeral_spl_api::state::transfer_queue::{TransferQueue, TransferQueueHeader, HEADER_LEN};
 use ephemeral_spl_api::state::{load, Initializable};
 use ephemeral_spl_api::ID as PROGRAM;
-use ephemeral_token_program::DepositAndDelegateShuttleWithPrivateTransferArgs;
+use ephemeral_token_program::{
+    DepositAndDelegateShuttleWithPrivateTransferArgs, DepositAndQueueTransferArgs,
+};
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::rent::Rent;
@@ -215,12 +217,16 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
         )
         .expect("validator key should be valid for encryption"),
         encrypted_data_suffix: dlp_api::encryption::encrypt_ed25519_recipient(
-            &[
-                &MIN_DELAY_MS.to_le_bytes()[..],
-                &MAX_DELAY_MS.to_le_bytes()[..],
-                &SPLIT.to_le_bytes()[..],
-            ]
-            .concat(),
+            &DepositAndQueueTransferArgs {
+                amount: 0, // dont care its value
+                min_delay_ms: MIN_DELAY_MS,
+                max_delay_ms: MAX_DELAY_MS,
+                split: SPLIT,
+                flags: None,
+                client_ref_id: None,
+            }
+            .encode()
+            .unwrap()[8..], // except 'amount', encrypt everthing, amount will be prepended by ix.
             &validator.to_bytes(),
         )
         .expect("validator key should be valid for encryption"),

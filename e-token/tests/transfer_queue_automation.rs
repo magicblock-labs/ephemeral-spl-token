@@ -13,7 +13,7 @@ use ephemeral_spl_api::state::transfer_queue::{
 };
 use ephemeral_spl_api::ID as PROGRAM;
 use ephemeral_spl_api::{instruction, state::transfer_queue::TransferQueue};
-use ephemeral_token_program::ExecuteQueuedTransferArgs;
+use ephemeral_token_program::{DepositAndQueueTransferArgs, ExecuteQueuedTransferArgs};
 use magicblock_magic_program_api::{
     args::{MagicIntentBundleArgs, ScheduleTaskArgs},
     instruction::MagicBlockInstruction,
@@ -464,14 +464,18 @@ async fn enqueue_transfer_with_client_ref_id(
     client_ref_id: Option<u64>,
     entry_key: &str,
 ) {
-    let mut data = instruction::ESplInstruction::DepositAndQueueTransfer.to_vec();
-    data.extend_from_slice(&QUEUED_AMOUNT.to_le_bytes());
-    data.extend_from_slice(&min_delay_ms.to_le_bytes());
-    data.extend_from_slice(&min_delay_ms.to_le_bytes());
-    data.extend_from_slice(&1_u32.to_le_bytes());
-    if let Some(client_ref_id) = client_ref_id {
-        data.extend_from_slice(&client_ref_id.to_le_bytes());
-    }
+    let data = instruction::ESplInstruction::DepositAndQueueTransfer.with_data(
+        &DepositAndQueueTransferArgs {
+            amount: QUEUED_AMOUNT,
+            min_delay_ms,
+            max_delay_ms: min_delay_ms,
+            split: 1,
+            flags: None,
+            client_ref_id,
+        }
+        .encode()
+        .unwrap(),
+    );
 
     let ix = Instruction {
         program_id: PROGRAM,
