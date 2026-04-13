@@ -21,7 +21,6 @@ impl<'a> GroupReceipt<'a> {
         self.splits() != 0
     }
 
-
     /// Returns `true` if all transfers are completed
     pub fn all_transfer_completed(&self) -> bool {
         if !self.is_fully_initialized() {

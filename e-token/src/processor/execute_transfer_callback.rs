@@ -263,7 +263,6 @@ pub fn initialize_group_receipt(
     group_receipt::initialize_group_receipt(group_receipt, group_id, splits, group_receipt_bump)
 }
 
-
 /// Deserialize the bincode-encoded `MagicResponse` from a byte slice without
 /// pulling in the `bincode` crate.
 pub(crate) struct MagicResponseView<'a> {
@@ -462,7 +461,12 @@ impl<'a> GroupReceiptController<'a> {
             Seed::from(&queue_bump_seed),
         ];
         let queue_signer = Signer::from(&queue_signer_seeds);
-        close_ephemeral_account(self.queue_info, self.group_receipt_info, self.magic_vault, &[queue_signer])
+        close_ephemeral_account(
+            self.queue_info,
+            self.group_receipt_info,
+            self.magic_vault,
+            &[queue_signer],
+        )
     }
 
     /// Resizes account to hold `num` extra accounts
