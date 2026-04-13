@@ -1,7 +1,6 @@
 use crate::processor::ephemeral_account::{
     close_ephemeral_account, create_ephemeral_account, resize_ephemeral_account,
 };
-use crate::processor::process_transfer_queue_tick::derive_associated_token_address;
 use core::num::NonZeroU32;
 use core::ops::Deref;
 use ephemeral_spl_api::program::id_address;
@@ -58,7 +57,7 @@ pub fn process_execute_transfer_callback(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let [validator, group_receipt, queue_info, vault, mint, vault_token_account, _, _, magic_vault, magic_program] =
+    let [validator, group_receipt, queue_info, _, mint, _, _, _, magic_vault, magic_program] =
         accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
@@ -67,16 +66,7 @@ pub fn process_execute_transfer_callback(
     // Verify validator & queue info
     let data = unsafe { queue_info.borrow_unchecked() };
     let (header, _) = queue_views_checked(data)?;
-    validate(validator, queue_info, mint, header)?;
-
-    // TODO(edwin): join with above?
-    // above can be renamed into validate_queue
-    // Verify vault
-    let derived_vault_token = derive_associated_token_address(vault.address(), mint.address());
-    if vault_token_account.address() != &derived_vault_token {
-        pinocchio_log::log!("Invalid vault token address");
-        return Err(ProgramError::InvalidSeeds);
-    }
+    validate_common(validator, queue_info, mint, header)?;
 
     let response = MagicResponseView::deserialize(instruction_data)?;
     let args = TransferCallbackArgs::try_from_bytes(response.data)?;
@@ -102,7 +92,7 @@ pub fn process_execute_transfer_callback(
     Ok(())
 }
 
-fn validate(
+fn validate_common(
     validator: &AccountView,
     queue_info: &AccountView,
     mint: &AccountView,
@@ -151,10 +141,10 @@ fn handle_group_receipt(
     args: &TransferCallbackArgs,
     response: &MagicResponseView,
 ) -> ProgramResult {
+    // Receipt specific validation
     let (group_receipt_id, group_receipt_bump) =
         derive_group_receipt_id(queue_info.address(), args.group_id);
     if &group_receipt_id != group_receipt_info.address() {
-        pinocchio_log::log!("Invalid group receipt account");
         return Err(ProgramError::InvalidSeeds);
     }
 
@@ -194,7 +184,7 @@ fn handle_group_receipt(
 #[inline(never)]
 pub(crate) fn log_group_receipt(group_receipt: &GroupReceipt) {
     pinocchio_log::log!(
-        "All transfers complete for group id:{} splits:{}",
+        "All transfers complete for group id: {} splits: {}",
         group_receipt.id(),
         group_receipt.splits()
     );
@@ -202,14 +192,14 @@ pub(crate) fn log_group_receipt(group_receipt: &GroupReceipt) {
         for (i, item) in items.iter().enumerate() {
             match item.signature() {
                 Some(sig) => pinocchio_log::log!(
-                    "transfer[{}] ok:{} amount:{} sig:{}",
+                    "transfer[{}] ok: {} amount: {} sig: {}",
                     i as u32,
                     item.ok(),
                     item.amount(),
-                    sig.as_ref()
+                    sig.as_array()
                 ),
                 None => pinocchio_log::log!(
-                    "transfer[{}] ok:{} amount:{} sig:None",
+                    "transfer[{}] ok: {} amount: {} sig: None",
                     i as u32,
                     item.ok(),
                     item.amount()

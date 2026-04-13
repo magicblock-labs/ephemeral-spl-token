@@ -41,9 +41,10 @@ pub fn process_deposit_and_queue_transfer(
     // 6. [signer]              Sender authority
     // 7. []                    Token program
     // 8. [writable]            Reimbursement token account
+    // 9. []                    Magic program
     let args = DepositAndQueueTransferArgs::try_from_bytes(instruction_data)?;
 
-    let [queue_info, vault_info, mint_info, user_source_token_acc, vault_token_acc, destination_info, user_authority, token_program_info, reimbursement_token_info, magic_progrm, ..] =
+    let [queue_info, vault_info, mint_info, user_source_token_acc, vault_token_acc, destination_info, user_authority, token_program_info, reimbursement_token_info, magic_program, ..] =
         accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
@@ -198,7 +199,7 @@ pub fn process_deposit_and_queue_transfer(
         args.max_delay_ms()
     );
 
-    create_group_receipt(queue_info, magic_progrm, group_id, args.split())?;
+    create_group_receipt(queue_info, magic_program, group_id, args.split())?;
 
     Ok(())
 }
@@ -210,7 +211,7 @@ fn create_group_receipt(
     split: u32,
 ) -> ProgramResult {
     // 0 means that crank will be executed right away
-    const TICK_INTERVAL_MILLIS: i64 = 0;
+    const TICK_INTERVAL_MILLIS: i64 = 1;
     const INITIALIZE_GROUP_RECEIPT_CRANK_ACCOUNTS: usize = 5;
     // ScheduleCrankArgs bincode layout:
     //   variant            (u32) =  4
@@ -274,7 +275,7 @@ fn create_group_receipt(
     let schedule_instruction = InstructionView {
         program_id: magic_program.address(),
         data: &crank_data[..data_len],
-        accounts: &tick_accounts,
+        accounts: &[InstructionAccount::writable_signer(queue_info.address())],
     };
 
     // Create signer for CPI

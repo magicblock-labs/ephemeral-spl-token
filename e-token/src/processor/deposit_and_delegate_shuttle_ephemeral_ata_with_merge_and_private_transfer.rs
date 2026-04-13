@@ -15,8 +15,6 @@ use ephemeral_spl_api::state::transfer_queue::QUEUE_SEED;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use solana_instruction::{AccountMeta, Instruction};
 
-use dlp_api::{args::PostDelegationActions, compact::ClearTextWithInsertable};
-
 use crate::assert_owner;
 use crate::processor::deposit_and_delegate_shuttle_ephemeral_ata_with_merge::undelegate_and_close_shuttle_action;
 use crate::processor::deposit_and_delegate_shuttle_ephemeral_ata_with_merge::{
@@ -25,6 +23,8 @@ use crate::processor::deposit_and_delegate_shuttle_ephemeral_ata_with_merge::{
     DepositAndDelegateShuttleAccounts, DepositAndDelegateShuttleCommonArgs,
 };
 use crate::processor::utils::read_mint_decimals;
+use dlp_api::{args::PostDelegationActions, compact::ClearTextWithInsertable};
+use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
 
 const BASIS_POINTS_DENOMINATOR: u128 = 10_000;
 const TRANSFER_CHECKED_DISCRIMINATOR: u8 = 12;
@@ -297,6 +297,7 @@ fn private_transfer_action_encrypted(
             MaybeEncryptedPubkey::ClearText(
                 common_accounts.shuttle_wallet_ata_info.address().to_bytes()
             ), // 9
+            MaybeEncryptedPubkey::ClearText(MAGIC_PROGRAM_ID.to_bytes(),), // 10
         ],
         instructions: alloc::vec![MaybeEncryptedInstruction {
             program_id: 1,
@@ -310,6 +311,7 @@ fn private_transfer_action_encrypted(
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(0, true)), // owner_info
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(8, false)), // token_program_info
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(9, false)), // shuttle_wallet_ata_info
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(10, false)), // shuttle_wallet_ata_info
             ],
             data: MaybeEncryptedIxData {
                 prefix: {
