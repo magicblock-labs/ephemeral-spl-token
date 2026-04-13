@@ -13,7 +13,7 @@ use dlp_api::compact::{self};
 use ephemeral_spl_api::debug_log;
 use ephemeral_spl_api::instruction::ESplInstruction;
 use ephemeral_spl_api::state::transfer_queue::{queue_views, TransferQueue};
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
+use ephemeral_spl_api::{consts, require, require_eq_keys, require_n_accounts};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use solana_instruction::{AccountMeta, Instruction};
 
@@ -28,7 +28,6 @@ use crate::processor::{
 };
 use dlp_api::{args::PostDelegationActions, compact::ClearTextWithInsertable};
 
-const BASIS_POINTS_DENOMINATOR: u128 = 10_000;
 const TRANSFER_CHECKED_DISCRIMINATOR: u8 = 12;
 
 ///
@@ -271,9 +270,9 @@ fn private_transfer_action_encrypted(
 #[inline(always)]
 fn private_transfer_fee_amount(amount: u64) -> Result<u64, ProgramError> {
     Ok((amount as u128)
-        .checked_mul(ephemeral_spl_api::consts::PRIVATE_TRANSFER_FEE_BASIS_POINTS as u128)
+        .checked_mul(consts::PRIVATE_TRANSFER_FEE_BASIS_POINTS as u128)
         .ok_or(ProgramError::InvalidInstructionData)?
-        .checked_div(BASIS_POINTS_DENOMINATOR)
+        .checked_div(consts::BASIS_POINTS_FACTOR)
         .ok_or(ProgramError::InvalidInstructionData)? as u64)
 }
 

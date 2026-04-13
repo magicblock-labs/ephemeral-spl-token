@@ -7,8 +7,8 @@ use ephemeral_rollups_pinocchio::pda::{
     delegation_metadata_pda_from_delegated_account, delegation_record_pda_from_delegated_account,
 };
 use ephemeral_spl_api::consts::{
-    PRIVATE_TRANSFER_FEE_BASIS_POINTS, SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS,
-    SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS,
+    BASIS_POINTS_FACTOR, PRIVATE_TRANSFER_FEE_BASIS_POINTS,
+    SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS, SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS,
 };
 use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
@@ -41,7 +41,6 @@ const DEPOSIT_AMOUNT: u64 = 100 * 10u64.pow(DECIMALS as u32);
 const MIN_DELAY_MS: u64 = 5_000;
 const MAX_DELAY_MS: u64 = 15_000;
 const SPLIT: u32 = 4;
-const BASIS_POINTS_DENOMINATOR: u64 = 10_000;
 const TRANSFER_CHECKED_DISCRIMINATOR: u8 = 12;
 
 fn read_header_unaligned(data: &[u8]) -> TransferQueueHeader {
@@ -399,7 +398,8 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
         "expected stored post-delegation payload bytes"
     );
     let action_payload = &delegation_record_account.data[record_len..];
-    let fee_amount = DEPOSIT_AMOUNT * PRIVATE_TRANSFER_FEE_BASIS_POINTS / BASIS_POINTS_DENOMINATOR;
+    let fee_amount =
+        DEPOSIT_AMOUNT * PRIVATE_TRANSFER_FEE_BASIS_POINTS / (BASIS_POINTS_FACTOR as u64);
     let private_transfer_amount = DEPOSIT_AMOUNT - fee_amount;
 
     let mut private_transfer_prefix =
