@@ -1,3 +1,4 @@
+use crate::processor::initialize_group_receipt::process_initialize_group_receipt;
 use ephemeral_spl_api::error::EphemeralSplError;
 use ephemeral_spl_api::instruction::{self, internal};
 use {
@@ -274,6 +275,12 @@ pub(crate) fn inner_process_instruction(
             pinocchio_log::log!("Instruction: ExecuteTransferCallback");
 
             process_execute_transfer_callback(accounts, instruction_data)
+        }
+        internal::INITIALIZE_GROUP_RECEIPT => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: InitializeGroupReceipt");
+
+            process_initialize_group_receipt(accounts, instruction_data)
         }
         _ => Err(EphemeralSplError::InvalidInstruction.into()),
     }

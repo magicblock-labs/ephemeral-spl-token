@@ -66,7 +66,7 @@ pub fn resize_ephemeral_account(
     signers: &[Signer<'_, '_>],
 ) -> ProgramResult {
     let mut data = [0u8; 8];
-    data[..4].copy_from_slice(&CREATE_EPHEMERAL_VARIANT);
+    data[..4].copy_from_slice(&RESIZE_EPHEMERAL_VARIANT);
     data[4..].copy_from_slice(&new_data_len.to_le_bytes());
 
     let ix_accounts = [

@@ -21,6 +21,16 @@ impl<'a> GroupReceipt<'a> {
         self.splits() != 0
     }
 
+
+    /// Returns `true` if all transfers are completed
+    pub fn all_transfer_completed(&self) -> bool {
+        if !self.is_fully_initialized() {
+            false
+        } else {
+            self.items_len() == self.splits() as usize
+        }
+    }
+
     /// Fully initialized `GroupReceipt` by setting splits
     pub fn set_splits(&mut self, value: NonZeroU32) {
         self.header.splits = value.get();
@@ -47,6 +57,13 @@ impl<'a> GroupReceipt<'a> {
         let initialized_items_bytes = self.initialized_items_bytes();
         bytemuck::try_cast_slice(&self.items_data[..initialized_items_bytes])
             .map_err(|_| ProgramError::InvalidAccountData)
+    }
+
+    /// Returns number of completed transfer, i.e current items
+    /// `transfer_completed` in sync with items in `GroupReceipt`
+    #[inline(always)]
+    pub fn items_len(&self) -> usize {
+        self.header.transfers_completed as usize
     }
 
     /// Returns how much items current account can store
@@ -105,7 +122,8 @@ pub struct GroupReceiptHeader {
     /// PDA bump for receipt.
     bump: u8,
     /// Reserved for future fields without migration.
-    _reserved: [u8; 7],
+    /// Sized to pad header to 24 bytes so items (align 8) start at an 8-byte-aligned offset.
+    _reserved: [u8; 11],
 }
 
 impl GroupReceiptHeader {
@@ -115,7 +133,7 @@ impl GroupReceiptHeader {
             splits,
             bump,
             transfers_completed: 0,
-            _reserved: [0; 7],
+            _reserved: [0; 11],
         }
     }
 
@@ -140,6 +158,10 @@ impl GroupReceiptHeader {
 
     pub fn bump(&self) -> u8 {
         self.bump
+    }
+
+    pub fn transfer_completed(&self) -> u32 {
+        self.transfers_completed
     }
 
     /// Returns number of `splits` that current receipt can contain

@@ -5,9 +5,8 @@ use crate::processor::process_transfer_queue_tick::derive_associated_token_addre
 use core::num::NonZeroU32;
 use core::ops::Deref;
 use ephemeral_spl_api::program::id_address;
-use ephemeral_spl_api::state::group_receipt::{
-    initialize_group_receipt, GroupReceipt, TransferReceipt,
-};
+use ephemeral_spl_api::state::group_receipt;
+use ephemeral_spl_api::state::group_receipt::{GroupReceipt, TransferReceipt};
 use ephemeral_spl_api::state::transfer_queue::{
     queue_views_checked, TransferQueueHeader, QUEUE_SEED,
 };
@@ -59,7 +58,7 @@ pub fn process_execute_transfer_callback(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let [validator, group_receipt, queue_info, vault, mint, vault_token_account, _, _, magic_vault, _magic_program] =
+    let [validator, group_receipt, queue_info, vault, mint, vault_token_account, _, _, magic_vault, magic_program] =
         accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
@@ -83,7 +82,14 @@ pub fn process_execute_transfer_callback(
     let args = TransferCallbackArgs::try_from_bytes(response.data)?;
 
     // Handles group receipt flow
-    handle_group_receipt(queue_info, group_receipt, magic_vault, &args, &response)?;
+    handle_group_receipt(
+        queue_info,
+        group_receipt,
+        magic_vault,
+        magic_program,
+        &args,
+        &response,
+    )?;
     if !response.ok {
         if let Ok(value) = core::str::from_utf8(response.error) {
             pinocchio_log::log!("Action failed: {}", value);
@@ -141,6 +147,7 @@ fn handle_group_receipt(
     queue_info: &AccountView,
     group_receipt_info: &AccountView,
     magic_vault: &AccountView,
+    magic_program: &AccountView,
     args: &TransferCallbackArgs,
     response: &MagicResponseView,
 ) -> ProgramResult {
@@ -148,20 +155,27 @@ fn handle_group_receipt(
         derive_group_receipt_id(queue_info.address(), args.group_id);
     if &group_receipt_id != group_receipt_info.address() {
         pinocchio_log::log!("Invalid group receipt account");
-        // TODO(edwin): should error?
         return Err(ProgramError::InvalidSeeds);
     }
 
-    // Create receipt idempotently
-    init_group_receipt_id(
-        queue_info,
-        group_receipt_info,
-        magic_vault,
-        group_receipt_bump,
-        args,
-    )?;
+    // Create receipt
+    // This means that callback executed faster than initializing crank
+    // As we don't know number of splits, initialize partially with 0
+    if !group_receipt_info.owned_by(&id_address()) {
+        pinocchio_log::log!("TransferCallback: initializing receipt");
+        initialize_group_receipt(
+            queue_info,
+            magic_vault,
+            group_receipt_info,
+            group_receipt_bump,
+            args.group_id,
+            0,
+        )?;
+    }
+
     // Update receipt recording transfer
-    let mut group_receipt = GroupReceipt::new(group_receipt_info)?;
+    let mut group_receipt =
+        GroupReceiptController::new(group_receipt_info, queue_info, magic_vault, magic_program)?;
     group_receipt.record_transfer(TransferReceipt::new(
         response.signature.copied(),
         args.amount,
@@ -169,9 +183,9 @@ fn handle_group_receipt(
     ))?;
 
     // If no transfers left - close account
-    if group_receipt.transfers_left() == 0 {
+    if group_receipt.all_transfer_completed() {
         log_group_receipt(&group_receipt);
-        close_group_receipt(queue_info, group_receipt_info, magic_vault)
+        group_receipt.close()
     } else {
         Ok(())
     }
@@ -179,7 +193,11 @@ fn handle_group_receipt(
 
 #[inline(never)]
 pub(crate) fn log_group_receipt(group_receipt: &GroupReceipt) {
-    pinocchio_log::log!("All transfers complete for group id:{}", group_receipt.id());
+    pinocchio_log::log!(
+        "All transfers complete for group id:{} splits:{}",
+        group_receipt.id(),
+        group_receipt.splits()
+    );
     if let Ok(items) = group_receipt.items() {
         for (i, item) in items.iter().enumerate() {
             match item.signature() {
@@ -201,24 +219,16 @@ pub(crate) fn log_group_receipt(group_receipt: &GroupReceipt) {
     }
 }
 
-/// Returns a reference to the `GroupReceipt`
-///
-/// If the PDA account already exists (owned by this program) the stored data
-/// is returned directly.
-/// Otherwise, the account is created via CPI, funded from `queue_info`.
+/// Initialize `GroupReceipt`
 #[inline(never)]
-pub fn init_group_receipt_id(
+pub fn initialize_group_receipt(
     queue_info: &AccountView,
-    group_receipt: &AccountView,
     magic_vault: &AccountView,
+    group_receipt: &AccountView,
     group_receipt_bump: u8,
-    callback_args: &TransferCallbackArgs,
+    group_id: u32,
+    splits: u32,
 ) -> ProgramResult {
-    // Account already exists — nothing to do.
-    if group_receipt.owned_by(&id_address()) {
-        return Ok(());
-    }
-
     // Build queue signer seeds from its stored header.
     let (header, _) = queue_views_checked(unsafe { queue_info.borrow_unchecked() })?;
     let queue_bump_seed = [header.bump];
@@ -230,7 +240,7 @@ pub fn init_group_receipt_id(
     ];
     let queue_signer = Signer::from(&queue_signer_seeds);
 
-    let group_id_bytes = callback_args.group_id.to_le_bytes();
+    let group_id_bytes = group_id.to_le_bytes();
     let receipt_bump_seed = [group_receipt_bump];
     let receipt_signer_seeds = [
         Seed::from(GROUP_RECEIPT_SEED),
@@ -241,7 +251,8 @@ pub fn init_group_receipt_id(
     let receipt_signer = Signer::from(&receipt_signer_seeds);
 
     // Account does not exist yet — create it as an ephemeral account, paying from the queue PDA.
-    let space = GroupReceipt::required_size(callback_args.splits as usize);
+    let space = GroupReceipt::required_size(splits as usize);
+    // TODO: move to GroupReceiptController?
     create_ephemeral_account(
         queue_info,
         group_receipt,
@@ -249,33 +260,9 @@ pub fn init_group_receipt_id(
         space as u32,
         &[queue_signer, receipt_signer],
     )?;
-
-    // Write initial state into the newly allocated account.
-    initialize_group_receipt(
-        group_receipt,
-        callback_args.group_id,
-        callback_args.splits,
-        group_receipt_bump,
-    )
+    group_receipt::initialize_group_receipt(group_receipt, group_id, splits, group_receipt_bump)
 }
 
-pub fn close_group_receipt(
-    queue_info: &AccountView,
-    group_receipt: &AccountView,
-    magic_vault: &AccountView,
-) -> ProgramResult {
-    let (header, _) = queue_views_checked(unsafe { queue_info.borrow_unchecked() })?;
-    let queue_bump_seed = [header.bump];
-    let queue_signer_seeds = [
-        Seed::from(QUEUE_SEED),
-        Seed::from(header.mint.as_ref()),
-        Seed::from(header.validator.as_ref()),
-        Seed::from(&queue_bump_seed),
-    ];
-    let queue_signer = Signer::from(&queue_signer_seeds);
-
-    close_ephemeral_account(queue_info, group_receipt, magic_vault, &[queue_signer])
-}
 
 /// Deserialize the bincode-encoded `MagicResponse` from a byte slice without
 /// pulling in the `bincode` crate.
@@ -405,14 +392,14 @@ pub struct GroupReceiptController<'a> {
 impl<'a> GroupReceiptController<'a> {
     pub fn new(
         group_receipt_info: &'a AccountView,
-        sponsor: &'a AccountView,
+        queue_info: &'a AccountView,
         magic_vault: &'a AccountView,
         _magic_program: &'a AccountView,
     ) -> Result<Self, ProgramError> {
         let group_receipt = GroupReceipt::new(group_receipt_info)?;
         Ok(Self {
             group_receipt_info,
-            queue_info: sponsor,
+            queue_info,
             magic_vault,
             _magic_program,
             group_receipt,
@@ -424,6 +411,11 @@ impl<'a> GroupReceiptController<'a> {
         self.group_receipt.is_fully_initialized()
     }
 
+    /// Returns `true` if all transfers are completed
+    pub fn all_transfer_completed(&self) -> bool {
+        self.group_receipt.all_transfer_completed()
+    }
+
     /// Fully initialized `GroupReceipt` with number of splits
     pub fn set_splits(&mut self, splits: NonZeroU32) -> ProgramResult {
         self.group_receipt.set_splits(splits);
@@ -431,15 +423,10 @@ impl<'a> GroupReceiptController<'a> {
         let current_capacity = self.group_receipt.items_capacity();
         let final_capacity = splits.get() as usize;
         if current_capacity < final_capacity {
-            self.allocate_items(final_capacity - current_capacity)?;
+            self.allocate_items(final_capacity - current_capacity)
         } else {
             Ok(())
         }
-    }
-
-    /// Returns slice of completed transfer's receipts
-    pub fn items(&self) -> Result<&[TransferReceipt], ProgramError> {
-        self.group_receipt.items()
     }
 
     pub fn record_transfer(&mut self, item: TransferReceipt) -> ProgramResult {
@@ -463,9 +450,24 @@ impl<'a> GroupReceiptController<'a> {
         Ok(())
     }
 
+    /// Closes the group receipt account, refunding rent to the queue PDA.
+    /// Consumes the controller since the account is no longer valid after closing.
+    pub fn close(self) -> ProgramResult {
+        let (header, _) = queue_views_checked(unsafe { self.queue_info.borrow_unchecked() })?;
+        let queue_bump_seed = [header.bump];
+        let queue_signer_seeds = [
+            Seed::from(QUEUE_SEED),
+            Seed::from(header.mint.as_ref()),
+            Seed::from(header.validator.as_ref()),
+            Seed::from(&queue_bump_seed),
+        ];
+        let queue_signer = Signer::from(&queue_signer_seeds);
+        close_ephemeral_account(self.queue_info, self.group_receipt_info, self.magic_vault, &[queue_signer])
+    }
+
     /// Resizes account to hold `num` extra accounts
     fn allocate_items(&mut self, num: usize) -> ProgramResult {
-        let current_len = self.group_receipt.items()?.len();
+        let current_len = self.group_receipt.items_len();
         let new_len = GroupReceipt::required_size(
             current_len
                 .checked_add(num)

@@ -171,9 +171,11 @@ pub mod instruction {
         /// 204 - MarkTransferQueueRefillPending: Magic standalone action that
         ///       sets the per-queue refill-state pending flag.
         pub const MARK_TRANSFER_QUEUE_REFILL_PENDING: u8 = 204;
-        //// 205 - ExecuteTransferCallback: callback with result of `EXECUTE_READY_QUEUED_TRANSFER`
+        /// 205 - ExecuteTransferCallback: callback with result of `EXECUTE_READY_QUEUED_TRANSFER`
         ///        TODO(edwin): proper description
         pub const EXECUTE_TRANSFER_CALLBACK: u8 = 205;
+        /// 206 - InitializeGroupReceipt: crank tick that initializes group receipt
+        pub const INITIALIZE_GROUP_RECEIPT: u8 = 206;
     }
 }
 
