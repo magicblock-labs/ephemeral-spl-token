@@ -167,44 +167,9 @@ pub mod instruction {
         ///       sets the per-queue refill-state pending flag.
         pub const MARK_TRANSFER_QUEUE_REFILL_PENDING: u8 = 204;
         /// 205 - ExecuteTransferCallback: callback with result of `EXECUTE_READY_QUEUED_TRANSFER`
-        ///        TODO(edwin): proper description
+        ///       maintains `GroupReceipt`, adds `TransferReceipt`
         pub const EXECUTE_TRANSFER_CALLBACK: u8 = 205;
         /// 206 - InitializeGroupReceipt: crank tick that initializes group receipt
         pub const INITIALIZE_GROUP_RECEIPT: u8 = 206;
     }
 }
-
-// TODO(edwin): cleanup
-// shuttle derived from [user, mint, shuttle_id_seed]
-// shuttle_eata derived from [shuttle.address(), mint]
-// shuttle_wallet_ata derived from [shuttle.address(), token_program_id, mint]
-
-// Global vault:
-// There's eata vault + regular ata for mapping purposes
-// 1. initialize vault ad vault eta
-// 2, delegate vault eta
-// 3. DEPOSIT_AND_DELEGATE_SHUTTLE_EPHEMERAL_ATA_WITH_MERGE_AND_PRIVATE_TRANSFER
-
-// BASE:
-// create accs
-// initiaze transfer queue
-// ENSURE_TRANSFER_QUEUE_CRANK
-// DELEGATE_TRANSFER_QUEUE
-// create atas of keypairs
-
-// ER:
-// EnsureTransferQueueCrank
-
-// on init of send
-// Base
-// create/initialize vault
-// delegate vault
-// create sender ata
-// create sender eata
-// delegate sender eata
-
-// AQEZ5FJ54GCVijijUv57brtxJZXe8ptKdUY1UiYNiVWG - vault eata, Gt9NNkyUpHbHsZpvHBxN5wjhjq5zK89zBRWN7idgm2r4 - vault token
-// 3iqNtUpN3VKNpftwcXTJ96mBHT4jPFGVpo674qpMAJsn - eata, 4KZADmV2SaW39GcDaqqb76N4TdPhwRMq81qvrcsVut5a - user_info
-// 32PwhQ7qmqh2f2MUMMAXvyAiNRpqyZQMXPjYUetWBwzT - keypair, 3JY5mC2MnmSfrwyBUi41SCMs7CNvEXVD9QRJZSemjKVj - ata
-
-// 3JY5mC2MnmSfrwyBUi41SCMs7CNvEXVD9QRJZSemjKVj is ata of 32PwhQ7qmqh2f2MUMMAXvyAiNRpqyZQMXPjYUetWBwzT

@@ -237,8 +237,7 @@ fn create_group_receipt(
     // Accounts required on crank tick
     let (group_receipt, _) = derive_group_receipt_id(queue_info.address(), group_id);
     let tick_accounts = [
-        // TODO(edwin): readonly_signer
-        InstructionAccount::writable_signer(&validator),
+        InstructionAccount::readonly(&validator),
         InstructionAccount::writable(queue_info.address()),
         InstructionAccount::writable(&group_receipt),
         InstructionAccount::writable(&MAGIC_VAULT_ID),

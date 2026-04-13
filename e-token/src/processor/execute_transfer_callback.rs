@@ -102,8 +102,7 @@ fn validate_common(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    // TODO(edwin): verify
-    // Under condition that queue can be created only by validator
+    // Under condition that queue creation is authorized
     // Verifies both validator & queue
     let (derived_queue, _) = Address::find_program_address(
         &[
@@ -150,21 +149,20 @@ fn handle_group_receipt(
     // Create receipt
     // This means that callback executed faster than initializing crank
     // As we don't know number of splits, initialize partially with 0
-    if !group_receipt_info.owned_by(&crate::ID) {
+    let mut group_receipt = if !group_receipt_info.owned_by(&crate::ID) {
         pinocchio_log::log!("TransferCallback: initializing receipt");
-        initialize_group_receipt(
+        GroupReceiptController::create(
+            group_receipt_info,
             queue_info,
             magic_vault,
-            group_receipt_info,
+            magic_program,
             group_receipt_bump,
             args.group_id,
             0,
-        )?;
-    }
-
-    // Update receipt recording transfer
-    let mut group_receipt =
-        GroupReceiptController::new(group_receipt_info, queue_info, magic_vault, magic_program)?;
+        )?
+    } else {
+        GroupReceiptController::view(group_receipt_info, queue_info, magic_vault, magic_program)?
+    };
     group_receipt.record_transfer(TransferReceipt::new(
         response.signature.copied(),
         args.amount,
@@ -206,50 +204,6 @@ pub(crate) fn log_group_receipt(group_receipt: &GroupReceipt) {
             }
         }
     }
-}
-
-/// Initialize `GroupReceipt`
-#[inline(never)]
-pub fn initialize_group_receipt(
-    queue_info: &AccountView,
-    magic_vault: &AccountView,
-    group_receipt: &AccountView,
-    group_receipt_bump: u8,
-    group_id: u32,
-    splits: u32,
-) -> ProgramResult {
-    // Build queue signer seeds from its stored header.
-    let (header, _) = queue_views_checked(unsafe { queue_info.borrow_unchecked() })?;
-    let queue_bump_seed = [header.bump];
-    let queue_signer_seeds = [
-        Seed::from(QUEUE_SEED),
-        Seed::from(header.mint.as_ref()),
-        Seed::from(header.validator.as_ref()),
-        Seed::from(&queue_bump_seed),
-    ];
-    let queue_signer = Signer::from(&queue_signer_seeds);
-
-    let group_id_bytes = group_id.to_le_bytes();
-    let receipt_bump_seed = [group_receipt_bump];
-    let receipt_signer_seeds = [
-        Seed::from(GROUP_RECEIPT_SEED),
-        Seed::from(queue_info.address().as_ref()),
-        Seed::from(group_id_bytes.as_ref()),
-        Seed::from(&receipt_bump_seed),
-    ];
-    let receipt_signer = Signer::from(&receipt_signer_seeds);
-
-    // Account does not exist yet — create it as an ephemeral account, paying from the queue PDA.
-    let space = GroupReceipt::required_size(splits as usize);
-    // TODO: move to GroupReceiptController?
-    create_ephemeral_account(
-        queue_info,
-        group_receipt,
-        magic_vault,
-        space as u32,
-        &[queue_signer, receipt_signer],
-    )?;
-    group_receipt::initialize_group_receipt(group_receipt, group_id, splits, group_receipt_bump)
 }
 
 /// Deserialize the bincode-encoded `MagicResponse` from a byte slice without
@@ -378,7 +332,7 @@ pub struct GroupReceiptController<'a> {
 }
 
 impl<'a> GroupReceiptController<'a> {
-    pub fn new(
+    pub fn view(
         group_receipt_info: &'a AccountView,
         queue_info: &'a AccountView,
         magic_vault: &'a AccountView,
@@ -392,6 +346,55 @@ impl<'a> GroupReceiptController<'a> {
             _magic_program,
             group_receipt,
         })
+    }
+
+    /// Creates a new ephemeral account for the group receipt and initializes it.
+    /// Use this when the receipt account does not yet exist.
+    pub fn create(
+        group_receipt_info: &'a AccountView,
+        queue_info: &'a AccountView,
+        magic_vault: &'a AccountView,
+        magic_program: &'a AccountView,
+        group_receipt_bump: u8,
+        group_id: u32,
+        splits: u32,
+    ) -> Result<Self, ProgramError> {
+        let (header, _) = queue_views_checked(unsafe { queue_info.borrow_unchecked() })?;
+        let queue_bump_seed = [header.bump];
+        let queue_signer_seeds = [
+            Seed::from(QUEUE_SEED),
+            Seed::from(header.mint.as_ref()),
+            Seed::from(header.validator.as_ref()),
+            Seed::from(&queue_bump_seed),
+        ];
+        let queue_signer = Signer::from(&queue_signer_seeds);
+
+        let group_id_bytes = group_id.to_le_bytes();
+        let receipt_bump_seed = [group_receipt_bump];
+        let receipt_signer_seeds = [
+            Seed::from(GROUP_RECEIPT_SEED),
+            Seed::from(queue_info.address().as_ref()),
+            Seed::from(group_id_bytes.as_ref()),
+            Seed::from(&receipt_bump_seed),
+        ];
+        let receipt_signer = Signer::from(&receipt_signer_seeds);
+
+        let space = GroupReceipt::required_size(splits as usize);
+        create_ephemeral_account(
+            queue_info,
+            group_receipt_info,
+            magic_vault,
+            space as u32,
+            &[queue_signer, receipt_signer],
+        )?;
+        group_receipt::initialize_group_receipt(
+            group_receipt_info,
+            group_id,
+            splits,
+            group_receipt_bump,
+        )?;
+
+        Self::view(group_receipt_info, queue_info, magic_vault, magic_program)
     }
 
     /// Returns `true` if splits are set and not 0

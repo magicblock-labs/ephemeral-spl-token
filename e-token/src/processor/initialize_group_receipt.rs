@@ -1,6 +1,5 @@
 use crate::processor::execute_transfer_callback::{
-    derive_group_receipt_id, initialize_group_receipt, log_group_receipt, read_u32_le,
-    GroupReceiptController,
+    derive_group_receipt_id, log_group_receipt, read_u32_le, GroupReceiptController,
 };
 use core::num::NonZeroU32;
 use ephemeral_spl_api::state::transfer_queue::{
@@ -36,14 +35,17 @@ pub fn process_initialize_group_receipt(
             splits,
         )
     } else {
-        initialize_group_receipt(
+        GroupReceiptController::create(
+            group_receipt,
             queue_info,
             magic_vault,
-            group_receipt,
+            magic_program,
             group_receipt_bump,
             args.group_id,
             splits.get(),
-        )
+        )?;
+
+        Ok(())
     }
 }
 
@@ -95,7 +97,7 @@ fn handle_already_initialized_receipt(
     splits: NonZeroU32,
 ) -> ProgramResult {
     let mut group_receipt =
-        GroupReceiptController::new(group_receipt_info, queue_info, magic_vault, magic_program)?;
+        GroupReceiptController::view(group_receipt_info, queue_info, magic_vault, magic_program)?;
 
     if group_receipt.id() != group_id {
         return Err(ProgramError::InvalidInstructionData);

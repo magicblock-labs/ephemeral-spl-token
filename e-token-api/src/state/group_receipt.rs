@@ -4,7 +4,6 @@ use pinocchio::error::ProgramError;
 use pinocchio::{AccountView, ProgramResult};
 use solana_signature::Signature;
 
-// TODO(edwin): should move in e-token, too clumsy
 pub struct GroupReceipt<'a> {
     header: &'a mut GroupReceiptHeader,
     items_data: &'a mut [u8],
@@ -35,6 +34,10 @@ impl<'a> GroupReceipt<'a> {
         self.header.splits = value.get();
     }
 
+    /// Creates a view on initialized `GroupReceipt`
+    ///
+    /// # Safety
+    /// Should be called only on correctly initialized slice
     pub unsafe fn from_data_mut(data: &'a mut [u8]) -> Result<Self, ProgramError> {
         let (header_data, items_data) = data
             .split_at_mut_checked(GroupReceiptHeader::size())
