@@ -272,9 +272,13 @@ export const transferRequestSchema = z.object({
     example: 1,
     description: "Optional. Private transfer only. Defaults to 1. Must be between 1 and 15.",
   }).optional(),
+  gasless: z.boolean().openapi({
+    example: true,
+    description: "Optional. Private transfer only. When true, the API uses the configured sponsor as transaction fee payer and instruction payer.",
+  }).optional(),
   legacy: z.boolean().openapi({
     description: "Optional. Defaults to false. When true, skips lookup-table compilation and returns a legacy transaction.",
-  }).optional(),
+  })
 }).openapi("TransferRequest", {
   example: {
     from: DEPOSIT_EXAMPLE_OWNER,
@@ -292,6 +296,7 @@ export const transferRequestSchema = z.object({
     maxDelayMs: "0",
     clientRefId: "42",
     split: 1,
+    gasless: true,
   },
 });
 

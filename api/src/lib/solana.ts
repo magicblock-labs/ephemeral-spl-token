@@ -1,9 +1,11 @@
 import {
   compileLegacyTransactionToV0,
+  DELEGATION_PROGRAM_ID,
   delegateTransferQueueIx,
   deriveRentPda,
   deriveTransferQueue,
   delegateSpl,
+  EPHEMERAL_SPL_TOKEN_PROGRAM_ID,
   ensureTransferQueueCrankIx,
   initRentPdaIx,
   initTransferQueueIx,
@@ -42,6 +44,7 @@ const MEMO_PROGRAM_ID = new PublicKey(
 
 const DEFAULT_DEPOSIT_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const DEFAULT_DEPOSIT_DEVNET_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
+const MAINNET_USDT_MINT = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
 const DEFAULT_FALLBACK_VALIDATOR = new PublicKey(
   "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57",
 );
@@ -54,6 +57,7 @@ const PRIVATE_BASE_TO_BASE_TRANSFER_LOOKUP_TABLES = {
   mainnet: new PublicKey("2J2Pw639kU7U6rj7qUXY5sVXdJqyt4DjEcVxzqmFrFds"),
   devnet: new PublicKey("HFmj4QbofPjhXP2vdnDARDQFw1AucSQTKVAs8df4tkUy"),
 } as const;
+const GASLESS_STABLECOIN_MIN_AMOUNT = BigInt(5 * 1_000_000); // 5 USDC/USDT
 
 const connectionCache = new Map<string, Connection>();
 const validatorCache = new Map<string, Promise<PublicKey | undefined>>();
@@ -133,6 +137,7 @@ type TransferInput = {
   clientRefId?: string;
   split?: number;
   legacy?: boolean;
+  gasless?: boolean;
 };
 
 type BalanceInput = {
@@ -222,10 +227,57 @@ function createClusterConfigError(missingVars: Array<"BASE_DEVNET_RPC_URL" | "EP
   );
 }
 
-export function resolveRpcConfig(env: AppEnv, cluster?: string): RpcConfig {
-  const value = cluster?.trim();
-  const normalized = value?.toLowerCase();
+function getGaslessSponsorKeypair(env: AppEnv) {
+  if (!env.GASLESS_SPONSOR_SECRET_KEY) {
+    throw new ApiError(
+      503,
+      "SPONSOR_UNAVAILABLE",
+      "Gasless private transfers are not configured",
+    );
+  }
 
+  let secretKey: unknown;
+  try {
+    secretKey = JSON.parse(env.GASLESS_SPONSOR_SECRET_KEY);
+  }
+  catch {
+    throw new ApiError(
+      500,
+      "CONFIG_ERROR",
+      "GASLESS_SPONSOR_SECRET_KEY must be a JSON-encoded secret key array",
+    );
+  }
+
+  if (!Array.isArray(secretKey) || secretKey.some((value) => !Number.isInteger(value))) {
+    throw new ApiError(
+      500,
+      "CONFIG_ERROR",
+      "GASLESS_SPONSOR_SECRET_KEY must be a JSON-encoded secret key array",
+    );
+  }
+
+  try {
+    return Keypair.fromSecretKey(Uint8Array.from(secretKey));
+  }
+  catch {
+    throw new ApiError(
+      500,
+      "CONFIG_ERROR",
+      "GASLESS_SPONSOR_SECRET_KEY is not a valid Solana secret key",
+    );
+  }
+}
+
+export function resolveRpcConfig(env: AppEnv, cluster?: string): RpcConfig {
+  if (!cluster) {
+    return {
+      baseRpcUrl: env.BASE_RPC_URL,
+      ephemeralRpcUrl: env.EPHEMERAL_RPC_URL,
+      cluster: env.CLUSTER,
+    };
+  }
+  const value = cluster.trim();
+  const normalized = value?.toLowerCase();
   if (!value || normalized === "mainnet") {
     return {
       baseRpcUrl: env.BASE_RPC_URL,
@@ -505,6 +557,20 @@ function getRequiredSigners(feePayer: PublicKey, instructions: TransactionInstru
   return [...signers];
 }
 
+function isSupportedGaslessMint(cluster: RpcConfig["cluster"], mint: PublicKey) {
+  console.log("isSupportedGaslessMint: ", cluster);
+  if (cluster === "custom") {
+    return true;
+  }
+
+  const mintAddress = mint.toBase58();
+  if (cluster === "devnet") {
+    return mintAddress === DEFAULT_DEPOSIT_DEVNET_MINT;
+  }
+
+  return mintAddress === DEFAULT_DEPOSIT_MINT || mintAddress === MAINNET_USDT_MINT;
+}
+
 function isTransactionTooLargeMessage(message: string) {
   const normalized = message.toLowerCase();
 
@@ -569,8 +635,12 @@ function serializeTransaction(
   feePayer: PublicKey,
   blockhash: BlockhashResult,
   validator?: PublicKey,
+  partialSigners: Keypair[] = [],
 ): TransactionResponse {
   const transaction = createUnsignedTransaction(instructions, feePayer, blockhash);
+  if (partialSigners.length > 0) {
+    transaction.partialSign(...partialSigners);
+  }
 
   return {
     kind,
@@ -819,13 +889,12 @@ export async function buildInitializeMintTransaction(
 
 export async function buildTransferTransaction(env: AppEnv, input: TransferInput, authToken?: string) {
   try {
+    console.log("input: ", input, input.cluster);
     const config = resolveRpcConfig(env, input.cluster);
     const from = parsePublicKey(input.from, "from");
     const to = parsePublicKey(input.to, "to");
     const mint = parsePublicKey(input.mint, "mint");
     const amount = parseAmount(input.amount, "amount");
-    const payer = from;
-    const feePayer = from;
     const shuttleId = createRandomShuttleId();
 
     const minDelayMs = parseOptionalAmount(input.minDelayMs, "minDelayMs");
@@ -874,6 +943,35 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
     if (split !== undefined && BigInt(split) > amount) {
       throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "split cannot exceed amount");
     }
+
+    if (input.gasless && input.visibility !== "private") {
+      // TODO (snawaz): remove this unecessary restriction once private flow works
+      throw new ApiError(
+        400,
+        "INVALID_GASLESS_TRANSFER",
+        "gasless is supported only for private transfers",
+      );
+    }
+
+    if (input.gasless && !isSupportedGaslessMint(config.cluster, mint)) {
+      throw new ApiError(
+        400,
+        "INVALID_GASLESS_TRANSFER_MINT",
+        "gasless is supported only for approved stablecoin mints",
+      );
+    }
+
+    if (input.gasless && amount < GASLESS_STABLECOIN_MIN_AMOUNT) {
+      throw new ApiError(
+        400,
+        "INVALID_GASLESS_TRANSFER_AMOUNT",
+        `gasless amount must be at least ${Number(GASLESS_STABLECOIN_MIN_AMOUNT) / 1_000_000} USDC/USDT`,
+      );
+    }
+
+    const sponsor = input.gasless ? getGaslessSponsorKeypair(env) : undefined;
+    const payer = sponsor?.publicKey ?? from;
+    const feePayer = sponsor?.publicKey ?? from;
 
     const shouldResolveValidator = input.validator
       || input.visibility === "private"
@@ -940,6 +1038,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
       feePayer,
       blockhash,
       validator,
+      sponsor ? [sponsor] : [],
     );
   }
   catch (error) {
@@ -1092,7 +1191,8 @@ export async function getMintInitializationStatus(
 
   try {
     const accountInfo = await connection.getAccountInfo(transferQueue, "confirmed");
-    const initialized = accountInfo !== null;
+    const initialized = accountInfo !== null
+      && accountInfo.owner.equals(DELEGATION_PROGRAM_ID);
 
     if (initialized) {
       scheduleTransferQueueCrank(backgroundScheduler, config, transferQueue, validator);
