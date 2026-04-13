@@ -1,5 +1,5 @@
 use dlp_api::compact::ClearText;
-use ephemeral_spl_api::require_n_accounts_with_ignored;
+use ephemeral_spl_api::require_n_accounts;
 use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use solana_instruction::{AccountMeta, Instruction};
@@ -81,7 +81,7 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
         owner_token_info,
         mint_info,
         token_program_info,
-    ] = require_n_accounts_with_ignored!(accounts, 16);
+    ] = require_n_accounts!(accounts, 16);
 
     let args = DepositAndDelegateShuttleArgs::try_from_bytes(instruction_data)?;
 

@@ -1,7 +1,7 @@
 use ephemeral_rollups_pinocchio::instruction::DelegateAccountCpiBuilder;
 use ephemeral_rollups_pinocchio::types::DelegateConfig;
 use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, TransferQueue, QUEUE_SEED};
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts_with_ignored};
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
 ///
@@ -35,7 +35,7 @@ pub fn process_delegate_transfer_queue(
         delegation_metadata,
         _delegation_program,
         system_program,
-    ] = require_n_accounts_with_ignored!(accounts, 9);
+    ] = require_n_accounts!(accounts, 9);
 
     require!(
         instruction_data.is_empty(),

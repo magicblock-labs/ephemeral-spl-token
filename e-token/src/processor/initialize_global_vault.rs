@@ -1,6 +1,6 @@
 use crate::processor::internal::ephemeral_ata::initialize_ephemeral_ata_with_sponsor;
 use ephemeral_spl_api::state::RawType;
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts_with_ignored};
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::cpi::Signer;
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
@@ -44,7 +44,7 @@ pub fn process_initialize_global_vault(
         token_program_info,
         associated_token_program_info,
         system_program_info,
-    ] = require_n_accounts_with_ignored!(accounts, 8);
+    ] = require_n_accounts!(accounts, 8);
 
     require!(
         pinocchio_associated_token_account::check_id(associated_token_program_info.address()),

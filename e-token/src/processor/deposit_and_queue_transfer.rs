@@ -11,7 +11,7 @@ use ephemeral_spl_api::state::transfer_queue::{
     queue_len_and_bump_for_mint_with_capacity, queue_push_from_data, QueuedTransfer, TransferQueue,
     QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
 };
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts_with_ignored};
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::address::address_eq;
 use pinocchio::sysvars::clock::Clock;
 use pinocchio::sysvars::Sysvar;
@@ -52,7 +52,7 @@ pub fn process_deposit_and_queue_transfer(
         user_authority,
         token_program_info,
         reimbursement_token_info,
-    ] = require_n_accounts_with_ignored!(accounts, 9);
+    ] = require_n_accounts!(accounts, 9);
 
     let args = DepositAndQueueTransferArgs::try_from_bytes(instruction_data)?;
 

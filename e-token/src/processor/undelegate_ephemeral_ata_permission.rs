@@ -2,7 +2,7 @@ use ephemeral_rollups_pinocchio::acl::{
     consts::PERMISSION_PROGRAM_ID, instruction::commit_and_undelegate_permission,
 };
 use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_initialized};
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts_with_ignored};
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
 ///
@@ -30,7 +30,7 @@ pub fn process_undelegate_ephemeral_ata_permission(
         permission_program,
         magic_program,
         magic_context,
-    ] = require_n_accounts_with_ignored!(accounts, 6);
+    ] = require_n_accounts!(accounts, 6);
 
     require!(
         payer_info.is_signer(),

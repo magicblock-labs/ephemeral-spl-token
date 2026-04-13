@@ -5,7 +5,7 @@ use ephemeral_rollups_pinocchio::{
     consts::{DELEGATION_PROGRAM_ID, MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID},
     types::DelegateConfig,
 };
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts_with_ignored};
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
@@ -56,7 +56,7 @@ pub fn process_sponsored_lamports_transfer(
         system_program,
         destination_info,
         destination_delegation_record_info,
-    ] = require_n_accounts_with_ignored!(accounts, 11);
+    ] = require_n_accounts!(accounts, 11);
 
     let (amount, salt) = parse_amount_and_salt(instruction_data)?;
 

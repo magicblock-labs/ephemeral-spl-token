@@ -1,6 +1,6 @@
 use ephemeral_spl_api::state::load_initialized;
 use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts_with_ignored};
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::cpi::Signer;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
@@ -32,7 +32,7 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
         shuttle_wallet_ata_info,
         mint_info,
         token_program_info,
-    ] = require_n_accounts_with_ignored!(accounts, 6);
+    ] = require_n_accounts!(accounts, 6);
 
     require!(
         owner_info.is_signer(),

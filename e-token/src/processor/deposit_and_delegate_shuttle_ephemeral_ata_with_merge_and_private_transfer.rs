@@ -11,7 +11,7 @@ use dlp_api::args::{
 use dlp_api::compact::{self};
 
 use ephemeral_spl_api::state::transfer_queue::{queue_views, TransferQueue};
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts_with_ignored};
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use solana_instruction::{AccountMeta, Instruction};
 
@@ -81,7 +81,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
         owner_source_token_info,
         vault_token_info,
         queue_info,
-    ] = require_n_accounts_with_ignored!(accounts, 19);
+    ] = require_n_accounts!(accounts, 19);
 
     let args = DepositAndDelegateShuttleWithPrivateTransferArgs::try_from_bytes(instruction_data)?;
     require!(args.amount() != 0, ProgramError::InvalidInstructionData);

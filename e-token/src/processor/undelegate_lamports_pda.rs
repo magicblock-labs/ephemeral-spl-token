@@ -1,7 +1,7 @@
 use ephemeral_rollups_pinocchio::intent_bundle::{
     ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
 };
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts_with_ignored};
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
@@ -38,7 +38,7 @@ pub fn process_undelegate_lamports_pda(
         destination_info,
         magic_context,
         magic_program,
-    ] = require_n_accounts_with_ignored!(accounts, 6);
+    ] = require_n_accounts!(accounts, 6);
 
     let salt = parse_salt(instruction_data)?;
 

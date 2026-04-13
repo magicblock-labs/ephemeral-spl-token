@@ -5,7 +5,7 @@ use pinocchio::Address;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_system::instructions::CreateAccount;
 
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts_with_ignored};
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 
 pub const RENT_PDA_SEED: &[u8] = b"rent";
 const RENT_PDA_AND_BUMP: ([u8; 32], u8) =
@@ -33,7 +33,7 @@ pub fn process_initialize_rent_pda(
         payer_info, // force multi-line
         rent_pda_info,
         _system_program_info,
-    ] = require_n_accounts_with_ignored!(accounts, 3);
+    ] = require_n_accounts!(accounts, 3);
 
     require!(
         instruction_data.is_empty(),

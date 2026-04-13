@@ -1,4 +1,4 @@
-use ephemeral_spl_api::require_n_accounts_with_ignored;
+use ephemeral_spl_api::require_n_accounts;
 use pinocchio::{AccountView, ProgramResult};
 
 use crate::processor::internal::ephemeral_ata::initialize_ephemeral_ata_with_sponsor;
@@ -25,7 +25,8 @@ pub fn process_initialize_ephemeral_ata(
         payer_info,
         user_info,
         mint_info,
-    ] = require_n_accounts_with_ignored!(accounts, 4);
+        _system_program,
+    ] = require_n_accounts!(accounts, 5);
 
     initialize_ephemeral_ata_with_sponsor(
         ephemeral_ata_info,

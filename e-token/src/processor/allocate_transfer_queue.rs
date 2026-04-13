@@ -1,5 +1,5 @@
 use ephemeral_spl_api::state::transfer_queue::{item_len, queue_views_checked, TransferQueue};
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts_with_ignored};
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
@@ -24,7 +24,7 @@ pub fn process_allocate_transfer_queue(
     let [
         queue_info, // force multi-line
         _system_program_info,
-    ] = require_n_accounts_with_ignored!(accounts, 2);
+    ] = require_n_accounts!(accounts, 2);
 
     require!(
         queue_info.owned_by(&crate::ID),

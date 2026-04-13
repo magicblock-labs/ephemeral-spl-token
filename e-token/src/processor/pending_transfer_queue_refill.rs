@@ -1,5 +1,5 @@
 use ephemeral_spl_api::instruction::SPONSORED_LAMPORTS_TRANSFER;
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts_with_ignored};
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::cpi::{invoke_signed_with_bounds, Seed, Signer};
 use pinocchio::instruction::{InstructionAccount, InstructionView};
 use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
@@ -53,7 +53,7 @@ pub fn process_pending_transfer_queue_refill(
         delegation_program_info,
         system_program_info,
         queue_delegation_record_info,
-    ] = require_n_accounts_with_ignored!(accounts, 11);
+    ] = require_n_accounts!(accounts, 11);
 
     // Exit early if refill_state_info does not exist (refill was not requested)
     if refill_state_info.lamports() == 0 || !refill_state_info.owned_by(&crate::ID) {

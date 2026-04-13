@@ -11,7 +11,7 @@ use ephemeral_spl_api::state::transfer_queue::{
 };
 use ephemeral_spl_api::{
     instruction::internal::{EXECUTE_READY_QUEUED_TRANSFER, MARK_TRANSFER_QUEUE_REFILL_PENDING},
-    require_n_accounts_with_ignored,
+    require_n_accounts,
 };
 use ephemeral_spl_api::{require, require_eq_keys};
 use pinocchio::cpi::{Seed, Signer};
@@ -78,7 +78,7 @@ pub fn process_transfer_queue_tick(
         magic_fee_vault_info,
         magic_context_info,
         magic_program_info,
-    ] = require_n_accounts_with_ignored!(accounts, 4);
+    ] = require_n_accounts!(accounts, 4);
 
     require_eq_keys!(
         magic_program_info.address(),

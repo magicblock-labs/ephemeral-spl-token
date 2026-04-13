@@ -1,5 +1,5 @@
 use core::marker::PhantomData;
-use ephemeral_spl_api::{require, require_n_accounts_with_ignored};
+use ephemeral_spl_api::{require, require_n_accounts};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
 use crate::processor::internal::ephemeral_ata::initialize_shuttle_ephemeral_ata_with_sponsor;
@@ -36,7 +36,7 @@ pub fn process_initialize_shuttle_ephemeral_ata(
         token_program_info,
         _associated_token_program_info,
         system_program_info,
-    ] = require_n_accounts_with_ignored!(accounts, 9);
+    ] = require_n_accounts!(accounts, 9);
 
     let args = InitializeShuttleEphemeralAta::try_from_bytes(instruction_data)?;
 

@@ -1,5 +1,5 @@
 use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_initialized};
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts_with_ignored};
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
 use crate::processor::utils::validate_token_account;
@@ -43,7 +43,7 @@ pub fn process_undelegate_ephemeral_ata(
         ephemeral_ata_info,
         magic_context,
         magic_program,
-    ] = require_n_accounts_with_ignored!(accounts, 5);
+    ] = require_n_accounts!(accounts, 5);
 
     // Ensure the payer signed the transaction
     require!(payer.is_signer(), ProgramError::MissingRequiredSignature);

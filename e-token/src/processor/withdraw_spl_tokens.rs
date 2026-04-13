@@ -1,5 +1,5 @@
 use core::marker::PhantomData;
-use ephemeral_spl_api::{require, require_n_accounts_with_ignored};
+use ephemeral_spl_api::{require, require_n_accounts};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
 use crate::processor::internal::token_vault::withdraw_ephemeral_ata_tokens;
@@ -32,7 +32,7 @@ pub fn process_withdraw_spl_tokens(
         vault_source_token_acc,
         user_dest_token_acc,
         token_program_info,
-    ] = require_n_accounts_with_ignored!(accounts, 7);
+    ] = require_n_accounts!(accounts, 7);
 
     let args = WithdrawArgs::try_from_bytes(instruction_data)?;
 

@@ -6,7 +6,7 @@ use ephemeral_rollups_pinocchio::acl::{
 };
 use ephemeral_spl_api::{require, require_eq_keys};
 use ephemeral_spl_api::{
-    require_n_accounts_with_ignored,
+    require_n_accounts,
     state::{ephemeral_ata::EphemeralAta, load_initialized},
 };
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
@@ -33,7 +33,7 @@ pub fn process_reset_ephemeral_ata_permission(
         permission_info,
         owner_info,
         permission_program,
-    ] = require_n_accounts_with_ignored!(accounts, 4);
+    ] = require_n_accounts!(accounts, 4);
 
     let args = ResetEphemeralAtaPermission::try_from_bytes(instruction_data)?;
 

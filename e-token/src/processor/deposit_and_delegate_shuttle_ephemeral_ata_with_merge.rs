@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 use dlp_api::compact::ClearText;
-use ephemeral_spl_api::require_n_accounts_with_ignored;
+use ephemeral_spl_api::require_n_accounts;
 use pinocchio::{AccountView, ProgramResult};
 use solana_instruction::Instruction;
 
@@ -68,7 +68,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge(
         global_vault_info,
         owner_source_token_info,
         vault_token_info,
-    ] = require_n_accounts_with_ignored!(accounts, 19);
+    ] = require_n_accounts!(accounts, 19);
 
     let args = DepositAndDelegateShuttleArgs::try_from_bytes(instruction_data)?;
 

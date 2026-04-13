@@ -3,7 +3,7 @@ use ephemeral_rollups_pinocchio::types::DelegateConfig;
 use ephemeral_spl_api::state::{
     ephemeral_ata::EphemeralAta, load_initialized, shuttle_ephemeral_ata::ShuttleMetadata,
 };
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts_with_ignored};
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
 
 ///
@@ -37,7 +37,7 @@ pub fn process_delegate_shuttle_ephemeral_ata(
         delegation_metadata,
         _delegation_program,
         system_program,
-    ] = require_n_accounts_with_ignored!(accounts, 9);
+    ] = require_n_accounts!(accounts, 9);
 
     let args = DelegateShuttleArgs::try_from_bytes(instruction_data)?;
 

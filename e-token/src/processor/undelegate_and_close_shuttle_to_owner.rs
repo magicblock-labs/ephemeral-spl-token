@@ -6,7 +6,7 @@ use ephemeral_spl_api::instruction::internal::SETTLE_AND_CLOSE_SHUTTLE_INTENT;
 use ephemeral_spl_api::state::{
     ephemeral_ata::EphemeralAta, load_initialized, shuttle_ephemeral_ata::ShuttleMetadata,
 };
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts_with_ignored};
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
 
 const DEFAULT_ESCROW_INDEX: u8 = u8::MAX;
@@ -44,7 +44,7 @@ pub fn process_undelegate_and_close_shuttle_to_owner(
         token_program_info,
         magic_context,
         magic_program,
-    ] = require_n_accounts_with_ignored!(accounts, 9);
+    ] = require_n_accounts!(accounts, 9);
 
     let escrow_index = parse_escrow_index(instruction_data)?;
 

@@ -1,4 +1,4 @@
-use ephemeral_spl_api::require_n_accounts_with_ignored;
+use ephemeral_spl_api::require_n_accounts;
 use pinocchio::{AccountView, ProgramResult};
 
 ///
@@ -22,7 +22,7 @@ pub fn process_undelegation_callback(
         buffer_acc,
         payer,
         _system_program,
-    ] = require_n_accounts_with_ignored!(accounts, 4);
+    ] = require_n_accounts!(accounts, 4);
 
     ephemeral_rollups_pinocchio::instruction::undelegate(
         delegated_acc,
