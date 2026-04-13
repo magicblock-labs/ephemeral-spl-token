@@ -1,6 +1,7 @@
 use crate::processor::execute_transfer_callback::{
-    derive_group_receipt_id, log_group_receipt, read_u32_le, GroupReceiptController,
+    derive_group_receipt_id, log_group_receipt, read_u32_le,
 };
+use crate::processor::utils::GroupReceiptController;
 use core::num::NonZeroU32;
 use ephemeral_spl_api::state::transfer_queue::{
     queue_views_checked, TransferQueueHeader, QUEUE_SEED,
