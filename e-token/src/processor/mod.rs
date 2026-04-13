@@ -11,7 +11,6 @@ pub mod deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transf
 pub mod deposit_and_queue_transfer;
 pub mod deposit_spl_tokens;
 pub mod ensure_transfer_queue_crank;
-mod ephemeral_account;
 pub mod execute_ready_queued_transfer;
 pub mod execute_transfer_callback;
 pub mod initialize_ephemeral_ata;

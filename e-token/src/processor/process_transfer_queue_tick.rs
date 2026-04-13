@@ -1,7 +1,6 @@
 #[cfg(feature = "logging")]
 use alloc::string::ToString;
 
-use crate::processor::ephemeral_account::MAGIC_VAULT_ID;
 use crate::processor::execute_transfer_callback::derive_group_receipt_id;
 use crate::processor::rent_pda::RENT_PDA;
 use dlp_api::pda::magic_fee_vault_pda_from_validator;
@@ -29,6 +28,7 @@ use pinocchio::{
 };
 use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
 
+use crate::processor::utils::MAGIC_VAULT_ID;
 use crate::{
     assert_owner,
     processor::transfer_queue_refill::{

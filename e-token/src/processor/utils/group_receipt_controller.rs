@@ -1,7 +1,7 @@
-use crate::processor::ephemeral_account::{
+use crate::processor::execute_transfer_callback::GROUP_RECEIPT_SEED;
+use crate::processor::utils::ephemeral_account::{
     close_ephemeral_account, create_ephemeral_account, resize_ephemeral_account,
 };
-use crate::processor::execute_transfer_callback::GROUP_RECEIPT_SEED;
 use core::num::NonZeroU32;
 use core::ops::Deref;
 use ephemeral_spl_api::state::group_receipt;

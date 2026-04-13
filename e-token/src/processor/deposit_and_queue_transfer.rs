@@ -1,8 +1,7 @@
 use crate::processor::deposit_spl_tokens::transfer_to_vault_for_mint;
 use crate::processor::ensure_transfer_queue_crank::derive_queue_crank_task_id;
-use crate::processor::ephemeral_account::MAGIC_VAULT_ID;
 use crate::processor::execute_transfer_callback::derive_group_receipt_id;
-use crate::processor::utils::{read_mint_decimals, validate_token_account};
+use crate::processor::utils::{read_mint_decimals, validate_token_account, MAGIC_VAULT_ID};
 use crate::{assert_associated_token_address, assert_owner, assert_signer};
 use core::{convert::TryFrom, marker::PhantomData};
 use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
