@@ -435,8 +435,6 @@ pub(crate) fn delegate_account_with_actions_from_sponsor(
     ];
     let buffer_signer = Signer::from(&buffer_seed_binding);
 
-    let data_len = pda_acc.data_len();
-
     // CreateAccount indirectly validates two arguments:
     // - buffer_acc: the instruction requires `to: buffer_acc` to be a signer, so invoking it with
     //   buffer_signer implicitly proves buffer_acc matches the PDA derived above.
@@ -446,39 +444,27 @@ pub(crate) fn delegate_account_with_actions_from_sponsor(
         from: sponsor_info,
         to: buffer_acc,
         lamports: 0,
-        space: data_len as u64,
+        space: pda_acc.data_len() as u64,
         owner: owner_program.address(),
     }
     .invoke_signed(&[sponsor_signer.clone(), buffer_signer])?;
 
-    {
-        let pda_ro = pda_acc.try_borrow()?;
-        let mut buf_data = buffer_acc.try_borrow_mut()?;
-        buf_data.copy_from_slice(&pda_ro);
-    }
-    {
-        let mut pda_mut = pda_acc.try_borrow_mut()?;
-        for b in pda_mut.iter_mut().take(data_len) {
-            *b = 0;
-        }
-    }
+    buffer_acc
+        .try_borrow_mut()?
+        .copy_from_slice(&pda_acc.try_borrow()?);
+
+    pda_acc.try_borrow_mut()?.fill(0);
 
     let mut seed_buf = make_seed_buf();
     let filled = fill_seeds(&mut seed_buf, seeds, &bump);
     let delegate_signer = Signer::from(filled);
 
-    let current_owner = unsafe { pda_acc.owner() };
-    if current_owner != &pinocchio_system::ID {
-        unsafe { pda_acc.assign(&pinocchio_system::ID) };
+    unsafe { pda_acc.assign(&pinocchio_system::ID) };
+    Assign {
+        account: pda_acc,
+        owner: &DELEGATION_PROGRAM_ID,
     }
-    let current_owner = unsafe { pda_acc.owner() };
-    if current_owner != &DELEGATION_PROGRAM_ID {
-        Assign {
-            account: pda_acc,
-            owner: &DELEGATION_PROGRAM_ID,
-        }
-        .invoke_signed(core::slice::from_ref(&delegate_signer))?;
-    }
+    .invoke_signed(core::slice::from_ref(&delegate_signer))?;
 
     let delegate_args = DelegateAccountArgs {
         commit_frequency_ms: config.commit_frequency_ms,
