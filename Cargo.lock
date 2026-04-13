@@ -1104,6 +1104,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "compare-metrics"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "compression-codecs"
 version = "0.4.36"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1846,6 +1853,7 @@ dependencies = [
  "const-crypto",
  "ephemeral-rollups-pinocchio",
  "ephemeral-spl-api",
+ "fslock",
  "magicblock-delegation-program-api",
  "magicblock-magic-program-api",
  "pinocchio 0.10.1",
@@ -1853,6 +1861,8 @@ dependencies = [
  "pinocchio-log",
  "pinocchio-system",
  "pinocchio-token-2022",
+ "serde",
+ "serde_json",
  "solana-account 3.3.0",
  "solana-instruction 3.1.0",
  "solana-keypair 3.1.0",
@@ -2077,6 +2087,16 @@ name = "fragile"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "28dd6caf6059519a65843af8fe2a3ae298b14b80179855aeb4adc2c1934ee619"
+
+[[package]]
+name = "fslock"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "04412b8935272e3a9bae6f48c7bfff74c2911f60525404edfdd28e49884c3bfb"
+dependencies = [
+ "libc",
+ "winapi",
+]
 
 [[package]]
 name = "funty"

@@ -1,5 +1,5 @@
 use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_initialized};
-use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use pinocchio::{address::address_eq, error::ProgramError, AccountView, ProgramResult};
 
 use crate::{assert_owner, assert_signer};
 
@@ -17,12 +17,9 @@ pub fn process_close_ephemeral_ata(
     };
 
     assert_signer!(owner_info);
-    assert_owner!(
-        ephemeral_ata_info,
-        &ephemeral_spl_api::program::id_address()
-    );
+    assert_owner!(ephemeral_ata_info, &crate::ID);
 
-    let (mint, lamports_to_refund) = {
+    let (mint, lamports_to_refund, bump) = {
         let ephemeral_ata =
             load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
         if ephemeral_ata.owner != *owner_info.address() {
@@ -34,18 +31,15 @@ pub fn process_close_ephemeral_ata(
 
         #[allow(clippy::clone_on_copy)]
         let mint = ephemeral_ata.mint.clone();
-        (mint, ephemeral_ata_info.lamports())
+        (mint, ephemeral_ata_info.lamports(), ephemeral_ata.bump)
     };
 
-    let (derived_pda, _) = ephemeral_spl_api::Address::find_program_address(
-        &[owner_info.address().as_ref(), mint.as_ref()],
-        &ephemeral_spl_api::program::id_address(),
-    );
-    if derived_pda != *ephemeral_ata_info.address() {
+    let derived_pda = EphemeralAta::derive_pda(owner_info.address(), &mint, bump)?;
+    if !address_eq(&derived_pda, ephemeral_ata_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
 
-    if *recipient_info.address() == *ephemeral_ata_info.address() {
+    if address_eq(recipient_info.address(), ephemeral_ata_info.address()) {
         return Err(ProgramError::InvalidArgument);
     }
 

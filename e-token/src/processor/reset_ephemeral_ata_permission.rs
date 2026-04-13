@@ -2,11 +2,10 @@ use core::marker::PhantomData;
 use ephemeral_rollups_pinocchio::acl::{
     consts::PERMISSION_PROGRAM_ID,
     instruction::UpdatePermissionCpiBuilder,
-    pda::permission_pda_from_permissioned_account,
     types::{Member, MemberFlags, MembersArgs},
 };
 use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_initialized};
-use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use pinocchio::{address::address_eq, error::ProgramError, AccountView, ProgramResult};
 
 #[inline(always)]
 pub fn process_reset_ephemeral_ata_permission(
@@ -31,22 +30,15 @@ pub fn process_reset_ephemeral_ata_permission(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    if *permission_program.address() != PERMISSION_PROGRAM_ID {
+    if !address_eq(permission_program.address(), &PERMISSION_PROGRAM_ID) {
         return Err(ProgramError::InvalidAccountData);
     }
 
     let ephemeral_ata =
         load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
 
-    if ephemeral_ata.owner != *owner_info.address() {
+    if !address_eq(&ephemeral_ata.owner, owner_info.address()) {
         return Err(ProgramError::IncorrectAuthority);
-    }
-
-    // TODO(GabrielePicco): pass bump once supported in the SDK
-    let expected_permission =
-        permission_pda_from_permissioned_account(ephemeral_ata_info.address());
-    if expected_permission != *permission_info.address() {
-        return Err(ProgramError::InvalidSeeds);
     }
 
     if permission_info.lamports() == 0 {

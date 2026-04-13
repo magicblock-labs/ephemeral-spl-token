@@ -1,9 +1,8 @@
 use ephemeral_rollups_pinocchio::acl::{
     consts::PERMISSION_PROGRAM_ID, instruction::commit_and_undelegate_permission,
-    pda::permission_pda_from_permissioned_account,
 };
 use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_initialized};
-use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use pinocchio::{address::address_eq, error::ProgramError, AccountView, ProgramResult};
 
 use crate::assert_signer;
 
@@ -28,21 +27,15 @@ pub fn process_undelegate_ephemeral_ata_permission(
 
     assert_signer!(payer_info);
 
-    if *permission_program.address() != PERMISSION_PROGRAM_ID {
+    if !address_eq(permission_program.address(), &PERMISSION_PROGRAM_ID) {
         return Err(ProgramError::InvalidAccountData);
     }
 
     let ephemeral_ata =
         load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
 
-    if ephemeral_ata.owner != *payer_info.address() {
+    if !address_eq(&ephemeral_ata.owner, payer_info.address()) {
         return Err(ProgramError::InvalidAccountData);
-    }
-
-    let expected_permission =
-        permission_pda_from_permissioned_account(ephemeral_ata_info.address());
-    if expected_permission != *permission_info.address() {
-        return Err(ProgramError::InvalidSeeds);
     }
 
     commit_and_undelegate_permission(

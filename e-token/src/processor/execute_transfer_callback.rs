@@ -3,7 +3,6 @@ use crate::processor::ephemeral_account::{
 };
 use core::num::NonZeroU32;
 use core::ops::Deref;
-use ephemeral_spl_api::program::id_address;
 use ephemeral_spl_api::state::group_receipt;
 use ephemeral_spl_api::state::group_receipt::{GroupReceipt, TransferReceipt};
 use ephemeral_spl_api::state::transfer_queue::{
@@ -49,7 +48,7 @@ pub fn derive_group_receipt_id(queue_address: &Address, group_id: u32) -> (Addre
             queue_address.as_ref(),
             group_id.to_le_bytes().as_ref(),
         ],
-        &id_address(),
+        &crate::ID,
     )
 }
 
@@ -112,12 +111,12 @@ fn validate_common(
             mint.address().as_ref(),
             validator.address().as_ref(),
         ],
-        &id_address(),
+        &crate::ID,
     );
     if &derived_queue != queue_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
-    if !queue_info.owned_by(&id_address()) {
+    if !queue_info.owned_by(&crate::ID) {
         return Err(ProgramError::IllegalOwner);
     }
 
@@ -151,7 +150,7 @@ fn handle_group_receipt(
     // Create receipt
     // This means that callback executed faster than initializing crank
     // As we don't know number of splits, initialize partially with 0
-    if !group_receipt_info.owned_by(&id_address()) {
+    if !group_receipt_info.owned_by(&crate::ID) {
         pinocchio_log::log!("TransferCallback: initializing receipt");
         initialize_group_receipt(
             queue_info,

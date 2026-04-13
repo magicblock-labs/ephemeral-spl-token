@@ -1,41 +1,29 @@
+use ephemeral_rollups_pinocchio::acl::permission_pda_from_permissioned_account;
 use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::program::ID;
+use ephemeral_spl_api::ID as PROGRAM;
 use solana_instruction::{AccountMeta, Instruction};
-use solana_program::pubkey::Pubkey;
-use solana_program_test::{tokio, ProgramTest};
+use solana_program_test::tokio;
+use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use solana_transaction::Transaction;
 
-use crate::utils::add_permission_program;
-
+mod common;
 mod utils;
-
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 
 #[tokio::test]
 async fn create_ephemeral_ata_permission() {
-    let permission_program_bytes: [u8; 32] =
-        ephemeral_rollups_pinocchio::acl::consts::PERMISSION_PROGRAM_ID
-            .as_ref()
-            .try_into()
-            .unwrap();
-    let permission_program_id = Pubkey::new_from_array(permission_program_bytes);
+    let permission_program_id = utils::permission_program_id();
 
-    let mut program_test = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-    program_test.prefer_bpf(true);
-    add_permission_program(&mut program_test);
-    let context = program_test.start_with_context().await;
+    let context = utils::start_program_test(PROGRAM).await;
 
-    let payer = context.payer.pubkey();
+    let payer_kp = utils::fixed_payer_keypair();
+    let payer = payer_kp.pubkey();
     let user = payer;
-    let mint = Pubkey::new_unique();
+    let mint = utils::test_pubkey("create_ephemeral_ata_permission::mint");
 
     let (ephemeral_ata, _) =
         Pubkey::find_program_address(&[user.as_ref(), mint.as_ref()], &PROGRAM);
-    let (permission_pda, _) = Pubkey::find_program_address(
-        &[b"permission:", ephemeral_ata.as_ref()],
-        &permission_program_id,
-    );
+    let permission_pda = permission_pda_from_permissioned_account(&ephemeral_ata);
 
     let ix_init = Instruction {
         program_id: PROGRAM,
@@ -67,11 +55,17 @@ async fn create_ephemeral_ata_permission() {
 
     let tx = Transaction::new_signed_with_payer(
         &[ix_init, ix_create_permission],
-        Some(&context.payer.pubkey()),
-        &[&context.payer],
+        Some(&payer),
+        &[&payer_kp],
         context.last_blockhash,
     );
-    context.banks_client.process_transaction(tx).await.unwrap();
+    common::metrics::process_transaction_record_cu(
+        &context.banks_client,
+        tx,
+        "create_eata_perm::default",
+    )
+    .await
+    .unwrap();
 
     let permission_account = context
         .banks_client
@@ -86,21 +80,14 @@ async fn create_ephemeral_ata_permission() {
 
 #[tokio::test]
 async fn create_ephemeral_ata_permission_permissionless_default() {
-    let permission_program_bytes: [u8; 32] =
-        ephemeral_rollups_pinocchio::acl::consts::PERMISSION_PROGRAM_ID
-            .as_ref()
-            .try_into()
-            .unwrap();
-    let permission_program_id = Pubkey::new_from_array(permission_program_bytes);
+    let permission_program_id = utils::permission_program_id();
 
-    let mut program_test = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-    program_test.prefer_bpf(true);
-    add_permission_program(&mut program_test);
-    let context = program_test.start_with_context().await;
+    let context = utils::start_program_test(PROGRAM).await;
 
-    let payer = context.payer.pubkey();
-    let user = Pubkey::new_unique();
-    let mint = Pubkey::new_unique();
+    let payer_kp = utils::fixed_payer_keypair();
+    let payer = payer_kp.pubkey();
+    let user = utils::test_pubkey("create_ephemeral_ata_permission_permissionless_default::user");
+    let mint = utils::test_pubkey("create_ephemeral_ata_permission_permissionless_default::mint");
 
     let (ephemeral_ata, _) =
         Pubkey::find_program_address(&[user.as_ref(), mint.as_ref()], &PROGRAM);
@@ -139,11 +126,17 @@ async fn create_ephemeral_ata_permission_permissionless_default() {
 
     let tx = Transaction::new_signed_with_payer(
         &[ix_init, ix_create_permission],
-        Some(&context.payer.pubkey()),
-        &[&context.payer],
+        Some(&payer),
+        &[&payer_kp],
         context.last_blockhash,
     );
-    context.banks_client.process_transaction(tx).await.unwrap();
+    common::metrics::process_transaction_record_cu(
+        &context.banks_client,
+        tx,
+        "create_eata_perm::permissionless",
+    )
+    .await
+    .unwrap();
 
     let permission_account = context
         .banks_client

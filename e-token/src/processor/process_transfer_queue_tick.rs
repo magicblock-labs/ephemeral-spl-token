@@ -18,9 +18,15 @@ use ephemeral_spl_api::instruction::internal::{
 use ephemeral_spl_api::state::transfer_queue::{
     queue_peek_from_data, queue_pop_from_data, queue_views_checked, QueuedTransfer, QUEUE_SEED,
 };
-use pinocchio::cpi::{Seed, Signer};
-use pinocchio::sysvars::{clock::Clock, Sysvar};
-use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
+use pinocchio::{
+    address::address_eq,
+    cpi::{Seed, Signer},
+};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use pinocchio::{
+    sysvars::{clock::Clock, Sysvar},
+    Address,
+};
 use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
 
 use crate::{
@@ -65,7 +71,7 @@ pub fn process_transfer_queue_tick(
     }
 
     let tick_accounts = parse_tick_accounts(accounts)?;
-    let program_id = ephemeral_spl_api::program::id_address();
+    let program_id = crate::ID;
     let clock = Clock::get()?;
     let queue_state = read_queue_tick_state(tick_accounts.queue_info, &program_id)?;
 
@@ -95,7 +101,10 @@ fn parse_tick_accounts(accounts: &[AccountView]) -> Result<TickAccounts<'_>, Pro
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
-    if magic_program_info.address() != &ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID {
+    if !address_eq(
+        magic_program_info.address(),
+        &ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID,
+    ) {
         return Err(ProgramError::IncorrectProgramId);
     }
 
@@ -122,7 +131,7 @@ fn read_queue_tick_state(
         &[QUEUE_SEED, mint.as_ref(), validator.as_ref()],
         program_id,
     );
-    if derived_queue != *queue_info.address() {
+    if !address_eq(&derived_queue, queue_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
 
@@ -169,7 +178,7 @@ fn try_schedule_queue_refill(
         },
     ];
     let standalone_actions = [CallHandler {
-        destination_program: ephemeral_spl_api::program::id_address(),
+        destination_program: crate::ID,
         escrow_authority: tick_accounts.queue_info.clone(),
         args: ActionArgs::new(&refill_data)
             .with_escrow_index(MARK_TRANSFER_QUEUE_REFILL_PENDING_ESCROW_INDEX),
@@ -288,10 +297,13 @@ fn invoke_queue_standalone_action(
     ];
     let signers = [Signer::from(&signer_seeds)];
     let mut intent_bundle_data = [0_u8; MAGIC_INTENT_BUNDLE_DATA_LEN];
-    let derived_magic_fee_vault =
-        magic_fee_vault_pda_from_validator(&queue_state.validator.to_bytes().into());
-    if derived_magic_fee_vault.to_bytes() != tick_accounts.magic_fee_vault_info.address().to_bytes()
-    {
+    let derived_magic_fee_vault = Address::from(
+        magic_fee_vault_pda_from_validator(&queue_state.validator.to_bytes().into()).to_bytes(),
+    );
+    if !address_eq(
+        &derived_magic_fee_vault,
+        tick_accounts.magic_fee_vault_info.address(),
+    ) {
         return Err(ProgramError::InvalidSeeds);
     }
 
@@ -441,7 +453,7 @@ fn create_action_callback<'a>(
     const CALLBACK_COMPUTE_UNITS: u32 = 100_000;
 
     ActionCallback {
-        destination_program: ephemeral_spl_api::program::id_address(),
+        destination_program: crate::ID,
         discriminator: &[EXECUTE_TRANSFER_CALLBACK],
         payload,
         compute_units: CALLBACK_COMPUTE_UNITS,
@@ -456,7 +468,7 @@ fn create_callhandler<'a>(
     action_callback: ActionCallback<'a>,
 ) -> CallHandler<'a> {
     CallHandler {
-        destination_program: ephemeral_spl_api::program::id_address(),
+        destination_program: crate::ID,
         escrow_authority: queue_info.clone(),
         args: ActionArgs::new(action_data)
             .with_escrow_index(EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX),

@@ -3,7 +3,6 @@ use crate::processor::execute_transfer_callback::{
     GroupReceiptController,
 };
 use core::num::NonZeroU32;
-use ephemeral_spl_api::program::id_address;
 use ephemeral_spl_api::state::transfer_queue::{
     queue_views_checked, TransferQueueHeader, QUEUE_SEED,
 };
@@ -26,7 +25,7 @@ pub fn process_initialize_group_receipt(
     let (header, _) = queue_views_checked(data)?;
     let group_receipt_bump = validate(validator, queue_info, group_receipt, header, &args)?;
 
-    if group_receipt.owned_by(&id_address()) {
+    if group_receipt.owned_by(&crate::ID) {
         pinocchio_log::log!("Group receipt was initialized already!");
         handle_already_initialized_receipt(
             queue_info,
@@ -67,13 +66,13 @@ fn validate(
             header.mint.as_ref(),
             validator.address().as_ref(),
         ],
-        &id_address(),
+        &crate::ID,
     );
 
     if &derived_queue != queue_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
-    if !queue_info.owned_by(&id_address()) {
+    if !queue_info.owned_by(&crate::ID) {
         return Err(ProgramError::IllegalOwner);
     }
 

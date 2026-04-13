@@ -1,48 +1,39 @@
 use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
 use ephemeral_spl_api::state::{load_initialized, RawType};
+use ephemeral_spl_api::ID as PROGRAM;
 use solana_instruction::{AccountMeta, Instruction};
-use solana_keypair::Keypair;
 use solana_program_pack::Pack;
 use spl_token_interface::state::Account;
-use {
-    solana_program_test::{tokio, ProgramTest},
-    solana_pubkey::Pubkey,
-    solana_signer::Signer,
-    solana_transaction::Transaction,
-};
+use {solana_program_test::tokio, solana_signer::Signer, solana_transaction::Transaction};
 
+mod common;
 mod utils;
-
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 
 const DECIMALS: u8 = 6;
 const STARTING_BALANCE: u64 = 10_000 * 10u64.pow(DECIMALS as u32);
 
 #[tokio::test]
 async fn deposit_spl_tokens_increments_shuttle_amount() {
-    let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-    utils::add_associated_token_program(&mut pt);
-    let mut context = pt.start_with_context().await;
+    let mut context = utils::start_program_test(PROGRAM).await;
 
-    let payer = context.payer.pubkey();
+    let payer_kp = utils::fixed_payer_keypair();
+    let payer = payer_kp.pubkey();
     let owner = payer;
     let shuttle_id = 11_u32;
 
-    let mint_kp = Keypair::new();
+    let mint_kp = utils::test_keypair("deposit_shuttle_spl_tokens::mint");
     let mint = mint_kp.pubkey();
 
     let pdas = utils::derive_pdas(PROGRAM, owner, mint);
-    let (shuttle_ephemeral_ata, _) =
-        utils::derive_shuttle_ephemeral_ata(PROGRAM, owner, mint, shuttle_id);
-    let (shuttle_eata, _) = utils::derive_shuttle_eata(PROGRAM, shuttle_ephemeral_ata, mint);
+    let (shuttle_ephemeral_ata, _) = ShuttleMetadata::find_pda(&owner, &mint, shuttle_id);
+    let (shuttle_eata, _) = EphemeralAta::find_pda(&shuttle_ephemeral_ata, &mint);
     let shuttle_wallet_ata = utils::derive_associated_token_address(shuttle_ephemeral_ata, mint);
 
     let setup = utils::setup_mint_and_token_accounts(
         &mut context,
-        payer,
+        &payer_kp,
         &mint_kp,
         DECIMALS,
         STARTING_BALANCE,
@@ -52,7 +43,7 @@ async fn deposit_spl_tokens_increments_shuttle_amount() {
 
     let vault = pdas.vault;
     let user_ata = setup.user_tokens[0];
-    let (vault_eata, _) = Pubkey::find_program_address(&[vault.as_ref(), mint.as_ref()], &PROGRAM);
+    let (vault_eata, _) = EphemeralAta::find_pda(&vault, &mint);
     let vault_ata = utils::derive_associated_token_address(vault, mint);
 
     let mut shuttle_init_data = vec![instruction::INITIALIZE_SHUTTLE_EPHEMERAL_ATA];
@@ -91,7 +82,7 @@ async fn deposit_spl_tokens_increments_shuttle_amount() {
     let tx_init = Transaction::new_signed_with_payer(
         &[ix_init_shuttle, ix_init_vault],
         Some(&payer),
-        &[&context.payer],
+        &[&payer_kp],
         context.last_blockhash,
     );
     context
@@ -121,10 +112,16 @@ async fn deposit_spl_tokens_increments_shuttle_amount() {
     let tx = Transaction::new_signed_with_payer(
         &[ix_deposit],
         Some(&payer),
-        &[&context.payer],
+        &[&payer_kp],
         context.last_blockhash,
     );
-    context.banks_client.process_transaction(tx).await.unwrap();
+    common::metrics::process_transaction_record_cu(
+        &context.banks_client,
+        tx,
+        "dep_shuttle::deposit",
+    )
+    .await
+    .unwrap();
 
     let user_token_acc_after = context
         .banks_client

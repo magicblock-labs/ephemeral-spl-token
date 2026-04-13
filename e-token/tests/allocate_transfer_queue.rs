@@ -1,48 +1,41 @@
 use ephemeral_rollups_pinocchio::acl::{
     permission_pda_from_permissioned_account, PERMISSION_PROGRAM_ID,
 };
-use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::program::ID;
 use ephemeral_spl_api::state::transfer_queue::{
-    header_len, item_len, queue_views_checked, QUEUE_SEED, TRANSFER_QUEUE_VERSION,
+    header_len, item_len, queue_views_checked, TransferQueue, TRANSFER_QUEUE_VERSION,
 };
+use ephemeral_spl_api::{instruction, ID as PROGRAM};
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
-use solana_program_test::{tokio, ProgramTest};
-use solana_pubkey::Pubkey;
+use solana_program_test::tokio;
 use solana_signer::Signer;
 use solana_transaction::Transaction;
 
+mod common;
 mod utils;
-
-use crate::utils::add_permission_program;
-
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 
 #[tokio::test]
 async fn allocate_transfer_queue_succeeds_and_is_idempotent() {
-    let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-    add_permission_program(&mut pt);
-    pt.prefer_bpf(true);
+    let mint = utils::test_pubkey("allocate_transfer_queue_succeeds_and_is_idempotent::mint");
+    let mut context = utils::start_program_test_with(PROGRAM, |pt| {
+        pt.add_account(
+            mint,
+            Account {
+                lamports: 1,
+                data: vec![],
+                owner: solana_system_interface::program::ID,
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+    })
+    .await;
 
-    let mint = Pubkey::new_unique();
-    pt.add_account(
-        mint,
-        Account {
-            lamports: 1,
-            data: vec![],
-            owner: solana_system_interface::program::ID,
-            executable: false,
-            rent_epoch: 0,
-        },
-    );
-
-    let context = &mut pt.start_with_context().await;
-    let payer = context.payer.pubkey();
+    let payer_kp = utils::fixed_payer_keypair();
+    let payer = payer_kp.pubkey();
     let validator = Keypair::new().pubkey();
-    let (queue, bump) =
-        Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref(), validator.as_ref()], &PROGRAM);
+    let (queue, bump) = TransferQueue::find_pda(&mint, &validator);
     let queue_permission = permission_pda_from_permissioned_account(&queue);
 
     const N_ITEMS: usize = 9999;
@@ -67,7 +60,7 @@ async fn allocate_transfer_queue_succeeds_and_is_idempotent() {
     let tx_init = Transaction::new_signed_with_payer(
         &[ix_init_queue],
         Some(&payer),
-        &[&context.payer],
+        &[&payer_kp],
         context.last_blockhash,
     );
     context
@@ -88,16 +81,26 @@ async fn allocate_transfer_queue_succeeds_and_is_idempotent() {
     let mut previous_data_len = 0usize;
     let mut final_data_len = None;
     // Splitting into chunks of 10 to avoid MaxInstructionTraceLengthExceeded
-    for _ in 0..256 {
+    for i in 0..256 {
         let blockhash = context.get_new_latest_blockhash().await.unwrap();
         let batch = vec![ix_allocate.clone(); 10];
         let tx_allocate =
-            Transaction::new_signed_with_payer(&batch, Some(&payer), &[&context.payer], blockhash);
-        context
-            .banks_client
-            .process_transaction(tx_allocate)
+            Transaction::new_signed_with_payer(&batch, Some(&payer), &[&payer_kp], blockhash);
+        if i == 0 {
+            common::metrics::process_transaction_record_cu(
+                &context.banks_client,
+                tx_allocate,
+                "tq_alloc::first_allocate",
+            )
             .await
             .unwrap();
+        } else {
+            context
+                .banks_client
+                .process_transaction(tx_allocate)
+                .await
+                .unwrap();
+        }
 
         let current_data_len = context
             .banks_client
@@ -134,17 +137,15 @@ async fn allocate_transfer_queue_succeeds_and_is_idempotent() {
     assert_eq!(items.len(), final_capacity);
 
     let blockhash = context.get_new_latest_blockhash().await.unwrap();
-    let tx_allocate_again = Transaction::new_signed_with_payer(
-        &[ix_allocate],
-        Some(&payer),
-        &[&context.payer],
-        blockhash,
-    );
-    context
-        .banks_client
-        .process_transaction(tx_allocate_again)
-        .await
-        .unwrap();
+    let tx_allocate_again =
+        Transaction::new_signed_with_payer(&[ix_allocate], Some(&payer), &[&payer_kp], blockhash);
+    common::metrics::process_transaction_record_cu(
+        &context.banks_client,
+        tx_allocate_again,
+        "tq_alloc::already_allocated",
+    )
+    .await
+    .unwrap();
 
     let queue_account_after_extra_allocate = context
         .banks_client

@@ -3,7 +3,7 @@ use ephemeral_rollups_pinocchio::types::DelegateConfig;
 use ephemeral_spl_api::state::{
     ephemeral_ata::EphemeralAta, load_initialized, shuttle_ephemeral_ata::ShuttleMetadata,
 };
-use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
+use pinocchio::{address::address_eq, error::ProgramError, AccountView, Address, ProgramResult};
 
 use crate::assert_owner;
 
@@ -34,15 +34,12 @@ pub fn process_delegate_shuttle_ephemeral_ata(
         return Ok(());
     }
 
-    assert_owner!(shuttle_info, &ephemeral_spl_api::program::id_address());
+    assert_owner!(shuttle_info, &crate::ID);
 
     // Loading the account to check if the shuttle is correctly initialized
     load_initialized::<ShuttleMetadata>(unsafe { shuttle_info.borrow_unchecked() })?;
 
-    assert_owner!(
-        ephemeral_ata_info,
-        &ephemeral_spl_api::program::id_address()
-    );
+    assert_owner!(ephemeral_ata_info, &crate::ID);
 
     let (mint, eata_bump) = {
         let ephemeral_ata =
@@ -55,16 +52,8 @@ pub fn process_delegate_shuttle_ephemeral_ata(
         (mint, ephemeral_ata.bump)
     };
 
-    let bump = [eata_bump];
-    let derived_ephemeral_ata = ephemeral_spl_api::Address::create_program_address(
-        &[
-            shuttle_info.address().as_ref(),
-            mint.as_ref(),
-            bump.as_ref(),
-        ],
-        &ephemeral_spl_api::program::id_address(),
-    )?;
-    if derived_ephemeral_ata != *ephemeral_ata_info.address() {
+    let derived_ephemeral_ata = EphemeralAta::derive_pda(shuttle_info.address(), &mint, eata_bump)?;
+    if !address_eq(&derived_ephemeral_ata, ephemeral_ata_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
 

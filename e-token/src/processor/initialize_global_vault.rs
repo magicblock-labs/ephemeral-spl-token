@@ -1,8 +1,8 @@
 use crate::processor::initialize_ephemeral_ata::process_initialize_ephemeral_ata;
 use ephemeral_spl_api::state::RawType;
-use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
+use pinocchio::{address::address_eq, cpi::Signer};
 use pinocchio_system::instructions::{CreateAccount, Transfer};
 use {
     ephemeral_spl_api::state::global_vault::GlobalVault,
@@ -38,17 +38,14 @@ pub fn process_initialize_global_vault(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    let program_id = ephemeral_spl_api::program::id_address();
-    let (vault_derived_pda, vault_bump) = ephemeral_spl_api::Address::find_program_address(
-        &[mint_info.address().as_ref()],
-        &program_id,
-    );
-    if vault_derived_pda != *vault_info.address() {
+    let program_id = crate::ID;
+    let (vault_derived_pda, vault_bump) = GlobalVault::find_pda(mint_info.address());
+    if !address_eq(&vault_derived_pda, vault_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
 
     let bump = [vault_bump];
-    let seed = [Seed::from(mint_info.address().as_ref()), Seed::from(&bump)];
+    let seed = GlobalVault::signer_seeds(mint_info.address(), &bump);
     let signer_seeds = Signer::from(&seed);
     let required_lamports = Rent::get()?.try_minimum_balance(GlobalVault::LEN)?;
 
@@ -64,7 +61,7 @@ pub fn process_initialize_global_vault(
                 let legacy_data = unsafe { vault_info.borrow_unchecked() };
                 unsafe { *(legacy_data.as_ptr() as *const pinocchio::Address) }
             };
-            if legacy_mint.ne(mint_info.address()) {
+            if !address_eq(&legacy_mint, mint_info.address()) {
                 return Err(ProgramError::InvalidAccountData);
             }
 
@@ -93,23 +90,13 @@ pub fn process_initialize_global_vault(
         .invoke_signed(&[signer_seeds])?;
     }
 
-    let (vault_ephemeral_ata_derived_pda, vault_ephemeral_ata_bump) =
-        ephemeral_spl_api::Address::find_program_address(
-            &[vault_info.address().as_ref(), mint_info.address().as_ref()],
-            &program_id,
-        );
-    if vault_ephemeral_ata_derived_pda != *vault_ephemeral_ata_info.address() {
-        return Err(ProgramError::InvalidSeeds);
-    }
-
-    let vault_eata_init_data = [vault_ephemeral_ata_bump];
     let vault_eata_init_accounts = [
         vault_ephemeral_ata_info.clone(),
         payer_info.clone(),
         vault_info.clone(),
         mint_info.clone(),
     ];
-    process_initialize_ephemeral_ata(&vault_eata_init_accounts, &vault_eata_init_data)?;
+    process_initialize_ephemeral_ata(&vault_eata_init_accounts, &[])?;
 
     pinocchio_associated_token_account::instructions::CreateIdempotent {
         funding_account: payer_info,

@@ -1,16 +1,16 @@
+use ephemeral_rollups_pinocchio::acl::permission_pda_from_permissioned_account;
+use ephemeral_rollups_pinocchio::acl::PERMISSION_PROGRAM_ID;
+use ephemeral_rollups_pinocchio::spl::EphemeralAta;
 use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::program::ID;
+use ephemeral_spl_api::ID as PROGRAM;
 use solana_instruction::{AccountMeta, Instruction};
-use solana_program::pubkey::Pubkey;
-use solana_program_test::{tokio, ProgramTest};
+use solana_program_test::tokio;
+use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use solana_transaction::Transaction;
 
+mod common;
 mod utils;
-
-use crate::utils::add_permission_program;
-
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 
 fn find_member_flag(data: &[u8], member_pubkey: &Pubkey, expected: u8) -> Option<u8> {
     let key_bytes = member_pubkey.as_ref();
@@ -32,29 +32,15 @@ fn find_member_flag(data: &[u8], member_pubkey: &Pubkey, expected: u8) -> Option
 
 #[tokio::test]
 async fn reset_ephemeral_ata_permission() {
-    let permission_program_bytes: [u8; 32] =
-        ephemeral_rollups_pinocchio::acl::consts::PERMISSION_PROGRAM_ID
-            .as_ref()
-            .try_into()
-            .unwrap();
-    let permission_program_id = Pubkey::new_from_array(permission_program_bytes);
+    let context = utils::start_program_test(PROGRAM).await;
 
-    let mut program_test = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-    program_test.prefer_bpf(true);
-    add_permission_program(&mut program_test);
-
-    let context = program_test.start_with_context().await;
-
-    let payer = context.payer.pubkey();
+    let payer_kp = utils::fixed_payer_keypair();
+    let payer = payer_kp.pubkey();
     let user = payer;
-    let mint = Pubkey::new_unique();
+    let mint = utils::test_pubkey("reset_ephemeral_ata_permission::mint");
 
-    let (ephemeral_ata, _) =
-        Pubkey::find_program_address(&[user.as_ref(), mint.as_ref()], &PROGRAM);
-    let (permission_pda, _) = Pubkey::find_program_address(
-        &[b"permission:", ephemeral_ata.as_ref()],
-        &permission_program_id,
-    );
+    let (ephemeral_ata, _) = EphemeralAta::find_pda(&user, &mint);
+    let permission_pda = permission_pda_from_permissioned_account(&ephemeral_ata);
 
     let ix_init = Instruction {
         program_id: PROGRAM,
@@ -75,7 +61,7 @@ async fn reset_ephemeral_ata_permission() {
             AccountMeta::new(permission_pda, false),
             AccountMeta::new(payer, true),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
-            AccountMeta::new_readonly(permission_program_id, false),
+            AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
         ],
         data: {
             let flag =
@@ -91,18 +77,24 @@ async fn reset_ephemeral_ata_permission() {
             AccountMeta::new(ephemeral_ata, false),
             AccountMeta::new(permission_pda, false),
             AccountMeta::new(payer, true),
-            AccountMeta::new_readonly(permission_program_id, false),
+            AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
         ],
         data: vec![instruction::RESET_EPHEMERAL_ATA_PERMISSION, reset_flag],
     };
 
     let tx = Transaction::new_signed_with_payer(
         &[ix_init, ix_create_permission, ix_reset_permission],
-        Some(&context.payer.pubkey()),
-        &[&context.payer],
+        Some(&payer),
+        &[&payer_kp],
         context.last_blockhash,
     );
-    context.banks_client.process_transaction(tx).await.unwrap();
+    common::metrics::process_transaction_record_cu(
+        &context.banks_client,
+        tx,
+        "reset_eata_perm::reset",
+    )
+    .await
+    .unwrap();
 
     let permission_account = context
         .banks_client

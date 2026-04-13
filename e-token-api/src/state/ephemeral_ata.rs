@@ -1,4 +1,5 @@
-use pinocchio::{error::ProgramError, Address};
+use pinocchio::{cpi::Seed, error::ProgramError, Address};
+use solana_address::address_eq;
 
 use crate::state::load_mut;
 
@@ -28,6 +29,54 @@ impl Initializable for EphemeralAta {
     #[inline(always)]
     fn is_initialized(&self) -> bool {
         self.mint != Address::default()
+    }
+}
+
+impl EphemeralAta {
+    #[inline(always)]
+    pub fn derive_pda(
+        owner: &Address,
+        mint: &Address,
+        bump_seed: u8,
+    ) -> Result<Address, ProgramError> {
+        let bump_seed = [bump_seed];
+        let pda = Address::create_program_address(
+            &Self::seeds_with_bump(owner, mint, &bump_seed),
+            &crate::ID,
+        )?;
+        Ok(pda)
+    }
+
+    #[inline(always)]
+    pub fn find_pda(owner: &Address, mint: &Address) -> (Address, u8) {
+        Address::find_program_address(&Self::seeds(owner, mint), &crate::ID)
+    }
+
+    #[inline(always)]
+    pub fn seeds<'a>(owner: &'a Address, mint: &'a Address) -> [&'a [u8]; 2] {
+        [owner.as_ref(), mint.as_ref()]
+    }
+
+    #[inline(always)]
+    pub fn seeds_with_bump<'a>(
+        owner: &'a Address,
+        mint: &'a Address,
+        bump: &'a [u8],
+    ) -> [&'a [u8]; 3] {
+        [owner.as_ref(), mint.as_ref(), bump]
+    }
+
+    #[inline(always)]
+    pub fn signer_seeds<'a>(
+        owner: &'a Address,
+        mint: &'a Address,
+        bump: &'a [u8],
+    ) -> [Seed<'a>; 3] {
+        [
+            Seed::from(owner.as_ref()),
+            Seed::from(mint.as_ref()),
+            Seed::from(bump),
+        ]
     }
 }
 
@@ -87,26 +136,33 @@ impl EphemeralAtaCompatMut<'_> {
 }
 
 #[inline(always)]
-pub fn read_ephemeral_ata_compat(bytes: &[u8]) -> Result<(Address, Address, u64), ProgramError> {
+pub fn read_ephemeral_ata_compat(
+    bytes: &[u8],
+) -> Result<(Address, Address, u64, u8), ProgramError> {
     if bytes.len() == EphemeralAta::LEN {
         let ephemeral_ata = load_initialized::<EphemeralAta>(bytes)?;
         #[allow(clippy::clone_on_copy)]
         let owner = ephemeral_ata.owner.clone();
         #[allow(clippy::clone_on_copy)]
         let mint = ephemeral_ata.mint.clone();
-        return Ok((owner, mint, ephemeral_ata.amount));
+        return Ok((owner, mint, ephemeral_ata.amount, ephemeral_ata.bump));
     }
 
     if bytes.len() == LEGACY_EPHEMERAL_ATA_LEN {
         let ephemeral_ata = load::<LegacyEphemeralAta>(bytes)?;
-        if ephemeral_ata.mint == Address::default() {
+        if address_eq(&ephemeral_ata.mint, &Address::default()) {
             return Err(ProgramError::UninitializedAccount);
         }
         #[allow(clippy::clone_on_copy)]
         let owner = ephemeral_ata.owner.clone();
         #[allow(clippy::clone_on_copy)]
         let mint = ephemeral_ata.mint.clone();
-        return Ok((owner, mint, ephemeral_ata.amount));
+        return Ok((
+            owner,
+            mint,
+            ephemeral_ata.amount,
+            EphemeralAta::find_pda(&owner, &mint).1,
+        ));
     }
 
     Err(ProgramError::InvalidAccountData)

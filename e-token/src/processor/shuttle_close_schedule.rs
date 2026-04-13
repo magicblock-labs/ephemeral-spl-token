@@ -1,7 +1,9 @@
 use ephemeral_rollups_pinocchio::intent_bundle::{
     ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
 };
-use ephemeral_spl_api::instruction::internal::SETTLE_AND_CLOSE_SHUTTLE_INTENT;
+use ephemeral_spl_api::{
+    instruction::internal::SETTLE_AND_CLOSE_SHUTTLE_INTENT, state::global_vault::GlobalVault,
+};
 use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
 
 use crate::processor::utils::get_associated_token_address;
@@ -36,10 +38,7 @@ pub(crate) fn schedule_shuttle_close_after_undelegate(
     magic_program: &AccountView,
     escrow_index: u8,
 ) -> ProgramResult {
-    let (vault_info, _) = ephemeral_spl_api::Address::find_program_address(
-        &[mint.as_ref()],
-        &ephemeral_spl_api::program::id_address(),
-    );
+    let (vault_info, _) = GlobalVault::find_pda(mint);
     let vault_token_info =
         get_associated_token_address(&vault_info, mint, token_program_info.address());
     let close_handler_data = [SETTLE_AND_CLOSE_SHUTTLE_INTENT, escrow_index];
@@ -82,7 +81,7 @@ pub(crate) fn schedule_shuttle_close_after_undelegate(
         },
     ];
     let close_handler = [CallHandler {
-        destination_program: Address::new_from_array(crate::ID),
+        destination_program: crate::ID,
         escrow_authority: executor.clone(),
         args: ActionArgs::new(&close_handler_data).with_escrow_index(escrow_index),
         compute_units: CLOSE_SHUTTLE_ATA_COMPUTE_UNITS,

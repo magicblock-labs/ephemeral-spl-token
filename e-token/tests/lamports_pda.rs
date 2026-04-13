@@ -1,20 +1,25 @@
 use dlp_api::state::DelegationRecord;
+use ephemeral_rollups_pinocchio::pda::{
+    delegate_buffer_pda_from_delegated_account_and_owner_program,
+    delegation_metadata_pda_from_delegated_account, delegation_record_pda_from_delegated_account,
+};
 use ephemeral_spl_api::{
     consts::SPONSORED_LAMPORTS_TRANSFER_SETUP_LAMPORTS,
     instruction::{self, internal},
-    program::ID,
+    ID as PROGRAM,
 };
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
-use solana_keypair::Keypair;
-use solana_program::{bpf_loader, rent::Rent};
-use solana_program_test::{read_file, tokio, ProgramTest};
+use solana_program::rent::Rent;
+use solana_program_test::tokio;
 use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use solana_system_interface::instruction::transfer;
 use solana_transaction::Transaction;
 
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
+mod common;
+mod utils;
+
 const RENT_PDA_SEED: &[u8] = b"rent";
 const LAMPORTS_PDA_SEED: &[u8] = b"lamports";
 const DESTINATION_STARTING_LAMPORTS: u64 = 7;
@@ -41,17 +46,12 @@ fn derive_lamports_pda(
 
 #[tokio::test]
 async fn sponsored_lamports_transfer_delegates_zero_data_pda_and_charges_fee() {
-    let destination = Keypair::new();
-
-    let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-    pt.prefer_bpf(true);
-
-    let data = read_file("tests/fixtures/dlp.so");
-    let validator = Pubkey::new_unique();
-    let (destination_delegation_record_pda, _) = Pubkey::find_program_address(
-        &[b"delegation", destination.pubkey().as_ref()],
-        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,
+    let validator = utils::test_pubkey("validator");
+    let destination = utils::test_keypair(
+        "sponsored_lamports_transfer_delegates_zero_data_pda_and_charges_fee::destination",
     );
+    let destination_delegation_record_pda =
+        delegation_record_pda_from_delegated_account(&destination.pubkey());
     let mut destination_delegation_record_data =
         vec![0u8; DelegationRecord::size_with_discriminator()];
     DelegationRecord {
@@ -63,56 +63,44 @@ async fn sponsored_lamports_transfer_delegates_zero_data_pda_and_charges_fee() {
     }
     .to_bytes_with_discriminator(&mut destination_delegation_record_data)
     .unwrap();
-    pt.add_account(
-        ephemeral_rollups_pinocchio::ID,
-        Account {
-            lamports: Rent::default().minimum_balance(data.len()).max(1),
-            data,
-            owner: bpf_loader::id(),
-            executable: true,
-            rent_epoch: 0,
-        },
-    );
-    pt.add_account(
-        destination.pubkey(),
-        Account {
-            lamports: DESTINATION_STARTING_LAMPORTS,
-            data: vec![],
-            owner: ephemeral_rollups_pinocchio::ID,
-            executable: false,
-            rent_epoch: 0,
-        },
-    );
-    pt.add_account(
-        destination_delegation_record_pda,
-        Account {
-            lamports: Rent::default()
-                .minimum_balance(destination_delegation_record_data.len())
-                .max(1),
-            data: destination_delegation_record_data,
-            owner: ephemeral_rollups_pinocchio::ID,
-            executable: false,
-            rent_epoch: 0,
-        },
-    );
 
-    let context = &mut pt.start_with_context().await;
-    let payer = context.payer.pubkey();
+    let context = utils::start_program_test_with(PROGRAM, |pt| {
+        pt.add_account(
+            destination.pubkey(),
+            Account {
+                lamports: DESTINATION_STARTING_LAMPORTS,
+                data: vec![],
+                owner: ephemeral_rollups_pinocchio::ID,
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+        pt.add_account(
+            destination_delegation_record_pda,
+            Account {
+                lamports: Rent::default()
+                    .minimum_balance(destination_delegation_record_data.len())
+                    .max(1),
+                data: destination_delegation_record_data,
+                owner: ephemeral_rollups_pinocchio::ID,
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+    })
+    .await;
+
+    let payer_kp = utils::fixed_payer_keypair();
+    let payer = payer_kp.pubkey();
     let rent = context.banks_client.get_rent().await.unwrap();
     let sponsored_rent = rent.minimum_balance(0);
 
     let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
     let (lamports_pda, _) = derive_lamports_pda(PROGRAM, payer, destination.pubkey(), SALT);
-    let (buffer_pda, _) =
-        Pubkey::find_program_address(&[b"buffer", lamports_pda.as_ref()], &PROGRAM);
-    let (delegation_record_pda, _) = Pubkey::find_program_address(
-        &[b"delegation", lamports_pda.as_ref()],
-        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,
-    );
-    let (delegation_metadata_pda, _) = Pubkey::find_program_address(
-        &[b"delegation-metadata", lamports_pda.as_ref()],
-        &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,
-    );
+    let buffer_pda =
+        delegate_buffer_pda_from_delegated_account_and_owner_program(&lamports_pda, &PROGRAM);
+    let delegation_record_pda = delegation_record_pda_from_delegated_account(&lamports_pda);
+    let delegation_metadata_pda = delegation_metadata_pda_from_delegated_account(&lamports_pda);
 
     let ix_init_rent = Instruction {
         program_id: PROGRAM,
@@ -127,7 +115,7 @@ async fn sponsored_lamports_transfer_delegates_zero_data_pda_and_charges_fee() {
     let tx_init = Transaction::new_signed_with_payer(
         &[ix_init_rent, ix_fund_rent],
         Some(&payer),
-        &[&context.payer],
+        &[&payer_kp],
         context.last_blockhash,
     );
     context
@@ -167,14 +155,16 @@ async fn sponsored_lamports_transfer_delegates_zero_data_pda_and_charges_fee() {
     let tx_sponsored_transfer = Transaction::new_signed_with_payer(
         &[ix_sponsored_transfer],
         Some(&payer),
-        &[&context.payer],
+        &[&payer_kp],
         context.banks_client.get_latest_blockhash().await.unwrap(),
     );
-    context
-        .banks_client
-        .process_transaction(tx_sponsored_transfer)
-        .await
-        .unwrap();
+    common::metrics::process_transaction_record_cu(
+        &context.banks_client,
+        tx_sponsored_transfer,
+        "lamports_pda::sponsored_lamports_transfer",
+    )
+    .await
+    .unwrap();
 
     let rent_pda_after = context
         .banks_client
@@ -240,22 +230,26 @@ async fn sponsored_lamports_transfer_delegates_zero_data_pda_and_charges_fee() {
 
 #[tokio::test]
 async fn transfer_lamports_pda_moves_requested_lamports_to_destination() {
-    let destination = Keypair::new();
-
-    let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-    pt.add_account(
-        destination.pubkey(),
-        Account {
-            lamports: DESTINATION_STARTING_LAMPORTS,
-            data: vec![],
-            owner: solana_system_interface::program::ID,
-            executable: false,
-            rent_epoch: 0,
-        },
+    let destination = utils::test_keypair(
+        "transfer_lamports_pda_moves_requested_lamports_to_destination::destination",
     );
 
-    let mut context = pt.start_with_context().await;
-    let payer = context.payer.pubkey();
+    let mut context = utils::start_program_test_with(PROGRAM, |pt| {
+        pt.add_account(
+            destination.pubkey(),
+            Account {
+                lamports: DESTINATION_STARTING_LAMPORTS,
+                data: vec![],
+                owner: solana_system_interface::program::ID,
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+    })
+    .await;
+
+    let payer_kp = utils::fixed_payer_keypair();
+    let payer = payer_kp.pubkey();
     let sponsored_rent = context
         .banks_client
         .get_rent()
@@ -292,14 +286,16 @@ async fn transfer_lamports_pda_moves_requested_lamports_to_destination() {
     let tx_transfer_lamports = Transaction::new_signed_with_payer(
         &[ix_transfer_lamports],
         Some(&payer),
-        &[&context.payer],
+        &[&payer_kp],
         context.last_blockhash,
     );
-    context
-        .banks_client
-        .process_transaction(tx_transfer_lamports)
-        .await
-        .unwrap();
+    common::metrics::process_transaction_record_cu(
+        &context.banks_client,
+        tx_transfer_lamports,
+        "lamports_pda::transfer_lamports_pda",
+    )
+    .await
+    .unwrap();
 
     let lamports_pda_account = context
         .banks_client
@@ -324,22 +320,24 @@ async fn transfer_lamports_pda_moves_requested_lamports_to_destination() {
 
 #[tokio::test]
 async fn transfer_lamports_pda_allows_extra_lamports_on_source() {
-    let destination = Keypair::new();
+    let destination =
+        utils::test_keypair("transfer_lamports_pda_allows_extra_lamports_on_source::destination");
+    let mut context = utils::start_program_test_with(PROGRAM, |pt| {
+        pt.add_account(
+            destination.pubkey(),
+            Account {
+                lamports: DESTINATION_STARTING_LAMPORTS,
+                data: vec![],
+                owner: solana_system_interface::program::ID,
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+    })
+    .await;
 
-    let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-    pt.add_account(
-        destination.pubkey(),
-        Account {
-            lamports: DESTINATION_STARTING_LAMPORTS,
-            data: vec![],
-            owner: solana_system_interface::program::ID,
-            executable: false,
-            rent_epoch: 0,
-        },
-    );
-
-    let mut context = pt.start_with_context().await;
-    let payer = context.payer.pubkey();
+    let payer_kp = utils::fixed_payer_keypair();
+    let payer = payer_kp.pubkey();
     let sponsored_rent = context
         .banks_client
         .get_rent()
@@ -376,14 +374,16 @@ async fn transfer_lamports_pda_allows_extra_lamports_on_source() {
     let tx_transfer_lamports = Transaction::new_signed_with_payer(
         &[ix_transfer_lamports],
         Some(&payer),
-        &[&context.payer],
+        &[&payer_kp],
         context.last_blockhash,
     );
-    context
-        .banks_client
-        .process_transaction(tx_transfer_lamports)
-        .await
-        .unwrap();
+    common::metrics::process_transaction_record_cu(
+        &context.banks_client,
+        tx_transfer_lamports,
+        "lamports_pda::allow_extra_lamports",
+    )
+    .await
+    .unwrap();
 
     let lamports_pda_account = context
         .banks_client
