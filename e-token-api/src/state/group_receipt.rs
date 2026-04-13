@@ -1,5 +1,5 @@
-use core::num::{NonZeroU32, NonZeroUsize};
 use bytemuck::{Pod, Zeroable};
+use core::num::NonZeroU32;
 use pinocchio::error::ProgramError;
 use pinocchio::{AccountView, ProgramResult};
 use solana_signature::Signature;
@@ -8,7 +8,6 @@ use solana_signature::Signature;
 pub struct GroupReceipt<'a> {
     header: &'a mut GroupReceiptHeader,
     items_data: &'a mut [u8],
-    capacity: usize
 }
 
 impl<'a> GroupReceipt<'a> {
@@ -19,7 +18,12 @@ impl<'a> GroupReceipt<'a> {
 
     /// Returns `true` if splits are set and not 0
     pub fn is_fully_initialized(&self) -> bool {
-        return self.header.splits != 0
+        self.splits() != 0
+    }
+
+    /// Fully initialized `GroupReceipt` by setting splits
+    pub fn set_splits(&mut self, value: NonZeroU32) {
+        self.header.splits = value.get();
     }
 
     pub unsafe fn from_data_mut(data: &'a mut [u8]) -> Result<Self, ProgramError> {
@@ -30,18 +34,10 @@ impl<'a> GroupReceipt<'a> {
         // Parse header
         let header = GroupReceiptHeader::from_data_mut(header_data)?;
 
-        // NOTE: maybe uninitialized
-        let capacity = header.splits as usize;
-        let length = header.transfers_completed as usize;
-        let items_data = &mut items_data[..length * TransferReceipt::size()];
-        Ok(Self {
-            header,
-            items_data,
-            capacity
-        })
+        Ok(Self { header, items_data })
     }
 
-    /// Calculates required size in bytes for given number of items
+    /// Calculates required size in bytes for given number of `items`
     pub fn required_size(items: usize) -> usize {
         GroupReceiptHeader::size() + TransferReceipt::size() * items
     }
@@ -53,28 +49,28 @@ impl<'a> GroupReceipt<'a> {
             .map_err(|_| ProgramError::InvalidAccountData)
     }
 
+    /// Returns how much items current account can store
+    pub fn items_capacity(&self) -> usize {
+        self.items_data.len() / TransferReceipt::size()
+    }
+
     /// Records transfer, adding item and updating state accordingly
+    /// `Err(item)` - if account size unsufficient for 1 more el-t
     pub fn record_transfer(&mut self, item: TransferReceipt) -> Result<(), TransferReceipt> {
-        // If current length >= capacity we can't push without extending capacity
         let length = self.header.transfers_completed as usize;
-        if length < self.capacity {
-            Ok(())
+        let capacity = if self.is_fully_initialized() {
+            self.splits() as usize
         } else {
-            Err(item)
-        }?;
+            self.items_capacity()
+        };
+        if length < capacity { Ok(()) } else { Err(item) }?;
 
         let item_start = self.initialized_items_bytes();
         let item_range = item_start..item_start + TransferReceipt::size();
         self.items_data[item_range].copy_from_slice(bytemuck::bytes_of(&item));
-        self.header.transfers_completed -= 1;
+        self.header.transfers_completed += 1;
 
         Ok(())
-    }
-
-    /// Can be encreased only what more momory was allocated
-    /// and receipt is not fully initialized
-    pub unsafe fn force_capacity_increase(&mut self, by: usize) {
-        self.capacity += by;
     }
 
     fn initialized_items_bytes(&self) -> usize {
@@ -83,6 +79,13 @@ impl<'a> GroupReceipt<'a> {
 
     pub fn id(&self) -> u32 {
         self.header.id
+    }
+
+    /// Returns number of `splits`
+    /// Maybe 0 if not fully initialized
+    #[inline(always)]
+    pub fn splits(&self) -> u32 {
+        self.header.splits()
     }
 }
 
@@ -126,12 +129,24 @@ impl GroupReceiptHeader {
             .map_err(|_| ProgramError::InvalidAccountData)
     }
 
+    /// Returns if `GroupReceipt` is fully initialized
+    pub fn is_fully_initialized(&self) -> bool {
+        self.splits != 0
+    }
+
     pub fn id(&self) -> u32 {
         self.id
     }
 
     pub fn bump(&self) -> u8 {
         self.bump
+    }
+
+    /// Returns number of `splits` that current receipt can contain
+    /// Note: if receipt wasn't fully initialized this value can change
+    /// when initialization tick occurs
+    pub fn splits(&self) -> u32 {
+        self.splits
     }
 
     pub const fn size() -> usize {
@@ -220,7 +235,7 @@ mod tests {
         let mut data = init_data(7, 3, 5);
         let gr = unsafe { GroupReceipt::from_data_mut(&mut data) }.unwrap();
         assert_eq!(gr.id(), 7);
-        assert_eq!(gr.transfers_left(), 3);
+        assert_eq!(gr.splits(), 3);
     }
 
     #[test]
@@ -230,15 +245,17 @@ mod tests {
     }
 
     #[test]
-    fn record_transfer_decrements_transfers_left() {
+    fn record_transfer_increments_transfers_completed() {
         let mut data = init_data(1, 2, 0);
         let mut gr = unsafe { GroupReceipt::from_data_mut(&mut data) }.unwrap();
         gr.record_transfer(TransferReceipt::new(None, 100, true))
+            .ok()
             .unwrap();
-        assert_eq!(gr.transfers_left(), 1);
+        assert_eq!(gr.items().unwrap().len(), 1);
         gr.record_transfer(TransferReceipt::new(None, 50, false))
+            .ok()
             .unwrap();
-        assert_eq!(gr.transfers_left(), 0);
+        assert_eq!(gr.items().unwrap().len(), 2);
     }
 
     #[test]
@@ -246,6 +263,7 @@ mod tests {
         let mut data = init_data(1, 1, 0);
         let mut gr = unsafe { GroupReceipt::from_data_mut(&mut data) }.unwrap();
         gr.record_transfer(TransferReceipt::new(None, 100, true))
+            .ok()
             .unwrap();
         assert!(gr
             .record_transfer(TransferReceipt::new(None, 50, false))
@@ -266,8 +284,10 @@ mod tests {
         {
             let mut gr = unsafe { GroupReceipt::from_data_mut(&mut data) }.unwrap();
             gr.record_transfer(TransferReceipt::new(Some(sig), 200, true))
+                .ok()
                 .unwrap();
             gr.record_transfer(TransferReceipt::new(None, 300, false))
+                .ok()
                 .unwrap();
         }
         let gr = unsafe { GroupReceipt::from_data_mut(&mut data) }.unwrap();

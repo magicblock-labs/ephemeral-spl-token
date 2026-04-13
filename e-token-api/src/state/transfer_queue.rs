@@ -294,7 +294,7 @@ fn higher_priority(a: &QueuedTransfer, b: &QueuedTransfer) -> bool {
 fn effective_next_task_id(length: u32, next_task_id: u32) -> u32 {
     let next_task_id = if length == 0 && next_task_id > (u32::MAX / 2) {
         0
-    } else {    
+    } else {
         next_task_id
     };
 

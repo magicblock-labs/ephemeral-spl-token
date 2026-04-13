@@ -2,6 +2,7 @@ use crate::processor::execute_transfer_callback::{
     close_group_receipt, derive_group_receipt_id, log_group_receipt, read_u32_le,
     GroupReceiptController,
 };
+use core::num::NonZeroU32;
 use ephemeral_spl_api::program::id_address;
 use ephemeral_spl_api::state::group_receipt::GroupReceipt;
 use ephemeral_spl_api::state::transfer_queue::{
@@ -10,7 +11,6 @@ use ephemeral_spl_api::state::transfer_queue::{
 use ephemeral_spl_api::Address;
 use pinocchio::error::ProgramError;
 use pinocchio::{AccountView, ProgramResult};
-use solana_account::Account;
 
 pub fn process_initialize_group_receipt(
     accounts: &[AccountView],
@@ -90,17 +90,17 @@ fn handle_already_initialized_receipt(
     group_receipt_info: &AccountView,
     magic_vault: &AccountView,
     magic_program: &AccountView,
-    splits: u32,
+    splits: NonZeroU32,
 ) -> ProgramResult {
     let mut group_receipt =
         GroupReceiptController::new(group_receipt_info, queue_info, magic_vault, magic_program)?;
-    if splits as usize <= group_receipt.items()?.len() {
+    if splits.get() as usize <= group_receipt.items()?.len() {
         // All callbacks executed
         log_group_receipt(&group_receipt);
         close_group_receipt(queue_info, group_receipt_info, magic_vault)
     } else {
         // Some callbacks got executed
-        // Set splits
+        // Set final number of splits
         group_receipt.set_splits(splits)
     }
 }

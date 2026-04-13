@@ -2,6 +2,7 @@ use crate::processor::ephemeral_account::{
     close_ephemeral_account, create_ephemeral_account, resize_ephemeral_account,
 };
 use crate::processor::process_transfer_queue_tick::derive_associated_token_address;
+use core::num::NonZeroU32;
 use core::ops::Deref;
 use ephemeral_spl_api::program::id_address;
 use ephemeral_spl_api::state::group_receipt::{
@@ -424,7 +425,17 @@ impl<'a> GroupReceiptController<'a> {
     }
 
     /// Fully initialized `GroupReceipt` with number of splits
-    pub fn set_splits(&mut self, splits: u32) -> ProgramResult {}
+    pub fn set_splits(&mut self, splits: NonZeroU32) -> ProgramResult {
+        self.group_receipt.set_splits(splits);
+
+        let current_capacity = self.group_receipt.items_capacity();
+        let final_capacity = splits.get() as usize;
+        if current_capacity < final_capacity {
+            self.allocate_items(final_capacity - current_capacity)?;
+        } else {
+            Ok(())
+        }
+    }
 
     /// Returns slice of completed transfer's receipts
     pub fn items(&self) -> Result<&[TransferReceipt], ProgramError> {
@@ -484,11 +495,6 @@ impl<'a> GroupReceiptController<'a> {
         )?;
 
         self.group_receipt = GroupReceipt::new(self.group_receipt_info)?;
-        // SAFETY: necessary memory was allocated, add capacity
-        unsafe {
-            self.group_receipt.force_capacity_increase(num);
-        }
-
         Ok(())
     }
 }
