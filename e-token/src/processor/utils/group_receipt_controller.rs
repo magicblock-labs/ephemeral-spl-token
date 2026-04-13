@@ -39,7 +39,7 @@ impl<'a> GroupReceiptController<'a> {
         })
     }
 
-    /// Creates a new ephemeral account for the group receipt and initializes it.
+    /// Creates `GroupReceipt` and initializes it.
     /// Use this when the receipt account does not yet exist.
     pub fn create(
         group_receipt_info: &'a AccountView,
