@@ -26,8 +26,8 @@ use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
 use crate::{
     assert_owner,
     processor::{
-        rent_pda::RENT_PDA,
-        transfer_queue_refill::{
+        initialize_rent_pda::RENT_PDA,
+        internal::transfer_queue_refill::{
             queue_refill_state_address, refill_transfer_queue_amounts,
             MARK_TRANSFER_QUEUE_REFILL_PENDING_COMPUTE_UNITS,
             MARK_TRANSFER_QUEUE_REFILL_PENDING_ESCROW_INDEX,
@@ -35,7 +35,7 @@ use crate::{
     },
 };
 
-pub(crate) const EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX: u8 = 0;
+const EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX: u8 = 0;
 
 const ASSOCIATED_TOKEN_PROGRAM_ID: ephemeral_spl_api::Address =
     pinocchio_associated_token_account::ID;

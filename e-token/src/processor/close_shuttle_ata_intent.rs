@@ -1,5 +1,5 @@
+use crate::processor::internal::token_vault::withdraw_ephemeral_ata_tokens;
 use crate::processor::utils::validate_token_account;
-use crate::processor::withdraw_spl_tokens::withdraw_ephemeral_ata_tokens;
 use crate::{assert_owner, assert_signer};
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::{

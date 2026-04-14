@@ -1,14 +1,14 @@
-use ephemeral_spl_api::state::{load_initialized, load_mut_initialized};
-use pinocchio::address::address_eq;
-
 use core::marker::PhantomData;
 
-use crate::{assert_owner, processor::utils::read_mint_decimals};
+use ephemeral_spl_api::state::{load_initialized, load_mut_initialized};
 
 use {
-    ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, global_vault::GlobalVault},
-    pinocchio::{error::ProgramError, AccountView, Address, ProgramResult},
+    ephemeral_spl_api::state::ephemeral_ata::EphemeralAta,
+    pinocchio::{error::ProgramError, AccountView, ProgramResult},
 };
+
+use crate::assert_owner;
+use crate::processor::internal::token_vault::transfer_to_vault_for_mint;
 
 #[inline(always)]
 pub fn process_deposit_spl_tokens(
@@ -60,42 +60,6 @@ pub fn process_deposit_spl_tokens(
         .ok_or(ProgramError::InvalidArgument)?;
 
     Ok(())
-}
-
-#[inline(always)]
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn transfer_to_vault_for_mint(
-    vault_info: &AccountView,
-    mint_info: &AccountView,
-    user_source_token_acc: &AccountView,
-    vault_token_acc: &AccountView,
-    user_authority: &AccountView,
-    token_program_info: &AccountView,
-    expected_mint: &Address,
-    amount: u64,
-) -> ProgramResult {
-    assert_owner!(vault_info, &crate::ID);
-
-    let vault = load_initialized::<GlobalVault>(unsafe { vault_info.borrow_unchecked() })?;
-    if !address_eq(&vault.mint, mint_info.address())
-        || !address_eq(&vault.token_account, vault_token_acc.address())
-        || !address_eq(&vault.mint, expected_mint)
-    {
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    let decimals = read_mint_decimals(mint_info, token_program_info)?;
-
-    pinocchio_token_2022::instructions::TransferChecked {
-        mint: mint_info,
-        from: user_source_token_acc,
-        to: vault_token_acc,
-        authority: user_authority,
-        token_program: token_program_info.address(),
-        amount,
-        decimals,
-    }
-    .invoke()
 }
 
 ///

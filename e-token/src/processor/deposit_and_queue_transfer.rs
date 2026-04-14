@@ -1,6 +1,6 @@
 use core::{convert::TryFrom, marker::PhantomData};
 
-use crate::processor::deposit_spl_tokens::transfer_to_vault_for_mint;
+use crate::processor::internal::token_vault::transfer_to_vault_for_mint;
 use crate::processor::utils::{read_mint_decimals, validate_token_account};
 use crate::{assert_associated_token_address, assert_owner, assert_signer};
 #[cfg(feature = "logging")]
@@ -302,7 +302,7 @@ impl DepositAndQueueTransferArgs<'_> {
 }
 
 #[inline(always)]
-pub(crate) fn validate_deposit_and_queue_transfer_params(
+fn validate_deposit_and_queue_transfer_params(
     amount: u64,
     min_delay_ms: u64,
     max_delay_ms: u64,
