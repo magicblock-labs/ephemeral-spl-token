@@ -476,6 +476,7 @@ impl FixedFieldKind {
                             bytes[#offset + 1 .. #offset + 1 + #len].copy_from_slice(bytemuck::bytes_of(value));
                         } else {
                             bytes[#offset] = 0;
+                            bytes[#offset + 1 .. #offset + 1 + #len].fill(0);
                         }
                     }
                 } else {
