@@ -16,13 +16,22 @@ const optionalString = z
 
 const optionalUrl = optionalString.pipe(z.string().url().optional());
 
+const optionalBoolean = z.preprocess((value) => {
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
+  }
+  return value;
+}, z.boolean().optional().default(false));
+
 export const envSchema = z.object({
   BASE_RPC_URL: z.string().url(),
   EPHEMERAL_RPC_URL: z.string().url(),
   BASE_DEVNET_RPC_URL: optionalUrl,
   EPHEMERAL_DEVNET_RPC_URL: optionalUrl,
   CORS_ORIGIN: optionalString,
-  MOCK_PER: z.boolean().optional().default(false),
+  MOCK_PER: optionalBoolean,
 });
 
 export type AppBindings = {
