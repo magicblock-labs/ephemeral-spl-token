@@ -15,11 +15,13 @@ use solana_program_pack::Pack;
 use spl_token_interface::state::Account;
 use {
     solana_keypair::Keypair,
-    solana_program_test::{tokio, ProgramTestContext},
-    solana_pubkey::Pubkey,
+    solana_program_test::{processor, tokio, ProgramTestContext},
+    solana_pubkey::{pubkey, Pubkey},
     solana_signer::Signer,
     solana_transaction::{InstructionError, Transaction, TransactionError},
 };
+
+const MAGIC_PROGRAM: Pubkey = pubkey!("Magic11111111111111111111111111111111111111");
 
 mod common;
 mod utils;
@@ -51,7 +53,16 @@ fn read_item_unaligned(data: &[u8], index: usize) -> QueuedTransfer {
 }
 
 async fn setup_fixture(items: Option<u32>) -> Fixture {
-    let mut context = utils::start_program_test(PROGRAM).await;
+    let mut context = utils::start_program_test_with(PROGRAM, |pt| {
+        pt.prefer_bpf(false);
+        pt.add_program(
+            "magic_mock",
+            MAGIC_PROGRAM,
+            processor!(common::magic_mock::process),
+        );
+        pt.prefer_bpf(true);
+    })
+    .await;
 
     let payer_kp = utils::fixed_payer_keypair();
     let payer = payer_kp.pubkey();
@@ -222,6 +233,7 @@ fn build_deposit_and_queue_ix_for_destination(
             AccountMeta::new_readonly(fixture.payer, true),
             AccountMeta::new_readonly(spl_token_interface::ID, false),
             AccountMeta::new_readonly(PROGRAM, false),
+            AccountMeta::new_readonly(MAGIC_PROGRAM, false),
         ],
         data,
     }
@@ -876,6 +888,7 @@ async fn deposit_and_queue_transfer_return_to_shuttle() {
                 AccountMeta::new_readonly(fixture.payer, true),
                 AccountMeta::new_readonly(spl_token_interface::ID, false),
                 AccountMeta::new(shuttle_wallet_ata, false),
+                AccountMeta::new_readonly(MAGIC_PROGRAM, false),
             ],
             data,
         }
