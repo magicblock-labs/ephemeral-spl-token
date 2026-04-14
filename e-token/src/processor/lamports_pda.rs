@@ -5,6 +5,7 @@ use ephemeral_rollups_pinocchio::{
     intent_bundle::{ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta},
     types::DelegateConfig,
 };
+use pinocchio::address::address_eq;
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
@@ -46,11 +47,11 @@ pub fn process_sponsored_lamports_transfer(
     assert_owner!(rent_pda_info, &pinocchio_system::ID);
     assert_owner!(destination_info, &DELEGATION_PROGRAM_ID);
 
-    if owner_program.address() != &ephemeral_spl_api::program::id_address() {
+    if !address_eq(owner_program.address(), &crate::ID) {
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    if RENT_PDA != *rent_pda_info.address() {
+    if !address_eq(rent_pda_info.address(), &RENT_PDA) {
         return Err(ProgramError::InvalidSeeds);
     }
     if rent_pda_info.data_len() != 0 {
@@ -61,7 +62,7 @@ pub fn process_sponsored_lamports_transfer(
         read_destination_validator(destination_info, destination_delegation_record_info)?;
     let (derived_lamports_pda, lamports_pda_bump) =
         derive_lamports_pda(payer_info.address(), destination_info.address(), &salt);
-    if derived_lamports_pda != *lamports_pda_info.address() {
+    if !address_eq(&derived_lamports_pda, lamports_pda_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
     if lamports_pda_info.lamports() > 0 {
@@ -94,7 +95,7 @@ pub fn process_sponsored_lamports_transfer(
         to: lamports_pda_info,
         space: 0,
         lamports: Rent::get()?.try_minimum_balance(0)?,
-        owner: &ephemeral_spl_api::program::id_address(),
+        owner: &crate::ID,
     }
     .invoke_signed(&[rent_signer.clone(), lamports_pda_signer])?;
 
@@ -159,7 +160,7 @@ pub fn process_transfer_lamports_pda(
     };
 
     assert_signer!(payer_info);
-    assert_owner!(lamports_pda_info, &ephemeral_spl_api::program::id_address());
+    assert_owner!(lamports_pda_info, &crate::ID);
 
     if lamports_pda_info.data_len() != 0 {
         return Err(ProgramError::InvalidAccountData);
@@ -167,7 +168,7 @@ pub fn process_transfer_lamports_pda(
 
     let (derived_lamports_pda, _) =
         derive_lamports_pda(payer_info.address(), destination_info.address(), &salt);
-    if derived_lamports_pda != *lamports_pda_info.address() {
+    if !address_eq(&derived_lamports_pda, lamports_pda_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
 
@@ -195,7 +196,7 @@ pub fn process_undelegate_lamports_pda(
     };
 
     assert_signer!(payer_info);
-    assert_owner!(lamports_pda_info, &ephemeral_spl_api::program::id_address());
+    assert_owner!(lamports_pda_info, &crate::ID);
 
     if lamports_pda_info.data_len() != 0 {
         return Err(ProgramError::InvalidAccountData);
@@ -203,7 +204,7 @@ pub fn process_undelegate_lamports_pda(
 
     let (derived_lamports_pda, _) =
         derive_lamports_pda(payer_info.address(), destination_info.address(), &salt);
-    if derived_lamports_pda != *lamports_pda_info.address() {
+    if !address_eq(&derived_lamports_pda, lamports_pda_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
 
@@ -231,7 +232,7 @@ pub fn process_undelegate_lamports_pda(
         },
     ];
     let close_handler = [CallHandler {
-        destination_program: Address::new_from_array(crate::ID),
+        destination_program: crate::ID,
         escrow_authority: payer_info.clone(),
         args: ActionArgs::new(&close_handler_data).with_escrow_index(DEFAULT_ESCROW_INDEX),
         compute_units: CLOSE_LAMPORTS_PDA_COMPUTE_UNITS,
@@ -269,7 +270,7 @@ pub fn process_close_lamports_pda_intent(
 
     assert_signer!(escrow_signer);
     assert_owner!(rent_pda_info, &pinocchio_system::ID);
-    assert_owner!(lamports_pda_info, &ephemeral_spl_api::program::id_address());
+    assert_owner!(lamports_pda_info, &crate::ID);
 
     let escrow_index_seed = [escrow_index];
     let (expected_escrow, _) = Address::find_program_address(
@@ -284,7 +285,7 @@ pub fn process_close_lamports_pda_intent(
         return Err(ProgramError::InvalidSeeds);
     }
 
-    if RENT_PDA != *rent_pda_info.address() {
+    if !address_eq(rent_pda_info.address(), &RENT_PDA) {
         return Err(ProgramError::InvalidSeeds);
     }
     if rent_pda_info.data_len() != 0 || lamports_pda_info.data_len() != 0 {
@@ -293,7 +294,7 @@ pub fn process_close_lamports_pda_intent(
 
     let (derived_lamports_pda, _) =
         derive_lamports_pda(payer_info.address(), destination_info.address(), &salt);
-    if derived_lamports_pda != *lamports_pda_info.address() {
+    if !address_eq(&derived_lamports_pda, lamports_pda_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
 
@@ -316,7 +317,7 @@ pub(crate) fn derive_lamports_pda(
             destination.as_ref(),
             salt.as_ref(),
         ],
-        &ephemeral_spl_api::program::id_address(),
+        &crate::ID,
     )
 }
 
@@ -332,7 +333,7 @@ fn transfer_lamports_pda_action(
     data.extend_from_slice(salt);
 
     Instruction {
-        program_id: Pubkey::from(ephemeral_spl_api::program::ID),
+        program_id: Pubkey::from(crate::ID),
         accounts: alloc::vec![
             AccountMeta::new_readonly(*payer_info.address(), true),
             AccountMeta::new(*lamports_pda_info.address(), false),
@@ -353,7 +354,7 @@ fn undelegate_lamports_pda_action(
     data.extend_from_slice(salt);
 
     Instruction {
-        program_id: Pubkey::from(ephemeral_spl_api::program::ID),
+        program_id: Pubkey::from(crate::ID),
         accounts: alloc::vec![
             AccountMeta::new_readonly(*payer_info.address(), true),
             AccountMeta::new_readonly(*rent_pda_info.address(), false),

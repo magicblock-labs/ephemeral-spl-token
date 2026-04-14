@@ -9,9 +9,9 @@ use dlp_api::args::{
     MaybeEncryptedPubkey,
 };
 use dlp_api::compact::{self};
-use dlp_api::consts::DEFAULT_VALIDATOR_IDENTITY;
+use pinocchio::address::address_eq;
 
-use ephemeral_spl_api::state::transfer_queue::QUEUE_SEED;
+use ephemeral_spl_api::state::transfer_queue::{queue_views, TransferQueue};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use solana_instruction::{AccountMeta, Instruction};
 
@@ -80,28 +80,14 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
         );
     }
 
-    let program_id = ephemeral_spl_api::program::id_address();
-    let (derived_queue, _) = ephemeral_spl_api::Address::find_program_address(
-        &[
-            QUEUE_SEED,
-            common_accounts.mint_info.address().as_ref(),
-            args.validator()?
-                .unwrap_or(DEFAULT_VALIDATOR_IDENTITY.to_bytes())
-                .as_ref(),
-        ],
-        &program_id,
-    );
-    if derived_queue != *queue_info.address() {
-        #[cfg(feature = "logging")]
-        {
-            let expected = derived_queue.to_string();
-            let actual = queue_info.address().to_string();
-            pinocchio_log::log!(
-                "Private shuttle ix queue mismatch expected={} actual={}",
-                expected.as_str(),
-                actual.as_str(),
-            );
-        }
+    let (bump, validator) = {
+        let data = unsafe { queue_info.borrow_unchecked() };
+        let (header, _) = queue_views(data)?;
+        (header.bump, header.validator)
+    };
+    let derived_queue =
+        TransferQueue::derive_pda(common_accounts.mint_info.address(), &validator, bump)?;
+    if !address_eq(&derived_queue, queue_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
 
@@ -280,7 +266,7 @@ fn private_transfer_action_encrypted(
         inserted_non_signers: 0,
         signers: alloc::vec![common_accounts.owner_info.address().to_bytes()], // 0
         non_signers: alloc::vec![
-            MaybeEncryptedPubkey::ClearText(ephemeral_spl_api::program::ID), // 1
+            MaybeEncryptedPubkey::ClearText(crate::ID.to_bytes()), // 1
             MaybeEncryptedPubkey::ClearText(queue_info.address().to_bytes()), // 2
             MaybeEncryptedPubkey::ClearText(common_accounts.global_vault_info.address().to_bytes()), // 3
             MaybeEncryptedPubkey::ClearText(common_accounts.mint_info.address().to_bytes()), // 4

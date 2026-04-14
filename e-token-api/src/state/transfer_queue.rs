@@ -1,5 +1,6 @@
 use bytemuck::{Pod, Zeroable};
-use pinocchio::{error::ProgramError, Address};
+use pinocchio::{cpi::Seed, error::ProgramError, Address};
+use solana_address::address_eq;
 
 /// Current queue version that stores ready timestamps in milliseconds and client reference ids.
 /// Bump this value only when the on-chain layout changes or queue semantics require it.
@@ -40,6 +41,57 @@ pub struct QueuedTransfer {
     pub task_id: u32,
     pub flags: u8,
     pub _pad0: [u8; 3],
+}
+
+pub struct TransferQueue;
+
+impl TransferQueue {
+    #[inline(always)]
+    pub fn derive_pda(
+        mint: &Address,
+        validator: &Address,
+        bump_seed: u8,
+    ) -> Result<Address, ProgramError> {
+        let bump = [bump_seed];
+        let pda = Address::create_program_address(
+            &Self::seeds_with_bump(mint, validator, &bump),
+            &crate::ID,
+        )?;
+        Ok(pda)
+    }
+
+    #[inline(always)]
+    pub fn find_pda(mint: &Address, validator: &Address) -> (Address, u8) {
+        Address::find_program_address(&Self::seeds(mint, validator), &crate::ID)
+    }
+
+    #[inline(always)]
+    pub fn seeds<'a>(mint: &'a Address, validator: &'a Address) -> [&'a [u8]; 3] {
+        [QUEUE_SEED, mint.as_ref(), validator.as_ref()]
+    }
+
+    #[inline(always)]
+    pub fn seeds_with_bump<'a>(
+        mint: &'a Address,
+        validator: &'a Address,
+        bump: &'a [u8],
+    ) -> [&'a [u8]; 4] {
+        [QUEUE_SEED, mint.as_ref(), validator.as_ref(), bump]
+    }
+
+    #[inline(always)]
+    pub fn signer_seeds<'a>(
+        mint: &'a Address,
+        validator: &'a Address,
+        bump: &'a [u8],
+    ) -> [Seed<'a>; 4] {
+        [
+            Seed::from(QUEUE_SEED),
+            Seed::from(mint.as_ref()),
+            Seed::from(validator.as_ref()),
+            Seed::from(bump),
+        ]
+    }
 }
 
 impl QueuedTransfer {
@@ -238,13 +290,13 @@ pub fn queue_views_mut_checked(
 }
 
 #[inline(always)]
-pub fn queue_len_for_mint_with_capacity(
+pub fn queue_len_and_bump_for_mint_with_capacity(
     data: &[u8],
     expected_mint: &Address,
     required_slots: usize,
-) -> Result<(usize, Address), ProgramError> {
+) -> Result<(usize, Address, u8), ProgramError> {
     let (header, items) = queue_views_checked(data)?;
-    if header.mint != *expected_mint {
+    if !address_eq(&header.mint, expected_mint) {
         return Err(ProgramError::InvalidAccountData);
     }
 
@@ -254,7 +306,22 @@ pub fn queue_len_for_mint_with_capacity(
         return Err(ProgramError::AccountDataTooSmall);
     }
 
-    Ok((queue_len, header.validator))
+    Ok((queue_len, header.validator, header.bump))
+}
+
+pub fn queue_allocate_group_id_from_data(data: &mut [u8]) -> Result<u32, ProgramError> {
+    let (header, items) = queue_views_mut_checked(data)?;
+    let mut candidate = normalize_group_id(stored_next_group_id(header));
+
+    for _ in 0..MAX_GROUP_ID {
+        if !group_id_in_use(items, header.length, candidate)? {
+            set_stored_next_group_id(header, next_group_id(candidate));
+            return Ok(candidate);
+        }
+        candidate = next_group_id(candidate);
+    }
+
+    Err(ProgramError::InvalidAccountData)
 }
 
 pub fn queue_allocate_group_id_from_data(data: &mut [u8]) -> Result<u32, ProgramError> {
@@ -280,10 +347,10 @@ fn higher_priority(a: &QueuedTransfer, b: &QueuedTransfer) -> bool {
     if a.amount != b.amount {
         return a.amount < b.amount;
     }
-    if a.destination_owner.as_ref() != b.destination_owner.as_ref() {
+    if !address_eq(&a.destination_owner, &b.destination_owner) {
         return a.destination_owner.as_ref() < b.destination_owner.as_ref();
     }
-    if a.source.as_ref() != b.source.as_ref() {
+    if !address_eq(&a.source, &b.source) {
         return a.source.as_ref() < b.source.as_ref();
     }
 

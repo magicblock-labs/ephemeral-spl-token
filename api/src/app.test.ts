@@ -87,7 +87,7 @@ function createExecutionContext(): TestExecutionContext {
     waitUntil(promise: Promise<unknown>) {
       tasks.push(promise);
     },
-    passThroughOnException() {},
+    passThroughOnException() { },
     async drain() {
       await Promise.all(tasks);
     },
@@ -670,7 +670,7 @@ describe("app", () => {
 
     expect(json.sendTo).toBe("ephemeral");
     expect(json.recentBlockhash).toBe("11111111111111111111111111111111");
-    expect(json.instructionCount).toBe(2);
+    expect(json.instructionCount).toBe(1);
   });
 
   it("builds a private transfer with top-level split and delay options", async () => {
@@ -930,7 +930,7 @@ describe("app", () => {
     const transaction = Transaction.from(Buffer.from(json.transactionBase64, "base64"));
     const memoInstruction = transaction.instructions.at(-1);
 
-    expect(json.instructionCount).toBe(3);
+    expect(json.instructionCount).toBe(2);
     expect(memoInstruction?.programId.toBase58()).toBe("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
     expect(memoInstruction?.data.toString("utf8")).toBe(memo);
   });
@@ -1009,7 +1009,6 @@ describe("app", () => {
       {},
       env,
     );
-
     expect(response.status).toBe(400);
 
     const json = await response.json() as { error: { code: string; message: string } };
@@ -1076,6 +1075,32 @@ describe("app", () => {
 
     const json = await response.json() as { token: string };
     expect(json.token).toBe("token-xyz");
+  });
+
+  it("redacts RPC URLs from balance error details", async () => {
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockRejectedValue(
+      new Error("HTTP status server error (503 Service Unavailable) for url (https://devnet.helius-rpc.com/?api-key=secret-value)"),
+    );
+
+    const response = await app.request(
+      `/v1/spl/balance?address=${owner}&mint=So11111111111111111111111111111111111111112`,
+      {},
+      env,
+    );
+
+    expect(response.status).toBe(502);
+
+    const json = await response.json() as {
+      error: {
+        details?: {
+          message?: string;
+        };
+      };
+    };
+
+    expect(json.error.details?.message).toContain("[redacted-url]");
+    expect(json.error.details?.message).not.toContain("https://devnet.helius-rpc.com/");
+    expect(json.error.details?.message).not.toContain("api-key=secret-value");
   });
 
   it("returns a clearer validation error when required balance query params are missing", async () => {

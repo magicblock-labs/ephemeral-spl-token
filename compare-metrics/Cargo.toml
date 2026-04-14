@@ -1,0 +1,13 @@
+[package]
+name = "compare-metrics"
+version = "0.1.0"
+edition = "2021"
+description = "Compare two CU metrics JSON files and print a terminal table"
+publish = false
+
+[[bin]]
+name = "compare-metrics"
+path = "src/main.rs"
+
+[dependencies]
+serde_json = "1"

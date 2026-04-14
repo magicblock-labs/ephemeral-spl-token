@@ -6,7 +6,7 @@ use ephemeral_rollups_pinocchio::acl::{
     types::{Member, MemberFlags, MembersArgs},
 };
 use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_initialized};
-use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use pinocchio::{address::address_eq, error::ProgramError, AccountView, ProgramResult};
 
 use crate::assert_signer;
 
@@ -53,7 +53,7 @@ pub fn process_create_ephemeral_ata_permission(
 
     let expected_permission =
         permission_pda_from_permissioned_account(ephemeral_ata_info.address());
-    if expected_permission != *permission_info.address() {
+    if !address_eq(&expected_permission, permission_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
 

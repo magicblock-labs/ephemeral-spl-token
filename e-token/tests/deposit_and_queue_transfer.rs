@@ -2,34 +2,34 @@ use bytemuck::Zeroable;
 use ephemeral_rollups_pinocchio::acl::{
     permission_pda_from_permissioned_account, PERMISSION_PROGRAM_ID,
 };
+use ephemeral_rollups_pinocchio::spl::EphemeralAta;
 use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::program::ID;
+use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
 use ephemeral_spl_api::state::transfer_queue::{
-    header_len, item_len, queue_views_checked, QueuedTransfer, TransferQueueHeader, QUEUE_SEED,
+    header_len, item_len, queue_views_checked, QueuedTransfer, TransferQueue, TransferQueueHeader,
 };
+use ephemeral_spl_api::ID as PROGRAM;
 use solana_instruction::{AccountMeta, Instruction};
-use solana_keypair::Keypair;
 use solana_program::clock::Clock;
 use solana_program_pack::Pack;
 use spl_token_interface::state::Account;
 use {
-    solana_program_test::{tokio, ProgramTest, ProgramTestContext},
+    solana_keypair::Keypair,
+    solana_program_test::{tokio, ProgramTestContext},
     solana_pubkey::Pubkey,
     solana_signer::Signer,
     solana_transaction::{InstructionError, Transaction, TransactionError},
 };
 
+mod common;
 mod utils;
-
-use crate::utils::add_permission_program;
-
-pub const PROGRAM: Pubkey = Pubkey::new_from_array(ID);
 
 const DECIMALS: u8 = 6;
 const STARTING_BALANCE: u64 = 10_000 * 10u64.pow(DECIMALS as u32);
 
 struct Fixture {
     context: ProgramTestContext,
+    payer_kp: Keypair,
     payer: Pubkey,
     mint: Pubkey,
     queue: Pubkey,
@@ -51,20 +51,18 @@ fn read_item_unaligned(data: &[u8], index: usize) -> QueuedTransfer {
 }
 
 async fn setup_fixture(items: Option<u32>) -> Fixture {
-    let mut pt = ProgramTest::new("ephemeral_token_program", PROGRAM, None);
-    utils::add_associated_token_program(&mut pt);
-    add_permission_program(&mut pt);
-    let mut context = pt.start_with_context().await;
+    let mut context = utils::start_program_test(PROGRAM).await;
 
-    let payer = context.payer.pubkey();
-    let mint_kp = Keypair::new();
+    let payer_kp = utils::fixed_payer_keypair();
+    let payer = payer_kp.pubkey();
+    let mint_kp = utils::test_keypair("deposit_and_queue_transfer::mint");
     let mint = mint_kp.pubkey();
     let validator = Keypair::new().pubkey();
 
     let pdas = utils::derive_pdas(PROGRAM, payer, mint);
     let setup = utils::setup_mint_and_token_accounts(
         &mut context,
-        payer,
+        &payer_kp,
         &mint_kp,
         DECIMALS,
         STARTING_BALANCE,
@@ -72,13 +70,12 @@ async fn setup_fixture(items: Option<u32>) -> Fixture {
     )
     .await;
 
-    let queue =
-        Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref(), validator.as_ref()], &PROGRAM).0;
+    let (queue, _) = TransferQueue::find_pda(&mint, &validator);
     let queue_permission = permission_pda_from_permissioned_account(&queue);
     let vault = pdas.vault;
     let user_source_ata = setup.user_tokens[0];
     let destination_ata = utils::derive_associated_token_address(payer, mint);
-    let (vault_eata, _) = Pubkey::find_program_address(&[vault.as_ref(), mint.as_ref()], &PROGRAM);
+    let (vault_eata, _) = EphemeralAta::find_pda(&vault, &mint);
     let vault_ata = utils::derive_associated_token_address(vault, mint);
 
     let ix_init_vault = Instruction {
@@ -130,7 +127,7 @@ async fn setup_fixture(items: Option<u32>) -> Fixture {
     let tx_init = Transaction::new_signed_with_payer(
         &[ix_init_vault, ix_init_queue, ix_init_destination_ata],
         Some(&payer),
-        &[&context.payer],
+        &[&payer_kp],
         context.last_blockhash,
     );
     context
@@ -141,6 +138,7 @@ async fn setup_fixture(items: Option<u32>) -> Fixture {
 
     Fixture {
         context,
+        payer_kp,
         payer,
         mint,
         queue,
@@ -308,15 +306,16 @@ async fn deposit_and_queue_transfer_transfers_once_and_enqueues_split_items() {
     let tx = Transaction::new_signed_with_payer(
         &[ix],
         Some(&fixture.payer),
-        &[&fixture.context.payer],
+        &[&fixture.payer_kp],
         blockhash,
     );
-    fixture
-        .context
-        .banks_client
-        .process_transaction(tx)
-        .await
-        .unwrap();
+    common::metrics::process_transaction_record_cu(
+        &fixture.context.banks_client,
+        tx,
+        "dep_queue::once_split",
+    )
+    .await
+    .unwrap();
 
     let clock_after = fixture
         .context
@@ -400,7 +399,7 @@ async fn deposit_and_queue_transfer_assigns_distinct_group_ids_per_enqueue() {
     let first_ix = build_deposit_and_queue_ix(&fixture, 10, 0, 0, 2);
     let second_ix = build_deposit_and_queue_ix(&fixture, 12, 0, 0, 3);
 
-    for ix in [first_ix, second_ix] {
+    for (i, ix) in [first_ix, second_ix].into_iter().enumerate() {
         let blockhash = fixture
             .context
             .banks_client
@@ -410,15 +409,16 @@ async fn deposit_and_queue_transfer_assigns_distinct_group_ids_per_enqueue() {
         let tx = Transaction::new_signed_with_payer(
             &[ix],
             Some(&fixture.payer),
-            &[&fixture.context.payer],
+            &[&fixture.payer_kp],
             blockhash,
         );
-        fixture
-            .context
-            .banks_client
-            .process_transaction(tx)
-            .await
-            .unwrap();
+        common::metrics::process_transaction_record_cu(
+            &fixture.context.banks_client,
+            tx,
+            &format!("dep_queue::assign_group_id_{}", i),
+        )
+        .await
+        .unwrap();
     }
 
     let queue_account = fixture
@@ -466,15 +466,16 @@ async fn deposit_and_queue_transfer_uses_explicit_client_ref_id_for_all_splits()
     let tx = Transaction::new_signed_with_payer(
         &[ix],
         Some(&fixture.payer),
-        &[&fixture.context.payer],
+        &[&fixture.payer_kp],
         blockhash,
     );
-    fixture
-        .context
-        .banks_client
-        .process_transaction(tx)
-        .await
-        .unwrap();
+    common::metrics::process_transaction_record_cu(
+        &fixture.context.banks_client,
+        tx,
+        "dep_queue::all_splits_use_client_ref_id",
+    )
+    .await
+    .unwrap();
 
     let queue_account = fixture
         .context
@@ -513,15 +514,16 @@ async fn deposit_and_queue_transfer_accepts_legacy_destination_ata() {
     let tx = Transaction::new_signed_with_payer(
         &[ix],
         Some(&fixture.payer),
-        &[&fixture.context.payer],
+        &[&fixture.payer_kp],
         blockhash,
     );
-    fixture
-        .context
-        .banks_client
-        .process_transaction(tx)
-        .await
-        .unwrap();
+    common::metrics::process_transaction_record_cu(
+        &fixture.context.banks_client,
+        tx,
+        "dep_queue::accepts_legacy_destination_ata",
+    )
+    .await
+    .unwrap();
 
     let queue_account = fixture
         .context
@@ -556,17 +558,18 @@ async fn deposit_and_queue_transfer_rejects_zero_split() {
     let tx = Transaction::new_signed_with_payer(
         &[ix],
         Some(&fixture.payer),
-        &[&fixture.context.payer],
+        &[&fixture.payer_kp],
         blockhash,
     );
+    let r = common::metrics::process_transaction_with_metadata_recorded(
+        &fixture.context.banks_client,
+        tx,
+        "dep_queue::reject_zero_split",
+    )
+    .await
+    .unwrap();
     assert_eq!(
-        fixture
-            .context
-            .banks_client
-            .process_transaction(tx)
-            .await
-            .unwrap_err()
-            .unwrap(),
+        r.result.unwrap_err(),
         TransactionError::InstructionError(0, InstructionError::InvalidInstructionData)
     );
 
@@ -587,17 +590,18 @@ async fn deposit_and_queue_transfer_rejects_split_greater_than_amount() {
     let tx = Transaction::new_signed_with_payer(
         &[ix],
         Some(&fixture.payer),
-        &[&fixture.context.payer],
+        &[&fixture.payer_kp],
         blockhash,
     );
+    let r = common::metrics::process_transaction_with_metadata_recorded(
+        &fixture.context.banks_client,
+        tx,
+        "dep_queue::reject_split_gt_amt",
+    )
+    .await
+    .unwrap();
     assert_eq!(
-        fixture
-            .context
-            .banks_client
-            .process_transaction(tx)
-            .await
-            .unwrap_err()
-            .unwrap(),
+        r.result.unwrap_err(),
         TransactionError::InstructionError(0, InstructionError::InvalidInstructionData)
     );
 
@@ -619,15 +623,18 @@ async fn deposit_and_queue_transfer_rejects_when_queue_is_full() {
     let tx = Transaction::new_signed_with_payer(
         &[ix],
         Some(&fixture.payer),
-        &[&fixture.context.payer],
+        &[&fixture.payer_kp],
         blockhash,
     );
-    fixture
-        .context
-        .banks_client
-        .process_transaction(tx)
-        .await
-        .unwrap();
+    common::metrics::process_transaction_with_metadata_recorded(
+        &fixture.context.banks_client,
+        tx,
+        "dep_queue::reject_queue_full",
+    )
+    .await
+    .unwrap()
+    .result
+    .unwrap();
 
     assert_empty_state(&fixture).await;
 }
@@ -646,17 +653,18 @@ async fn deposit_and_queue_transfer_rejects_invalid_delay_range() {
     let tx = Transaction::new_signed_with_payer(
         &[ix],
         Some(&fixture.payer),
-        &[&fixture.context.payer],
+        &[&fixture.payer_kp],
         blockhash,
     );
+    let r = common::metrics::process_transaction_with_metadata_recorded(
+        &fixture.context.banks_client,
+        tx,
+        "dep_queue::reject_delay_range",
+    )
+    .await
+    .unwrap();
     assert_eq!(
-        fixture
-            .context
-            .banks_client
-            .process_transaction(tx)
-            .await
-            .unwrap_err()
-            .unwrap(),
+        r.result.unwrap_err(),
         TransactionError::InstructionError(0, InstructionError::InvalidInstructionData)
     );
 
@@ -681,15 +689,16 @@ async fn deposit_and_queue_transfer_uses_deterministic_split_delays_within_range
     let tx = Transaction::new_signed_with_payer(
         &[ix],
         Some(&fixture.payer),
-        &[&fixture.context.payer],
+        &[&fixture.payer_kp],
         blockhash,
     );
-    fixture
-        .context
-        .banks_client
-        .process_transaction(tx)
-        .await
-        .unwrap();
+    common::metrics::process_transaction_record_cu(
+        &fixture.context.banks_client,
+        tx,
+        "dep_queue::deterministic_delays",
+    )
+    .await
+    .unwrap();
 
     let queue_account = fixture
         .context
@@ -733,15 +742,16 @@ async fn deposit_and_queue_transfer_prefers_multiples_of_five_for_four_way_split
     let tx = Transaction::new_signed_with_payer(
         &[ix],
         Some(&fixture.payer),
-        &[&fixture.context.payer],
+        &[&fixture.payer_kp],
         blockhash,
     );
-    fixture
-        .context
-        .banks_client
-        .process_transaction(tx)
-        .await
-        .unwrap();
+    common::metrics::process_transaction_record_cu(
+        &fixture.context.banks_client,
+        tx,
+        "dep_queue::split4_mod5",
+    )
+    .await
+    .unwrap();
 
     let queue_account = fixture
         .context
@@ -777,15 +787,16 @@ async fn deposit_and_queue_transfer_prefers_multiples_of_five_for_three_way_spli
     let tx = Transaction::new_signed_with_payer(
         &[ix],
         Some(&fixture.payer),
-        &[&fixture.context.payer],
+        &[&fixture.payer_kp],
         blockhash,
     );
-    fixture
-        .context
-        .banks_client
-        .process_transaction(tx)
-        .await
-        .unwrap();
+    common::metrics::process_transaction_record_cu(
+        &fixture.context.banks_client,
+        tx,
+        "dep_queue::split3_mod5",
+    )
+    .await
+    .unwrap();
 
     let queue_account = fixture
         .context
@@ -808,9 +819,8 @@ async fn deposit_and_queue_transfer_return_to_shuttle() {
 
     let shuttle_id = 42_u32;
     let (shuttle_ephemeral_ata, _) =
-        utils::derive_shuttle_ephemeral_ata(PROGRAM, fixture.payer, fixture.mint, shuttle_id);
-    let (_shuttle_eata, _) =
-        utils::derive_shuttle_eata(PROGRAM, shuttle_ephemeral_ata, fixture.mint);
+        ShuttleMetadata::find_pda(&fixture.payer, &fixture.mint, shuttle_id);
+    let (_shuttle_eata, _) = EphemeralAta::find_pda(&shuttle_ephemeral_ata, &fixture.mint);
     let shuttle_wallet_ata =
         utils::derive_associated_token_address(shuttle_ephemeral_ata, fixture.mint);
     let ix_init_ata = Instruction {
@@ -835,7 +845,7 @@ async fn deposit_and_queue_transfer_return_to_shuttle() {
     let tx_init_ata = Transaction::new_signed_with_payer(
         &[ix_init_ata],
         Some(&fixture.payer),
-        &[&fixture.context.payer],
+        &[&fixture.payer_kp],
         blockhash,
     );
     fixture
@@ -880,15 +890,16 @@ async fn deposit_and_queue_transfer_return_to_shuttle() {
     let tx = Transaction::new_signed_with_payer(
         &[ix],
         Some(&fixture.payer),
-        &[&fixture.context.payer],
+        &[&fixture.payer_kp],
         blockhash,
     );
-    fixture
-        .context
-        .banks_client
-        .process_transaction(tx)
-        .await
-        .unwrap();
+    common::metrics::process_transaction_record_cu(
+        &fixture.context.banks_client,
+        tx,
+        "dep_queue::return_to_shuttle",
+    )
+    .await
+    .unwrap();
 
     let queue_account = fixture
         .context

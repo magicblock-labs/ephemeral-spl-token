@@ -9,15 +9,17 @@ use {
 };
 
 use crate::{
-    assert_owner,
+    assert_owner, assert_signer,
     processor::{
         rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
         utils::read_mint_decimals,
     },
 };
-use ephemeral_spl_api::program::id_address;
 use ephemeral_spl_api::state::load_initialized;
-use pinocchio::cpi::{Seed, Signer};
+use pinocchio::{
+    address::address_eq,
+    cpi::{Seed, Signer},
+};
 use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
 
 #[inline(always)]
@@ -46,30 +48,30 @@ pub fn process_execute_ready_queued_transfer(
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
-    if source_program.address() != &id_address() {
+    if !address_eq(source_program.address(), &crate::ID) {
         return Err(ProgramError::IncorrectAuthority);
     }
 
-    if !escrow_signer.is_signer() {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
+    assert_signer!(escrow_signer);
 
     let expected_escrow =
         ephemeral_balance_pda_from_payer(escrow_authority.address(), args.escrow_index());
-    if expected_escrow != *escrow_signer.address() {
+    if !address_eq(&expected_escrow, escrow_signer.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
 
     if args.should_create_destination_ata_idempotent() {
         assert_owner!(rent_pda_info, &SYSTEM_PROGRAM_ID);
-        if &RENT_PDA != rent_pda_info.address() {
+        if !address_eq(&RENT_PDA, rent_pda_info.address()) {
             return Err(ProgramError::InvalidSeeds);
         }
         if rent_pda_info.data_len() != 0 {
             return Err(ProgramError::InvalidAccountData);
         }
-        if associated_token_program_info.address() != &pinocchio_associated_token_account::ID
-            || system_program_info.address() != &SYSTEM_PROGRAM_ID
+        if !address_eq(
+            associated_token_program_info.address(),
+            &pinocchio_associated_token_account::ID,
+        ) || !address_eq(system_program_info.address(), &SYSTEM_PROGRAM_ID)
         {
             return Err(ProgramError::InvalidAccountData);
         }
@@ -93,10 +95,7 @@ pub fn process_execute_ready_queued_transfer(
     let decimals = read_mint_decimals(mint_info, token_program_info)?;
 
     let vault_bump = [vault_bump];
-    let signer_seeds = [
-        Seed::from(mint_info.address().as_ref()),
-        Seed::from(&vault_bump),
-    ];
+    let signer_seeds = GlobalVault::signer_seeds(mint_info.address(), &vault_bump);
     let signer = Signer::from(&signer_seeds);
 
     pinocchio_token_2022::instructions::TransferChecked {
@@ -125,22 +124,20 @@ pub(crate) fn validate_vault_for_mint(
     mint_info: &AccountView,
     vault_token_acc_info: &AccountView,
 ) -> Result<u8, ProgramError> {
-    assert_owner!(vault_info, &ephemeral_spl_api::program::id_address());
+    assert_owner!(vault_info, &crate::ID);
 
     let vault = load_initialized::<GlobalVault>(unsafe { vault_info.borrow_unchecked() })?;
-    let (derived_vault, bump) = ephemeral_spl_api::Address::find_program_address(
-        &[mint_info.address().as_ref()],
-        &ephemeral_spl_api::program::id_address(),
-    );
-    if derived_vault != *vault_info.address() {
+    let derived_vault = GlobalVault::derive_pda(mint_info.address(), vault.bump)?;
+    if !address_eq(&derived_vault, vault_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
-    if vault.mint != *mint_info.address() || vault.token_account != *vault_token_acc_info.address()
+    if !address_eq(&vault.mint, mint_info.address())
+        || !address_eq(&vault.token_account, vault_token_acc_info.address())
     {
         return Err(ProgramError::InvalidAccountData);
     }
 
-    Ok(bump)
+    Ok(vault.bump)
 }
 
 pub struct ExecuteQueuedTransferArgs<'a> {

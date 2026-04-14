@@ -5,9 +5,11 @@ use ephemeral_rollups_pinocchio::acl::{
 };
 use ephemeral_spl_api::consts::TRANSFER_QUEUE_INITIAL_BUFFER_LAMPORTS;
 use ephemeral_spl_api::state::transfer_queue::{
-    capacity_from_data_len, header_len, init_queue, item_len, queue_views_mut_checked, QUEUE_SEED,
+    capacity_from_data_len, header_len, init_queue, item_len, queue_views_mut_checked,
+    TransferQueue,
 };
-use pinocchio::cpi::{Seed, Signer};
+use pinocchio::address::address_eq;
+use pinocchio::cpi::Signer;
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
@@ -51,24 +53,18 @@ pub fn process_initialize_transfer_queue(
         return Err(ProgramError::InvalidInstructionData);
     };
 
-    let program_id = ephemeral_spl_api::program::id_address();
-    let (derived_queue, bump) = ephemeral_spl_api::Address::find_program_address(
-        &[
-            QUEUE_SEED,
-            mint_info.address().as_ref(),
-            validator_info.address().as_ref(),
-        ],
-        &program_id,
-    );
-    if derived_queue != *queue_info.address() {
+    let program_id = crate::ID;
+    let (derived_queue, bump) =
+        TransferQueue::find_pda(mint_info.address(), validator_info.address());
+    if !address_eq(&derived_queue, queue_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
 
-    if *permission_program_info.address() != PERMISSION_PROGRAM_ID {
+    if !address_eq(permission_program_info.address(), &PERMISSION_PROGRAM_ID) {
         return Err(ProgramError::IncorrectProgramId);
     }
     let expected_permission = permission_pda_from_permissioned_account(queue_info.address());
-    if expected_permission != *queue_permission_info.address() {
+    if !address_eq(&expected_permission, queue_permission_info.address()) {
         return Err(ProgramError::InvalidSeeds);
     }
     let queue_permission_exists = queue_permission_info.lamports() > 0;
@@ -91,12 +87,8 @@ pub fn process_initialize_transfer_queue(
         }
 
         let bump_seed = [bump];
-        let signer_seeds = [
-            Seed::from(QUEUE_SEED),
-            Seed::from(mint_info.address().as_ref()),
-            Seed::from(validator_info.address().as_ref()),
-            Seed::from(&bump_seed),
-        ];
+        let signer_seeds =
+            TransferQueue::signer_seeds(mint_info.address(), validator_info.address(), &bump_seed);
         let signer = Signer::from(&signer_seeds);
 
         CreateAccount {
@@ -121,11 +113,10 @@ pub fn process_initialize_transfer_queue(
             &PERMISSION_PROGRAM_ID,
         )
         .members(MembersArgs { members: Some(&[]) })
-        .seeds(&[
-            QUEUE_SEED,
-            mint_info.address().as_ref(),
-            validator_info.address().as_ref(),
-        ])
+        .seeds(&TransferQueue::seeds(
+            mint_info.address(),
+            validator_info.address(),
+        ))
         .bump(bump)
         .invoke()?;
     }
@@ -150,8 +141,8 @@ pub fn process_initialize_transfer_queue(
 
     let (header, _) = queue_views_mut_checked(data)?;
     if header.bump != bump
-        || header.mint != *mint_info.address()
-        || header.validator != *validator_info.address()
+        || !address_eq(&header.mint, mint_info.address())
+        || !address_eq(&header.validator, validator_info.address())
     {
         return Err(ProgramError::InvalidAccountData);
     }

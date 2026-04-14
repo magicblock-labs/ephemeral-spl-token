@@ -1,3 +1,4 @@
+use pinocchio::address::address_eq;
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
@@ -7,7 +8,7 @@ use pinocchio_system::instructions::CreateAccount;
 
 pub const RENT_PDA_SEED: &[u8] = b"rent";
 const RENT_PDA_AND_BUMP: ([u8; 32], u8) =
-    const_crypto::ed25519::derive_program_address(&[RENT_PDA_SEED], &crate::ID);
+    const_crypto::ed25519::derive_program_address(&[RENT_PDA_SEED], &crate::ID.as_array());
 pub const RENT_PDA: Address = Address::new_from_array(RENT_PDA_AND_BUMP.0);
 pub const RENT_PDA_BUMP: u8 = RENT_PDA_AND_BUMP.1;
 
@@ -29,7 +30,7 @@ pub fn process_initialize_rent_pda(
     };
 
     let required_lamports = Rent::get()?.try_minimum_balance(0)?;
-    if &RENT_PDA != rent_pda_info.address() {
+    if !address_eq(rent_pda_info.address(), &RENT_PDA) {
         return Err(ProgramError::InvalidSeeds);
     }
 
