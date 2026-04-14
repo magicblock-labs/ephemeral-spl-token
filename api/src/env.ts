@@ -37,8 +37,7 @@ export type AppEnv = z.infer<typeof envSchema>;
 export function getEnv(bindings: AppBindings): AppEnv {
   try {
     return envSchema.parse(bindings);
-  }
-  catch (error) {
+  } catch (error) {
     if (error instanceof z.ZodError) {
       throw new ApiError(
         500,
@@ -46,7 +45,9 @@ export function getEnv(bindings: AppBindings): AppEnv {
         "Missing or invalid worker environment variables",
         {
           issues: error.issues.map((issue) => ({
-            path: issue.path.map((segment) => typeof segment === "number" ? segment : String(segment)),
+            path: issue.path.map((segment) =>
+              typeof segment === "number" ? segment : String(segment),
+            ),
             message: issue.message,
           })),
           hint: "Create .dev.vars from .dev.vars.example and set BASE_RPC_URL and EPHEMERAL_RPC_URL before running wrangler dev. If you want cluster=devnet, also set BASE_DEVNET_RPC_URL and EPHEMERAL_DEVNET_RPC_URL.",

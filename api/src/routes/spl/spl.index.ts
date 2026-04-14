@@ -4,8 +4,10 @@ import type { AppBindings } from "../../env";
 import { openApiDefaultHook } from "../../lib/create-app";
 import {
   balanceHandler,
+  challengeHandler,
   depositHandler,
   initializeMintHandler,
+  loginHandler,
   mintInitializationHandler,
   privateBalanceHandler,
   transferHandler,
@@ -13,8 +15,10 @@ import {
 } from "./spl.handlers";
 import {
   balanceRoute,
+  challengeRoute,
   depositRoute,
   initializeMintRoute,
+  loginRoute,
   mintInitializationRoute,
   privateBalanceRoute,
   transferRoute,
@@ -32,5 +36,7 @@ app.openapi(transferRoute, transferHandler);
 app.openapi(balanceRoute, balanceHandler);
 app.openapi(privateBalanceRoute, privateBalanceHandler);
 app.openapi(mintInitializationRoute, mintInitializationHandler);
+app.openapi(challengeRoute, challengeHandler);
+app.openapi(loginRoute, loginHandler);
 
 export default app;

@@ -189,8 +189,14 @@ function getBaseConnection(config: RpcConfig) {
   return getConnection(config.baseRpcUrl);
 }
 
-function getEphemeralConnection(config: RpcConfig) {
-  return getConnection(config.ephemeralRpcUrl);
+function getEphemeralConnection(config: RpcConfig, authToken?: string) {
+  if (!authToken) {
+    return getConnection(config.ephemeralRpcUrl);
+  }
+
+  const url = new URL(config.ephemeralRpcUrl);
+  url.searchParams.set("token", authToken);
+  return new Connection(url.toString(), "confirmed");
 }
 
 function createClusterConfigError(missingVars: Array<"BASE_DEVNET_RPC_URL" | "EPHEMERAL_DEVNET_RPC_URL">) {
@@ -208,7 +214,7 @@ function createClusterConfigError(missingVars: Array<"BASE_DEVNET_RPC_URL" | "EP
   );
 }
 
-function resolveRpcConfig(env: AppEnv, cluster?: string): RpcConfig {
+export function resolveRpcConfig(env: AppEnv, cluster?: string): RpcConfig {
   const value = cluster?.trim();
   const normalized = value?.toLowerCase();
 
@@ -268,12 +274,12 @@ function parseAmount(value: string | number, fieldName: string) {
   try {
     const amount = typeof value === "number"
       ? (() => {
-          if (!Number.isSafeInteger(value) || value <= 0) {
-            throw new Error("non-positive");
-          }
+        if (!Number.isSafeInteger(value) || value <= 0) {
+          throw new Error("non-positive");
+        }
 
-          return BigInt(value);
-        })()
+        return BigInt(value);
+      })()
       : BigInt(value);
 
     if (amount <= 0n) {
@@ -433,10 +439,10 @@ async function resolveRequiredValidator(config: RpcConfig, explicitValidator?: s
   return validator;
 }
 
-async function getBlockhash(config: RpcConfig, source: SendTarget): Promise<BlockhashResult> {
+async function getBlockhash(config: RpcConfig, source: SendTarget, authToken?: string): Promise<BlockhashResult> {
   const connection = source === "base"
     ? getBaseConnection(config)
-    : getEphemeralConnection(config);
+    : getEphemeralConnection(config, authToken);
 
   try {
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
@@ -671,7 +677,7 @@ export async function buildInitializeMintTransaction(
   }
 }
 
-export async function buildTransferTransaction(env: AppEnv, input: TransferInput) {
+export async function buildTransferTransaction(env: AppEnv, input: TransferInput, authToken?: string) {
   try {
     const config = resolveRpcConfig(env, input.cluster);
     const from = parsePublicKey(input.from, "from");
@@ -739,7 +745,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
       : undefined;
 
     const sendTo: SendTarget = input.fromBalance === "ephemeral" ? "ephemeral" : "base";
-    const blockhash = await getBlockhash(config, sendTo);
+    const blockhash = await getBlockhash(config, sendTo, authToken);
 
     const instructions = [
       ...(await transferSpl(from, to, mint, amount, {
@@ -757,11 +763,11 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
           || input.clientRefId !== undefined
           || input.split !== undefined
           ? {
-              minDelayMs,
-              maxDelayMs,
-              clientRefId,
-              split,
-            }
+            minDelayMs,
+            maxDelayMs,
+            clientRefId,
+            split,
+          }
           : undefined,
       })),
       ...(input.memo !== undefined ? [createMemoInstruction(input.memo)] : []),
@@ -785,6 +791,7 @@ async function getBalanceInternal(
   env: AppEnv,
   input: BalanceInput,
   location: SendTarget,
+  authToken?: string,
 ): Promise<BalanceResponse> {
   const config = resolveRpcConfig(env, input.cluster);
   const owner = parsePublicKey(input.address, "address");
@@ -792,7 +799,7 @@ async function getBalanceInternal(
   const ata = getAssociatedTokenAddressSync(mint, owner, true, TOKEN_PROGRAM_ID);
   const connection = location === "base"
     ? getBaseConnection(config)
-    : getEphemeralConnection(config);
+    : getEphemeralConnection(config, authToken);
 
   try {
     const accountInfo = await connection.getAccountInfo(ata, "confirmed");
@@ -818,8 +825,8 @@ export function getBaseBalance(env: AppEnv, input: BalanceInput) {
   return getBalanceInternal(env, input, "base");
 }
 
-export function getPrivateBalance(env: AppEnv, input: BalanceInput) {
-  return getBalanceInternal(env, input, "ephemeral");
+export function getPrivateBalance(env: AppEnv, input: BalanceInput, authToken?: string) {
+  return getBalanceInternal(env, input, "ephemeral", authToken);
 }
 
 function getNewestSignatureTimestampMs(signatures: Array<{ blockTime?: number | null }>) {
@@ -921,7 +928,7 @@ export async function getMintInitializationStatus(
   const mint = parsePublicKey(input.mint, "mint");
   const validator = await resolveRequiredValidator(config, input.validator);
   const [transferQueue] = deriveTransferQueue(mint, validator);
-  const connection = getEphemeralConnection(config);
+  const connection = getBaseConnection(config);
 
   try {
     const accountInfo = await connection.getAccountInfo(transferQueue, "confirmed");
