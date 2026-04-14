@@ -1,10 +1,10 @@
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts_with_ignored};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
 
-use crate::{
-    assert_owner, assert_signer,
-    processor::{initialize_rent_pda::RENT_PDA, internal::lamports_pda::derive_lamports_pda},
+use crate::processor::{
+    initialize_rent_pda::RENT_PDA, internal::lamports_pda::derive_lamports_pda,
 };
 
 const DLP_EPHEMERAL_BALANCE_TAG: &[u8] = b"balance";
@@ -28,21 +28,31 @@ pub fn process_close_lamports_pda_intent(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let (escrow_index, salt) = parse_escrow_index_and_salt(instruction_data)?;
-    if accounts.len() < 6 {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    }
+    let [
+        rent_pda_info, // force multi-line
+        lamports_pda_info,
+        payer_info,
+        destination_info,
+    ] = require_n_accounts_with_ignored!(accounts, 4);
 
-    let rent_pda_info = &accounts[0];
-    let lamports_pda_info = &accounts[1];
-    let payer_info = &accounts[2];
-    let destination_info = &accounts[3];
+    let (escrow_index, salt) = parse_escrow_index_and_salt(instruction_data)?;
+    require!(accounts.len() >= 6, ProgramError::NotEnoughAccountKeys);
+
     let escrow_authority = &accounts[accounts.len() - 2];
     let escrow_signer = &accounts[accounts.len() - 1];
 
-    assert_signer!(escrow_signer);
-    assert_owner!(rent_pda_info, &pinocchio_system::ID);
-    assert_owner!(lamports_pda_info, &crate::ID);
+    require!(
+        escrow_signer.is_signer(),
+        ProgramError::MissingRequiredSignature
+    );
+    require!(
+        rent_pda_info.owned_by(&pinocchio_system::ID),
+        ProgramError::InvalidAccountOwner
+    );
+    require!(
+        lamports_pda_info.owned_by(&crate::ID),
+        ProgramError::InvalidAccountOwner
+    );
 
     let escrow_index_seed = [escrow_index];
     let (expected_escrow, _) = Address::find_program_address(
@@ -53,34 +63,43 @@ pub fn process_close_lamports_pda_intent(
         ],
         &ephemeral_rollups_pinocchio::ID,
     );
-    if expected_escrow != *escrow_signer.address() {
-        return Err(ProgramError::InvalidSeeds);
-    }
+    require_eq_keys!(
+        &expected_escrow,
+        escrow_signer.address(),
+        ProgramError::InvalidSeeds
+    );
 
-    if RENT_PDA != *rent_pda_info.address() {
-        return Err(ProgramError::InvalidSeeds);
-    }
-    if rent_pda_info.data_len() != 0 || lamports_pda_info.data_len() != 0 {
-        return Err(ProgramError::InvalidAccountData);
-    }
+    require_eq_keys!(
+        &RENT_PDA,
+        rent_pda_info.address(),
+        ProgramError::InvalidSeeds
+    );
+    require!(
+        rent_pda_info.data_len() == 0 && lamports_pda_info.data_len() == 0,
+        ProgramError::InvalidAccountData
+    );
 
     let (derived_lamports_pda, _) =
         derive_lamports_pda(payer_info.address(), destination_info.address(), &salt);
-    if derived_lamports_pda != *lamports_pda_info.address() {
-        return Err(ProgramError::InvalidSeeds);
-    }
+    require_eq_keys!(
+        &derived_lamports_pda,
+        lamports_pda_info.address(),
+        ProgramError::InvalidSeeds
+    );
 
-    if lamports_pda_info.lamports() < Rent::get()?.try_minimum_balance(0)? {
-        return Err(ProgramError::InvalidArgument);
-    }
+    require!(
+        lamports_pda_info.lamports() >= Rent::get()?.try_minimum_balance(0)?,
+        ProgramError::InvalidArgument
+    );
 
     close_program_account_to_recipient(lamports_pda_info, rent_pda_info)
 }
 
 fn parse_escrow_index_and_salt(instruction_data: &[u8]) -> Result<(u8, [u8; 32]), ProgramError> {
-    if instruction_data.len() != 33 {
-        return Err(ProgramError::InvalidInstructionData);
-    }
+    require!(
+        instruction_data.len() == 33,
+        ProgramError::InvalidInstructionData
+    );
 
     let mut salt = [0u8; 32];
     salt.copy_from_slice(&instruction_data[1..]);
@@ -91,9 +110,10 @@ fn close_program_account_to_recipient(
     account: &AccountView,
     recipient: &AccountView,
 ) -> ProgramResult {
-    if *recipient.address() == *account.address() {
-        return Err(ProgramError::InvalidArgument);
-    }
+    require!(
+        recipient.address() != account.address(),
+        ProgramError::InvalidArgument
+    );
 
     let lamports_to_refund = account.lamports();
     let updated_recipient_lamports = recipient

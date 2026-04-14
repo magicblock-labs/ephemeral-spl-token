@@ -1,4 +1,5 @@
 use ephemeral_spl_api::state::{load_initialized, load_mut, RawType};
+use ephemeral_spl_api::{require, require_eq_keys};
 use pinocchio::cpi::Signer;
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
@@ -23,9 +24,11 @@ pub(crate) fn initialize_ephemeral_ata_with_sponsor(
 ) -> ProgramResult {
     // Validate PDA derivation up front, even for idempotent re-initialization.
     let (derived_pda, eata_bump) = EphemeralAta::find_pda(user_info.address(), mint_info.address());
-    if derived_pda != *ephemeral_ata_info.address() {
-        return Err(ProgramError::InvalidSeeds);
-    }
+    require_eq_keys!(
+        &derived_pda,
+        ephemeral_ata_info.address(),
+        ProgramError::InvalidSeeds
+    );
 
     // Make init idempotent even if the account is currently delegated (owner changed).
     if let Ok(ephemeral_ata) =
@@ -75,9 +78,10 @@ pub(crate) fn initialize_ephemeral_ata_with_sponsor(
     }
 
     // Any other pre-existing account at this PDA is invalid for initialization.
-    if ephemeral_ata_info.lamports() > 0 {
-        return Err(ProgramError::InvalidAccountData);
-    }
+    require!(
+        ephemeral_ata_info.lamports() == 0,
+        ProgramError::InvalidAccountData
+    );
 
     let bump = [eata_bump];
     let seed = EphemeralAta::signer_seeds(user_info.address(), mint_info.address(), &bump);
@@ -130,9 +134,11 @@ pub(crate) fn initialize_shuttle_ephemeral_ata_with_sponsor(
     let shuttle_id_seed = shuttle_id.to_le_bytes();
     let (derived_shuttle_pda, shuttle_bump) =
         ShuttleMetadata::find_pda(owner_info.address(), mint_info.address(), shuttle_id);
-    if derived_shuttle_pda != *shuttle_info.address() {
-        return Err(ProgramError::InvalidSeeds);
-    }
+    require_eq_keys!(
+        &derived_shuttle_pda,
+        shuttle_info.address(),
+        ProgramError::InvalidSeeds
+    );
 
     let shuttle_is_owned_by_program = unsafe { shuttle_info.owner().eq(&crate::ID) };
 
@@ -198,12 +204,12 @@ pub(crate) fn initialize_shuttle_ephemeral_ata_with_sponsor(
 
         let shuttle =
             load_initialized::<ShuttleMetadata>(unsafe { shuttle_info.borrow_unchecked() })?;
-        if shuttle.id != shuttle_id
-            || shuttle.owner != *owner_info.address()
-            || shuttle.payer != *refund_recipient_info.address()
-        {
-            return Err(ProgramError::InvalidAccountData);
-        }
+        require!(
+            shuttle.id == shuttle_id
+                && shuttle.owner == *owner_info.address()
+                && shuttle.payer == *refund_recipient_info.address(),
+            ProgramError::InvalidAccountData
+        );
     }
 
     initialize_ephemeral_ata_with_sponsor(

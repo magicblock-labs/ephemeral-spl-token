@@ -1,3 +1,4 @@
+use ephemeral_spl_api::require;
 use pinocchio::{error::ProgramError, Address};
 
 pub(crate) const LAMPORTS_PDA_SEED: &[u8] = b"lamports";
@@ -22,9 +23,10 @@ pub(crate) fn derive_lamports_pda(
 pub(crate) fn parse_amount_and_salt(
     instruction_data: &[u8],
 ) -> Result<(u64, [u8; 32]), ProgramError> {
-    if instruction_data.len() != 40 {
-        return Err(ProgramError::InvalidInstructionData);
-    }
+    require!(
+        instruction_data.len() == 40,
+        ProgramError::InvalidInstructionData
+    );
 
     let mut amount = [0u8; 8];
     amount.copy_from_slice(&instruction_data[..8]);

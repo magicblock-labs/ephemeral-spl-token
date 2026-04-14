@@ -1,9 +1,7 @@
 use ephemeral_spl_api::instruction::SPONSORED_LAMPORTS_TRANSFER;
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
+use pinocchio::cpi::{invoke_signed_with_bounds, Seed, Signer};
 use pinocchio::instruction::{InstructionAccount, InstructionView};
-use pinocchio::{
-    address::address_eq,
-    cpi::{invoke_signed_with_bounds, Seed, Signer},
-};
 use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
 
 use crate::processor::{
@@ -43,32 +41,39 @@ pub fn process_pending_transfer_queue_refill(
     accounts: &[AccountView],
     _instruction_data: &[u8],
 ) -> ProgramResult {
-    let [refill_state_info, rest @ ..] = accounts else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
+    let [
+        refill_state_info, // force multi-line
+        queue_info,
+        rent_pda_info,
+        lamports_pda_info,
+        owner_program_info,
+        buffer_acc,
+        delegation_record,
+        delegation_metadata,
+        delegation_program_info,
+        system_program_info,
+        queue_delegation_record_info,
+    ] = require_n_accounts!(accounts, 11);
 
     // Exit early if refill_state_info does not exist (refill was not requested)
     if refill_state_info.lamports() == 0 || !refill_state_info.owned_by(&crate::ID) {
         return Ok(());
     }
-
-    let [queue_info, rent_pda_info, lamports_pda_info, owner_program_info, buffer_acc, delegation_record, delegation_metadata, delegation_program_info, system_program_info, queue_delegation_record_info, ..] =
-        rest
-    else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
-
     validate_queue_refill_state_address(refill_state_info, queue_info.address())?;
     validate_rent_pda(rent_pda_info)?;
 
     let (_, refill_lamports) = refill_transfer_queue_amounts(queue_info.data_len())?;
     let (refill_lamports_pda, _, refill_salt) = queue_refill_lamports_pda(queue_info.address());
-    if refill_lamports_pda != *lamports_pda_info.address() {
-        return Err(ProgramError::InvalidSeeds);
-    }
-    if !address_eq(owner_program_info.address(), &crate::ID) {
-        return Err(ProgramError::IncorrectProgramId);
-    }
+    require_eq_keys!(
+        &refill_lamports_pda,
+        lamports_pda_info.address(),
+        ProgramError::InvalidSeeds
+    );
+    require_eq_keys!(
+        owner_program_info.address(),
+        &crate::ID,
+        ProgramError::IncorrectProgramId
+    );
 
     trigger_queue_refill_via_sponsored_transfer(
         owner_program_info,
@@ -162,9 +167,10 @@ fn close_program_account_to_recipient(
     account: &AccountView,
     recipient: &AccountView,
 ) -> ProgramResult {
-    if *recipient.address() == *account.address() {
-        return Err(ProgramError::InvalidArgument);
-    }
+    require!(
+        recipient.address() != account.address(),
+        ProgramError::InvalidArgument
+    );
 
     let lamports_to_refund = account.lamports();
     let updated_recipient_lamports = recipient

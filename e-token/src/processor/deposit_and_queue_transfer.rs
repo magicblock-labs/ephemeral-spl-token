@@ -1,8 +1,9 @@
 use core::{convert::TryFrom, marker::PhantomData};
 
 use crate::processor::internal::token_vault::transfer_to_vault_for_mint;
-use crate::processor::utils::{read_mint_decimals, validate_token_account};
-use crate::{assert_associated_token_address, assert_owner, assert_signer};
+use crate::processor::utils::{
+    get_associated_token_address, read_mint_decimals, validate_token_account,
+};
 #[cfg(feature = "logging")]
 use ephemeral_spl_api::state::transfer_queue::queue_peek_next_task_id_from_data;
 use ephemeral_spl_api::state::transfer_queue::{
@@ -10,6 +11,7 @@ use ephemeral_spl_api::state::transfer_queue::{
     queue_len_and_bump_for_mint_with_capacity, queue_push_from_data, QueuedTransfer, TransferQueue,
     QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
 };
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::address::address_eq;
 use pinocchio::sysvars::clock::Clock;
 use pinocchio::sysvars::Sysvar;
@@ -40,16 +42,28 @@ pub fn process_deposit_and_queue_transfer(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
+    let [
+        queue_info, // force multi-line
+        vault_info,
+        mint_info,
+        user_source_token_acc,
+        vault_token_acc,
+        destination_info,
+        user_authority,
+        token_program_info,
+        reimbursement_token_info,
+    ] = require_n_accounts!(accounts, 9);
+
     let args = DepositAndQueueTransferArgs::try_from_bytes(instruction_data)?;
 
-    let [queue_info, vault_info, mint_info, user_source_token_acc, vault_token_acc, destination_info, user_authority, token_program_info, reimbursement_token_info, ..] =
-        accounts
-    else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
-
-    assert_signer!(user_authority);
-    assert_owner!(queue_info, &crate::ID);
+    require!(
+        user_authority.is_signer(),
+        ProgramError::MissingRequiredSignature
+    );
+    require!(
+        queue_info.owned_by(&crate::ID),
+        ProgramError::InvalidAccountOwner
+    );
 
     let amount = args.amount();
     validate_deposit_and_queue_transfer_params(
@@ -91,9 +105,11 @@ pub fn process_deposit_and_queue_transfer(
     };
 
     let derived_queue = TransferQueue::derive_pda(mint_info.address(), &validator, bump)?;
-    if !address_eq(&derived_queue, queue_info.address()) {
-        return Err(ProgramError::InvalidSeeds);
-    }
+    require_eq_keys!(
+        &derived_queue,
+        queue_info.address(),
+        ProgramError::InvalidSeeds
+    );
 
     #[cfg(not(feature = "logging"))]
     let _ = (queue_len_before, queue_capacity);
@@ -124,11 +140,14 @@ pub fn process_deposit_and_queue_transfer(
             None,
             Some(token_program_info.address()),
         )?;
-        assert_associated_token_address!(
+        require_eq_keys!(
             destination_info.address(),
-            mint_info.address(),
-            destination_token.owner(),
-            token_program_info.address()
+            &get_associated_token_address(
+                destination_token.owner(),
+                mint_info.address(),
+                token_program_info.address()
+            ),
+            ProgramError::InvalidAccountData
         );
         *destination_token.owner()
     } else {
@@ -225,21 +244,21 @@ impl DepositAndQueueTransferArgs<'_> {
 
     #[inline]
     pub fn try_from_bytes(bytes: &[u8]) -> Result<DepositAndQueueTransferArgs<'_>, ProgramError> {
-        if bytes.len() != Self::LEN
-            && bytes.len() != Self::LEN_WITH_FLAGS
-            && bytes.len() != Self::LEN_WITH_CLIENT_REF_ID
-            && bytes.len() != Self::LEN_WITH_FLAGS_AND_CLIENT_REF_ID
-        {
-            return Err(ProgramError::InvalidInstructionData);
-        }
+        require!(
+            bytes.len() == Self::LEN
+                || bytes.len() == Self::LEN_WITH_FLAGS
+                || bytes.len() == Self::LEN_WITH_CLIENT_REF_ID
+                || bytes.len() == Self::LEN_WITH_FLAGS_AND_CLIENT_REF_ID,
+            ProgramError::InvalidInstructionData
+        );
 
-        if matches!(
-            bytes.len(),
-            Self::LEN_WITH_FLAGS | Self::LEN_WITH_FLAGS_AND_CLIENT_REF_ID
-        ) && (bytes[Self::LEN] & !QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA) != 0
-        {
-            return Err(ProgramError::InvalidInstructionData);
-        }
+        require!(
+            !matches!(
+                bytes.len(),
+                Self::LEN_WITH_FLAGS | Self::LEN_WITH_FLAGS_AND_CLIENT_REF_ID
+            ) || (bytes[Self::LEN] & !QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA) == 0,
+            ProgramError::InvalidInstructionData
+        );
 
         Ok(DepositAndQueueTransferArgs {
             raw: bytes.as_ptr(),
@@ -312,12 +331,14 @@ fn validate_deposit_and_queue_transfer_params(
     max_delay_ms: u64,
     split: u32,
 ) -> ProgramResult {
-    if amount == 0 || split == 0 || (split as u64) > amount {
-        return Err(ProgramError::InvalidInstructionData);
-    }
-    if max_delay_ms < min_delay_ms {
-        return Err(ProgramError::InvalidInstructionData);
-    }
+    require!(
+        amount != 0 && split != 0 && (split as u64) <= amount,
+        ProgramError::InvalidInstructionData
+    );
+    require!(
+        max_delay_ms >= min_delay_ms,
+        ProgramError::InvalidInstructionData
+    );
 
     Ok(())
 }

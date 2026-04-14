@@ -1,6 +1,7 @@
 use alloc::vec::Vec;
 use dlp_api::compact::ClearText;
-use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use ephemeral_spl_api::require_n_accounts;
+use pinocchio::{AccountView, ProgramResult};
 use solana_instruction::Instruction;
 
 use crate::processor::internal::shuttle_delegation::{
@@ -47,27 +48,31 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
+    let [
+        payer_info, // force multi-line
+        rent_pda_info,
+        shuttle_info,
+        shuttle_eata_info,
+        shuttle_wallet_ata_info,
+        owner_info,
+        owner_program,
+        buffer_acc,
+        delegation_record,
+        delegation_metadata,
+        _delegation_program,
+        _associated_token_program,
+        system_program,
+        destination_token_info,
+        mint_info,
+        token_program_info,
+        global_vault_info,
+        owner_source_token_info,
+        vault_token_info,
+    ] = require_n_accounts!(accounts, 19);
+
     let args = DepositAndDelegateShuttleArgs::try_from_bytes(instruction_data)?;
-    let accounts = parse_deposit_and_delegate_shuttle_with_merge_accounts(accounts)?;
 
-    process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions(
-        &accounts.common,
-        args.common_args(),
-        0,
-        default_post_delegation_actions(&accounts).cleartext(),
-    )
-}
-
-fn parse_deposit_and_delegate_shuttle_with_merge_accounts(
-    accounts: &[AccountView],
-) -> Result<DepositAndDelegateShuttleWithMergeAccounts<'_>, ProgramError> {
-    let [payer_info, rent_pda_info, shuttle_info, shuttle_eata_info, shuttle_wallet_ata_info, owner_info, owner_program, buffer_acc, delegation_record, delegation_metadata, _delegation_program, _associated_token_program, system_program, destination_token_info, mint_info, token_program_info, global_vault_info, owner_source_token_info, vault_token_info, ..] =
-        accounts
-    else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
-
-    Ok(DepositAndDelegateShuttleWithMergeAccounts {
+    let accounts = DepositAndDelegateShuttleWithMergeAccounts {
         common: DepositAndDelegateShuttleAccounts {
             payer_info,
             rent_pda_info,
@@ -87,7 +92,14 @@ fn parse_deposit_and_delegate_shuttle_with_merge_accounts(
             vault_token_info,
         },
         destination_token_info,
-    })
+    };
+
+    process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions(
+        &accounts.common,
+        args.common_args(),
+        0,
+        default_post_delegation_actions(&accounts).cleartext(),
+    )
 }
 
 fn default_post_delegation_actions(

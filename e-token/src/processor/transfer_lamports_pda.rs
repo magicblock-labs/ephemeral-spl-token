@@ -1,11 +1,9 @@
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
-use crate::{
-    assert_owner, assert_signer,
-    processor::internal::lamports_pda::{derive_lamports_pda, parse_amount_and_salt},
-};
+use crate::processor::internal::lamports_pda::{derive_lamports_pda, parse_amount_and_salt};
 
 ///
 /// Executes on:
@@ -23,31 +21,44 @@ pub fn process_transfer_lamports_pda(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
+    let [
+        payer_info, // force multi-line
+        lamports_pda_info,
+        destination_info,
+    ] = require_n_accounts!(accounts, 3);
+
     let (amount, salt) = parse_amount_and_salt(instruction_data)?;
-    let [payer_info, lamports_pda_info, destination_info, ..] = accounts else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
 
-    assert_signer!(payer_info);
-    assert_owner!(lamports_pda_info, &crate::ID);
+    require!(
+        payer_info.is_signer(),
+        ProgramError::MissingRequiredSignature
+    );
+    require!(
+        lamports_pda_info.owned_by(&crate::ID),
+        ProgramError::InvalidAccountOwner
+    );
 
-    if lamports_pda_info.data_len() != 0 {
-        return Err(ProgramError::InvalidAccountData);
-    }
+    require!(
+        lamports_pda_info.data_len() == 0,
+        ProgramError::InvalidAccountData
+    );
 
     let (derived_lamports_pda, _) =
         derive_lamports_pda(payer_info.address(), destination_info.address(), &salt);
-    if derived_lamports_pda != *lamports_pda_info.address() {
-        return Err(ProgramError::InvalidSeeds);
-    }
+    require_eq_keys!(
+        &derived_lamports_pda,
+        lamports_pda_info.address(),
+        ProgramError::InvalidSeeds
+    );
 
     let expected_balance = Rent::get()?
         .try_minimum_balance(0)?
         .checked_add(amount)
         .ok_or(ProgramError::InvalidArgument)?;
-    if lamports_pda_info.lamports() < expected_balance {
-        return Err(ProgramError::InvalidArgument);
-    }
+    require!(
+        lamports_pda_info.lamports() >= expected_balance,
+        ProgramError::InvalidArgument
+    );
 
     transfer_lamports(lamports_pda_info, destination_info, amount)
 }
@@ -57,9 +68,10 @@ fn transfer_lamports(
     destination: &AccountView,
     amount: u64,
 ) -> ProgramResult {
-    if *source.address() == *destination.address() {
-        return Err(ProgramError::InvalidArgument);
-    }
+    require!(
+        source.address() != destination.address(),
+        ProgramError::InvalidArgument
+    );
 
     let updated_source_lamports = source
         .lamports()

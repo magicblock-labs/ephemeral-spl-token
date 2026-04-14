@@ -1,5 +1,7 @@
-use crate::{assert_owner, assert_signer, processor::utils::read_mint_decimals};
-use ephemeral_spl_api::{error::EphemeralSplError, state::load_initialized};
+use crate::processor::utils::read_mint_decimals;
+use ephemeral_spl_api::{
+    error::EphemeralSplError, require, require_eq_keys, state::load_initialized,
+};
 use pinocchio::cpi::Signer;
 
 use {
@@ -21,15 +23,18 @@ pub(crate) fn transfer_to_vault_for_mint(
     expected_mint: &Address,
     amount: u64,
 ) -> ProgramResult {
-    assert_owner!(vault_info, &crate::ID);
+    require!(
+        vault_info.owned_by(&crate::ID),
+        ProgramError::InvalidAccountOwner
+    );
 
     let vault = load_initialized::<GlobalVault>(unsafe { vault_info.borrow_unchecked() })?;
-    if vault.mint != *mint_info.address()
-        || vault.token_account != *vault_token_acc.address()
-        || vault.mint != *expected_mint
-    {
-        return Err(ProgramError::InvalidAccountData);
-    }
+    require!(
+        vault.mint == *mint_info.address()
+            && vault.token_account == *vault_token_acc.address()
+            && vault.mint == *expected_mint,
+        ProgramError::InvalidAccountData
+    );
 
     let decimals = read_mint_decimals(mint_info, token_program_info)?;
 
@@ -59,28 +64,38 @@ pub(crate) fn withdraw_ephemeral_ata_tokens(
     amount: u64,
 ) -> ProgramResult {
     if require_owner_signature {
-        assert_signer!(owner);
+        require!(owner.is_signer(), ProgramError::MissingRequiredSignature);
     }
 
     // Validate EphemeralAta account (writable)
-    assert_owner!(ephemeral_ata_info, &crate::ID);
+    require!(
+        ephemeral_ata_info.owned_by(&crate::ID),
+        ProgramError::InvalidAccountOwner
+    );
     let mut ephemeral_ata =
         load_ephemeral_ata_compat_mut(unsafe { ephemeral_ata_info.borrow_unchecked_mut() })?;
 
     // Validate vault ownership before reading raw data.
-    assert_owner!(vault_info, &crate::ID);
+    require!(
+        vault_info.owned_by(&crate::ID),
+        ProgramError::InvalidAccountOwner
+    );
 
     // Validate Vault data account
     let vault = load_initialized::<GlobalVault>(unsafe { vault_info.borrow_unchecked() })?;
 
-    // Check eata consistency
-    if ephemeral_ata.mint() != mint_info.address()
-        || vault.mint != *mint_info.address()
-        || ephemeral_ata.owner() != owner.address()
-        || vault.token_account != *vault_source_token_acc.address()
-    {
-        return Err(EphemeralSplError::EphemeralAtaMismatch.into());
-    }
+    require!(
+        ephemeral_ata.owner() == owner.address(),
+        EphemeralSplError::EphemeralAtaMismatch
+    );
+    require!(
+        ephemeral_ata.mint() == mint_info.address() && vault.mint == *mint_info.address(),
+        EphemeralSplError::MintMismatch
+    );
+    require!(
+        vault.token_account == *vault_source_token_acc.address(),
+        EphemeralSplError::VaultTokenAccountMismatch
+    );
 
     // Parse the base mint layout shared by both legacy SPL Token and Token-2022.
     let decimals = read_mint_decimals(mint_info, token_program_info)?;
@@ -117,17 +132,23 @@ pub(crate) fn validate_vault_for_mint(
     mint_info: &AccountView,
     vault_token_acc_info: &AccountView,
 ) -> Result<u8, ProgramError> {
-    assert_owner!(vault_info, &crate::ID);
+    require!(
+        vault_info.owned_by(&crate::ID),
+        ProgramError::InvalidAccountOwner
+    );
 
     let vault = load_initialized::<GlobalVault>(unsafe { vault_info.borrow_unchecked() })?;
     let derived_vault = GlobalVault::derive_pda(mint_info.address(), vault.bump)?;
-    if derived_vault != *vault_info.address() {
-        return Err(ProgramError::InvalidSeeds);
-    }
-    if vault.mint != *mint_info.address() || vault.token_account != *vault_token_acc_info.address()
-    {
-        return Err(ProgramError::InvalidAccountData);
-    }
+    require_eq_keys!(
+        &derived_vault,
+        vault_info.address(),
+        ProgramError::InvalidSeeds
+    );
+    require!(
+        vault.mint == *mint_info.address()
+            && vault.token_account == *vault_token_acc_info.address(),
+        ProgramError::InvalidAccountData
+    );
 
     Ok(vault.bump)
 }

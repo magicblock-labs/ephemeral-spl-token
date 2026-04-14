@@ -1,4 +1,5 @@
-use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use ephemeral_spl_api::require_n_accounts;
+use pinocchio::{AccountView, ProgramResult};
 
 use crate::processor::internal::ephemeral_ata::initialize_ephemeral_ata_with_sponsor;
 
@@ -19,9 +20,13 @@ pub fn process_initialize_ephemeral_ata(
     accounts: &[AccountView],
     _instruction_data: &[u8],
 ) -> ProgramResult {
-    let [ephemeral_ata_info, payer_info, user_info, mint_info, ..] = accounts else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
+    let [
+        ephemeral_ata_info, // force multi-line
+        payer_info,
+        user_info,
+        mint_info,
+        _system_program,
+    ] = require_n_accounts!(accounts, 5);
 
     initialize_ephemeral_ata_with_sponsor(
         ephemeral_ata_info,

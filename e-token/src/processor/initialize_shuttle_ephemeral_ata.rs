@@ -1,4 +1,5 @@
 use core::marker::PhantomData;
+use ephemeral_spl_api::{require, require_n_accounts};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
 use crate::processor::internal::ephemeral_ata::initialize_shuttle_ephemeral_ata_with_sponsor;
@@ -25,17 +26,24 @@ pub fn process_initialize_shuttle_ephemeral_ata(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
+    let [
+        payer_info, // force multi-line
+        shuttle_info,
+        shuttle_eata_info,
+        shuttle_wallet_ata_info,
+        owner_info,
+        mint_info,
+        token_program_info,
+        _associated_token_program_info,
+        system_program_info,
+    ] = require_n_accounts!(accounts, 9);
+
     let args = InitializeShuttleEphemeralAta::try_from_bytes(instruction_data)?;
 
-    let [payer_info, shuttle_info, shuttle_eata_info, shuttle_wallet_ata_info, owner_info, mint_info, token_program_info, _associated_token_program_info, system_program_info, ..] =
-        accounts
-    else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
-
-    if !payer_info.is_signer() {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
+    require!(
+        payer_info.is_signer(),
+        ProgramError::MissingRequiredSignature
+    );
 
     initialize_shuttle_ephemeral_ata_with_sponsor(
         payer_info,
@@ -71,9 +79,7 @@ pub struct InitializeShuttleEphemeralAta<'a> {
 impl InitializeShuttleEphemeralAta<'_> {
     #[inline]
     pub fn try_from_bytes(bytes: &[u8]) -> Result<InitializeShuttleEphemeralAta<'_>, ProgramError> {
-        if bytes.len() < 4 {
-            return Err(ProgramError::InvalidInstructionData);
-        }
+        require!(bytes.len() >= 4, ProgramError::InvalidInstructionData);
 
         Ok(InitializeShuttleEphemeralAta {
             raw: bytes.as_ptr(),

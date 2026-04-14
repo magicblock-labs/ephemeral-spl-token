@@ -1,4 +1,5 @@
-use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use ephemeral_spl_api::require_n_accounts;
+use pinocchio::{AccountView, ProgramResult};
 
 ///
 /// Executes on:
@@ -16,9 +17,12 @@ pub fn process_undelegation_callback(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let [delegated_acc, buffer_acc, payer, _system_program, ..] = accounts else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
+    let [
+        delegated_acc, // force multi-line
+        buffer_acc,
+        payer,
+        _system_program,
+    ] = require_n_accounts!(accounts, 4);
 
     ephemeral_rollups_pinocchio::instruction::undelegate(
         delegated_acc,

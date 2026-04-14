@@ -16,6 +16,7 @@ use ephemeral_spl_api::state::{
     ephemeral_ata::EphemeralAta, load_initialized, load_mut_initialized,
     shuttle_ephemeral_ata::ShuttleMetadata,
 };
+use ephemeral_spl_api::{require, require_eq_keys, require_owned_by};
 use pinocchio::{
     cpi::{invoke_signed_with_bounds, Seed, Signer},
     error::ProgramError,
@@ -26,13 +27,10 @@ use pinocchio_system::instructions::{Assign, CreateAccount, Transfer};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_pubkey::Pubkey;
 
-use crate::{
-    assert_owner,
-    processor::{
-        initialize_rent_pda::{RENT_PDA, RENT_PDA_BUMP},
-        internal::ephemeral_ata::initialize_shuttle_ephemeral_ata_with_sponsor,
-        internal::token_vault::transfer_to_vault_for_mint,
-    },
+use crate::processor::{
+    initialize_rent_pda::{RENT_PDA, RENT_PDA_BUMP},
+    internal::ephemeral_ata::initialize_shuttle_ephemeral_ata_with_sponsor,
+    internal::token_vault::transfer_to_vault_for_mint,
 };
 
 pub(crate) struct DepositAndDelegateShuttleAccounts<'a> {
@@ -87,9 +85,10 @@ pub struct DepositAndDelegateShuttleArgs<'a> {
 impl DepositAndDelegateShuttleArgs<'_> {
     #[inline]
     pub fn try_from_bytes(bytes: &[u8]) -> Result<DepositAndDelegateShuttleArgs<'_>, ProgramError> {
-        if bytes.len() != 12 && bytes.len() != 44 {
-            return Err(ProgramError::InvalidInstructionData);
-        }
+        require!(
+            bytes.len() == 12 || bytes.len() == 44,
+            ProgramError::InvalidInstructionData
+        );
 
         Ok(DepositAndDelegateShuttleArgs {
             raw: bytes.as_ptr(),
@@ -217,11 +216,12 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
     shuttle_id: u32,
     extra_setup_lamports: u64,
 ) -> Result<PreparedShuttleDelegation, ProgramError> {
-    if !payer_info.is_signer() || !owner_info.is_signer() {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
+    require!(
+        payer_info.is_signer() && owner_info.is_signer(),
+        ProgramError::MissingRequiredSignature
+    );
 
-    assert_owner!(rent_pda_info, &pinocchio_system::ID);
+    require_owned_by!(rent_pda_info, &pinocchio_system::ID);
 
     #[cfg(feature = "logging")]
     {
@@ -243,12 +243,15 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
         );
     }
 
-    if &RENT_PDA != rent_pda_info.address() {
-        return Err(ProgramError::InvalidSeeds);
-    }
-    if rent_pda_info.data_len() != 0 {
-        return Err(ProgramError::InvalidAccountData);
-    }
+    require_eq_keys!(
+        &RENT_PDA,
+        rent_pda_info.address(),
+        ProgramError::InvalidSeeds
+    );
+    require!(
+        rent_pda_info.data_len() == 0,
+        ProgramError::InvalidAccountData
+    );
 
     let setup_lamports = ephemeral_spl_api::consts::SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS
         .checked_add(extra_setup_lamports)
@@ -292,26 +295,27 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
         });
     }
 
-    assert_owner!(shuttle_info, &crate::ID);
-    assert_owner!(shuttle_eata_info, &crate::ID);
+    require_owned_by!(shuttle_info, &crate::ID);
+    require_owned_by!(shuttle_eata_info, &crate::ID);
 
     let shuttle = load_initialized::<ShuttleMetadata>(unsafe { shuttle_info.borrow_unchecked() })?;
-    if shuttle.owner != *owner_info.address() || shuttle.payer != *rent_pda_info.address() {
-        return Err(ProgramError::IncorrectAuthority);
-    }
+    require!(
+        shuttle.owner == *owner_info.address() && shuttle.payer == *rent_pda_info.address(),
+        ProgramError::IncorrectAuthority
+    );
 
     let (mint, bump) = {
         let shuttle_eata =
             load_initialized::<EphemeralAta>(unsafe { shuttle_eata_info.borrow_unchecked() })?;
-        if shuttle_eata.owner != *shuttle_info.address() {
-            return Err(ProgramError::InvalidAccountData);
-        }
+        require_eq_keys!(
+            &shuttle_eata.owner,
+            shuttle_info.address(),
+            ProgramError::InvalidAccountData
+        );
         (shuttle_eata.mint, shuttle_eata.bump)
     };
 
-    if mint != *mint_info.address() {
-        return Err(ProgramError::InvalidAccountData);
-    }
+    require_eq_keys!(&mint, mint_info.address(), ProgramError::InvalidAccountData);
 
     let derived_shuttle_eata = EphemeralAta::derive_pda(shuttle_info.address(), &mint, bump)?;
     if derived_shuttle_eata != *shuttle_eata_info.address() {
@@ -325,8 +329,12 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
                 actual.as_str(),
             );
         }
-        return Err(ProgramError::InvalidSeeds);
     }
+    require_eq_keys!(
+        &derived_shuttle_eata,
+        shuttle_eata_info.address(),
+        ProgramError::InvalidSeeds
+    );
 
     Ok(PreparedShuttleDelegation {
         mint,
@@ -566,17 +574,19 @@ fn cpi_delegate_with_actions_from_sponsor(
     action_signer_accounts: &[&AccountView],
     signers: &[Signer<'_, '_>],
 ) -> ProgramResult {
-    if action_signer_accounts.len() != actions.signers.len() {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    }
+    require!(
+        action_signer_accounts.len() == actions.signers.len(),
+        ProgramError::NotEnoughAccountKeys
+    );
     const MAX_DELEGATE_WITH_ACTIONS_ACCOUNTS: usize = 7 + MAX_POST_DELEGATION_SIGNERS;
     const UNINIT_ACCOUNT: MaybeUninit<InstructionAccount> =
         MaybeUninit::<InstructionAccount>::uninit();
     let mut account_metas = [UNINIT_ACCOUNT; MAX_DELEGATE_WITH_ACTIONS_ACCOUNTS];
     let num_accounts = 7 + action_signer_accounts.len();
-    if num_accounts > MAX_DELEGATE_WITH_ACTIONS_ACCOUNTS {
-        return Err(ProgramError::InvalidArgument);
-    }
+    require!(
+        num_accounts <= MAX_DELEGATE_WITH_ACTIONS_ACCOUNTS,
+        ProgramError::InvalidArgument
+    );
 
     unsafe {
         account_metas

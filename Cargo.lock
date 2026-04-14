@@ -1840,6 +1840,7 @@ dependencies = [
  "bytemuck",
  "ephemeral-rollups-pinocchio",
  "pinocchio 0.10.1",
+ "pinocchio-log",
  "pinocchio-pubkey",
  "solana-address 2.0.0",
 ]

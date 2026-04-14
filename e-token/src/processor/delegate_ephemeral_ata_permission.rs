@@ -3,11 +3,8 @@ use ephemeral_rollups_pinocchio::acl::{
     pda::permission_pda_from_permissioned_account,
 };
 use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_initialized};
-use pinocchio::{
-    address::address_eq, cpi::Signer, error::ProgramError, AccountView, ProgramResult,
-};
-
-use crate::assert_signer;
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
+use pinocchio::{cpi::Signer, error::ProgramError, AccountView, ProgramResult};
 
 ///
 /// Executes on:
@@ -32,17 +29,29 @@ pub fn process_delegate_ephemeral_ata_permission(
     accounts: &[AccountView],
     _instruction_data: &[u8],
 ) -> ProgramResult {
-    let [payer_info, ephemeral_ata_info, permission_program, permission_info, system_program, delegation_buffer, delegation_record, delegation_metadata, delegation_program, validator, ..] =
-        accounts
-    else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
+    let [
+        payer_info, // force multi-line
+        ephemeral_ata_info,
+        permission_program,
+        permission_info,
+        system_program,
+        delegation_buffer,
+        delegation_record,
+        delegation_metadata,
+        delegation_program,
+        validator,
+    ] = require_n_accounts!(accounts, 10);
 
-    assert_signer!(payer_info);
+    require!(
+        payer_info.is_signer(),
+        ProgramError::MissingRequiredSignature
+    );
 
-    if !address_eq(permission_program.address(), &PERMISSION_PROGRAM_ID) {
-        return Err(ProgramError::InvalidAccountData);
-    }
+    require_eq_keys!(
+        &PERMISSION_PROGRAM_ID,
+        permission_program.address(),
+        ProgramError::InvalidAccountData
+    );
 
     let dlp_program = ephemeral_spl_api::program::DELEGATION_PROGRAM_ID;
 
@@ -55,9 +64,12 @@ pub fn process_delegate_ephemeral_ata_permission(
 
     let expected_permission =
         permission_pda_from_permissioned_account(ephemeral_ata_info.address());
-    if !address_eq(&expected_permission, permission_info.address()) {
-        return Err(ProgramError::InvalidSeeds);
-    }
+
+    require_eq_keys!(
+        &expected_permission,
+        permission_info.address(),
+        ProgramError::InvalidSeeds
+    );
 
     let bump = [ephemeral_ata.bump];
     let seeds = EphemeralAta::signer_seeds(&ephemeral_ata.owner, &ephemeral_ata.mint, &bump);

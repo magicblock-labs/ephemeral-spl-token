@@ -4,8 +4,12 @@ use ephemeral_rollups_pinocchio::acl::{
     instruction::UpdatePermissionCpiBuilder,
     types::{Member, MemberFlags, MembersArgs},
 };
-use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_initialized};
-use pinocchio::{address::address_eq, error::ProgramError, AccountView, ProgramResult};
+use ephemeral_spl_api::{require, require_eq_keys};
+use ephemeral_spl_api::{
+    require_n_accounts,
+    state::{ephemeral_ata::EphemeralAta, load_initialized},
+};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
 ///
 /// Executes on:
@@ -24,30 +28,39 @@ pub fn process_reset_ephemeral_ata_permission(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
+    let [
+        ephemeral_ata_info, // force multi-line
+        permission_info,
+        owner_info,
+        permission_program,
+    ] = require_n_accounts!(accounts, 4);
+
     let args = ResetEphemeralAtaPermission::try_from_bytes(instruction_data)?;
 
-    let [ephemeral_ata_info, permission_info, owner_info, permission_program, ..] = accounts else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
+    require!(
+        owner_info.is_signer(),
+        ProgramError::MissingRequiredSignature
+    );
 
-    if !owner_info.is_signer() {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
-
-    if !address_eq(permission_program.address(), &PERMISSION_PROGRAM_ID) {
-        return Err(ProgramError::InvalidAccountData);
-    }
+    require_eq_keys!(
+        &PERMISSION_PROGRAM_ID,
+        permission_program.address(),
+        ProgramError::InvalidAccountData
+    );
 
     let ephemeral_ata =
         load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
 
-    if !address_eq(&ephemeral_ata.owner, owner_info.address()) {
-        return Err(ProgramError::IncorrectAuthority);
-    }
+    require_eq_keys!(
+        &ephemeral_ata.owner,
+        owner_info.address(),
+        ProgramError::IncorrectAuthority
+    );
 
-    if permission_info.lamports() == 0 {
-        return Err(ProgramError::InvalidAccountData);
-    }
+    require!(
+        permission_info.lamports() != 0,
+        ProgramError::InvalidAccountData
+    );
 
     let mut members_flag = MemberFlags::from_acl_flag_byte(args.flag_byte());
     members_flag.set(MemberFlags::AUTHORITY);
@@ -89,9 +102,7 @@ pub struct ResetEphemeralAtaPermission<'a> {
 impl ResetEphemeralAtaPermission<'_> {
     #[inline]
     pub fn try_from_bytes(bytes: &[u8]) -> Result<ResetEphemeralAtaPermission<'_>, ProgramError> {
-        if bytes.is_empty() {
-            return Err(ProgramError::InvalidInstructionData);
-        }
+        require!(!bytes.is_empty(), ProgramError::InvalidInstructionData);
 
         Ok(ResetEphemeralAtaPermission {
             raw: bytes.as_ptr(),

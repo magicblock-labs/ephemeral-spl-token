@@ -5,6 +5,7 @@
 // the on-chain program crate stays cdylib-only.
 pub mod consts;
 pub mod error;
+pub mod requires;
 pub mod state;
 pub mod program {
     pub use ephemeral_rollups_pinocchio::consts::DELEGATION_PROGRAM_ID;
