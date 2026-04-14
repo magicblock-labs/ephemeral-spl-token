@@ -4,6 +4,7 @@ import { resolveRpcConfig } from "./solana";
 
 export const MOCK_AUTH_TOKEN = "mock-auth-token";
 export const MOCK_CHALLENGE = "mock-challenge";
+const AUTH_FETCH_TIMEOUT_MS = 5000;
 
 export type ChallengeInput = {
     pubkey: string;
@@ -43,6 +44,23 @@ function buildAuthUrl(ephemeralRpcUrl: string, path: string) {
     return url;
 }
 
+async function fetchAuth(url: URL, init?: RequestInit) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), AUTH_FETCH_TIMEOUT_MS);
+    try {
+        return await fetch(url, { ...init, signal: controller.signal });
+    }
+    catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+            throw new ApiError(504, "RPC_ERROR", "Auth endpoint timed out");
+        }
+        throw error;
+    }
+    finally {
+        clearTimeout(timeoutId);
+    }
+}
+
 export function parseAuthToken(headers: Record<string, string>): string | undefined {
     const authToken = headers["Authorization"] ?? headers["authorization"];
     if (!authToken) {
@@ -65,7 +83,7 @@ export async function getChallenge(env: AppEnv, input: ChallengeInput): Promise<
     const config = resolveRpcConfig(env, input.cluster);
     const url = buildAuthUrl(config.ephemeralRpcUrl, "auth/challenge");
     url.searchParams.set("pubkey", input.pubkey);
-    const challengeResponse = await fetch(url);
+    const challengeResponse = await fetchAuth(url);
 
     if (!challengeResponse.ok) {
         throw new ApiError(challengeResponse.status, "RPC_ERROR", `Failed to get challenge: ${challengeResponse.statusText}`);
@@ -96,7 +114,7 @@ export async function login(env: AppEnv, input: LoginInput): Promise<LoginRespon
     const config = resolveRpcConfig(env, input.cluster);
     const { pubkey, challenge, signature } = input;
     const url = buildAuthUrl(config.ephemeralRpcUrl, "auth/login");
-    const loginResponse = await fetch(url, {
+    const loginResponse = await fetchAuth(url, {
         method: "POST",
         headers: {
             "content-type": "application/json",
