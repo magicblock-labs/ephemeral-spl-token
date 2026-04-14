@@ -12,7 +12,7 @@ pub const MAGIC_VAULT_ID: Address = pubkey!("MagicVau1t9999999999999999999999999
 /// Bincode variant index for `MagicBlockInstruction::CreateEphemeralAccount` (variant 12).
 const CREATE_EPHEMERAL_VARIANT: [u8; 4] = [12, 0, 0, 0];
 
-/// Bincode variant index for `MagicBlockInstruction::CreateEphemeralAccount` (variant 12).
+/// Bincode variant index for `MagicBlockInstruction::ResizeEphemeralAccount` (variant 13).
 const RESIZE_EPHEMERAL_VARIANT: [u8; 4] = [13, 0, 0, 0];
 
 /// Bincode variant index for `MagicBlockInstruction::CloseEphemeralAccount` (variant 14).
@@ -52,12 +52,12 @@ pub fn create_ephemeral_account(
     )
 }
 
-/// Creates an ephemeral account via the magic program.
+/// Resizes an ephemeral account via the magic program.
 ///
 /// # Account references
-/// - `sponsor`       `[WRITE, SIGNER]` Pays rent (can be a PDA)
-/// - `account`       `[WRITE]` Ephemeral account to create (must have 0 lamports)
-/// - `vault`         `[WRITE]`      Magic vault account (`EPHEMERAL_VAULT_ID`)
+/// - `sponsor`       `[WRITE, SIGNER]` Pays additional rent if growing (can be a PDA)
+/// - `account`       `[WRITE]`         Existing ephemeral account to resize
+/// - `vault`         `[WRITE]`         Magic vault account (`EPHEMERAL_VAULT_ID`)
 pub fn resize_ephemeral_account(
     sponsor: &AccountView,
     account: &AccountView,

@@ -297,7 +297,7 @@ fn private_transfer_action_encrypted(
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(0, true)), // owner_info
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(8, false)), // token_program_info
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(9, false)), // shuttle_wallet_ata_info
-                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(10, false)), // shuttle_wallet_ata_info
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(10, false)), // magic_program
             ],
             data: MaybeEncryptedIxData {
                 prefix: {

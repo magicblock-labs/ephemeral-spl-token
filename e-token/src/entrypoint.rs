@@ -1,4 +1,3 @@
-use crate::processor::initialize_group_receipt::process_initialize_group_receipt;
 use ephemeral_spl_api::error::EphemeralSplError;
 use ephemeral_spl_api::instruction::{self, internal};
 use {
