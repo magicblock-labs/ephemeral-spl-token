@@ -1,8 +1,8 @@
 use proc_macro2::Span;
 use quote::{format_ident, quote, ToTokens};
 use syn::{
-    Attribute, Expr, ExprLit, Fields, GenericArgument, Ident, ItemStruct, Lit, LitInt,
-    PathArguments, Type, TypePath,
+    spanned::Spanned, Attribute, Expr, ExprLit, Fields, GenericArgument, Ident, ItemStruct, Lit,
+    LitInt, PathArguments, Type, TypePath,
 };
 
 pub(crate) fn expand_fixed_layout(
@@ -171,14 +171,7 @@ pub(crate) fn expand_fixed_layout(
                     0 | 1 => {}
 
                     tag => {
-                        {
-                            let mut logger = pinocchio_log::logger::Logger::<200>::default();
-                            logger.append("invalid option tag for ");
-                            logger.append(field_name);
-                            logger.append(": ");
-                            logger.append(tag);
-                            logger.log();
-                        };
+                        pinocchio_log::log!("Invalid Option tag for field {}::{} : tag = {} (which should be either 0 or 1)", stringify!(#struct_name), field_name, tag);
                         return Err(pinocchio::error::ProgramError::InvalidInstructionData);
                     }
                 }
@@ -189,22 +182,22 @@ pub(crate) fn expand_fixed_layout(
                 bytes: &[u8],
                 offset: usize,
                 capacity: usize,
+                len_width: usize,
                 field_name: &'static str,
                 expect_msg: &'static str
             ) -> ::core::result::Result<(), pinocchio::error::ProgramError> {
-                let len = {
-                    let raw: [u8; 8] = bytes[offset..offset + 8] .try_into() .expect(expect_msg);
-                    u64::from_le_bytes(raw) as usize
+                let len = match len_width {
+                    1 =>  bytes[offset] as usize,
+                    2 => {
+                        let raw: [u8; 2] =bytes[offset..offset + 2].try_into().expect("validated len");
+                        u16::from_le_bytes(raw) as usize
+                    },
+                    _ => {
+                        unreachable!()
+                    }
                 };
                 if len > capacity {
-                    let mut logger = pinocchio_log::logger::Logger::<200>::default();
-                    logger.append("invalid vec length for ");
-                    logger.append(field_name);
-                    logger.append(": ");
-                    logger.append(len);
-                    logger.append(" > ");
-                    logger.append(capacity);
-                    logger.log();
+                    pinocchio_log::log!("Invalid Vec length for field {}::{} : capacity = {}, len = {}", stringify!(#struct_name), field_name, capacity, len);
                     return Err(pinocchio::error::ProgramError::InvalidInstructionData);
                 }
                 Ok(())
@@ -277,6 +270,7 @@ enum FixedFieldKind {
     Vec {
         elem: FixedValueKind,
         capacity: usize,
+        len_width: usize,
     },
 }
 
@@ -289,7 +283,11 @@ impl FixedFieldKind {
     fn slot_len(&self) -> usize {
         match self {
             Self::Value { value, optional } => value.size() + usize::from(*optional),
-            Self::Vec { elem, capacity } => 8 + elem.size() * capacity,
+            Self::Vec {
+                elem,
+                capacity,
+                len_width,
+            } => len_width + elem.size() * capacity,
         }
     }
 
@@ -373,13 +371,17 @@ impl FixedFieldKind {
                     error: syn::Error::new(field_ident.span(), message),
                 }))
             }
-            Self::Vec { elem, .. } => {
+            Self::Vec {
+                elem,
+                capacity: _,
+                len_width,
+            } => {
                 let align = elem.align();
                 if align > 8 {
                     return Err(syn::Error::new(
                         field_ident.span(),
                         format!(
-                            "field `{}` cannot expose a slice view in fixed_layout: each Vec element is {} byte(s) but alignment is {} byte(s), and fixed_layout only assumes the input buffer is 8-byte aligned",
+                            "field `{}` cannot expose a slice view in fixed_layout: each Vec element is {} byte(s) but alignment is {} byte(s), and fixed_layout only assumes the input buffer is 8-byte aligned, so it cannot support type which requires alignment greater than 8",
                             field_ident,
                             elem.size(),
                             align,
@@ -387,7 +389,7 @@ impl FixedFieldKind {
                     ));
                 }
 
-                let first_elem_offset = offset + 8;
+                let first_elem_offset = offset + len_width;
                 let misalignment = first_elem_offset % align;
                 if misalignment == 0 {
                     return Ok(None);
@@ -399,9 +401,10 @@ impl FixedFieldKind {
                     error: syn::Error::new(
                         field_ident.span(),
                         format!(
-                        "field `{}` needs {} byte(s) of padding before it: its Vec elements start after a 8-byte length prefix, so element 0 would start at offset {}, but slice views require {}-byte alignment. Insert `_pad: [u8; {}]` before `{}` so element 0 starts at offset {}",
+                        "field `{}` needs {} byte(s) of padding before it: its Vec elements start after a {}-byte length prefix, so element 0 would start at offset {}, but slice views require {}-byte alignment. Insert `_pad: [u8; {}]` before `{}` so element 0 starts at offset {}",
                         field_ident,
                         padding,
+                        len_width,
                         first_elem_offset,
                         align,
                         padding,
@@ -424,10 +427,14 @@ impl FixedFieldKind {
                     quote!(core::mem::size_of::<#ty>())
                 }
             }
-            Self::Vec { elem, capacity } => {
+            Self::Vec {
+                elem,
+                capacity,
+                len_width,
+            } => {
                 let elem_ty = elem.ty();
                 let capacity_lit = usize_lit(*capacity);
-                let len_width_lit = usize_lit(8);
+                let len_width_lit = usize_lit(*len_width);
                 quote!((#len_width_lit + core::mem::size_of::<#elem_ty>() * #capacity_lit))
             }
         }
@@ -447,11 +454,19 @@ impl FixedFieldKind {
                     quote! {}
                 }
             }
-            Self::Vec { capacity, .. } => {
+            Self::Vec {
+                capacity,
+                len_width,
+                ..
+            } => {
                 let capacity_lit = usize_lit(*capacity);
-                let expect_msg = format!("validate encoded-len for field '{}'", field_name);
+                let len_width_lit = usize_lit(*len_width);
+                let expect_msg = format!(
+                    "validate encoded-len [len_width={}] for field '{}'",
+                    len_width, field_name
+                );
                 quote! {
-                    Self::__validate_vec_len(bytes, #offset_expr, #capacity_lit, #field_name, #expect_msg)?;
+                    Self::__validate_vec_len(bytes, #offset_expr, #capacity_lit, #len_width_lit, #field_name, #expect_msg)?;
                 }
             }
         }
@@ -487,9 +502,19 @@ impl FixedFieldKind {
                     }
                 }
             }
-            Self::Vec { elem, capacity } => {
+            Self::Vec {
+                elem,
+                capacity,
+                len_width,
+            } => {
                 let elem_size = usize_lit(elem.size());
                 let capacity = usize_lit(*capacity);
+                let len_width_ty = match *len_width {
+                    1 => quote!(u8),
+                    2 => quote!(u16),
+                    _ => unreachable!(),
+                };
+                let len_width = usize_lit(*len_width);
                 quote! {
                     #fields_encode_expr
 
@@ -497,10 +522,10 @@ impl FixedFieldKind {
                         return Err(pinocchio::error::ProgramError::InvalidRealloc);
                     }
 
-                    bytes[#offset..#offset + 8].copy_from_slice(bytemuck::bytes_of(&(self.#field_ident.len() as u64)));
-                    bytes[#offset + 8..#offset + 8 + self.#field_ident.len() * #elem_size].copy_from_slice(bytemuck::cast_slice(&self.#field_ident.as_slice()));
+                    bytes[#offset..#offset + #len_width].copy_from_slice(bytemuck::bytes_of(&(self.#field_ident.len() as #len_width_ty)));
+                    bytes[#offset + #len_width..#offset + #len_width + self.#field_ident.len() * #elem_size].copy_from_slice(bytemuck::cast_slice(&self.#field_ident.as_slice()));
                     if self.#field_ident.len() < #capacity {
-                         bytes[#offset + 8 + self.#field_ident.len() * #elem_size..#offset + 8 + #capacity * #elem_size].fill(0);
+                         bytes[#offset + #len_width + self.#field_ident.len() * #elem_size..#offset + #len_width + #capacity * #elem_size].fill(0);
                     }
                 }
             }
@@ -555,11 +580,15 @@ impl FixedFieldKind {
                     }
                 }
             }
-            Self::Vec { elem, capacity } => {
+            Self::Vec {
+                elem,
+                capacity,
+                len_width,
+            } => {
                 let elem_ty = elem.ty();
-                let len_expr = read_len_expr(offset);
+                let len_expr = read_len_expr(offset, *len_width);
                 let offset = usize_lit(offset);
-                let len_width_lit = usize_lit(8);
+                let len_width_lit = usize_lit(*len_width);
                 let capacity_name = format_ident!("{}_capacity", accessor_ident(field_ident));
                 let capacity_lit = usize_lit(*capacity);
                 Ok(quote! {
@@ -592,6 +621,7 @@ fn parse_field_layout(field: &syn::Field) -> syn::Result<FixedFieldKind> {
         return Ok(FixedFieldKind::Vec {
             elem: parse_value_kind(elem_ty)?,
             capacity,
+            len_width: len_width(capacity, field.span())?,
         });
     }
 
@@ -802,6 +832,19 @@ fn integer_primitive_name(ty: &Type) -> Option<String> {
     }
 }
 
+fn len_width(capacity: usize, span: proc_macro2::Span) -> syn::Result<usize> {
+    if capacity <= 0xFF {
+        Ok(1)
+    } else if capacity <= 0xFFFF {
+        Ok(2)
+    } else {
+        Err(syn::Error::new(
+            span,
+            "capacity above 0xFFFF is not supported implying len_width can be at max 2 bytes",
+        ))
+    }
+}
+
 fn is_string(ty: &Type) -> bool {
     let Type::Path(type_path) = ty else {
         return false;
@@ -923,13 +966,22 @@ fn borrow_ref_expr(ty: &Type, bytes_expr: proc_macro2::TokenStream) -> proc_macr
     quote!(::bytemuck::from_bytes::<#ty>(#bytes_expr))
 }
 
-fn read_len_expr(offset: usize) -> proc_macro2::TokenStream {
-    quote!({
-        let raw: [u8; 8] = self.bytes[#offset..#offset + 8]
-            .try_into()
-            .expect("validated len");
-        u64::from_le_bytes(raw) as usize
-    })
+fn read_len_expr(offset: usize, len_width: usize) -> proc_macro2::TokenStream {
+    match len_width {
+        1 => quote!(self.bytes[#offset] as usize),
+        2 => quote!({
+            let raw: [u8; 2] = self.bytes[#offset..#offset + 2].try_into().expect("validated len");
+            u16::from_le_bytes(raw) as usize
+        }),
+        3 => quote!({
+            let mut raw = [0u8; 4];
+            raw[0..3].copy_from_slice(&self.bytes[#offset..#offset + 3]);
+            u32::from_le_bytes(raw) as usize
+        }),
+        _ => {
+            unreachable!()
+        }
+    }
 }
 
 #[cfg(test)]
@@ -971,6 +1023,7 @@ mod tests {
         let item: syn::ItemStruct = parse_quote! {
             struct Args {
                 flag: u8,
+                padding: [u8; 7],
                 #[capacity = 2]
                 values: Vec<[u64; 2]>,
             }

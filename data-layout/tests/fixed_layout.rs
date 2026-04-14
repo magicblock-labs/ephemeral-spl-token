@@ -8,7 +8,7 @@ struct DepositAndDelegateShuttleWithPrivateTransferArgs {
     validator: Option<[u8; 32]>,
     #[capacity = 72]
     encrypted_destination: Vec<u8>,
-    #[capacity = 120]
+    #[capacity = flexible]
     encrypted_data_suffix: Vec<u8>,
 }
 
@@ -38,13 +38,13 @@ fn fixed_layout_private_args() {
     bytes[12] = 1;
     bytes[13..45].copy_from_slice(&[1; 32]);
 
-    // encrypted_destination: Vec<u8> (offset: 45, capacity = 72)
-    bytes[45..53].copy_from_slice(&4_u64.to_le_bytes());
-    bytes[53..57].copy_from_slice(&[1, 2, 3, 4]);
+    // encrypted_destination: Vec<u8> (offset: 45, len_width = 1, capacity = 72)
+    bytes[45] = 4;
+    bytes[46..50].copy_from_slice(&[1, 2, 3, 4]);
 
-    // encrypted_data_suffix: Vec<8> (offset: 125, capacity = 120)
-    bytes[125..133].copy_from_slice(&8_u64.to_le_bytes());
-    bytes[133..141].copy_from_slice(&[10, 20, 30, 40, 50, 60, 70, 80]);
+    // encrypted_data_suffix: Vec<8> (offset: 125, len_width = 1, capacity = 120)
+    bytes[118] = 8;
+    bytes[119..127].copy_from_slice(&[10, 20, 30, 40, 50, 60, 70, 80]);
 
     let view = DepositAndDelegateShuttleWithPrivateTransferArgs::try_view_from(bytes).unwrap();
 
@@ -69,8 +69,11 @@ struct FixedLargeElements {
 #[test]
 fn fixed_layout_large_vec_elements_are_borrowed() {
     let mut bytes = vec![0; FixedLargeElements::DATA_LEN];
-    bytes[0..8].copy_from_slice(&1_u64.to_le_bytes());
-    bytes[8..17].copy_from_slice(&[1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    bytes[0] = 1;
+
+    // even though a slice of 9 elements is being written, it is a single
+    // element ([u8; 9]) of the vector
+    bytes[1..10].copy_from_slice(&[1, 2, 3, 4, 5, 6, 7, 8, 9]);
 
     let view = FixedLargeElements::try_view_from(&bytes).unwrap();
     let _: &[[u8; 9]] = view.validators();
@@ -82,27 +85,33 @@ struct FixedReadonlyArgs {
     amount: u64,
     validator: Option<[u8; 32]>,
     client_ref_id: Option<u64>,
-    _pad0: [u8; 2],
+    _pad0: [u8; 1],
     #[capacity = 10]
     recipients: Vec<u16>,
 }
 
 #[test]
 fn fixed_layout_reserves_constant_space() {
-    assert_eq!(FixedReadonlyArgs::DATA_LEN, 80);
+    assert_eq!(FixedReadonlyArgs::DATA_LEN, 72);
 
-    let mut bytes = vec![0; FixedReadonlyArgs::DATA_LEN];
+    let mut aligned = Aligned([0; FixedReadonlyArgs::DATA_LEN]);
+    let bytes = &mut aligned.0;
+
     bytes[0..8].copy_from_slice(&9_u64.to_le_bytes());
+
     bytes[8] = 1;
-    bytes[9..41].copy_from_slice(&[7_u8; 32]);
+    bytes[9..41].copy_from_slice(&[7; 32]);
+
     bytes[41] = 1;
     bytes[42..50].copy_from_slice(&55_u64.to_le_bytes());
 
-    bytes[52..60].copy_from_slice(&2_u64.to_le_bytes());
-    bytes[60..62].copy_from_slice(&11_u16.to_le_bytes());
-    bytes[62..64].copy_from_slice(&13_u16.to_le_bytes());
+    bytes[50] = 0; // _pad0
 
-    let view = FixedReadonlyArgs::try_view_from(&bytes).unwrap();
+    bytes[51] = 2;
+    bytes[52..54].copy_from_slice(&11_u16.to_le_bytes());
+    bytes[54..56].copy_from_slice(&13_u16.to_le_bytes());
+
+    let view = FixedReadonlyArgs::try_view_from(bytes).unwrap();
     assert_eq!(view.amount(), 9);
     let _: Option<&[u8; 32]> = view.validator();
     assert_eq!(view.validator(), Some(&[7_u8; 32]));
@@ -115,14 +124,16 @@ fn fixed_layout_reserves_constant_space() {
 
 #[test]
 fn fixed_layout_rejects_invalid_vec_len() {
-    let mut bytes = vec![0; FixedReadonlyArgs::DATA_LEN];
+    let mut aligned = Aligned([0; FixedReadonlyArgs::DATA_LEN]);
+    let bytes = &mut aligned.0;
+
     bytes[0..8].copy_from_slice(&1_u64.to_le_bytes());
 
     // vec len = 11, where capacity = 10, hence invalid len
-    bytes[52..60].copy_from_slice(&11_u64.to_le_bytes());
+    bytes[51] = 11;
 
     assert_eq!(
-        FixedReadonlyArgs::try_view_from(&bytes).unwrap_err(),
+        FixedReadonlyArgs::try_view_from(bytes).unwrap_err(),
         ProgramError::InvalidInstructionData
     );
 }
@@ -132,21 +143,24 @@ struct FixedAlignedBorrowedFields {
     flag: u8,
     _pad0: [u8; 7],
     payload: [u64; 2],
+    _pad1: [u8; 7],
     #[capacity = 2]
     values: Vec<[u64; 2]>,
 }
 
 #[test]
 fn fixed_layout_borrows_aligned_large_fields() {
-    let mut bytes = vec![0; FixedAlignedBorrowedFields::DATA_LEN];
+    let mut aligned = Aligned([0; FixedAlignedBorrowedFields::DATA_LEN]);
+    let bytes = &mut aligned.0;
+
     bytes[0] = 1;
 
     bytes[8..24].copy_from_slice(&[1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0]);
 
-    bytes[24..32].copy_from_slice(&1_u64.to_le_bytes());
+    bytes[31] = 1;
     bytes[32..48].copy_from_slice(&[3, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0]);
 
-    let view = FixedAlignedBorrowedFields::try_view_from(&bytes).unwrap();
+    let view = FixedAlignedBorrowedFields::try_view_from(bytes).unwrap();
     let _: &[u64; 2] = view.payload();
     assert_eq!(view.payload(), &[1, 2]);
 
