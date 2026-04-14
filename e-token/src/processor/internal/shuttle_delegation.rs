@@ -16,7 +16,7 @@ use ephemeral_spl_api::state::{
     ephemeral_ata::EphemeralAta, load_initialized, load_mut_initialized,
     shuttle_ephemeral_ata::ShuttleMetadata,
 };
-use ephemeral_spl_api::{require, require_eq_keys};
+use ephemeral_spl_api::{require, require_eq_keys, require_owned_by};
 use pinocchio::{
     cpi::{invoke_signed_with_bounds, Seed, Signer},
     error::ProgramError,
@@ -221,10 +221,7 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
         ProgramError::MissingRequiredSignature
     );
 
-    require!(
-        rent_pda_info.owned_by(&pinocchio_system::ID),
-        ProgramError::InvalidAccountOwner
-    );
+    require_owned_by!(rent_pda_info, &pinocchio_system::ID);
 
     #[cfg(feature = "logging")]
     {
@@ -298,14 +295,8 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
         });
     }
 
-    require!(
-        shuttle_info.owned_by(&crate::ID),
-        ProgramError::InvalidAccountOwner
-    );
-    require!(
-        shuttle_eata_info.owned_by(&crate::ID),
-        ProgramError::InvalidAccountOwner
-    );
+    require_owned_by!(shuttle_info, &crate::ID);
+    require_owned_by!(shuttle_eata_info, &crate::ID);
 
     let shuttle = load_initialized::<ShuttleMetadata>(unsafe { shuttle_info.borrow_unchecked() })?;
     require!(

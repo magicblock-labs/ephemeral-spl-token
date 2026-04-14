@@ -13,6 +13,26 @@ macro_rules! require {
 }
 
 ///
+/// require_owned_by: a is owned by b
+///
+#[macro_export]
+macro_rules! require_owned_by {
+    ($account:expr, $owner_ref:expr) => {{
+        if !pinocchio::address::address_eq(unsafe { $account.owner() }, $owner_ref) {
+            pinocchio_log::log!(
+                "require_owned_by!({}, {}) failed.",
+                stringify!($account),
+                stringify!($owner_ref)
+            );
+            $account.address().log();
+            unsafe { $account.owner() }.log();
+            $owner_ref.log();
+            return Err(pinocchio::error::ProgramError::InvalidAccountOwner);
+        }
+    }};
+}
+
+///
 /// require key1 == key2
 ///
 #[macro_export]

@@ -1,6 +1,4 @@
-use ephemeral_spl_api::{
-    require, require_eq_keys, require_n_accounts, require_n_accounts_with_ignored,
-};
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts_with_ignored};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
