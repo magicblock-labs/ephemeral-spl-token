@@ -482,7 +482,7 @@ impl FixedFieldKind {
                 }
             }
             Self::Vec { elem, capacity } => {
-                let elem_len = usize_lit(elem.size());
+                let elem_size = usize_lit(elem.size());
                 let capacity = usize_lit(*capacity);
                 quote! {
                     #fields_encode_expr
@@ -492,9 +492,9 @@ impl FixedFieldKind {
                     }
 
                     bytes[#offset..#offset + 8].copy_from_slice(bytemuck::bytes_of(&(self.#field_ident.len() as u64)));
-                    bytes[#offset + 8..#offset + 8 + self.#field_ident.len() * #elem_len].copy_from_slice(bytemuck::cast_slice(&self.#field_ident.as_slice()));
+                    bytes[#offset + 8..#offset + 8 + self.#field_ident.len() * #elem_size].copy_from_slice(bytemuck::cast_slice(&self.#field_ident.as_slice()));
                     if self.#field_ident.len() < #capacity {
-                         bytes[#offset + 8 + self.#field_ident.len() * #elem_len..#offset + #capacity * #elem_len].fill(0);
+                         bytes[#offset + 8 + self.#field_ident.len() * #elem_size..#offset + 8 + #capacity * #elem_size].fill(0);
                     }
                 }
             }
