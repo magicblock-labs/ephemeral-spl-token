@@ -114,7 +114,6 @@ export const mintInitializationHandler: RouteHandler<typeof mintInitializationRo
 export const challengeHandler: RouteHandler<typeof challengeRoute, RouteEnv> = async (c) => {
   const env = getEnv(c.env);
   const query = c.req.valid("query") as z.infer<typeof challengeQuerySchema>;
-  console.log(query);
   const response = await getChallenge(env, query);
   return c.json(response, 200);
 };
