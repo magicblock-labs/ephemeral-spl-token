@@ -9,7 +9,7 @@ mod fixed_layout;
 ///
 /// ```ignore
 ///
-/// #[fixed_layout(assert_len = 253)]
+/// #[fixed_offset_layout(assert_len = 253)]
 /// struct DepositAndDelegateShuttleWithPrivateTransferArgs {
 ///     shuttle_id: u32,
 ///     amount: u64,
@@ -76,11 +76,11 @@ mod fixed_layout;
 ///   - pub fn encode_to(&self, bytes: &mut [u8; DATA_LEN]) -> Result<(), ProgramError>
 ///
 #[proc_macro_attribute]
-pub fn fixed_layout(attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn fixed_offset_layout(attr: TokenStream, item: TokenStream) -> TokenStream {
     let attr_string = attr.to_string();
     let input = parse_macro_input!(item as ItemStruct);
 
-    match fixed_layout::expand_fixed_layout(&attr_string, &input) {
+    match fixed_layout::expand_fixed_offset_layout(&attr_string, &input) {
         Ok(tokens) => tokens.into(),
         Err(err) => err.to_compile_error().into(),
     }

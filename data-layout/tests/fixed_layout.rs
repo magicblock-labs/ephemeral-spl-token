@@ -1,23 +1,25 @@
-use data_layout::fixed_layout;
+use data_layout::fixed_offset_layout;
 use pinocchio::error::ProgramError;
 
-#[fixed_layout]
-struct DepositAndDelegateShuttleWithPrivateTransferArgs {
+#[repr(align(8))]
+struct Aligned<const N: usize>([u8; N]);
+
+#[fixed_offset_layout]
+struct PrivateTransferFixedArgs {
     shuttle_id: u32,
     amount: u64,
     validator: Option<[u8; 32]>,
     #[capacity = 72]
     encrypted_destination: Vec<u8>,
-    #[capacity = flexible]
+    #[capacity = 120]
     encrypted_data_suffix: Vec<u8>,
 }
 
-#[repr(align(8))]
-struct Aligned<const N: usize>([u8; N]);
-
 #[test]
-fn fixed_layout_private_args() {
-    let value = DepositAndDelegateShuttleWithPrivateTransferArgs {
+fn fixed_offset_layout_private_args() {
+    assert_eq!(PrivateTransferFixedArgs::DATA_LEN, 239);
+
+    let value = PrivateTransferFixedArgs {
         shuttle_id: 100,
         amount: 200,
         validator: Some([1; 32]),
@@ -25,7 +27,7 @@ fn fixed_layout_private_args() {
         encrypted_data_suffix: vec![10, 20, 30, 40, 50, 60, 70, 80],
     };
 
-    let mut aligned = Aligned([0; DepositAndDelegateShuttleWithPrivateTransferArgs::DATA_LEN]);
+    let mut aligned = Aligned([0; PrivateTransferFixedArgs::DATA_LEN]);
     let bytes = &mut aligned.0;
 
     // shuttle_id: u32 (offset: 0)
@@ -46,7 +48,7 @@ fn fixed_layout_private_args() {
     bytes[118] = 8;
     bytes[119..127].copy_from_slice(&[10, 20, 30, 40, 50, 60, 70, 80]);
 
-    let view = DepositAndDelegateShuttleWithPrivateTransferArgs::try_view_from(bytes).unwrap();
+    let view = PrivateTransferFixedArgs::try_view_from(bytes).unwrap();
 
     assert_eq!(view.shuttle_id(), 100);
     assert_eq!(view.amount(), 200);
@@ -60,14 +62,14 @@ fn fixed_layout_private_args() {
     assert_eq!(value.encode(), Ok(aligned.0));
 }
 
-#[fixed_layout]
+#[fixed_offset_layout]
 struct FixedLargeElements {
     #[capacity = 2]
     validators: Vec<[u8; 9]>,
 }
 
 #[test]
-fn fixed_layout_large_vec_elements_are_borrowed() {
+fn fixed_offset_layout_large_vec_elements_are_borrowed() {
     let mut bytes = vec![0; FixedLargeElements::DATA_LEN];
     bytes[0] = 1;
 
@@ -80,7 +82,7 @@ fn fixed_layout_large_vec_elements_are_borrowed() {
     assert_eq!(view.validators(), &[[1, 2, 3, 4, 5, 6, 7, 8, 9]]);
 }
 
-#[fixed_layout]
+#[fixed_offset_layout]
 struct FixedReadonlyArgs {
     amount: u64,
     validator: Option<[u8; 32]>,
@@ -91,7 +93,7 @@ struct FixedReadonlyArgs {
 }
 
 #[test]
-fn fixed_layout_reserves_constant_space() {
+fn fixed_offset_layout_reserves_constant_space() {
     assert_eq!(FixedReadonlyArgs::DATA_LEN, 72);
 
     let mut aligned = Aligned([0; FixedReadonlyArgs::DATA_LEN]);
@@ -123,7 +125,7 @@ fn fixed_layout_reserves_constant_space() {
 }
 
 #[test]
-fn fixed_layout_rejects_invalid_vec_len() {
+fn fixed_offset_layout_rejects_invalid_vec_len() {
     let mut aligned = Aligned([0; FixedReadonlyArgs::DATA_LEN]);
     let bytes = &mut aligned.0;
 
@@ -138,7 +140,7 @@ fn fixed_layout_rejects_invalid_vec_len() {
     );
 }
 
-#[fixed_layout]
+#[fixed_offset_layout]
 struct FixedAlignedBorrowedFields {
     flag: u8,
     _pad0: [u8; 7],
@@ -149,7 +151,7 @@ struct FixedAlignedBorrowedFields {
 }
 
 #[test]
-fn fixed_layout_borrows_aligned_large_fields() {
+fn fixed_offset_layout_borrows_aligned_large_fields() {
     let mut aligned = Aligned([0; FixedAlignedBorrowedFields::DATA_LEN]);
     let bytes = &mut aligned.0;
 
