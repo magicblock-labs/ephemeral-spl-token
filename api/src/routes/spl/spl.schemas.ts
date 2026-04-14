@@ -97,11 +97,17 @@ export const clusterSchema = z.union([
 
 export const visibilitySchema = z.enum(["public", "private"]).openapi("TransferVisibility");
 export const balanceLocationSchema = z.enum(["base", "ephemeral"]).openapi("BalanceLocation");
-export const authTokenSchema = z.object({
+export const optionalAuthTokenSchema = z.object({
   authorization: z.string().openapi({
     example: "Bearer 1234567890",
-    description: "The authentication token provided by the Private Ephemeral Rollup. Only needed for private balance.",
+    description: "Optional. Authentication token for requests that need to connect to the Private Ephemeral Rollup.",
   }).optional()
+});
+export const requiredAuthTokenSchema = z.object({
+  authorization: z.string().openapi({
+    example: "Bearer 1234567890",
+    description: "Required. Authentication token for private-balance requests.",
+  })
 });
 
 export const transactionResponseSchema = z.object({

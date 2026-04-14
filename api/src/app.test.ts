@@ -1035,17 +1035,13 @@ describe("app", () => {
     expect(privateJson.balance).toBe("3");
   });
 
-  it("returns 400 when private balance is requested without authToken", async () => {
+  it("returns 422 when private balance is requested without authToken", async () => {
     const response = await app.request(
       `/v1/spl/private-balance?address=${owner}&mint=So11111111111111111111111111111111111111112`,
       {},
       env,
     );
-    expect(response.status).toBe(400);
-
-    const json = await response.json() as { error: { code: string; message: string } };
-    expect(json.error.code).toBe("MISSING_AUTH_TOKEN");
-    expect(json.error.message).toBe("authToken is required for private balance");
+    expect(response.status).toBe(422);
   });
 
   it("returns a challenge from the ephemeral rollup auth endpoint", async () => {
