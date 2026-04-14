@@ -1,200 +1,200 @@
 {
-  "init_tq::custom": {
-    "compute_units_consumed": 14984
-  },
-  "tq_auto::crank_2": {
-    "compute_units_consumed": 6489
-  },
-  "del_eata_perm::non_owner": {
-    "compute_units_consumed": 52980
-  },
-  "tq_auto::run_scheduled_tick_via_magic_bundle": {
-    "compute_units_consumed": 15308
-  },
-  "del_shuttle_priv::queue": {
-    "compute_units_consumed": 27430
-  },
-  "del_eata::delegate": {
-    "compute_units_consumed": 42865
-  },
-  "init_gvault::init": {
-    "compute_units_consumed": 15938
-  },
-  "del_shuttle_merge::delegate": {
-    "compute_units_consumed": 80016
-  },
-  "del_eata::non_owner": {
-    "compute_units_consumed": 29365
-  },
-  "rent_pda::reinit": {
-    "compute_units_consumed": 240
-  },
-  "init_eata::init": {
-    "compute_units_consumed": 4723
-  },
-  "dep_queue::return_to_shuttle": {
-    "compute_units_consumed": 7835
-  },
-  "tq_auto::enqueue_with_client_ref_id": {
-    "compute_units_consumed": 10427
-  },
-  "ud_wd_close::undelegate": {
-    "compute_units_consumed": 13767
-  },
-  "init_shuttle::init": {
-    "compute_units_consumed": 18991
-  },
-  "tq_auto::run_scheduled_tick": {
-    "compute_units_consumed": 15310
+  "close_eata::close": {
+    "compute_units_consumed": 1711
   },
   "create_eata_perm::default": {
-    "compute_units_consumed": 13686
-  },
-  "dep_queue::all_splits_use_client_ref_id": {
-    "compute_units_consumed": 11031
-  },
-  "undel_perm_cb::undelegate": {
-    "compute_units_consumed": 34444
-  },
-  "del_eata_perm::delegate": {
-    "compute_units_consumed": 48480
-  },
-  "del_tq::delegate": {
-    "compute_units_consumed": 22930
-  },
-  "merge_shuttle::merge": {
-    "compute_units_consumed": 9494
-  },
-  "dep_queue::split4_mod5": {
-    "compute_units_consumed": 11554
-  },
-  "init_gvault::migrate": {
-    "compute_units_consumed": 13015
-  },
-  "dep_queue::reject_split_gt_amt": {
-    "compute_units_consumed": 328
-  },
-  "reset_eata_perm::reset": {
-    "compute_units_consumed": 26484
-  },
-  "tq_auto::enqueue_delayed": {
-    "compute_units_consumed": 10426
-  },
-  "undel_eata_cb::undelegate": {
-    "compute_units_consumed": 36852
-  },
-  "dep_queue::accepts_legacy_destination_ata": {
-    "compute_units_consumed": 13486
-  },
-  "rent_pda::init": {
-    "compute_units_consumed": 1630
-  },
-  "dep_queue::once_split": {
-    "compute_units_consumed": 10970
-  },
-  "dep_queue::reject_delay_range": {
-    "compute_units_consumed": 331
+    "compute_units_consumed": 13679
   },
   "create_eata_perm::permissionless": {
-    "compute_units_consumed": 24175
+    "compute_units_consumed": 24168
+  },
+  "del_eata::delegate": {
+    "compute_units_consumed": 42848
+  },
+  "del_eata::non_owner": {
+    "compute_units_consumed": 29348
   },
   "del_eata::redelegate": {
     "compute_units_consumed": 145
   },
-  "dep_queue::reject_zero_split": {
-    "compute_units_consumed": 323
+  "del_eata::reinit": {
+    "compute_units_consumed": 7699
   },
-  "dep_queue::split3_mod5": {
-    "compute_units_consumed": 11171
+  "del_eata_perm::delegate": {
+    "compute_units_consumed": 48475
   },
-  "tq_alloc::first_allocate": {
-    "compute_units_consumed": 18880
+  "del_eata_perm::non_owner": {
+    "compute_units_consumed": 52975
   },
-  "dep_queue::assign_group_id_1": {
-    "compute_units_consumed": 11232
+  "del_eata_perm::redelegate": {
+    "compute_units_consumed": 165
   },
-  "close_eata::close": {
-    "compute_units_consumed": 1724
-  },
-  "lamports_pda::transfer_lamports_pda": {
-    "compute_units_consumed": 6335
-  },
-  "lamports_pda::allow_extra_lamports": {
-    "compute_units_consumed": 1835
-  },
-  "dep_shuttle::deposit": {
-    "compute_units_consumed": 7856
-  },
-  "tq_auto::crank_bad_magic": {
-    "compute_units_consumed": 289
-  },
-  "init_tq::default": {
-    "compute_units_consumed": 13518
+  "del_shuttle_eata::delegate": {
+    "compute_units_consumed": 24945
   },
   "del_shuttle_eata::redelegate": {
     "compute_units_consumed": 152
   },
-  "tq_auto::tick_not_ready": {
-    "compute_units_consumed": 2191
+  "del_shuttle_merge::delegate": {
+    "compute_units_consumed": 79797
   },
-  "tq_auto::tick_empty": {
-    "compute_units_consumed": 2105
-  },
-  "del_shuttle_eata::delegate": {
-    "compute_units_consumed": 24974
+  "del_shuttle_priv::queue": {
+    "compute_units_consumed": 27399
   },
   "del_shuttle_priv::shuttle": {
-    "compute_units_consumed": 128237
+    "compute_units_consumed": 128013
   },
-  "del_eata::reinit": {
-    "compute_units_consumed": 7708
+  "del_tq::delegate": {
+    "compute_units_consumed": 22899
   },
-  "tq_auto::schedule_with_client_ref_id": {
-    "compute_units_consumed": 5324
+  "del_tq::redelegate": {
+    "compute_units_consumed": 1786
   },
-  "tq_auto::schedule": {
-    "compute_units_consumed": 5324
+  "dep_queue::accepts_legacy_destination_ata": {
+    "compute_units_consumed": 13468
   },
-  "tq_auto::crank_1": {
-    "compute_units_consumed": 5324
-  },
-  "tq_auto::enqueue_ready": {
-    "compute_units_consumed": 10426
-  },
-  "lamports_pda::sponsored_lamports_transfer": {
-    "compute_units_consumed": 60590
-  },
-  "wd_spl::withdraw": {
-    "compute_units_consumed": 7869
-  },
-  "init_tq::noop": {
-    "compute_units_consumed": 6417
+  "dep_queue::all_splits_use_client_ref_id": {
+    "compute_units_consumed": 10947
   },
   "dep_queue::assign_group_id_0": {
-    "compute_units_consumed": 10732
+    "compute_units_consumed": 10681
   },
-  "del_eata_perm::redelegate": {
-    "compute_units_consumed": 168
+  "dep_queue::assign_group_id_1": {
+    "compute_units_consumed": 11147
   },
-  "wd_shuttle::withdraw": {
-    "compute_units_consumed": 63668
+  "dep_queue::deterministic_delays": {
+    "compute_units_consumed": 11344
   },
-  "tq_auto::tick_after_bundle": {
-    "compute_units_consumed": 2105
+  "dep_queue::once_split": {
+    "compute_units_consumed": 10920
+  },
+  "dep_queue::reject_delay_range": {
+    "compute_units_consumed": 331
+  },
+  "dep_queue::reject_queue_full": {
+    "compute_units_consumed": 273
+  },
+  "dep_queue::reject_split_gt_amt": {
+    "compute_units_consumed": 328
+  },
+  "dep_queue::reject_zero_split": {
+    "compute_units_consumed": 323
+  },
+  "dep_queue::return_to_shuttle": {
+    "compute_units_consumed": 7833
+  },
+  "dep_queue::split3_mod5": {
+    "compute_units_consumed": 11119
+  },
+  "dep_queue::split4_mod5": {
+    "compute_units_consumed": 11469
+  },
+  "dep_shuttle::deposit": {
+    "compute_units_consumed": 7831
+  },
+  "dep_spl::deposit": {
+    "compute_units_consumed": 7831
+  },
+  "init_eata::init": {
+    "compute_units_consumed": 4717
+  },
+  "init_gvault::init": {
+    "compute_units_consumed": 15919
+  },
+  "init_gvault::migrate": {
+    "compute_units_consumed": 12993
+  },
+  "init_shuttle::init": {
+    "compute_units_consumed": 18977
+  },
+  "init_tq::custom": {
+    "compute_units_consumed": 14972
+  },
+  "init_tq::default": {
+    "compute_units_consumed": 13506
+  },
+  "init_tq::noop": {
+    "compute_units_consumed": 6406
+  },
+  "lamports_pda::allow_extra_lamports": {
+    "compute_units_consumed": 1825
+  },
+  "lamports_pda::sponsored_lamports_transfer": {
+    "compute_units_consumed": 60552
+  },
+  "lamports_pda::transfer_lamports_pda": {
+    "compute_units_consumed": 6325
+  },
+  "merge_shuttle::merge": {
+    "compute_units_consumed": 9484
+  },
+  "rent_pda::init": {
+    "compute_units_consumed": 1627
+  },
+  "rent_pda::reinit": {
+    "compute_units_consumed": 237
+  },
+  "reset_eata_perm::reset": {
+    "compute_units_consumed": 26483
   },
   "tq_alloc::already_allocated": {
     "compute_units_consumed": 1822
   },
-  "dep_queue::reject_queue_full": {
-    "compute_units_consumed": 275
+  "tq_alloc::first_allocate": {
+    "compute_units_consumed": 18880
   },
-  "dep_queue::deterministic_delays": {
-    "compute_units_consumed": 11363
+  "tq_auto::crank_1": {
+    "compute_units_consumed": 5308
   },
-  "dep_spl::deposit": {
-    "compute_units_consumed": 7856
+  "tq_auto::crank_2": {
+    "compute_units_consumed": 6473
   },
-  "del_tq::redelegate": {
-    "compute_units_consumed": 1794
+  "tq_auto::crank_bad_magic": {
+    "compute_units_consumed": 284
+  },
+  "tq_auto::enqueue_delayed": {
+    "compute_units_consumed": 10408
+  },
+  "tq_auto::enqueue_ready": {
+    "compute_units_consumed": 10408
+  },
+  "tq_auto::enqueue_with_client_ref_id": {
+    "compute_units_consumed": 10409
+  },
+  "tq_auto::run_scheduled_tick": {
+    "compute_units_consumed": 15297
+  },
+  "tq_auto::run_scheduled_tick_via_magic_bundle": {
+    "compute_units_consumed": 15295
+  },
+  "tq_auto::schedule": {
+    "compute_units_consumed": 5308
+  },
+  "tq_auto::schedule_with_client_ref_id": {
+    "compute_units_consumed": 5308
+  },
+  "tq_auto::tick_after_bundle": {
+    "compute_units_consumed": 2096
+  },
+  "tq_auto::tick_empty": {
+    "compute_units_consumed": 2096
+  },
+  "tq_auto::tick_not_ready": {
+    "compute_units_consumed": 2182
+  },
+  "ud_wd_close::undelegate": {
+    "compute_units_consumed": 13752
+  },
+  "undel_eata_cb::undelegate": {
+    "compute_units_consumed": 36852
+  },
+  "undel_perm_cb::undelegate": {
+    "compute_units_consumed": 34444
+  },
+  "wd_shuttle::withdraw": {
+    "compute_units_consumed": 63454
+  },
+  "wd_spl::withdraw": {
+    "compute_units_consumed": 7841
   }
 }
