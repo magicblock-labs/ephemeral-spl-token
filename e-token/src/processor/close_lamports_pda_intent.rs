@@ -1,4 +1,6 @@
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
+use ephemeral_spl_api::{
+    require, require_eq_keys, require_n_accounts, require_n_accounts_with_ignored,
+};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
@@ -33,7 +35,7 @@ pub fn process_close_lamports_pda_intent(
         lamports_pda_info,
         payer_info,
         destination_info,
-    ] = require_n_accounts!(accounts, 4);
+    ] = require_n_accounts_with_ignored!(accounts, 4);
 
     let (escrow_index, salt) = parse_escrow_index_and_salt(instruction_data)?;
     require!(accounts.len() >= 6, ProgramError::NotEnoughAccountKeys);
