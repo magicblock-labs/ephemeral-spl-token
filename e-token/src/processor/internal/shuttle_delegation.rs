@@ -271,8 +271,6 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
     ];
     let rent_signer = Signer::from(&rent_signer_seed);
 
-    // CHECKPOINT: which argument is to be initialized? reorder such that it's always the
-    // first argument.
     initialize_shuttle_ephemeral_ata_with_sponsor(
         rent_pda_info,
         Some(rent_signer),

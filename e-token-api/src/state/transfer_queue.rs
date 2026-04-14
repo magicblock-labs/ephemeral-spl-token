@@ -10,7 +10,7 @@ pub const TRANSFER_QUEUE_VERSION: u8 = 1;
 pub const QUEUE_SEED: &[u8] = b"queue";
 
 pub const QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA: u8 = 1 << 0;
-pub const MAX_GROUP_ID: u32 = 0x00FF_FFFF;
+pub const MAX_GROUP_ID: u32 = 0x00FF_FFFF; // we have 3 only bytes for group_id in QueuedTransfer
 
 pub const HEADER_LEN: usize = core::mem::size_of::<TransferQueueHeader>();
 pub const ITEM_LEN: usize = core::mem::size_of::<QueuedTransfer>();
@@ -46,7 +46,7 @@ pub struct QueuedTransfer {
     pub client_ref_id: u64,
     pub task_id: u32,
     pub flags: u8,
-    pub _pad0: [u8; 3],
+    pub group_id: [u8; 3],
 }
 
 impl QueuedTransfer {
@@ -128,9 +128,9 @@ impl QueuedTransfer {
 
     #[inline(always)]
     pub fn group_id(&self) -> u32 {
-        u32::from(self._pad0[0])
-            | (u32::from(self._pad0[1]) << 8)
-            | (u32::from(self._pad0[2]) << 16)
+        u32::from(self.group_id[0])
+            | (u32::from(self.group_id[1]) << 8)
+            | (u32::from(self.group_id[2]) << 16)
     }
 
     #[inline(always)]
@@ -139,10 +139,9 @@ impl QueuedTransfer {
             return Err(ProgramError::InvalidArgument);
         }
 
-        // CHECKPOINT: if group_id is 4 bytes, why do we use 3 bytes here?
-        self._pad0[0] = group_id as u8;
-        self._pad0[1] = (group_id >> 8) as u8;
-        self._pad0[2] = (group_id >> 16) as u8;
+        self.group_id[0] = group_id as u8;
+        self.group_id[1] = (group_id >> 8) as u8;
+        self.group_id[2] = (group_id >> 16) as u8;
         Ok(())
     }
 }
@@ -256,7 +255,6 @@ fn validate_header_and_active_len(
 
 #[inline(always)]
 fn normalize_group_id(group_id: u32) -> u32 {
-    // CHECKPOINT: why group_id > MAX_GROUP_ID would ever be true?
     if group_id == 0 || group_id > MAX_GROUP_ID {
         1
     } else {
@@ -534,7 +532,7 @@ mod tests {
             client_ref_id,
             task_id: 0,
             flags: 0,
-            _pad0: [0; 3],
+            group_id: [0; 3],
         }
     }
 

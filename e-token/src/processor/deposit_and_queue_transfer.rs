@@ -184,7 +184,7 @@ pub fn process_deposit_and_queue_transfer(
             client_ref_id,
             task_id: 0,
             flags: args.flags() | QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
-            _pad0: [0; 3],
+            group_id: [0; 3],
         };
         queued_transfer.set_group_id(group_id)?;
 

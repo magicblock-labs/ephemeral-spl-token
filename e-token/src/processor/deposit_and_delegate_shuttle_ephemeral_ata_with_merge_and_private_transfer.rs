@@ -127,7 +127,6 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
         let vault_token = common_accounts.vault_token_info.address().to_string();
         let queue = queue_info.address().to_string();
 
-        // CHECKPOINT: this entire log wont be printed because of message size (see logs on explorer)
         pinocchio_log::log!(
             "Private shuttle ix accounts shuttle={} shuttle_eata={} shuttle_wallet={} mint={} owner_source={} vault_token={} queue={}",
             shuttle.as_str(),
