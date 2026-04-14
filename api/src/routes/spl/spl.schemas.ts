@@ -76,6 +76,15 @@ export const optionalBigIntStringSchema = z
     example: "0",
   });
 
+export const optionalBoolean = z.preprocess((value) => {
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
+  }
+  return value;
+}, z.boolean().optional().default(false));
+
 export const clusterSchema = z.union([
   z.enum(["mainnet", "devnet"]),
   z.string().refine((value) => /^https?:\/\//.test(value), {
@@ -294,6 +303,7 @@ export const challengeQuerySchema = z.object({
     example: BALANCE_EXAMPLE_ADDRESS,
     description: "The public key of the wallet that will read private data",
   }),
+  mock: optionalBoolean,
 });
 
 export const challengeResponseSchema = z.object({
@@ -317,6 +327,7 @@ export const loginQuerySchema = z.object({
     example: "1234567890",
     description: "The signature of the challenge by the wallet",
   }),
+  mock: optionalBoolean,
 });
 
 export const loginResponseSchema = z.object({

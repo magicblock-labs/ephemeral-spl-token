@@ -8,6 +8,7 @@ export const MOCK_CHALLENGE = "mock-challenge";
 export type ChallengeInput = {
     pubkey: string;
     cluster?: string;
+    mock?: boolean;
 };
 
 export type ChallengeResponse = {
@@ -19,6 +20,7 @@ export type LoginInput = {
     challenge: string;
     signature: string;
     cluster?: string;
+    mock?: boolean;
 };
 
 export type LoginResponse = {
@@ -54,7 +56,7 @@ export function parseAuthToken(headers: Record<string, string>): string | undefi
 }
 
 export async function getChallenge(env: AppEnv, input: ChallengeInput): Promise<ChallengeResponse> {
-    if (env.MOCK_PER) {
+    if (input.mock) {
         return {
             challenge: MOCK_CHALLENGE,
         };
@@ -85,7 +87,7 @@ export async function getChallenge(env: AppEnv, input: ChallengeInput): Promise<
 }
 
 export async function login(env: AppEnv, input: LoginInput): Promise<LoginResponse> {
-    if (env.MOCK_PER) {
+    if (input.mock) {
         return {
             token: MOCK_AUTH_TOKEN,
         };

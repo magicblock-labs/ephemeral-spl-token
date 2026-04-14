@@ -89,16 +89,12 @@ export const privateBalanceHandler: RouteHandler<typeof privateBalanceRoute, Rou
   const query = c.req.valid("query") as z.infer<typeof balanceQuerySchema>;
   const authToken = parseAuthToken(c.req.header());
 
-  // When mocking the private ephemeral rollup, private balance is the same as base balance.
-  if (env.MOCK_PER) {
-    if (authToken !== MOCK_AUTH_TOKEN) {
-      return c.json({ error: { code: "INVALID_AUTH_TOKEN", message: "authToken is invalid for private balance" } }, 400);
-    }
-    return c.json(await getBaseBalance(env, query), 200);
-  }
-
   if (!authToken) {
     return c.json({ error: { code: "MISSING_AUTH_TOKEN", message: "authToken is required for private balance" } }, 400);
+  }
+  // When mocking the private ephemeral rollup, private balance is the same as base balance.
+  if (authToken === MOCK_AUTH_TOKEN) {
+    return c.json(await getBaseBalance(env, query), 200);
   }
   const response = await getPrivateBalance(env, query, authToken);
   return c.json(response, 200);
@@ -118,6 +114,7 @@ export const mintInitializationHandler: RouteHandler<typeof mintInitializationRo
 export const challengeHandler: RouteHandler<typeof challengeRoute, RouteEnv> = async (c) => {
   const env = getEnv(c.env);
   const query = c.req.valid("query") as z.infer<typeof challengeQuerySchema>;
+  console.log(query);
   const response = await getChallenge(env, query);
   return c.json(response, 200);
 };

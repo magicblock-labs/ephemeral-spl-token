@@ -22,6 +22,7 @@ import {
 
 import app from "./app";
 import { TOKEN_PROGRAM_ID } from "./lib/solana";
+import { MOCK_AUTH_TOKEN, MOCK_CHALLENGE } from "./lib/auth";
 
 const env = {
   BASE_RPC_URL: "https://base.rpc.test",
@@ -1003,6 +1004,37 @@ describe("app", () => {
     expect(privateJson.balance).toBe("9");
   });
 
+  it("returns base and mock private balances from different RPCs", async () => {
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(async function getAccountInfo(this: Connection & { _rpcEndpoint: string }) {
+      const endpoint = (this as Connection & { _rpcEndpoint: string })._rpcEndpoint;
+      return endpoint.includes("ephemeral")
+        ? createAccountInfo(9n)
+        : createAccountInfo(3n);
+    });
+
+    const baseResponse = await app.request(
+      `/v1/spl/balance?address=${owner}&mint=So11111111111111111111111111111111111111112`,
+      {},
+      env,
+    );
+    const privateResponse = await app.request(
+      `/v1/spl/private-balance?address=${owner}&mint=So11111111111111111111111111111111111111112`,
+      { headers: { authorization: "Bearer mock-auth-token" } },
+      env,
+    );
+
+    expect(baseResponse.status).toBe(200);
+    expect(privateResponse.status).toBe(200);
+
+    const baseJson = await baseResponse.json() as { location: string; balance: string };
+    const privateJson = await privateResponse.json() as { location: string; balance: string };
+
+    expect(baseJson.location).toBe("base");
+    expect(baseJson.balance).toBe("3");
+    expect(privateJson.location).toBe("base");
+    expect(privateJson.balance).toBe("3");
+  });
+
   it("returns 400 when private balance is requested without authToken", async () => {
     const response = await app.request(
       `/v1/spl/private-balance?address=${owner}&mint=So11111111111111111111111111111111111111112`,
@@ -1037,6 +1069,19 @@ describe("app", () => {
 
     const json = await response.json() as { challenge: string };
     expect(json.challenge).toBe("challenge-token-abc");
+  });
+
+  it("returns the mock challenge", async () => {
+    const response = await app.request(
+      `/v1/spl/challenge?pubkey=${owner}&mock=true`,
+      {},
+      env,
+    );
+
+    expect(response.status).toBe(200);
+
+    const json = await response.json() as { challenge: string };
+    expect(json.challenge).toBe(MOCK_CHALLENGE);
   });
 
   it("returns a token from the ephemeral rollup login endpoint", async () => {
@@ -1075,6 +1120,26 @@ describe("app", () => {
 
     const json = await response.json() as { token: string };
     expect(json.token).toBe("token-xyz");
+  });
+
+  it("returns the mock token", async () => {
+    const response = await app.request("/v1/spl/login", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        pubkey: owner,
+        challenge: "c1",
+        signature: "s1",
+        mock: true,
+      }),
+    }, env);
+
+    expect(response.status).toBe(200);
+
+    const json = await response.json() as { token: string };
+    expect(json.token).toBe(MOCK_AUTH_TOKEN);
   });
 
   it("redacts RPC URLs from balance error details", async () => {
