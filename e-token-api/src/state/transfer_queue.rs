@@ -324,21 +324,6 @@ pub fn queue_allocate_group_id_from_data(data: &mut [u8]) -> Result<u32, Program
     Err(ProgramError::InvalidAccountData)
 }
 
-pub fn queue_allocate_group_id_from_data(data: &mut [u8]) -> Result<u32, ProgramError> {
-    let (header, items) = queue_views_mut_checked(data)?;
-    let mut candidate = normalize_group_id(stored_next_group_id(header));
-
-    for _ in 0..MAX_GROUP_ID {
-        if !group_id_in_use(items, header.length, candidate)? {
-            set_stored_next_group_id(header, next_group_id(candidate));
-            return Ok(candidate);
-        }
-        candidate = next_group_id(candidate);
-    }
-
-    Err(ProgramError::InvalidAccountData)
-}
-
 #[inline(always)]
 fn higher_priority(a: &QueuedTransfer, b: &QueuedTransfer) -> bool {
     if a.ready_at != b.ready_at {
