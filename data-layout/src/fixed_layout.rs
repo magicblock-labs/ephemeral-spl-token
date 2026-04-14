@@ -150,6 +150,11 @@ pub(crate) fn expand_fixed_layout(
                     return Err(
                         pinocchio::error::ProgramError::InvalidInstructionData,
                     );
+                } else if bytes.as_ptr().align_offset(8) != 0 {
+                    pinocchio_log::log!("bytes [align_offset={}] cannot be deserialized to {} which requires 8-byte alignment", bytes.as_ptr().align_offset(8), stringify!(#struct_name));
+                    return Err(
+                        pinocchio::error::ProgramError::InvalidInstructionData,
+                    );
                 }
 
                 #(#validate_steps)*

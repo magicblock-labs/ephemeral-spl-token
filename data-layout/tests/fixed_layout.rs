@@ -12,6 +12,9 @@ struct DepositAndDelegateShuttleWithPrivateTransferArgs {
     encrypted_data_suffix: Vec<u8>,
 }
 
+#[repr(align(8))]
+struct Aligned<const N: usize>([u8; N]);
+
 #[test]
 fn fixed_layout_private_args() {
     let value = DepositAndDelegateShuttleWithPrivateTransferArgs {
@@ -22,7 +25,8 @@ fn fixed_layout_private_args() {
         encrypted_data_suffix: vec![10, 20, 30, 40, 50, 60, 70, 80],
     };
 
-    let mut bytes = [0; DepositAndDelegateShuttleWithPrivateTransferArgs::DATA_LEN];
+    let mut aligned = Aligned([0; DepositAndDelegateShuttleWithPrivateTransferArgs::DATA_LEN]);
+    let bytes = &mut aligned.0;
 
     // shuttle_id: u32 (offset: 0)
     bytes[0..4].copy_from_slice(&100_u32.to_le_bytes());
@@ -42,7 +46,7 @@ fn fixed_layout_private_args() {
     bytes[125..133].copy_from_slice(&8_u64.to_le_bytes());
     bytes[133..141].copy_from_slice(&[10, 20, 30, 40, 50, 60, 70, 80]);
 
-    let view = DepositAndDelegateShuttleWithPrivateTransferArgs::try_view_from(&bytes).unwrap();
+    let view = DepositAndDelegateShuttleWithPrivateTransferArgs::try_view_from(bytes).unwrap();
 
     assert_eq!(view.shuttle_id(), 100);
     assert_eq!(view.amount(), 200);
@@ -53,7 +57,7 @@ fn fixed_layout_private_args() {
         &[10, 20, 30, 40, 50, 60, 70, 80]
     );
 
-    assert_eq!(value.encode(), Ok(bytes));
+    assert_eq!(value.encode(), Ok(aligned.0));
 }
 
 #[fixed_layout]
