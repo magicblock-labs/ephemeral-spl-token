@@ -20,15 +20,16 @@ pub const ITEM_LEN: usize = core::mem::size_of::<QueuedTransfer>();
 #[repr(C)]
 #[derive(Copy, Clone, Pod, Zeroable)]
 pub struct TransferQueueHeader {
-    pub validator: Address,
-    pub mint: Address,
-    pub crank_task_id: i64,
-    pub next_task_id: u32, // CHECKPOINT: why do we have this field?
-    pub length: u32,
-    pub group_id: u32,
     pub version: u8,
     pub bump: u8,
-    pub _pad0: [u8; 2],
+    pub _pad0: [u8; 6],
+    pub mint: Address,
+    pub length: u32,
+    pub group_id: u32,
+    pub _pad1: [u8; 4],
+    pub next_task_id: u32,
+    pub crank_task_id: i64,
+    pub validator: Address,
 }
 
 /// One queued transfer entry.
