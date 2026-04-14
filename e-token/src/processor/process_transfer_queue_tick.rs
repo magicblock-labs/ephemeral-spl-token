@@ -75,8 +75,7 @@ pub fn process_transfer_queue_tick(
     let clock = Clock::get()?;
     let queue_state = read_queue_tick_state(tick_accounts.queue_info, &program_id)?;
 
-    // CHECKPOINT (security): this instruction is currently permissionless (anyone can invoke it)
-
+    // this instruction is currently permissionless (anyone can invoke it)
     if try_schedule_queue_refill(&tick_accounts, &queue_state)? {
         return Ok(());
     }

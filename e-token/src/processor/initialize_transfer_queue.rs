@@ -5,8 +5,7 @@ use ephemeral_rollups_pinocchio::acl::{
 };
 use ephemeral_spl_api::consts::TRANSFER_QUEUE_INITIAL_BUFFER_LAMPORTS;
 use ephemeral_spl_api::state::transfer_queue::{
-    capacity_from_data_len, header_len, init_queue, item_len, queue_views_mut_checked,
-    TransferQueue,
+    capacity_from_data_len, header_len, init_queue, item_len, queue_views_checked, TransferQueue,
 };
 use pinocchio::address::address_eq;
 use pinocchio::cpi::Signer;
@@ -60,7 +59,7 @@ pub fn process_initialize_transfer_queue(
         return Err(ProgramError::InvalidSeeds);
     }
 
-    // CHECKPOINT: why do we require permission_program_info? we do not use it anywhere in this ix.
+    // permission_program_info is needed by CreatePermissionCpiBuilder
     if !address_eq(permission_program_info.address(), &PERMISSION_PROGRAM_ID) {
         return Err(ProgramError::IncorrectProgramId);
     }
@@ -140,8 +139,7 @@ pub fn process_initialize_transfer_queue(
     let data = unsafe { queue_info.borrow_unchecked_mut() };
     init_queue(data, bump, *mint_info.address(), *validator_info.address())?;
 
-    // CHECKPOINT: mut is not needed?
-    let (header, _) = queue_views_mut_checked(data)?;
+    let (header, _) = queue_views_checked(data)?;
     if header.bump != bump
         || !address_eq(&header.mint, mint_info.address())
         || !address_eq(&header.validator, validator_info.address())

@@ -223,7 +223,8 @@ pub(crate) fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actio
         extra_setup_lamports,
     )?;
 
-    // CHECKPOINT: this silent no-op may hide caller-side setup issues during debugging.
+    // TODO (snawaz): this silent no-op may hide caller-side setup issues during debugging.
+    // return ShuttleEataAlreadyDelegated
     if prepared.already_delegated {
         return Ok(());
     }
@@ -247,6 +248,7 @@ pub(crate) fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actio
         .checked_add(args.amount)
         .ok_or(ProgramError::InvalidArgument)?;
 
+    // TODO (snawaz): passs structs to function which takes too many arguments.
     delegate_sponsored_shuttle_with_post_actions(
         accounts.payer_info,
         accounts.rent_pda_info,
@@ -537,10 +539,6 @@ pub(crate) fn delegate_account_with_actions_from_sponsor(
     actions: PostDelegationActions,
     action_signer_accounts: &[&AccountView],
 ) -> ProgramResult {
-    if !address_eq(system_program.address(), &pinocchio_system::ID) {
-        return Err(ProgramError::IncorrectProgramId);
-    }
-
     let pda_key_bytes = pda_acc.address().as_array();
     let (_, buffer_pda_bump) = ephemeral_spl_api::Address::find_program_address(
         &[BUFFER, pda_key_bytes.as_ref()],

@@ -45,7 +45,9 @@ pub fn process_ensure_transfer_queue_crank(
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
-    // CHECKPOINT: why do we require payer_info (as signer) if it is not used anywhere?
+    // TODO (snawaz): re-review this!
+    //
+    // why do we require payer_info (as signer) if it is not used anywhere?
     // in the downstream CPI, we use queue_info as authority, that makes queue automation effectively
     // permissionless (means, literally anyone can invoke it).
     //
@@ -84,9 +86,10 @@ pub fn process_ensure_transfer_queue_crank(
     let crank_task_id = derive_queue_crank_task_id(queue_info.address());
     let data = unsafe { queue_info.borrow_unchecked() };
     if let Some(existing_task_id) = queue_crank_task_id_from_data(data)? {
-        // CHECKPOINT (security): it is a waste of resource, as it will almost
-        // always run. and it is all because for a given queue_info, there is exactly
-        // one crank_task_id which is reused everytime.
+        // TODO (snawaz): once we have a way to know the crank status, conditionally
+        // apply this this "cancel-and-reschedule" strategy:
+        //  - if crank is running: return early
+        //  - else: cancel-and-reschedule
         CancelCrankCpi {
             authority: queue_info.clone(),
             task_context: queue_info.clone(),
@@ -134,7 +137,9 @@ pub fn process_ensure_transfer_queue_crank(
     let mut schedule_accounts =
         [const { MaybeUninit::<InstructionAccount>::uninit() }; SCHEDULE_CRANK_CPI_ACCOUNTS];
     unsafe {
-        // CHECKPOINT (security): this ix is effectively permissionless (payer_info can be any
+        // TODO (snawaz): re-review this.
+        //
+        // this ix is effectively permissionless (payer_info can be any
         // signer), but the downstream Magic ScheduleTask/CancelTask authority is
         // `queue_info`, signed by this program via PDA seeds. so any caller can proxy
         // queue-authorized crank management through this ix.
@@ -184,21 +189,7 @@ pub fn process_ensure_transfer_queue_crank(
 }
 
 //
-// CHECKPOINT (perf): avoid loop, copies, etc.
-//
-// CHECKPOINT (security): for a given queue, this returns the same crank task id,
-// so every ENSURE_TRANSFER_QUEUE_CRANK call for the same (mint, validator) queue
-// targets the same task.
-//
-// the queued transfer entries themselves are still distinct queue items; what is
-// shared is only the recurring worker task that drains the queue... repeated user
-// transfers therefore do not create independent crank tasks. instead, they all
-// cancel-and-reschedule the same recurring task (see CancelCrankCpi above).
-//
-// This makes things tricky and highly error-prone: it is not clear how such interference
-// actually ensures that all user-transfers go through without any issue. how could we ensure
-// that the validator scheduler handles repeated same-(authority, task_id) reschedules
-// without dropping work or creating duplicate executions.
+// TODO (perf): avoid loop, copies, etc.
 //
 #[inline(always)]
 fn derive_queue_crank_task_id(queue_address: &ephemeral_spl_api::Address) -> i64 {
