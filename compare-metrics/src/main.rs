@@ -239,12 +239,7 @@ fn color_for_delta(kind: DeltaKind) -> &'static str {
     }
 }
 
-fn print_table(
-    title: &str,
-    baseline_path: &Path,
-    current_path: &Path,
-    rows: &[TableRow],
-) {
+fn print_table(title: &str, baseline_path: &Path, current_path: &Path, rows: &[TableRow]) {
     const KEY_MAX: usize = 56;
     let hdr_key = "Key";
     let hdr_b = "Baseline CU";

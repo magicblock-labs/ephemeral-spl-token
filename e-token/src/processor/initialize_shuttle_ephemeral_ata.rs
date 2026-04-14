@@ -175,6 +175,15 @@ pub(crate) fn initialize_shuttle_ephemeral_ata_with_sponsor(
     Ok(())
 }
 
+///
+/// DataLayout:
+///
+///     00..04 : shuttle_id (u32)
+///
+/// ValidLength:
+///
+///     >= 04
+///
 pub struct InitializeShuttleEphemeralAta<'a> {
     raw: *const u8,
     _data: PhantomData<&'a [u8]>,

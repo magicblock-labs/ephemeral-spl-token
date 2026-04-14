@@ -45,6 +45,14 @@ pub fn process_ensure_transfer_queue_crank(
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
+    // TODO (snawaz): re-review this!
+    //
+    // why do we require payer_info (as signer) if it is not used anywhere?
+    // in the downstream CPI, we use queue_info as authority, that makes queue automation effectively
+    // permissionless (means, literally anyone can invoke it).
+    //
+    // What if attackers repeatedly invoke this current ix?
+
     assert_signer!(payer_info);
     assert_owner!(queue_info, &crate::ID);
 
@@ -78,6 +86,10 @@ pub fn process_ensure_transfer_queue_crank(
     let crank_task_id = derive_queue_crank_task_id(queue_info.address());
     let data = unsafe { queue_info.borrow_unchecked() };
     if let Some(existing_task_id) = queue_crank_task_id_from_data(data)? {
+        // TODO (snawaz): once we have a way to know the crank status, conditionally
+        // apply this this "cancel-and-reschedule" strategy:
+        //  - if crank is running: return early
+        //  - else: cancel-and-reschedule
         CancelCrankCpi {
             authority: queue_info.clone(),
             task_context: queue_info.clone(),
@@ -125,6 +137,12 @@ pub fn process_ensure_transfer_queue_crank(
     let mut schedule_accounts =
         [const { MaybeUninit::<InstructionAccount>::uninit() }; SCHEDULE_CRANK_CPI_ACCOUNTS];
     unsafe {
+        // TODO (snawaz): re-review this.
+        //
+        // this ix is effectively permissionless (payer_info can be any
+        // signer), but the downstream Magic ScheduleTask/CancelTask authority is
+        // `queue_info`, signed by this program via PDA seeds. so any caller can proxy
+        // queue-authorized crank management through this ix.
         schedule_accounts
             .get_unchecked_mut(0)
             .write(InstructionAccount::writable_signer(queue_info.address()));
@@ -170,6 +188,9 @@ pub fn process_ensure_transfer_queue_crank(
     Ok(())
 }
 
+//
+// TODO (perf): avoid loop, copies, etc.
+//
 #[inline(always)]
 fn derive_queue_crank_task_id(queue_address: &ephemeral_spl_api::Address) -> i64 {
     let mut acc = 0_u64;

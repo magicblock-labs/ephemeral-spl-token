@@ -58,6 +58,9 @@ struct QueueTickState {
     queued_transfer: Option<QueuedTransfer>,
 }
 
+///
+/// Executes on: BASE only.
+///
 #[inline(always)]
 pub fn process_transfer_queue_tick(
     accounts: &[AccountView],
@@ -72,6 +75,7 @@ pub fn process_transfer_queue_tick(
     let clock = Clock::get()?;
     let queue_state = read_queue_tick_state(tick_accounts.queue_info, &program_id)?;
 
+    // this instruction is currently permissionless (anyone can invoke it)
     if try_schedule_queue_refill(&tick_accounts, &queue_state)? {
         return Ok(());
     }
@@ -263,6 +267,9 @@ fn schedule_execute_ready_transfer(
         11
     };
 
+    // Note that we initialize CallHandler with 9 accounts only, and then 3 more accounts [source_program,
+    // escrow_authority, escrow_signer] are appended by DLP's CallHandlerV2 instruction, which is
+    // why EXECUTE_READY_QUEUED_TRANSFER receives 12 accounts (not 9).
     let execute_accounts = [
         ShortAccountMeta {
             pubkey: vault,
@@ -353,6 +360,8 @@ fn pop_executed_transfer(
     queue_info: &AccountView,
     queued_transfer: QueuedTransfer,
 ) -> ProgramResult {
+    // Note that we delete the queue entry immediately after execution is scheduled (only) and we
+    // do not wait for actual payout. It is by design.
     let data = unsafe { queue_info.borrow_unchecked_mut() };
     let popped_transfer = queue_pop_from_data(data)?.ok_or(ProgramError::InvalidAccountData)?;
     if popped_transfer.task_id != queued_transfer.task_id {

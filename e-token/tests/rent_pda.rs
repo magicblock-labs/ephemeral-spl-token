@@ -35,13 +35,9 @@ async fn initialize_rent_pda_is_idempotent() {
         &[&payer_kp],
         context.last_blockhash,
     );
-    common::metrics::process_transaction_record_cu(
-        &context.banks_client,
-        tx,
-        "rent_pda::init",
-    )
-    .await
-    .unwrap();
+    common::metrics::process_transaction_record_cu(&context.banks_client, tx, "rent_pda::init")
+        .await
+        .unwrap();
 
     let second_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
     let tx_reinit =

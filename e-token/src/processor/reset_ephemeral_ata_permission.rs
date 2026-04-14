@@ -68,6 +68,15 @@ pub fn process_reset_ephemeral_ata_permission(
     .invoke()
 }
 
+///
+/// DataLayout:
+///
+///     00..01 : flag_byte (u8)
+///
+/// ValidLength:
+///
+///     >= 01
+///
 pub struct ResetEphemeralAtaPermission<'a> {
     raw: *const u8,
     _data: PhantomData<&'a [u8]>,

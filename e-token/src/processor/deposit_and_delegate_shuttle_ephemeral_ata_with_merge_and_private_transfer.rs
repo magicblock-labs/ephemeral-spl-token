@@ -29,6 +29,9 @@ use crate::processor::utils::read_mint_decimals;
 const BASIS_POINTS_DENOMINATOR: u128 = 10_000;
 const TRANSFER_CHECKED_DISCRIMINATOR: u8 = 12;
 
+///
+/// Executes on: BASE only.
+///
 #[inline(never)]
 pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer(
     accounts: &[AccountView],
@@ -47,6 +50,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
     let (common_accounts, queue_info) =
         parse_deposit_and_delegate_shuttle_private_transfer_accounts(accounts)?;
 
+    // require queue_info to already be delegated to the delegated program.
     assert_owner!(
         queue_info,
         &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID
@@ -68,6 +72,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
         let vault_token = common_accounts.vault_token_info.address().to_string();
         let queue = queue_info.address().to_string();
 
+        // CHECKPOINT: this entire log wont be printed because of message size (see logs on explorer)
         pinocchio_log::log!(
             "Private shuttle ix accounts shuttle={} shuttle_eata={} shuttle_wallet={} mint={} owner_source={} vault_token={} queue={}",
             shuttle.as_str(),
@@ -133,10 +138,11 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
 ///
 ///     00..04 : shuttle_id (u32)
 ///     04..12 : amount (u64)
-///     12.... : validator (Option<Pubkey>; 0: None,  32: Some(..))
-///     ...... : encrypted_destination (&u[8]; len: buffer)
-///     ...... : encrypted_data_suffix (&u[8]; len: buffer)
+///     12.... : validator ([len:u8; PubkeyData]; 0 => None, 32 => Some(Pubkey))
+///     ...... : encrypted_destination [len:u8; buffer: &u[8]]
+///     ...... : encrypted_data_suffix [len:u8; buffer: &u[8]]
 ///
+/// `.....` means variable-length data, including empty/optional segments when len = 0.
 ///
 struct DepositAndDelegateShuttleWithPrivateTransferArgs<'a> {
     raw: *const u8,
