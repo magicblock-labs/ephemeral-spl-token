@@ -12,6 +12,17 @@ const RENT_PDA_AND_BUMP: ([u8; 32], u8) =
 pub const RENT_PDA: Address = Address::new_from_array(RENT_PDA_AND_BUMP.0);
 pub const RENT_PDA_BUMP: u8 = RENT_PDA_AND_BUMP.1;
 
+///
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [signer]            - Keypair : Payer.
+///  1: [writable]          - PDA     : Global rent PDA derived from ["rent"].
+///  2: []                  - Builtin : System program.
+///
+/// Instruction Data: None
+///
 #[inline(always)]
 pub fn process_initialize_rent_pda(
     accounts: &[AccountView],
@@ -21,10 +32,6 @@ pub fn process_initialize_rent_pda(
         return Err(ProgramError::InvalidInstructionData);
     }
 
-    // Expected accounts:
-    // 0. [signer]   Payer
-    // 1. [writable] Global rent PDA derived from ["rent"]
-    // 2. []         System program
     let [payer_info, rent_pda_info, _system_program_info, ..] = accounts else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };

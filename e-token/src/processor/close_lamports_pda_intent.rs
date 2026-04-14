@@ -9,6 +9,20 @@ use crate::{
 
 const DLP_EPHEMERAL_BALANCE_TAG: &[u8] = b"balance";
 
+///
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [writable]          - PDA     : Rent PDA account.
+///  1: [writable]          - PDA     : Lamports PDA account.
+///  2: []                  - Any     : Payer / original authority used in PDA derivation.
+///  3: []                  - Any     : Destination account.
+///  4: []                  - Any     : Escrow authority.
+///  5: [signer]            - PDA     : Escrow signer PDA.
+///
+/// Instruction Data: escrow_index (u8) + salt ([u8; 32])
+///
 #[inline(never)]
 pub fn process_close_lamports_pda_intent(
     accounts: &[AccountView],

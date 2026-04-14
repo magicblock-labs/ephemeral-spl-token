@@ -15,6 +15,33 @@ struct DepositAndDelegateShuttleWithMergeAccounts<'a> {
     pub(crate) destination_token_info: &'a AccountView,
 }
 
+///
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [signer]            - Keypair : Payer.
+///  1: [writable]          - PDA     : Rent PDA account.
+///  2: [writable]          - PDA     : Shuttle metadata account.
+///  3: [writable]          - PDA     : Shuttle EATA account.
+///  4: [writable]          - SPL     : Shuttle wallet ATA account.
+///  5: [signer]            - Keypair : Shuttle owner.
+///  6: []                  - Program : Owner program.
+///  7: [writable]          - PDA     : Buffer account.
+///  8: [writable]          - PDA     : Delegation record account.
+///  9: [writable]          - PDA     : Delegation metadata account.
+/// 10: []                  - Program : Delegation program.
+/// 11: []                  - SPL     : Associated token program.
+/// 12: []                  - Builtin : System program.
+/// 13: [writable]          - SPL     : Destination token account.
+/// 14: []                  - SPL     : Mint account.
+/// 15: []                  - SPL     : Token program.
+/// 16: []                  - PDA     : Global vault account.
+/// 17: [writable]          - SPL     : Owner source token account.
+/// 18: [writable]          - SPL     : Vault token account.
+///
+/// Instruction Data: DepositAndDelegateShuttleArgs
+///
 #[inline(never)]
 pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge(
     accounts: &[AccountView],

@@ -7,20 +7,27 @@ use pinocchio::{address::address_eq, error::ProgramError, AccountView, Address, 
 
 use crate::assert_owner;
 
+///
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [signer]            - Keypair : Payer.
+///  1: []                  - PDA     : Shuttle metadata account (PDA derived from [owner, mint, shuttle_id]).
+///  2: [writable]          - PDA     : Shuttle EATA account (PDA derived from [shuttle_metadata, mint]).
+///  3: []                  - Program : Owner program.
+///  4: [writable]          - PDA     : Buffer account.
+///  5: [writable]          - PDA     : Delegation record account.
+///  6: [writable]          - PDA     : Delegation metadata account.
+///  7: []                  - Program : Delegation program.
+///  8: []                  - Builtin : System program.
+///
+/// Instruction Data: DelegateShuttleArgs
+///
 pub fn process_delegate_shuttle_ephemeral_ata(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    // Expected accounts (in order used below):
-    // 0. [signer]   Payer
-    // 1. []         Shuttle metadata account (PDA [owner, mint, shuttle_id])
-    // 2. [writable] Shuttle EATA account (PDA [shuttle_metadata, mint]) - signer via seeds
-    // 3. []         Owner program (the program owning the delegated PDA)
-    // 4. [writable] Buffer account (used by the delegation program)
-    // 5. [writable] Delegation record account
-    // 6. [writable] Delegation metadata account
-    // 7. []         Delegation program
-    // 8. []         System program
     let args = DelegateShuttleArgs::try_from_bytes(instruction_data)?;
 
     let [payer_info, shuttle_info, ephemeral_ata_info, owner_program, buffer_acc, delegation_record, delegation_metadata, _delegation_program, system_program, ..] =

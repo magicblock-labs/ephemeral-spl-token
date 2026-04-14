@@ -19,19 +19,26 @@ pub const DEFAULT_TRANSFER_QUEUE_ITEMS: u32 = 100;
 pub const DEFAULT_TRANSFER_QUEUE_SIZE_BYTES: u64 =
     (header_len() + item_len() * DEFAULT_TRANSFER_QUEUE_ITEMS as usize) as u64;
 
+///
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [signer]            - Keypair : Payer.
+///  1: [writable]          - PDA     : Transfer queue account (PDA derived from [QUEUE_SEED, mint, validator]).
+///  2: [writable]          - PDA     : Transfer queue permission account.
+///  3: []                  - SPL     : Mint account.
+///  4: []                  - Any     : Validator.
+///  5: []                  - Builtin : System program.
+///  6: []                  - Program : Permission program (ACL).
+///
+/// Instruction Data: InitializeTransferQueueArgs
+///
 #[inline(always)]
 pub fn process_initialize_transfer_queue(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    // Expected accounts:
-    // 0. [signer]   Payer (funds account creation)
-    // 1. [writable] Transfer queue account (PDA derived from [QUEUE_SEED, mint, validator])
-    // 2. [writable] Transfer queue permission account
-    // 3. []         Mint account (seed)
-    // 4. []         Validator
-    // 5. []         System program
-    // 6. []         Permission program (ACL)
     let args = InitializeTransferQueueArgs::try_from_bytes(instruction_data)?;
 
     let [payer_info, queue_info, queue_permission_info, mint_info, validator_info, system_program_info, permission_program_info, ..] =

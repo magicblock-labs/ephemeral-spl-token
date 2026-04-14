@@ -19,15 +19,19 @@ fn commit_and_undelegate_accounts(
     )
 }
 
-/// Undelegate an Ephemeral ATA by calling into the delegation program helper that
-/// schedules a commit and performs undelegation.
 ///
-/// Expected accounts (in order used below):
-/// 0. [signer]   Payer
-/// 1. [writable] User ATA account (SPL ATA for [payer, mint])
-/// 2. [] Ephemeral ATA account (PDA derived from [payer, mint])
-/// 3. [writable] Magic context account (as required by the delegation program)
-/// 4. []         Delegation program ID (aka magic program)
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [signer]            - Keypair : Payer.
+///  1: [writable]          - SPL     : User ATA account.
+///  2: []                  - PDA     : Ephemeral ATA account (PDA derived from [payer, mint]).
+///  3: [writable]          - Any     : Magic context account.
+///  4: []                  - Program : Delegation program ID.
+///
+/// Instruction Data: None
+///
 pub fn process_undelegate_ephemeral_ata(
     accounts: &[AccountView],
     _instruction_data: &[u8],

@@ -23,6 +23,25 @@ use crate::{
     },
 };
 
+///
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [signer]            - Keypair : Payer.
+///  1: [writable]          - PDA     : Rent PDA account.
+///  2: [writable]          - PDA     : Lamports PDA account.
+///  3: []                  - Program : Owner program.
+///  4: [writable]          - PDA     : Buffer account.
+///  5: [writable]          - PDA     : Delegation record account.
+///  6: [writable]          - PDA     : Delegation metadata account.
+///  7: []                  - Program : Delegation program.
+///  8: []                  - Builtin : System program.
+///  9: [writable]          - PDA     : Destination account.
+/// 10: [writable]          - PDA     : Destination delegation record account.
+///
+/// Instruction Data: amount (u64) + salt ([u8; 32])
+///
 #[inline(never)]
 pub fn process_sponsored_lamports_transfer(
     accounts: &[AccountView],

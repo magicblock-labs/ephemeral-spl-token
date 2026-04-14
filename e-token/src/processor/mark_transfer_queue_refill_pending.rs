@@ -22,6 +22,20 @@ use crate::{
     },
 };
 
+///
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [writable]          - PDA     : Rent PDA account.
+///  1: [writable]          - PDA     : Transfer queue refill state account.
+///  2: []                  - Builtin : System program.
+///  3: []                  - Program : Source program (must equal this program).
+///  4: []                  - Any     : Escrow authority.
+///  5: [signer]            - PDA     : Escrow signer PDA.
+///
+/// Instruction Data: escrow_index (u8)
+///
 #[inline(never)]
 pub fn process_mark_transfer_queue_refill_pending(
     accounts: &[AccountView],

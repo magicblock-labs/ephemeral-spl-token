@@ -3,15 +3,22 @@ use pinocchio::{address::address_eq, error::ProgramError, AccountView, ProgramRe
 
 use crate::{assert_owner, assert_signer};
 
+///
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [signer]            - Any     : Owner of the ephemeral ATA.
+///  1: [writable]          - PDA     : Ephemeral ATA account (PDA derived from [owner, mint]).
+///  2: [writable]          - Any     : Recipient account for rent refund.
+///
+/// Instruction Data: None
+///
 #[inline(always)]
 pub fn process_close_ephemeral_ata(
     accounts: &[AccountView],
     _instruction_data: &[u8],
 ) -> ProgramResult {
-    // Expected accounts:
-    // 0. [signer]   Owner of the ephemeral ATA
-    // 1. [writable] Ephemeral ATA account (PDA [owner, mint])
-    // 2. [writable] Recipient account for rent refund
     let [owner_info, ephemeral_ata_info, recipient_info, ..] = accounts else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };

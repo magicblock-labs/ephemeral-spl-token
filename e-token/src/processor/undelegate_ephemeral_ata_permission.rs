@@ -6,15 +6,20 @@ use pinocchio::{address::address_eq, error::ProgramError, AccountView, ProgramRe
 
 use crate::assert_signer;
 
-/// Commit and undelegate the permission PDA associated with an Ephemeral ATA.
 ///
-/// Expected accounts:
-/// 0. [signer]   Payer (authority)
-/// 1. [writable] Ephemeral ATA account (permissioned account)
-/// 2. [writable] Permission PDA (derived from ["permission:", ephemeral_ata])
-/// 3. []         Permission program (ACL)
-/// 4. []         Delegation program (magic program)
-/// 5. [writable] Magic context account
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [signer]            - Keypair : Payer (authority).
+///  1: [writable]          - PDA     : Ephemeral ATA account (permissioned account).
+///  2: [writable]          - PDA     : Permission PDA (derived from ["permission:", ephemeral_ata]).
+///  3: []                  - Program : Permission program (ACL).
+///  4: []                  - Program : Delegation program.
+///  5: [writable]          - Any     : Magic context account.
+///
+/// Instruction Data: None
+///
 pub fn process_undelegate_ephemeral_ata_permission(
     accounts: &[AccountView],
     _instruction_data: &[u8],

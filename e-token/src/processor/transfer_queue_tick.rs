@@ -61,6 +61,15 @@ struct QueueTickState {
 ///
 /// Executes on: BASE only.
 ///
+/// Accounts:
+///
+///  0: [writable]          - PDA     : Transfer queue account, used as the scheduled-action authority.
+///  1: [writable]          - PDA     : Validator magic fee vault PDA derived from ["magic-fee-vault", validator].
+///  2: [writable]          - Any     : Magic context account.
+///  3: []                  - Program : Magic program.
+///
+/// Instruction Data: None
+///
 #[inline(always)]
 pub fn process_transfer_queue_tick(
     accounts: &[AccountView],
@@ -104,11 +113,6 @@ fn derive_associated_token_address(
 
 #[inline(always)]
 fn parse_tick_accounts(accounts: &[AccountView]) -> Result<TickAccounts<'_>, ProgramError> {
-    // Expected accounts:
-    // 0. [writable] Transfer queue PDA, used as the scheduled-action authority
-    // 1. [writable] Validator magic fee vault PDA derived from ["magic-fee-vault", validator]
-    // 2. [writable] Magic context account
-    // 3. []         Magic program
     let [queue_info, magic_fee_vault_info, magic_context_info, magic_program_info, ..] = accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);

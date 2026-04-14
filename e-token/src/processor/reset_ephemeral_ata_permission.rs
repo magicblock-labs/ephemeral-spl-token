@@ -7,19 +7,23 @@ use ephemeral_rollups_pinocchio::acl::{
 use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_initialized};
 use pinocchio::{address::address_eq, error::ProgramError, AccountView, ProgramResult};
 
+///
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [writable]          - PDA     : Ephemeral ATA account (PDA derived from [owner, mint]).
+///  1: [writable]          - PDA     : Permission PDA (derived from ["permission:", ephemeral_ata]).
+///  2: [signer]            - Keypair : Owner (must match the Ephemeral ATA owner).
+///  3: []                  - Program : Permission program (ACL).
+///
+/// Instruction Data: ResetEphemeralAtaPermission
+///
 #[inline(always)]
 pub fn process_reset_ephemeral_ata_permission(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    // Expected accounts:
-    // 0. [writable] Ephemeral ATA account (PDA derived from [owner, mint]) - signer via seeds
-    // 1. [writable] Permission PDA (derived from ["permission:", ephemeral_ata])
-    // 2. [signer]   Owner (must match Ephemeral ATA owner)
-    // 3. []         Permission program (ACL)
-
-    // Instruction data layout:
-    // [0] MemberFlags bitfield encoded via MemberFlags::to_acl_flag_byte.
     let args = ResetEphemeralAtaPermission::try_from_bytes(instruction_data)?;
 
     let [ephemeral_ata_info, permission_info, owner_info, permission_program, ..] = accounts else {

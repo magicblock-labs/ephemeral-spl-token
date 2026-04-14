@@ -24,6 +24,19 @@ const SCHEDULE_CRANK_CPI_ACCOUNTS: usize = 5;
 const SCHEDULE_CRANK_DATA_LEN: usize =
     4 + 8 + 8 + 8 + 8 + 32 + 8 + (PROCESS_QUEUE_TICK_CRANK_ACCOUNTS * 34) + 8 + 1;
 
+///
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [writable, signer]  - Keypair : Payer for the recurring crank.
+///  1: [writable]          - PDA     : Transfer queue account (PDA derived from [QUEUE_SEED, mint, validator]).
+///  2: [writable]          - PDA     : Validator magic fee vault PDA derived from ["magic-fee-vault", validator].
+///  3: [writable]          - Any     : Magic context account.
+///  4: []                  - Program : Magic program.
+///
+/// Instruction Data: None
+///
 #[inline(always)]
 pub fn process_ensure_transfer_queue_crank(
     accounts: &[AccountView],
@@ -33,12 +46,6 @@ pub fn process_ensure_transfer_queue_crank(
         return Err(ProgramError::InvalidInstructionData);
     }
 
-    // Expected accounts:
-    // 0. [writable, signer] Payer for the recurring crank
-    // 1. [writable] Transfer queue PDA derived from [QUEUE_SEED, mint, validator]
-    // 2. [writable] Validator magic fee vault PDA derived from ["magic-fee-vault", validator]
-    // 3. [writable] Magic context account
-    // 4. []         Magic program
     let [payer_info, queue_info, magic_fee_vault_info, magic_context_info, magic_program_info, ..] =
         accounts
     else {

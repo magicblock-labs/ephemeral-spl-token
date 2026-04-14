@@ -7,18 +7,25 @@ use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use crate::assert_owner;
 use crate::processor::utils::{read_mint_decimals, validate_token_account};
 
+///
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [signer]            - Keypair : Owner (must match shuttle metadata owner).
+///  1: [writable]          - SPL     : Destination SPL token account.
+///  2: []                  - PDA     : Shuttle metadata account (PDA derived from [owner, mint, shuttle_id]).
+///  3: [writable]          - SPL     : Shuttle wallet ATA.
+///  4: []                  - SPL     : Mint account.
+///  5: []                  - SPL     : Token program.
+///
+/// Instruction Data: None
+///
 #[inline(always)]
 pub fn process_merge_shuttle_into_ephemeral_ata(
     accounts: &[AccountView],
     _instruction_data: &[u8],
 ) -> ProgramResult {
-    // Expected accounts:
-    // 0. [signer]   Owner (must match shuttle metadata owner)
-    // 1. [writable] Destination SPL token account
-    // 2. []         Shuttle metadata account (PDA [owner, mint, shuttle_id]) - must be program-owned
-    // 3. [writable] Shuttle wallet ATA (source SPL token account owned by shuttle PDA)
-    // 4. []         Mint account
-    // 5. []         Token program
     let [owner_info, destination_token_info, shuttle_info, shuttle_wallet_ata_info, mint_info, token_program_info, ..] =
         accounts
     else {
