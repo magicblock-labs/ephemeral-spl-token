@@ -6,7 +6,7 @@ use ephemeral_rollups_pinocchio::acl::{
 use ephemeral_spl_api::consts::TRANSFER_QUEUE_INITIAL_BUFFER_LAMPORTS;
 use ephemeral_spl_api::require_n_accounts;
 use ephemeral_spl_api::state::transfer_queue::{
-    capacity_from_data_len, header_len, init_queue, item_len, queue_views_checked, TransferQueue,
+    capacity_from_data_len, init_queue, queue_views_checked, TransferQueue, HEADER_LEN, ITEM_LEN,
 };
 use ephemeral_spl_api::{require, require_eq_keys};
 use pinocchio::cpi::Signer;
@@ -18,7 +18,7 @@ use pinocchio_system::instructions::{CreateAccount, Transfer};
 pub const DEFAULT_TRANSFER_QUEUE_ITEMS: u32 = 100;
 /// Default queue size in bytes. (HEADER_LEN + ITEM_LEN * DEFAULT_TRANSFER_QUEUE_ITEMS)
 pub const DEFAULT_TRANSFER_QUEUE_SIZE_BYTES: u64 =
-    (header_len() + item_len() * DEFAULT_TRANSFER_QUEUE_ITEMS as usize) as u64;
+    (HEADER_LEN + ITEM_LEN * DEFAULT_TRANSFER_QUEUE_ITEMS as usize) as u64;
 
 ///
 /// Executes on:
@@ -53,7 +53,7 @@ pub fn process_initialize_transfer_queue(
     let args = InitializeTransferQueueArgs::try_from_bytes(instruction_data)?;
 
     let (requested_items, queue_size) = if let Some(items) = args.requested_items() {
-        (items, header_len() + item_len() * items as usize)
+        (items, HEADER_LEN + ITEM_LEN * items as usize)
     } else {
         (
             DEFAULT_TRANSFER_QUEUE_ITEMS,

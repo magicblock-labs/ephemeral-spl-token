@@ -1,10 +1,10 @@
-use ephemeral_spl_api::state::transfer_queue::{item_len, queue_views_checked, TransferQueue};
+use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, TransferQueue, ITEM_LEN};
 use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
-pub const MAX_ITEMS_PER_REALLOC: usize = 10_240 / item_len();
+pub const MAX_ITEMS_PER_REALLOC: usize = 10_240 / ITEM_LEN;
 
 ///
 /// Executes on:
@@ -42,11 +42,11 @@ pub fn process_allocate_transfer_queue(
         );
 
         let rent = Rent::get()?;
-        let cost_per_item = rent.try_minimum_balance(item_len())? - rent.try_minimum_balance(0)?;
+        let cost_per_item = rent.try_minimum_balance(ITEM_LEN)? - rent.try_minimum_balance(0)?;
         let remaining_capacity =
             queue_info.lamports() - rent.try_minimum_balance(queue_info.data_len())?;
         let current_items = remaining_capacity / cost_per_item;
-        current_items.min(MAX_ITEMS_PER_REALLOC as u64) as usize * item_len()
+        current_items.min(MAX_ITEMS_PER_REALLOC as u64) as usize * ITEM_LEN
     };
 
     queue_info.resize(queue_info.data_len() + realloc_size)?;
