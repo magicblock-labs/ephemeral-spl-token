@@ -1,44 +1,65 @@
 use ephemeral_spl_api::state::load_initialized;
 use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
-use pinocchio::address::address_eq;
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::cpi::Signer;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
-use crate::assert_owner;
 use crate::processor::utils::{read_mint_decimals, validate_token_account};
 
+///
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [signer]            - Keypair : Owner (must match shuttle metadata owner).
+///  1: [writable]          - SPL     : Destination SPL token account.
+///  2: []                  - PDA     : Shuttle metadata account (PDA derived from [owner, mint, shuttle_id]).
+///  3: [writable]          - SPL     : Shuttle wallet ATA.
+///  4: []                  - SPL     : Mint account.
+///  5: []                  - SPL     : Token program.
+///
+/// Instruction Data: None
+///
 #[inline(always)]
 pub fn process_merge_shuttle_into_ephemeral_ata(
     accounts: &[AccountView],
     _instruction_data: &[u8],
 ) -> ProgramResult {
-    // Expected accounts:
-    // 0. [signer]   Owner (must match shuttle metadata owner)
-    // 1. [writable] Destination SPL token account
-    // 2. []         Shuttle metadata account (PDA [owner, mint, shuttle_id]) - must be program-owned
-    // 3. [writable] Shuttle wallet ATA (source SPL token account owned by shuttle PDA)
-    // 4. []         Mint account
-    // 5. []         Token program
-    let [owner_info, destination_token_info, shuttle_info, shuttle_wallet_ata_info, mint_info, token_program_info, ..] =
-        accounts
-    else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
+    let [
+        owner_info, // force multi-line
+        destination_token_info,
+        shuttle_info,
+        shuttle_wallet_ata_info,
+        mint_info,
+        token_program_info,
+    ] = require_n_accounts!(accounts, 6);
 
-    if !owner_info.is_signer() {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
+    require!(
+        owner_info.is_signer(),
+        ProgramError::MissingRequiredSignature
+    );
 
-    assert_owner!(shuttle_info, &crate::ID);
-    assert_owner!(shuttle_wallet_ata_info, token_program_info.address());
-    assert_owner!(destination_token_info, token_program_info.address());
+    require!(
+        shuttle_info.owned_by(&crate::ID),
+        ProgramError::InvalidAccountOwner
+    );
+    require!(
+        shuttle_wallet_ata_info.owned_by(token_program_info.address()),
+        ProgramError::InvalidAccountOwner
+    );
+    require!(
+        destination_token_info.owned_by(token_program_info.address()),
+        ProgramError::InvalidAccountOwner
+    );
 
     let (shuttle_owner, shuttle_id, bump) = {
         let shuttle =
             load_initialized::<ShuttleMetadata>(unsafe { shuttle_info.borrow_unchecked() })?;
-        if shuttle.owner != *owner_info.address() {
-            return Err(ProgramError::IncorrectAuthority);
-        }
+        require_eq_keys!(
+            &shuttle.owner,
+            owner_info.address(),
+            ProgramError::IncorrectAuthority
+        );
         #[allow(clippy::clone_on_copy)]
         let owner = shuttle.owner.clone();
         (owner, shuttle.id, shuttle.bump)
@@ -47,9 +68,11 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
     let shuttle_id_seed = shuttle_id.to_le_bytes();
     let derived_shuttle =
         ShuttleMetadata::derive_pda(&shuttle_owner, mint_info.address(), shuttle_id, bump)?;
-    if !address_eq(&derived_shuttle, shuttle_info.address()) {
-        return Err(ProgramError::InvalidSeeds);
-    }
+    require_eq_keys!(
+        &derived_shuttle,
+        shuttle_info.address(),
+        ProgramError::InvalidSeeds
+    );
 
     let shuttle_amount = {
         let shuttle_ata = validate_token_account(

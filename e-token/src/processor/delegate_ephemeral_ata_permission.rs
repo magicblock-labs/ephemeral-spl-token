@@ -3,40 +3,55 @@ use ephemeral_rollups_pinocchio::acl::{
     pda::permission_pda_from_permissioned_account,
 };
 use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_initialized};
-use pinocchio::{
-    address::address_eq, cpi::Signer, error::ProgramError, AccountView, ProgramResult,
-};
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
+use pinocchio::{cpi::Signer, error::ProgramError, AccountView, ProgramResult};
 
-use crate::assert_signer;
-
+///
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [signer]            - Keypair : Payer (authority).
+///  1: [writable]          - PDA     : Ephemeral ATA account (permissioned account).
+///  2: []                  - Program : Permission program (ACL).
+///  3: [writable]          - PDA     : Permission PDA (derived from ["permission:", ephemeral_ata]).
+///  4: []                  - Builtin : System program.
+///  5: [writable]          - PDA     : Delegation buffer PDA.
+///  6: [writable]          - PDA     : Delegation record PDA.
+///  7: [writable]          - PDA     : Delegation metadata PDA.
+///  8: []                  - Program : Delegation program.
+///  9: []                  - Any     : Validator.
+///
+/// Instruction Data: None
+///
 #[inline(always)]
 pub fn process_delegate_ephemeral_ata_permission(
     accounts: &[AccountView],
     _instruction_data: &[u8],
 ) -> ProgramResult {
-    // Expected accounts:
-    // 0. [signer]   Payer (also authority)
-    // 1. [writable] Ephemeral ATA account (PDA derived from [owner, mint]) - signer via seeds
-    // 2. []         Permission program (ACL)
-    // 3. [writable] Permission PDA (derived from ["permission:", ephemeral_ata])
-    // 4. []         System program
-    // 5. [writable] Delegation buffer PDA (derived from [permission, permission_program])
-    // 6. [writable] Delegation record PDA
-    // 7. [writable] Delegation metadata PDA
-    // 8. []         Delegation program
-    // 9. []         Validator
+    let [
+        payer_info, // force multi-line
+        ephemeral_ata_info,
+        permission_program,
+        permission_info,
+        system_program,
+        delegation_buffer,
+        delegation_record,
+        delegation_metadata,
+        delegation_program,
+        validator,
+    ] = require_n_accounts!(accounts, 10);
 
-    let [payer_info, ephemeral_ata_info, permission_program, permission_info, system_program, delegation_buffer, delegation_record, delegation_metadata, delegation_program, validator, ..] =
-        accounts
-    else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
+    require!(
+        payer_info.is_signer(),
+        ProgramError::MissingRequiredSignature
+    );
 
-    assert_signer!(payer_info);
-
-    if !address_eq(permission_program.address(), &PERMISSION_PROGRAM_ID) {
-        return Err(ProgramError::InvalidAccountData);
-    }
+    require_eq_keys!(
+        &PERMISSION_PROGRAM_ID,
+        permission_program.address(),
+        ProgramError::InvalidAccountData
+    );
 
     let dlp_program = ephemeral_spl_api::program::DELEGATION_PROGRAM_ID;
 
@@ -49,9 +64,12 @@ pub fn process_delegate_ephemeral_ata_permission(
 
     let expected_permission =
         permission_pda_from_permissioned_account(ephemeral_ata_info.address());
-    if !address_eq(&expected_permission, permission_info.address()) {
-        return Err(ProgramError::InvalidSeeds);
-    }
+
+    require_eq_keys!(
+        &expected_permission,
+        permission_info.address(),
+        ProgramError::InvalidSeeds
+    );
 
     let bump = [ephemeral_ata.bump];
     let seeds = EphemeralAta::signer_seeds(&ephemeral_ata.owner, &ephemeral_ata.mint, &bump);

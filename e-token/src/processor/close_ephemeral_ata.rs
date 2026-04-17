@@ -1,33 +1,47 @@
 use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_initialized};
-use pinocchio::{address::address_eq, error::ProgramError, AccountView, ProgramResult};
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
-use crate::{assert_owner, assert_signer};
-
+///
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [signer]            - Any     : Owner of the ephemeral ATA.
+///  1: [writable]          - PDA     : Ephemeral ATA account (PDA derived from [owner, mint]).
+///  2: [writable]          - Any     : Recipient account for rent refund.
+///
+/// Instruction Data: None
+///
 #[inline(always)]
 pub fn process_close_ephemeral_ata(
     accounts: &[AccountView],
     _instruction_data: &[u8],
 ) -> ProgramResult {
-    // Expected accounts:
-    // 0. [signer]   Owner of the ephemeral ATA
-    // 1. [writable] Ephemeral ATA account (PDA [owner, mint])
-    // 2. [writable] Recipient account for rent refund
-    let [owner_info, ephemeral_ata_info, recipient_info, ..] = accounts else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
+    let [
+        owner_info, // force multi-line
+        ephemeral_ata_info,
+        recipient_info,
+    ] = require_n_accounts!(accounts, 3);
 
-    assert_signer!(owner_info);
-    assert_owner!(ephemeral_ata_info, &crate::ID);
+    require!(
+        owner_info.is_signer(),
+        ProgramError::MissingRequiredSignature
+    );
+    require!(
+        ephemeral_ata_info.owned_by(&crate::ID),
+        ProgramError::InvalidAccountOwner
+    );
 
     let (mint, lamports_to_refund, bump) = {
         let ephemeral_ata =
             load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
-        if ephemeral_ata.owner != *owner_info.address() {
-            return Err(ProgramError::IncorrectAuthority);
-        }
-        if ephemeral_ata.amount != 0 {
-            return Err(ProgramError::InvalidArgument);
-        }
+        require_eq_keys!(
+            &ephemeral_ata.owner,
+            owner_info.address(),
+            ProgramError::IncorrectAuthority
+        );
+        require!(ephemeral_ata.amount == 0, ProgramError::InvalidArgument);
 
         #[allow(clippy::clone_on_copy)]
         let mint = ephemeral_ata.mint.clone();
@@ -35,13 +49,16 @@ pub fn process_close_ephemeral_ata(
     };
 
     let derived_pda = EphemeralAta::derive_pda(owner_info.address(), &mint, bump)?;
-    if !address_eq(&derived_pda, ephemeral_ata_info.address()) {
-        return Err(ProgramError::InvalidSeeds);
-    }
+    require_eq_keys!(
+        &derived_pda,
+        ephemeral_ata_info.address(),
+        ProgramError::InvalidSeeds
+    );
 
-    if address_eq(recipient_info.address(), ephemeral_ata_info.address()) {
-        return Err(ProgramError::InvalidArgument);
-    }
+    require!(
+        recipient_info.address() != ephemeral_ata_info.address(),
+        ProgramError::InvalidArgument
+    );
 
     let updated_recipient_lamports = recipient_info
         .lamports()

@@ -1,4 +1,5 @@
 use dlp_api::compact::ClearText;
+use ephemeral_spl_api::require_n_accounts;
 use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use solana_instruction::{AccountMeta, Instruction};
@@ -9,7 +10,7 @@ const TRANSFER_CHECKED_DISCRIMINATOR: u8 = 12;
 use crate::alloc::string::ToString;
 
 use crate::processor::{
-    deposit_and_delegate_shuttle_ephemeral_ata_with_merge::{
+    internal::shuttle_delegation::{
         build_undelegate_and_close_shuttle_instruction,
         delegate_sponsored_shuttle_with_post_actions, prepare_sponsored_shuttle_delegation,
         DepositAndDelegateShuttleArgs,
@@ -17,7 +18,7 @@ use crate::processor::{
     utils::{read_mint_decimals, validate_token_account},
 };
 
-pub(crate) struct WithdrawThroughDelegatedShuttleAccounts<'a> {
+struct WithdrawThroughDelegatedShuttleAccounts<'a> {
     pub(crate) payer_info: &'a AccountView,
     pub(crate) rent_pda_info: &'a AccountView,
     pub(crate) shuttle_info: &'a AccountView,
@@ -34,13 +35,72 @@ pub(crate) struct WithdrawThroughDelegatedShuttleAccounts<'a> {
     pub(crate) token_program_info: &'a AccountView,
 }
 
+///
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [signer]            - Keypair : Payer.
+///  1: [writable]          - PDA     : Rent PDA account.
+///  2: [writable]          - PDA     : Shuttle metadata account.
+///  3: [writable]          - PDA     : Shuttle EATA account.
+///  4: [writable]          - SPL     : Shuttle wallet ATA account.
+///  5: [signer]            - Keypair : Shuttle owner.
+///  6: []                  - Program : Owner program.
+///  7: [writable]          - PDA     : Buffer account.
+///  8: [writable]          - PDA     : Delegation record account.
+///  9: [writable]          - PDA     : Delegation metadata account.
+/// 10: []                  - Program : Delegation program.
+/// 11: []                  - SPL     : Associated token program.
+/// 12: []                  - Builtin : System program.
+/// 13: [writable]          - SPL     : Owner token account.
+/// 14: []                  - SPL     : Mint account.
+/// 15: []                  - SPL     : Token program.
+///
+/// Instruction Data: DepositAndDelegateShuttleArgs
+///
 #[inline(never)]
 pub fn process_withdraw_through_delegated_shuttle_with_merge(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
+    let [
+        payer_info, // force multi-line
+        rent_pda_info,
+        shuttle_info,
+        shuttle_eata_info,
+        shuttle_wallet_ata_info,
+        owner_info,
+        owner_program,
+        buffer_acc,
+        delegation_record,
+        delegation_metadata,
+        _delegation_program,
+        _associated_token_program,
+        system_program,
+        owner_token_info,
+        mint_info,
+        token_program_info,
+    ] = require_n_accounts!(accounts, 16);
+
     let args = DepositAndDelegateShuttleArgs::try_from_bytes(instruction_data)?;
-    let accounts = parse_withdraw_through_delegated_shuttle_accounts(accounts)?;
+
+    let accounts = WithdrawThroughDelegatedShuttleAccounts {
+        payer_info,
+        rent_pda_info,
+        shuttle_info,
+        shuttle_eata_info,
+        shuttle_wallet_ata_info,
+        owner_info,
+        owner_program,
+        buffer_acc,
+        delegation_record,
+        delegation_metadata,
+        system_program,
+        owner_token_info,
+        mint_info,
+        token_program_info,
+    };
 
     let prepared = prepare_sponsored_shuttle_delegation(
         accounts.payer_info,
@@ -116,33 +176,6 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
         shuttle_eata.bump,
         post_actions.cleartext(),
     )
-}
-
-fn parse_withdraw_through_delegated_shuttle_accounts(
-    accounts: &[AccountView],
-) -> Result<WithdrawThroughDelegatedShuttleAccounts<'_>, ProgramError> {
-    let [payer_info, rent_pda_info, shuttle_info, shuttle_eata_info, shuttle_wallet_ata_info, owner_info, owner_program, buffer_acc, delegation_record, delegation_metadata, _delegation_program, _associated_token_program, system_program, owner_token_info, mint_info, token_program_info, ..] =
-        accounts
-    else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
-
-    Ok(WithdrawThroughDelegatedShuttleAccounts {
-        payer_info,
-        rent_pda_info,
-        shuttle_info,
-        shuttle_eata_info,
-        shuttle_wallet_ata_info,
-        owner_info,
-        owner_program,
-        buffer_acc,
-        delegation_record,
-        delegation_metadata,
-        system_program,
-        owner_token_info,
-        mint_info,
-        token_program_info,
-    })
 }
 
 fn transfer_owner_tokens_into_shuttle_action(

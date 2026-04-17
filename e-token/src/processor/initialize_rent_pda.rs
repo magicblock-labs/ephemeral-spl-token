@@ -1,4 +1,3 @@
-use pinocchio::address::address_eq;
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
@@ -6,44 +5,60 @@ use pinocchio::Address;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_system::instructions::CreateAccount;
 
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
+
 pub const RENT_PDA_SEED: &[u8] = b"rent";
 const RENT_PDA_AND_BUMP: ([u8; 32], u8) =
     const_crypto::ed25519::derive_program_address(&[RENT_PDA_SEED], &crate::ID.as_array());
 pub const RENT_PDA: Address = Address::new_from_array(RENT_PDA_AND_BUMP.0);
 pub const RENT_PDA_BUMP: u8 = RENT_PDA_AND_BUMP.1;
 
+///
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [signer]            - Keypair : Payer.
+///  1: [writable]          - PDA     : Global rent PDA derived from ["rent"].
+///  2: []                  - Builtin : System program.
+///
+/// Instruction Data: None
+///
 #[inline(always)]
 pub fn process_initialize_rent_pda(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    if !instruction_data.is_empty() {
-        return Err(ProgramError::InvalidInstructionData);
-    }
+    let [
+        payer_info, // force multi-line
+        rent_pda_info,
+        _system_program_info,
+    ] = require_n_accounts!(accounts, 3);
 
-    // Expected accounts:
-    // 0. [signer]   Payer
-    // 1. [writable] Global rent PDA derived from ["rent"]
-    // 2. []         System program
-    let [payer_info, rent_pda_info, _system_program_info, ..] = accounts else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
+    require!(
+        instruction_data.is_empty(),
+        ProgramError::InvalidInstructionData
+    );
 
     let required_lamports = Rent::get()?.try_minimum_balance(0)?;
-    if !address_eq(rent_pda_info.address(), &RENT_PDA) {
-        return Err(ProgramError::InvalidSeeds);
-    }
+    require_eq_keys!(
+        &RENT_PDA,
+        rent_pda_info.address(),
+        ProgramError::InvalidSeeds
+    );
 
     if is_valid_initialized_rent_pda(rent_pda_info, required_lamports) {
         return Ok(());
     }
 
-    if rent_pda_info.lamports() > 0 {
-        return Err(ProgramError::InvalidAccountData);
-    }
-    if !payer_info.is_signer() {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
+    require!(
+        rent_pda_info.lamports() == 0,
+        ProgramError::InvalidAccountData
+    );
+    require!(
+        payer_info.is_signer(),
+        ProgramError::MissingRequiredSignature
+    );
 
     let bump_seed = [RENT_PDA_BUMP];
     let signer_seeds = [Seed::from(RENT_PDA_SEED), Seed::from(&bump_seed)];

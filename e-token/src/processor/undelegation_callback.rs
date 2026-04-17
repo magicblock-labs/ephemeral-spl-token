@@ -1,20 +1,28 @@
-use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use ephemeral_spl_api::require_n_accounts;
+use pinocchio::{AccountView, ProgramResult};
 
-/// Undelegation callback invoked by the delegation program.
 ///
-/// Expected accounts (in order used below):
-/// 0. []         Payer (original authority for the delegated PDA)
-/// 1. [writable] Delegated PDA account to be restored (Ephemeral ATA PDA)
-/// 2. []         Owner program (this program ID)
-/// 3. [signer]   Undelegate buffer PDA (holds the snapshot of the delegated account)
-/// 4. []         System program
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: []                  - PDA     : Delegated PDA account to be restored.
+///  1: [signer]            - PDA     : Undelegate buffer PDA.
+///  2: []                  - Any     : Payer / original authority.
+///  3: []                  - Builtin : System program.
+///
+/// Instruction Data: delegation-program undelegation callback payload
+///
 pub fn process_undelegation_callback(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let [delegated_acc, buffer_acc, payer, _system_program, ..] = accounts else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
+    let [
+        delegated_acc, // force multi-line
+        buffer_acc,
+        payer,
+        _system_program,
+    ] = require_n_accounts!(accounts, 4);
 
     ephemeral_rollups_pinocchio::instruction::undelegate(
         delegated_acc,

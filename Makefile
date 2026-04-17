@@ -20,10 +20,12 @@ help:
 test-current:
 	rm -f $(CURRENT)
 	METRICS_PATH=$(CURRENT) cargo test-sbf
+	jq -S . $(CURRENT) > $(CURRENT).tmp && mv $(CURRENT).tmp $(CURRENT)
 
 test-baseline:
 	rm -f $(BASELINE)
 	METRICS_PATH=$(BASELINE) cargo test-sbf
+	jq -S . $(BASELINE) > $(BASELINE).tmp && mv $(BASELINE).tmp $(BASELINE)
 
 compare:
 	cargo run -p compare-metrics -- $(COMPARE_ARGS) $(BASELINE) $(CURRENT)

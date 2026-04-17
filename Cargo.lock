@@ -1821,8 +1821,8 @@ dependencies = [
 
 [[package]]
 name = "ephemeral-rollups-pinocchio"
-version = "0.10.2"
-source = "git+https://github.com/magicblock-labs/ephemeral-rollups-sdk.git?rev=5fe4bde4#5fe4bde498fd10a3641a975680a4fbe3c1b372f3"
+version = "0.10.9"
+source = "git+https://github.com/magicblock-labs/ephemeral-rollups-sdk.git?rev=4cd617ed#4cd617edcf814544f57c4477b01f1b2979c63f35"
 dependencies = [
  "bincode 2.0.1",
  "pinocchio 0.10.1",
@@ -1839,6 +1839,7 @@ dependencies = [
  "bytemuck",
  "ephemeral-rollups-pinocchio",
  "pinocchio 0.10.1",
+ "pinocchio-log",
  "pinocchio-pubkey",
  "solana-address 2.0.0",
  "solana-signature 3.1.0",

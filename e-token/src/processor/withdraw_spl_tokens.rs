@@ -1,36 +1,40 @@
-use crate::{assert_owner, assert_signer, processor::utils::read_mint_decimals};
 use core::marker::PhantomData;
-use ephemeral_spl_api::{error::EphemeralSplError, state::load_initialized};
-use pinocchio::{address::address_eq, cpi::Signer};
+use ephemeral_spl_api::{require, require_n_accounts};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
-use {
-    ephemeral_spl_api::state::{
-        ephemeral_ata::load_ephemeral_ata_compat_mut, global_vault::GlobalVault,
-    },
-    pinocchio::{error::ProgramError, AccountView, ProgramResult},
-};
+use crate::processor::internal::token_vault::withdraw_ephemeral_ata_tokens;
 
+///
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [signer]            - Keypair : Owner.
+///  1: [writable]          - PDA     : Ephemeral ATA data account.
+///  2: []                  - PDA     : Global vault account.
+///  3: []                  - SPL     : Mint account.
+///  4: [writable]          - SPL     : Vault source token account.
+///  5: [writable]          - SPL     : User destination token account.
+///  6: []                  - SPL     : Token program.
+///
+/// Instruction Data: WithdrawArgs
+///
 #[inline(always)]
 pub fn process_withdraw_spl_tokens(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    // Expected accounts:
-    // 0. [signer]   Owner (payer, authority to withdraw)
-    // 1. [writable] Ephemeral ATA data account (PDA [owner, mint])
-    // 2. []         Global Vault data account (PDA [mint])
-    // 3. []         Mint account (readonly)
-    // 4. [writable] Vault source token account (SPL Token)
-    // 5. [writable] User destination token account (SPL Token)
-    // 6. []         Token program
+    let [
+        owner, // force multi-line
+        ephemeral_ata_info,
+        vault_info,
+        mint_info,
+        vault_source_token_acc,
+        user_dest_token_acc,
+        token_program_info,
+    ] = require_n_accounts!(accounts, 7);
 
     let args = WithdrawArgs::try_from_bytes(instruction_data)?;
-
-    let [owner, ephemeral_ata_info, vault_info, mint_info, vault_source_token_acc, user_dest_token_acc, token_program_info, ..] =
-        accounts
-    else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
 
     withdraw_ephemeral_ata_tokens(
         owner,
@@ -45,73 +49,15 @@ pub fn process_withdraw_spl_tokens(
     )
 }
 
-#[inline(always)]
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn withdraw_ephemeral_ata_tokens(
-    owner: &AccountView,
-    require_owner_signature: bool,
-    ephemeral_ata_info: &AccountView,
-    vault_info: &AccountView,
-    mint_info: &AccountView,
-    vault_source_token_acc: &AccountView,
-    user_dest_token_acc: &AccountView,
-    token_program_info: &AccountView,
-    amount: u64,
-) -> ProgramResult {
-    if require_owner_signature {
-        assert_signer!(owner);
-    }
-
-    // Validate EphemeralAta account (writable)
-    assert_owner!(ephemeral_ata_info, &crate::ID);
-    let mut ephemeral_ata =
-        load_ephemeral_ata_compat_mut(unsafe { ephemeral_ata_info.borrow_unchecked_mut() })?;
-
-    // Validate vault ownership before reading raw data.
-    assert_owner!(vault_info, &crate::ID);
-
-    // Validate Vault data account
-    let vault = load_initialized::<GlobalVault>(unsafe { vault_info.borrow_unchecked() })?;
-
-    // Check eata consistency
-    if !address_eq(ephemeral_ata.mint(), mint_info.address())
-        || !address_eq(&vault.mint, mint_info.address())
-        || !address_eq(ephemeral_ata.owner(), owner.address())
-        || !address_eq(&vault.token_account, vault_source_token_acc.address())
-    {
-        return Err(EphemeralSplError::EphemeralAtaMismatch.into());
-    }
-
-    // Parse the base mint layout shared by both legacy SPL Token and Token-2022.
-    let decimals = read_mint_decimals(mint_info, token_program_info)?;
-
-    // Perform transfer from vault token account to user destination, signed by vault PDA
-    let bump = [vault.bump];
-    let seeds = GlobalVault::signer_seeds(mint_info.address(), &bump);
-    let signer = Signer::from(&seeds);
-
-    pinocchio_token_2022::instructions::TransferChecked {
-        mint: mint_info,
-        from: vault_source_token_acc,
-        to: user_dest_token_acc,
-        authority: vault_info, // PDA authority over the vault token account
-        token_program: token_program_info.address(),
-        amount,
-        decimals,
-    }
-    .invoke_signed(&[signer])?;
-
-    // Safely decrease the amount in the EphemeralAta
-    let updated_amount = ephemeral_ata
-        .amount()
-        .checked_sub(amount)
-        .ok_or(ProgramError::InvalidArgument)?;
-    ephemeral_ata.set_amount(updated_amount);
-
-    Ok(())
-}
-
-/// Instruction data for the `WithdrawSplTokens` instruction.
+///
+/// DataLayout:
+///
+///     00..08 : amount (u64)
+///
+/// ValidLength:
+///
+///     08
+///
 pub struct WithdrawArgs<'a> {
     raw: *const u8,
     _data: PhantomData<&'a [u8]>,
@@ -120,9 +66,7 @@ pub struct WithdrawArgs<'a> {
 impl WithdrawArgs<'_> {
     #[inline]
     pub fn try_from_bytes(bytes: &[u8]) -> Result<WithdrawArgs<'_>, ProgramError> {
-        if bytes.len() != 8 {
-            return Err(ProgramError::InvalidInstructionData);
-        }
+        require!(bytes.len() == 8, ProgramError::InvalidInstructionData);
         Ok(WithdrawArgs {
             raw: bytes.as_ptr(),
             _data: PhantomData,

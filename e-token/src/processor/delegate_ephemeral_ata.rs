@@ -1,29 +1,41 @@
 use ephemeral_rollups_pinocchio::instruction::DelegateAccountCpiBuilder;
 use ephemeral_rollups_pinocchio::types::DelegateConfig;
+use ephemeral_spl_api::require_n_accounts;
 use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_initialized};
 use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
 
+///
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [signer]            - Keypair : Payer (seed used to derive the Ephemeral ATA PDA).
+///  1: [writable]          - PDA     : Ephemeral ATA account (PDA derived from [payer, mint]).
+///  2: []                  - Program : Owner program.
+///  3: [writable]          - PDA     : Buffer account.
+///  4: [writable]          - PDA     : Delegation record account.
+///  5: [writable]          - PDA     : Delegation metadata account.
+///  6: []                  - Program : Delegation program.
+///  7: []                  - Builtin : System program.
+///
+/// Instruction Data: DelegateArgs
+///
 pub fn process_delegate_ephemeral_ata(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    // Expected accounts (in order used below):
-    // 0. [signer]   Payer (seed used to derive Ephemeral ATA PDA)
-    // 1. [writable] Ephemeral ATA account (PDA derived from [payer, mint]) - signer via seeds
-    // 2. []         Owner program (the program owning the delegated PDA)
-    // 3. [writable] Buffer account (used by the delegation program)
-    // 4. [writable] Delegation record account
-    // 5. [writable] Delegation metadata account
-    // 6. []         Delegation program
-    // 7. []         System program
+    let [
+        payer_info, // force multi-line
+        ephemeral_ata_info,
+        owner_program,
+        buffer_acc,
+        delegation_record,
+        delegation_metadata,
+        _delegation_program,
+        system_program,
+    ] = require_n_accounts!(accounts, 8);
 
     let args = DelegateArgs::try_from_bytes(instruction_data)?;
-
-    let [payer_info, ephemeral_ata_info, owner_program, buffer_acc, delegation_record, delegation_metadata, _delegation_program, system_program] =
-        accounts
-    else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
 
     let delegation_program = ephemeral_spl_api::program::DELEGATION_PROGRAM_ID;
     if ephemeral_ata_info.owned_by(&delegation_program) {
@@ -65,6 +77,15 @@ pub fn process_delegate_ephemeral_ata(
     .invoke()
 }
 
+///
+/// DataLayout:
+///
+///     00..32 : validator (optional [u8; 32])
+///
+/// ValidLength:
+///
+///     00 | 32
+///
 pub struct DelegateArgs {
     validator: Option<[u8; 32]>,
 }

@@ -6,7 +6,7 @@ use ephemeral_rollups_pinocchio::spl::EphemeralAta;
 use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
 use ephemeral_spl_api::state::transfer_queue::{
-    header_len, item_len, queue_views_checked, QueuedTransfer, TransferQueue, TransferQueueHeader,
+    queue_views_checked, QueuedTransfer, TransferQueue, TransferQueueHeader, HEADER_LEN, ITEM_LEN,
 };
 use ephemeral_spl_api::ID as PROGRAM;
 use solana_instruction::{AccountMeta, Instruction};
@@ -42,13 +42,13 @@ struct Fixture {
 }
 
 fn read_header_unaligned(data: &[u8]) -> TransferQueueHeader {
-    assert!(data.len() >= header_len());
+    assert!(data.len() >= HEADER_LEN);
     unsafe { core::ptr::read_unaligned(data.as_ptr() as *const TransferQueueHeader) }
 }
 
 fn read_item_unaligned(data: &[u8], index: usize) -> QueuedTransfer {
-    let offset = header_len() + (index * item_len());
-    assert!(data.len() >= offset + item_len());
+    let offset = HEADER_LEN + (index * ITEM_LEN);
+    assert!(data.len() >= offset + ITEM_LEN);
     unsafe { core::ptr::read_unaligned(data[offset..].as_ptr() as *const QueuedTransfer) }
 }
 

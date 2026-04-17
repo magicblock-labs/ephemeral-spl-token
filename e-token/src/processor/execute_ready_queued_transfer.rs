@@ -5,76 +5,100 @@ use {
     ephemeral_spl_api::state::{
         global_vault::GlobalVault, transfer_queue::QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
     },
+    ephemeral_spl_api::{require, require_eq_keys, require_n_accounts},
     pinocchio::{error::ProgramError, AccountView, ProgramResult},
 };
 
-use crate::{
-    assert_owner, assert_signer,
-    processor::{
-        rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
-        utils::read_mint_decimals,
-    },
+use crate::processor::{
+    initialize_rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
+    internal::token_vault::validate_vault_for_mint,
+    utils::read_mint_decimals,
 };
-use ephemeral_spl_api::state::load_initialized;
-use pinocchio::{
-    address::address_eq,
-    cpi::{Seed, Signer},
-};
+use pinocchio::cpi::{Seed, Signer};
 use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
 
+///
+/// Executes on: BASE only.
+///
+/// Accounts:
+///
+///  0: []                  - PDA     : Global vault account.
+///  1: []                  - SPL     : Mint account.
+///  2: [writable]          - SPL     : Vault token account.
+///  3: []                  - Any     : Destination owner.
+///  4: [writable]          - SPL     : Destination token account.
+///  5: [writable]          - PDA     : Global rent PDA.
+///  6: []                  - SPL     : Token program.
+///  7: []                  - SPL     : Associated token program.
+///  8: []                  - Builtin : System program.
+///  9: []                  - Program : Source program (must equal this program).
+/// 10: []                  - PDA     : Queue PDA authority.
+/// 11: [signer]            - PDA     : Escrow signer PDA.
+///
+/// Instruction Data: ExecuteQueuedTransferArgs
+///
 #[inline(always)]
 pub fn process_execute_ready_queued_transfer(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
+    let [
+        vault_info, // force multi-line
+        mint_info,
+        vault_token_acc_info,
+        destination_owner_info,
+        destination_token_acc_info,
+        rent_pda_info,
+        token_program_info,
+        associated_token_program_info,
+        system_program_info,
+        source_program,
+        escrow_authority,
+        escrow_signer,
+    ] = require_n_accounts!(accounts, 12);
+
     let args = ExecuteQueuedTransferArgs::try_from_bytes(instruction_data)?;
 
-    // Expected accounts:
-    // 0. []         Global vault PDA
-    // 1. []         Mint account
-    // 2. [writable] Vault token account
-    // 3. []         Destination owner
-    // 4. [writable] Destination token account
-    // 5. [writable] Global rent PDA
-    // 6. []         Token program
-    // 7. []         Associated token program
-    // 8. []         System program
-    // 9. []         Source program (must equal this program)
-    // 10. []        Queue PDA authority
-    // 11. [signer]  Escrow signer PDA
-    let [vault_info, mint_info, vault_token_acc_info, destination_owner_info, destination_token_acc_info, rent_pda_info, token_program_info, associated_token_program_info, system_program_info, source_program, escrow_authority, escrow_signer] =
-        accounts
-    else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
+    // Note that accounts [source_program, escrow_authority, escrow_signer] are appended by DLP's
+    // CallHandlerV2 instruction.
+    require_eq_keys!(
+        source_program.address(),
+        &crate::ID,
+        ProgramError::IncorrectAuthority
+    );
 
-    if !address_eq(source_program.address(), &crate::ID) {
-        return Err(ProgramError::IncorrectAuthority);
-    }
-
-    assert_signer!(escrow_signer);
+    require!(
+        escrow_signer.is_signer(),
+        ProgramError::MissingRequiredSignature
+    );
 
     let expected_escrow =
         ephemeral_balance_pda_from_payer(escrow_authority.address(), args.escrow_index());
-    if !address_eq(&expected_escrow, escrow_signer.address()) {
-        return Err(ProgramError::InvalidSeeds);
-    }
+    require_eq_keys!(
+        &expected_escrow,
+        escrow_signer.address(),
+        ProgramError::InvalidSeeds
+    );
 
     if args.should_create_destination_ata_idempotent() {
-        assert_owner!(rent_pda_info, &SYSTEM_PROGRAM_ID);
-        if !address_eq(&RENT_PDA, rent_pda_info.address()) {
-            return Err(ProgramError::InvalidSeeds);
-        }
-        if rent_pda_info.data_len() != 0 {
-            return Err(ProgramError::InvalidAccountData);
-        }
-        if !address_eq(
-            associated_token_program_info.address(),
-            &pinocchio_associated_token_account::ID,
-        ) || !address_eq(system_program_info.address(), &SYSTEM_PROGRAM_ID)
-        {
-            return Err(ProgramError::InvalidAccountData);
-        }
+        require!(
+            rent_pda_info.owned_by(&SYSTEM_PROGRAM_ID),
+            ProgramError::InvalidAccountOwner
+        );
+        require_eq_keys!(
+            &RENT_PDA,
+            rent_pda_info.address(),
+            ProgramError::InvalidSeeds
+        );
+        require!(
+            rent_pda_info.data_len() == 0,
+            ProgramError::InvalidAccountData
+        );
+        require!(
+            associated_token_program_info.address() == &pinocchio_associated_token_account::ID
+                && system_program_info.address() == &SYSTEM_PROGRAM_ID,
+            ProgramError::InvalidAccountData
+        );
 
         let rent_bump_seed = [RENT_PDA_BUMP];
         let rent_signer_seed = [Seed::from(RENT_PDA_SEED), Seed::from(&rent_bump_seed)];
@@ -118,28 +142,17 @@ pub fn process_execute_ready_queued_transfer(
     Ok(())
 }
 
-#[inline(always)]
-pub(crate) fn validate_vault_for_mint(
-    vault_info: &AccountView,
-    mint_info: &AccountView,
-    vault_token_acc_info: &AccountView,
-) -> Result<u8, ProgramError> {
-    assert_owner!(vault_info, &crate::ID);
-
-    let vault = load_initialized::<GlobalVault>(unsafe { vault_info.borrow_unchecked() })?;
-    let derived_vault = GlobalVault::derive_pda(mint_info.address(), vault.bump)?;
-    if !address_eq(&derived_vault, vault_info.address()) {
-        return Err(ProgramError::InvalidSeeds);
-    }
-    if !address_eq(&vault.mint, mint_info.address())
-        || !address_eq(&vault.token_account, vault_token_acc_info.address())
-    {
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    Ok(vault.bump)
-}
-
+///
+/// DataLayout:
+///
+///     00..01 : escrow_index (u8)
+///     01..09 : amount (u64)
+///     09..10 : flags (u8)
+///
+/// ValidLength:
+///
+///     10
+///
 pub struct ExecuteQueuedTransferArgs<'a> {
     raw: *const u8,
     len: usize,
@@ -152,9 +165,10 @@ impl ExecuteQueuedTransferArgs<'_> {
 
     #[inline]
     pub fn try_from_bytes(bytes: &[u8]) -> Result<ExecuteQueuedTransferArgs<'_>, ProgramError> {
-        if bytes.len() != Self::LEN && bytes.len() != Self::LEN_WITH_CLIENT_REF_ID {
-            return Err(ProgramError::InvalidInstructionData);
-        }
+        require!(
+            bytes.len() == Self::LEN || bytes.len() == Self::LEN_WITH_CLIENT_REF_ID,
+            ProgramError::InvalidInstructionData
+        );
 
         Ok(ExecuteQueuedTransferArgs {
             raw: bytes.as_ptr(),

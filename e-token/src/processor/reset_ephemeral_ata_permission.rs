@@ -4,46 +4,63 @@ use ephemeral_rollups_pinocchio::acl::{
     instruction::UpdatePermissionCpiBuilder,
     types::{Member, MemberFlags, MembersArgs},
 };
-use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_initialized};
-use pinocchio::{address::address_eq, error::ProgramError, AccountView, ProgramResult};
+use ephemeral_spl_api::{require, require_eq_keys};
+use ephemeral_spl_api::{
+    require_n_accounts,
+    state::{ephemeral_ata::EphemeralAta, load_initialized},
+};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
+///
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [writable]          - PDA     : Ephemeral ATA account (PDA derived from [owner, mint]).
+///  1: [writable]          - PDA     : Permission PDA (derived from ["permission:", ephemeral_ata]).
+///  2: [signer]            - Keypair : Owner (must match the Ephemeral ATA owner).
+///  3: []                  - Program : Permission program (ACL).
+///
+/// Instruction Data: ResetEphemeralAtaPermission
+///
 #[inline(always)]
 pub fn process_reset_ephemeral_ata_permission(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    // Expected accounts:
-    // 0. [writable] Ephemeral ATA account (PDA derived from [owner, mint]) - signer via seeds
-    // 1. [writable] Permission PDA (derived from ["permission:", ephemeral_ata])
-    // 2. [signer]   Owner (must match Ephemeral ATA owner)
-    // 3. []         Permission program (ACL)
+    let [
+        ephemeral_ata_info, // force multi-line
+        permission_info,
+        owner_info,
+        permission_program,
+    ] = require_n_accounts!(accounts, 4);
 
-    // Instruction data layout:
-    // [0] MemberFlags bitfield encoded via MemberFlags::to_acl_flag_byte.
     let args = ResetEphemeralAtaPermission::try_from_bytes(instruction_data)?;
 
-    let [ephemeral_ata_info, permission_info, owner_info, permission_program, ..] = accounts else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
+    require!(
+        owner_info.is_signer(),
+        ProgramError::MissingRequiredSignature
+    );
 
-    if !owner_info.is_signer() {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
-
-    if !address_eq(permission_program.address(), &PERMISSION_PROGRAM_ID) {
-        return Err(ProgramError::InvalidAccountData);
-    }
+    require_eq_keys!(
+        &PERMISSION_PROGRAM_ID,
+        permission_program.address(),
+        ProgramError::InvalidAccountData
+    );
 
     let ephemeral_ata =
         load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
 
-    if !address_eq(&ephemeral_ata.owner, owner_info.address()) {
-        return Err(ProgramError::IncorrectAuthority);
-    }
+    require_eq_keys!(
+        &ephemeral_ata.owner,
+        owner_info.address(),
+        ProgramError::IncorrectAuthority
+    );
 
-    if permission_info.lamports() == 0 {
-        return Err(ProgramError::InvalidAccountData);
-    }
+    require!(
+        permission_info.lamports() != 0,
+        ProgramError::InvalidAccountData
+    );
 
     let mut members_flag = MemberFlags::from_acl_flag_byte(args.flag_byte());
     members_flag.set(MemberFlags::AUTHORITY);
@@ -68,6 +85,15 @@ pub fn process_reset_ephemeral_ata_permission(
     .invoke()
 }
 
+///
+/// DataLayout:
+///
+///     00..01 : flag_byte (u8)
+///
+/// ValidLength:
+///
+///     >= 01
+///
 pub struct ResetEphemeralAtaPermission<'a> {
     raw: *const u8,
     _data: PhantomData<&'a [u8]>,
@@ -76,9 +102,7 @@ pub struct ResetEphemeralAtaPermission<'a> {
 impl ResetEphemeralAtaPermission<'_> {
     #[inline]
     pub fn try_from_bytes(bytes: &[u8]) -> Result<ResetEphemeralAtaPermission<'_>, ProgramError> {
-        if bytes.is_empty() {
-            return Err(ProgramError::InvalidInstructionData);
-        }
+        require!(!bytes.is_empty(), ProgramError::InvalidInstructionData);
 
         Ok(ResetEphemeralAtaPermission {
             raw: bytes.as_ptr(),

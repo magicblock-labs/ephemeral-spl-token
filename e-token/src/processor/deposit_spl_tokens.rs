@@ -1,39 +1,52 @@
-use ephemeral_spl_api::state::{load_initialized, load_mut_initialized};
-use pinocchio::address::address_eq;
-
 use core::marker::PhantomData;
 
-use crate::{assert_owner, processor::utils::read_mint_decimals};
+use ephemeral_spl_api::state::{load_initialized, load_mut_initialized};
+use ephemeral_spl_api::{require, require_n_accounts};
 
 use {
-    ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, global_vault::GlobalVault},
-    pinocchio::{error::ProgramError, AccountView, Address, ProgramResult},
+    ephemeral_spl_api::state::ephemeral_ata::EphemeralAta,
+    pinocchio::{error::ProgramError, AccountView, ProgramResult},
 };
 
+use crate::processor::internal::token_vault::transfer_to_vault_for_mint;
+
+///
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [writable]          - PDA     : Ephemeral ATA data account.
+///  1: []                  - PDA     : Global vault account.
+///  2: []                  - SPL     : Mint account.
+///  3: [writable]          - SPL     : User source token account.
+///  4: [writable]          - SPL     : Vault destination token account.
+///  5: [signer]            - Keypair : User authority.
+///  6: []                  - SPL     : Token program.
+///
+/// Instruction Data: DepositArgs
+///
 #[inline(always)]
 pub fn process_deposit_spl_tokens(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    // Expected accounts:
-    // 0. [writable] Ephemeral ATA data account (standard EATA or shuttle EATA)
-    // 1. []         Global Vault data account (PDA [mint])
-    // 2. []         Mint account (readonly)
-    // 3. [writable] User source token account (SPL Token)
-    // 4. [writable] Vault destination token account (SPL Token)
-    // 5. [signer]   User authority (owner of source token account)
-    // 6. []         Token program
+    let [
+        ephemeral_ata_info, // force multi-line
+        vault_info,
+        mint_info,
+        user_source_token_acc,
+        vault_token_acc,
+        user_authority,
+        token_program_info,
+    ] = require_n_accounts!(accounts, 7);
 
     let args = DepositArgs::try_from_bytes(instruction_data)?;
 
-    let [ephemeral_ata_info, vault_info, mint_info, user_source_token_acc, vault_token_acc, user_authority, token_program_info, ..] =
-        accounts
-    else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
-
     // Validate EphemeralAta ownership first, before reading raw data.
-    assert_owner!(ephemeral_ata_info, &crate::ID);
+    require!(
+        ephemeral_ata_info.owned_by(&crate::ID),
+        ProgramError::InvalidAccountOwner
+    );
 
     let ephemeral_ata_mint = {
         let ephemeral_ata =
@@ -62,43 +75,15 @@ pub fn process_deposit_spl_tokens(
     Ok(())
 }
 
-#[inline(always)]
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn transfer_to_vault_for_mint(
-    vault_info: &AccountView,
-    mint_info: &AccountView,
-    user_source_token_acc: &AccountView,
-    vault_token_acc: &AccountView,
-    user_authority: &AccountView,
-    token_program_info: &AccountView,
-    expected_mint: &Address,
-    amount: u64,
-) -> ProgramResult {
-    assert_owner!(vault_info, &crate::ID);
-
-    let vault = load_initialized::<GlobalVault>(unsafe { vault_info.borrow_unchecked() })?;
-    if !address_eq(&vault.mint, mint_info.address())
-        || !address_eq(&vault.token_account, vault_token_acc.address())
-        || !address_eq(&vault.mint, expected_mint)
-    {
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    let decimals = read_mint_decimals(mint_info, token_program_info)?;
-
-    pinocchio_token_2022::instructions::TransferChecked {
-        mint: mint_info,
-        from: user_source_token_acc,
-        to: vault_token_acc,
-        authority: user_authority,
-        token_program: token_program_info.address(),
-        amount,
-        decimals,
-    }
-    .invoke()
-}
-
-/// Instruction data for the `DepositSplTokens` instruction.
+///
+/// DataLayout:
+///
+///     00..08 : amount (u64)
+///
+/// ValidLength:
+///
+///     >= 08
+///
 pub struct DepositArgs<'a> {
     raw: *const u8,
     _data: PhantomData<&'a [u8]>,
@@ -107,9 +92,7 @@ pub struct DepositArgs<'a> {
 impl DepositArgs<'_> {
     #[inline]
     pub fn try_from_bytes(bytes: &[u8]) -> Result<DepositArgs<'_>, ProgramError> {
-        if bytes.len() < 8 {
-            return Err(ProgramError::InvalidInstructionData);
-        }
+        require!(bytes.len() >= 8, ProgramError::InvalidInstructionData);
         Ok(DepositArgs {
             raw: bytes.as_ptr(),
             _data: PhantomData,

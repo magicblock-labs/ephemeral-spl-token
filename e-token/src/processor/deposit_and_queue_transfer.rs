@@ -1,8 +1,6 @@
-use crate::processor::deposit_spl_tokens::transfer_to_vault_for_mint;
 use crate::processor::ensure_transfer_queue_crank::derive_queue_crank_task_id;
 use crate::processor::execute_transfer_callback::derive_group_receipt_id;
-use crate::processor::utils::{read_mint_decimals, validate_token_account, MAGIC_VAULT_ID};
-use crate::{assert_associated_token_address, assert_owner, assert_signer};
+use crate::processor::utils::{get_associated_token_address, read_mint_decimals, validate_token_account, MAGIC_VAULT_ID};
 use core::{convert::TryFrom, marker::PhantomData};
 use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
 use ephemeral_rollups_pinocchio::crank::{CrankInstruction, ScheduleCrankArgs, ScheduleCrankCpi};
@@ -14,6 +12,7 @@ use ephemeral_spl_api::state::transfer_queue::{
     queue_len_and_bump_for_mint_with_capacity, queue_push_from_data, queue_views_checked,
     QueuedTransfer, TransferQueue, QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA, QUEUE_SEED,
 };
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::address::address_eq;
 use pinocchio::cpi::{invoke_signed_with_bounds, Seed, Signer};
 use pinocchio::instruction::{InstructionAccount, InstructionView};
@@ -21,35 +20,56 @@ use pinocchio::sysvars::clock::Clock;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_token_2022::instructions::TransferChecked;
+use crate::processor::internal::token_vault::transfer_to_vault_for_mint;
 
 const MILLIS_PER_SECOND: u64 = 1_000;
 
+///
+/// Executes on: ER only.
+///
+/// Accounts:
+///
+///  0: [writable]          - PDA     : Transfer queue account (PDA derived from [QUEUE_SEED, mint, validator]).
+///  1: []                  - PDA     : Global vault account (PDA derived from [mint]).
+///  2: []                  - SPL     : Mint account.
+///  3: [writable]          - SPL     : User source token account.
+///  4: [writable]          - SPL     : Vault destination token account.
+///  5: []                  - Any     : Destination owner or legacy destination ATA.
+///  6: [signer]            - Keypair : Sender authority.
+///  7: []                  - SPL     : Token program.
+///  8: [writable]          - SPL     : Reimbursement token account.
+///  9: []                  - Magic   : Magic program
+///
+/// Instruction Data: DepositAndQueueTransferArgs
+///
 #[inline(always)]
 pub fn process_deposit_and_queue_transfer(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    // Expected accounts:
-    // 0. [writable]            Transfer queue PDA derived from [QUEUE_SEED, mint, validator]
-    // 1. []                    Global vault PDA derived from [mint]
-    // 2. []                    Mint account
-    // 3. [writable]            User source token account
-    // 4. [writable]            Vault destination token account
-    // 5. []                    Destination owner (preferred) or legacy destination ATA
-    // 6. [signer]              Sender authority
-    // 7. []                    Token program
-    // 8. [writable]            Reimbursement token account
-    // 9. []                    Magic program
+    let [
+        queue_info, // force multi-line
+        vault_info,
+        mint_info,
+        user_source_token_acc,
+        vault_token_acc,
+        destination_info,
+        user_authority,
+        token_program_info,
+        reimbursement_token_info,
+        magic_program,
+    ] = require_n_accounts!(accounts, 10);
+
     let args = DepositAndQueueTransferArgs::try_from_bytes(instruction_data)?;
 
-    let [queue_info, vault_info, mint_info, user_source_token_acc, vault_token_acc, destination_info, user_authority, token_program_info, reimbursement_token_info, magic_program, ..] =
-        accounts
-    else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
-
-    assert_signer!(user_authority);
-    assert_owner!(queue_info, &crate::ID);
+    require!(
+        user_authority.is_signer(),
+        ProgramError::MissingRequiredSignature
+    );
+    require!(
+        queue_info.owned_by(&crate::ID),
+        ProgramError::InvalidAccountOwner
+    );
 
     let amount = args.amount();
     validate_deposit_and_queue_transfer_params(
@@ -91,9 +111,11 @@ pub fn process_deposit_and_queue_transfer(
     };
 
     let derived_queue = TransferQueue::derive_pda(mint_info.address(), &validator, bump)?;
-    if !address_eq(&derived_queue, queue_info.address()) {
-        return Err(ProgramError::InvalidSeeds);
-    }
+    require_eq_keys!(
+        &derived_queue,
+        queue_info.address(),
+        ProgramError::InvalidSeeds
+    );
 
     #[cfg(not(feature = "logging"))]
     let _ = (queue_len_before, queue_capacity);
@@ -124,11 +146,14 @@ pub fn process_deposit_and_queue_transfer(
             None,
             Some(token_program_info.address()),
         )?;
-        assert_associated_token_address!(
+        require_eq_keys!(
             destination_info.address(),
-            mint_info.address(),
-            destination_token.owner(),
-            token_program_info.address()
+            &get_associated_token_address(
+                destination_token.owner(),
+                mint_info.address(),
+                token_program_info.address()
+            ),
+            ProgramError::InvalidAccountData
         );
         *destination_token.owner()
     } else {
@@ -165,7 +190,7 @@ pub fn process_deposit_and_queue_transfer(
             client_ref_id,
             task_id: 0,
             flags: args.flags() | QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
-            _pad0: [0; 3],
+            group_id: [0; 3],
         };
         queued_transfer.set_group_id(group_id)?;
 
@@ -290,6 +315,19 @@ fn create_group_receipt(
     )
 }
 
+///
+/// DataLayout:
+///
+///     00..08 : amount (u64)
+///     08..16 : min_delay_ms (u64)
+///     16..24 : max_delay_ms (u64)
+///     24..28 : split (u32)
+///     28..29 : flags (optional u8)
+///
+/// ValidLength:
+///
+///     28 | 29
+///
 pub struct DepositAndQueueTransferArgs<'a> {
     raw: *const u8,
     len: usize,
@@ -304,21 +342,21 @@ impl DepositAndQueueTransferArgs<'_> {
 
     #[inline]
     pub fn try_from_bytes(bytes: &[u8]) -> Result<DepositAndQueueTransferArgs<'_>, ProgramError> {
-        if bytes.len() != Self::LEN
-            && bytes.len() != Self::LEN_WITH_FLAGS
-            && bytes.len() != Self::LEN_WITH_CLIENT_REF_ID
-            && bytes.len() != Self::LEN_WITH_FLAGS_AND_CLIENT_REF_ID
-        {
-            return Err(ProgramError::InvalidInstructionData);
-        }
+        require!(
+            bytes.len() == Self::LEN
+                || bytes.len() == Self::LEN_WITH_FLAGS
+                || bytes.len() == Self::LEN_WITH_CLIENT_REF_ID
+                || bytes.len() == Self::LEN_WITH_FLAGS_AND_CLIENT_REF_ID,
+            ProgramError::InvalidInstructionData
+        );
 
-        if matches!(
-            bytes.len(),
-            Self::LEN_WITH_FLAGS | Self::LEN_WITH_FLAGS_AND_CLIENT_REF_ID
-        ) && (bytes[Self::LEN] & !QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA) != 0
-        {
-            return Err(ProgramError::InvalidInstructionData);
-        }
+        require!(
+            !matches!(
+                bytes.len(),
+                Self::LEN_WITH_FLAGS | Self::LEN_WITH_FLAGS_AND_CLIENT_REF_ID
+            ) || (bytes[Self::LEN] & !QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA) == 0,
+            ProgramError::InvalidInstructionData
+        );
 
         Ok(DepositAndQueueTransferArgs {
             raw: bytes.as_ptr(),
@@ -385,18 +423,20 @@ impl DepositAndQueueTransferArgs<'_> {
 }
 
 #[inline(always)]
-pub(crate) fn validate_deposit_and_queue_transfer_params(
+fn validate_deposit_and_queue_transfer_params(
     amount: u64,
     min_delay_ms: u64,
     max_delay_ms: u64,
     split: u32,
 ) -> ProgramResult {
-    if amount == 0 || split == 0 || (split as u64) > amount {
-        return Err(ProgramError::InvalidInstructionData);
-    }
-    if max_delay_ms < min_delay_ms {
-        return Err(ProgramError::InvalidInstructionData);
-    }
+    require!(
+        amount != 0 && split != 0 && (split as u64) <= amount,
+        ProgramError::InvalidInstructionData
+    );
+    require!(
+        max_delay_ms >= min_delay_ms,
+        ProgramError::InvalidInstructionData
+    );
 
     Ok(())
 }

@@ -9,6 +9,7 @@ edition = { workspace = true }
 
 [dependencies]
 pinocchio = { workspace = true }
+pinocchio-log = { workspace = true }
 pinocchio-pubkey = { workspace = true }
 solana-address = { workspace = true, features = ["bytemuck"] }
 solana-signature = { workspace = true, features = ["bytemuck"] }

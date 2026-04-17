@@ -9,13 +9,10 @@ use ephemeral_spl_api::state::transfer_queue::{
     queue_crank_task_id_from_data, queue_set_crank_task_id_from_data, queue_views_checked,
     TransferQueue,
 };
-use pinocchio::address::address_eq;
+use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::cpi::{invoke_signed_with_bounds, Signer};
 use pinocchio::instruction::{InstructionAccount, InstructionView};
-use pinocchio::Address;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
-
-use crate::{assert_owner, assert_signer};
 
 pub const CRANK_EXECUTION_INTERVAL_MILLIS: i64 = 500;
 
@@ -24,36 +21,59 @@ const SCHEDULE_CRANK_CPI_ACCOUNTS: usize = 5;
 const SCHEDULE_CRANK_DATA_LEN: usize =
     4 + 8 + 8 + 8 + 8 + 32 + 8 + (PROCESS_QUEUE_TICK_CRANK_ACCOUNTS * 34) + 8 + 1;
 
+///
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [writable, signer]  - Keypair : Payer for the recurring crank.
+///  1: [writable]          - PDA     : Transfer queue account (PDA derived from [QUEUE_SEED, mint, validator]).
+///  2: [writable]          - PDA     : Validator magic fee vault PDA derived from ["magic-fee-vault", validator].
+///  3: [writable]          - Any     : Magic context account.
+///  4: []                  - Program : Magic program.
+///
+/// Instruction Data: None
+///
 #[inline(always)]
 pub fn process_ensure_transfer_queue_crank(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    if !instruction_data.is_empty() {
-        return Err(ProgramError::InvalidInstructionData);
-    }
+    let [
+        payer_info, // force multi-line
+        queue_info,
+        magic_fee_vault_info,
+        magic_context_info,
+        magic_program_info,
+    ] = require_n_accounts!(accounts, 5);
 
-    // Expected accounts:
-    // 0. [writable, signer] Payer for the recurring crank
-    // 1. [writable] Transfer queue PDA derived from [QUEUE_SEED, mint, validator]
-    // 2. [writable] Validator magic fee vault PDA derived from ["magic-fee-vault", validator]
-    // 3. [writable] Magic context account
-    // 4. []         Magic program
-    let [payer_info, queue_info, magic_fee_vault_info, magic_context_info, magic_program_info, ..] =
-        accounts
-    else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
+    require!(
+        instruction_data.is_empty(),
+        ProgramError::InvalidInstructionData
+    );
 
-    assert_signer!(payer_info);
-    assert_owner!(queue_info, &crate::ID);
+    // TODO (snawaz): re-review this!
+    //
+    // why do we require payer_info (as signer) if it is not used anywhere?
+    // in the downstream CPI, we use queue_info as authority, that makes queue automation effectively
+    // permissionless (means, literally anyone can invoke it).
+    //
+    // What if attackers repeatedly invoke this current ix?
 
-    if !address_eq(
+    require!(
+        payer_info.is_signer(),
+        ProgramError::MissingRequiredSignature
+    );
+    require!(
+        queue_info.owned_by(&crate::ID),
+        ProgramError::InvalidAccountOwner
+    );
+
+    require_eq_keys!(
         magic_program_info.address(),
         &ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID,
-    ) {
-        return Err(ProgramError::IncorrectProgramId);
-    }
+        ProgramError::IncorrectProgramId
+    );
 
     let (mint, bump, validator) = {
         let data = unsafe { queue_info.borrow_unchecked() };
@@ -62,14 +82,16 @@ pub fn process_ensure_transfer_queue_crank(
     };
 
     let derived_queue = TransferQueue::derive_pda(&mint, &validator, bump)?;
-    if !address_eq(&derived_queue, queue_info.address()) {
-        return Err(ProgramError::InvalidSeeds);
-    }
-    let derived_magic_fee_vault =
-        Address::from(magic_fee_vault_pda_from_validator(&validator.to_bytes().into()).to_bytes());
-    if !address_eq(&derived_magic_fee_vault, magic_fee_vault_info.address()) {
-        return Err(ProgramError::InvalidSeeds);
-    }
+    require_eq_keys!(
+        &derived_queue,
+        queue_info.address(),
+        ProgramError::InvalidSeeds
+    );
+    let derived_magic_fee_vault = magic_fee_vault_pda_from_validator(&validator.to_bytes().into());
+    require!(
+        derived_magic_fee_vault.to_bytes() == magic_fee_vault_info.address().to_bytes(),
+        ProgramError::InvalidSeeds
+    );
 
     let bump_seed = [bump];
     let queue_signer_seeds = TransferQueue::signer_seeds(&mint, &validator, &bump_seed);
@@ -78,6 +100,10 @@ pub fn process_ensure_transfer_queue_crank(
     let crank_task_id = derive_queue_crank_task_id(queue_info.address());
     let data = unsafe { queue_info.borrow_unchecked() };
     if let Some(existing_task_id) = queue_crank_task_id_from_data(data)? {
+        // TODO (snawaz): once we have a way to know the crank status, conditionally
+        // apply this this "cancel-and-reschedule" strategy:
+        //  - if crank is running: return early
+        //  - else: cancel-and-reschedule
         CancelCrankCpi {
             authority: queue_info.clone(),
             task_context: queue_info.clone(),
@@ -125,6 +151,12 @@ pub fn process_ensure_transfer_queue_crank(
     let mut schedule_accounts =
         [const { MaybeUninit::<InstructionAccount>::uninit() }; SCHEDULE_CRANK_CPI_ACCOUNTS];
     unsafe {
+        // TODO (snawaz): re-review this.
+        //
+        // this ix is effectively permissionless (payer_info can be any
+        // signer), but the downstream Magic ScheduleTask/CancelTask authority is
+        // `queue_info`, signed by this program via PDA seeds. so any caller can proxy
+        // queue-authorized crank management through this ix.
         schedule_accounts
             .get_unchecked_mut(0)
             .write(InstructionAccount::writable_signer(queue_info.address()));
@@ -170,6 +202,9 @@ pub fn process_ensure_transfer_queue_crank(
     Ok(())
 }
 
+//
+// TODO (perf): avoid loop, copies, etc.
+//
 #[inline(always)]
 pub(crate) fn derive_queue_crank_task_id(queue_address: &ephemeral_spl_api::Address) -> i64 {
     let mut acc = 0_u64;
