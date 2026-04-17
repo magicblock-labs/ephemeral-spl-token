@@ -12,6 +12,7 @@ import {
   withdrawSpl, initVaultIx, initVaultAtaIx, delegateEphemeralAtaIx, deriveVault, deriveEphemeralAta, deriveVaultAta,
 } from "@magicblock-labs/ephemeral-rollups-sdk";
 import {
+  AddressLookupTableProgram,
   Connection,
   Keypair,
   LAMPORTS_PER_SOL,
@@ -48,6 +49,7 @@ const TRANSFER_QUEUE_RENT_LAMPORTS = LAMPORTS_PER_SOL / 50;
 const PRIVATE_TRANSFER_MAX_DELAY_MS_LIMIT = 10n * 60n * 1000n;
 const TRANSFER_QUEUE_RECENT_SIGNATURE_LIMIT = 5;
 const TRANSFER_QUEUE_STALE_MS = 60_000;
+// Keep these defaults aligned with scripts/create-private-transfer-lut.js. Updating them requires a redeploy.
 const PRIVATE_BASE_TO_BASE_TRANSFER_LOOKUP_TABLES = {
   mainnet: new PublicKey("2J2Pw639kU7U6rj7qUXY5sVXdJqyt4DjEcVxzqmFrFds"),
   devnet: new PublicKey("HFmj4QbofPjhXP2vdnDARDQFw1AucSQTKVAs8df4tkUy"),
@@ -267,6 +269,20 @@ export function resolveRpcConfig(env: AppEnv, cluster?: string): RpcConfig {
   }
 }
 
+function resolvePrivateBaseToBaseTransferLookupTableAddress(env: AppEnv, cluster: "mainnet" | "devnet") {
+  const configuredAddress = cluster === "mainnet"
+    ? parseConfigPublicKey(
+      env.PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE,
+      "PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE",
+    )
+    : parseConfigPublicKey(
+      env.PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE,
+      "PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE",
+    );
+
+  return configuredAddress ?? PRIVATE_BASE_TO_BASE_TRANSFER_LOOKUP_TABLES[cluster];
+}
+
 function parsePublicKey(value: string, fieldName: string) {
   try {
     return new PublicKey(value);
@@ -313,6 +329,19 @@ function parseOptionalAmount(value: string | undefined, fieldName: string) {
 
 function parseOptionalPublicKey(value: string | undefined, fieldName: string) {
   return value ? parsePublicKey(value, fieldName) : undefined;
+}
+
+function parseConfigPublicKey(value: string | undefined, fieldName: string) {
+  if (!value) {
+    return undefined;
+  }
+
+  try {
+    return new PublicKey(value);
+  }
+  catch {
+    throw new ApiError(500, "CONFIG_ERROR", `${fieldName} must be a valid public key`);
+  }
 }
 
 function redactUrls(value: string) {
@@ -519,6 +548,20 @@ function createUnsignedTransaction(
   return transaction;
 }
 
+function collectLookupTableCandidateAddresses(instructions: TransactionInstruction[]) {
+  const addresses = new Set<string>();
+
+  for (const instruction of instructions) {
+    addresses.add(instruction.programId.toBase58());
+
+    for (const key of instruction.keys) {
+      addresses.add(key.pubkey.toBase58());
+    }
+  }
+
+  return addresses;
+}
+
 function serializeTransaction(
   kind: TransactionResponse["kind"],
   sendTo: SendTarget,
@@ -548,6 +591,7 @@ function serializeTransaction(
 }
 
 async function trySerializePrivateBaseToBaseTransferTransactionWithLookupTable(
+  env: AppEnv,
   config: RpcConfig,
   instructions: TransactionInstruction[],
   feePayer: PublicKey,
@@ -558,14 +602,42 @@ async function trySerializePrivateBaseToBaseTransferTransactionWithLookupTable(
     return undefined;
   }
 
-  const lookupTableAddress = PRIVATE_BASE_TO_BASE_TRANSFER_LOOKUP_TABLES[config.cluster];
+  const lookupTableAddress = resolvePrivateBaseToBaseTransferLookupTableAddress(env, config.cluster);
+  const connection = getBaseConnection(config);
 
   try {
-    const lookupTableResponse = await getBaseConnection(config).getAddressLookupTable(lookupTableAddress);
+    const lookupTableResponse = await connection.getAddressLookupTable(lookupTableAddress);
     const lookupTable = lookupTableResponse.value;
 
     if (!lookupTable) {
-      return undefined;
+      throw new Error("lookup table account was not found");
+    }
+
+    const lookupTableAccountInfo = await connection.getAccountInfo(lookupTableAddress, "confirmed");
+
+    if (!lookupTableAccountInfo) {
+      throw new Error("lookup table account info was not found");
+    }
+
+    if (!lookupTableAccountInfo.owner.equals(AddressLookupTableProgram.programId)) {
+      throw new Error("lookup table account has unexpected owner");
+    }
+
+    const lookupTableAddresses = new Set(
+      lookupTable.state.addresses.map((address) => address.toBase58()),
+    );
+    const candidateAddresses = collectLookupTableCandidateAddresses(instructions);
+    let hasExpectedAddress = false;
+
+    for (const address of candidateAddresses) {
+      if (lookupTableAddresses.has(address)) {
+        hasExpectedAddress = true;
+        break;
+      }
+    }
+
+    if (!hasExpectedAddress) {
+      throw new Error("lookup table does not contain any transfer instruction keys");
     }
 
     const transaction = createUnsignedTransaction(instructions, feePayer, blockhash);
@@ -590,7 +662,12 @@ async function trySerializePrivateBaseToBaseTransferTransactionWithLookupTable(
       validator: validator?.toBase58(),
     };
   }
-  catch {
+  catch (error) {
+    console.warn("LUT v0 compilation failed, falling back to legacy", {
+      cluster: config.cluster,
+      lookupTable: lookupTableAddress.toBase58(),
+      message: getSanitizedErrorMessage(error),
+    });
     return undefined;
   }
 }
@@ -838,12 +915,12 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
 
     if (
       !input.legacy
-      && 
-      input.visibility === "private"
+      && input.visibility === "private"
       && input.fromBalance === "base"
       && input.toBalance === "base"
     ) {
       const versionedResponse = await trySerializePrivateBaseToBaseTransferTransactionWithLookupTable(
+        env,
         config,
         instructions,
         feePayer,

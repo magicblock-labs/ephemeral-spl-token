@@ -82,22 +82,26 @@ function parseArgs(argv) {
     freeze: false,
   };
 
-  for (let index = 0; index < argv.length; index += 1) {
+  let index = 0;
+
+  while (index < argv.length) {
     const arg = argv[index];
 
     if (arg === "--help") {
       options.help = true;
+      index += 1;
       continue;
     }
 
     if (arg === "--freeze") {
       options.freeze = true;
+      index += 1;
       continue;
     }
 
     const nextValue = argv[index + 1];
 
-    if (!nextValue || nextValue.startsWith("--")) {
+    if (typeof nextValue === "undefined") {
       throw new Error(`Missing value for ${arg}`);
     }
 
@@ -127,7 +131,7 @@ function parseArgs(argv) {
         throw new Error(`Unknown argument: ${arg}`);
     }
 
-    index += 1;
+    index += 2;
   }
 
   if (!["mainnet", "devnet"].includes(options.cluster)) {
@@ -405,70 +409,80 @@ async function main() {
       payer: payer.publicKey,
       recentSlot,
     });
+  const summary = {
+    status: "prepared",
+    cluster: options.cluster,
+    baseRpcUrl,
+    ephemeralRpcUrl,
+    validator: validator.toBase58(),
+    lookupTable: lookupTableAddress.toBase58(),
+    frozen: false,
+    addressCount: entries.length,
+    mints: mintConfigs.map(({ label, mint }) => ({
+      label,
+      mint: mint.toBase58(),
+    })),
+    addresses: entries.map((entry) => ({
+      address: entry.pubkey.toBase58(),
+      labels: entry.labels,
+    })),
+  };
 
-  await sendSingleInstruction(connection, createInstruction, signers);
+  console.error(`Prepared lookup table ${lookupTableAddress.toBase58()} at slot ${recentSlot}`);
 
-  for (let index = 0; index < addresses.length; index += MAX_EXTEND_ADDRESSES) {
-    const chunk = addresses.slice(index, index + MAX_EXTEND_ADDRESSES);
-    const extendInstruction = AddressLookupTableProgram.extendLookupTable({
-      payer: payer.publicKey,
-      authority: authority.publicKey,
-      lookupTable: lookupTableAddress,
-      addresses: chunk,
-    });
+  try {
+    await sendSingleInstruction(connection, createInstruction, signers);
+    summary.status = "created";
 
-    await sendSingleInstruction(connection, extendInstruction, signers);
-  }
+    for (let index = 0; index < addresses.length; index += MAX_EXTEND_ADDRESSES) {
+      const chunk = addresses.slice(index, index + MAX_EXTEND_ADDRESSES);
+      const extendInstruction = AddressLookupTableProgram.extendLookupTable({
+        payer: payer.publicKey,
+        authority: authority.publicKey,
+        lookupTable: lookupTableAddress,
+        addresses: chunk,
+      });
 
-  const lookupTableResponse = await connection.getAddressLookupTable(lookupTableAddress);
-  const lookupTable = lookupTableResponse.value;
-
-  if (!lookupTable) {
-    throw new Error("Lookup table account was not found after creation");
-  }
-
-  const loadedAddresses = new Set(
-    lookupTable.state.addresses.map((address) => address.toBase58()),
-  );
-
-  for (const entry of entries) {
-    if (!loadedAddresses.has(entry.pubkey.toBase58())) {
-      throw new Error(`Lookup table is missing address ${entry.pubkey.toBase58()}`);
+      await sendSingleInstruction(connection, extendInstruction, signers);
     }
+
+    summary.status = "extended";
+
+    const lookupTableResponse = await connection.getAddressLookupTable(lookupTableAddress);
+    const lookupTable = lookupTableResponse.value;
+
+    if (!lookupTable) {
+      throw new Error("Lookup table account was not found after creation");
+    }
+
+    const loadedAddresses = new Set(
+      lookupTable.state.addresses.map((address) => address.toBase58()),
+    );
+
+    for (const entry of entries) {
+      if (!loadedAddresses.has(entry.pubkey.toBase58())) {
+        throw new Error(`Lookup table is missing address ${entry.pubkey.toBase58()}`);
+      }
+    }
+
+    if (options.freeze) {
+      const freezeInstruction = AddressLookupTableProgram.freezeLookupTable({
+        authority: authority.publicKey,
+        lookupTable: lookupTableAddress,
+      });
+
+      await sendSingleInstruction(connection, freezeInstruction, signers);
+      summary.status = "frozen";
+      summary.frozen = true;
+    }
+
+    console.log(JSON.stringify(summary, null, 2));
   }
-
-  if (options.freeze) {
-    const freezeInstruction = AddressLookupTableProgram.freezeLookupTable({
-      authority: authority.publicKey,
-      lookupTable: lookupTableAddress,
-    });
-
-    await sendSingleInstruction(connection, freezeInstruction, signers);
+  catch (error) {
+    summary.status = "failed";
+    console.error(JSON.stringify(summary, null, 2));
+    throw error;
   }
-
-  console.log(
-    JSON.stringify(
-      {
-        cluster: options.cluster,
-        baseRpcUrl,
-        ephemeralRpcUrl,
-        validator: validator.toBase58(),
-        lookupTable: lookupTableAddress.toBase58(),
-        frozen: options.freeze,
-        addressCount: entries.length,
-        mints: mintConfigs.map(({ label, mint }) => ({
-          label,
-          mint: mint.toBase58(),
-        })),
-        addresses: entries.map((entry) => ({
-          address: entry.pubkey.toBase58(),
-          labels: entry.labels,
-        })),
-      },
-      null,
-      2,
-    ),
-  );
 }
 
 main().catch((error) => {
