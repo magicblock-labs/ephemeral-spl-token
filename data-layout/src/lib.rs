@@ -14,9 +14,20 @@ mod fixed_layout;
 ///     shuttle_id: u32,
 ///     amount: u64,
 ///     validator: Option<[u8; 32]>,
+///     #[vardata(capacity = 72)]
+///     encrypted_destination: Vec<u8>,
+///     #[vardata(flexible = 1)]
+///     encrypted_data_suffix: Vec<u8>,
+/// }
+///
+/// #[fixed_offset_layout(assert_len = 253)]
+/// struct DepositAndDelegateShuttleWithPrivateTransferArgs {
+///     shuttle_id: u32,
+///     amount: u64,
+///     validator: Option<[u8; 32]>,
 ///     #[capacity = 72]
 ///     encrypted_destination: Vec<u8>,
-///     #[capacity = flexible]
+///     #[flexible = 1]
 ///     encrypted_data_suffix: Vec<u8>,
 /// }
 ///

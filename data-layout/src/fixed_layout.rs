@@ -1,12 +1,14 @@
 use proc_macro2::Span;
 use quote::{format_ident, quote, ToTokens};
 use syn::{
-    spanned::Spanned, Attribute, Expr, ExprLit, ExprPath, Fields, GenericArgument, Ident,
-    ItemStruct, Lit, LitInt, Path, PathArguments, Type, TypePath,
+    spanned::Spanned, Attribute, Expr, ExprLit, Fields, GenericArgument, Ident, ItemStruct, Lit,
+    LitInt, PathArguments, Type, TypePath,
 };
 
+const FIELD_ATTRIBUTES: &[&str] = &["capacity", "flexible"];
+
 // [capacity = flexible] array-len is always encoded as 2-bytes
-const FLEXIBLE_LEN_WIDTH: usize = 2;
+const MAX_LEN_WIDTH: usize = 2;
 
 const MAX_CAPACITY: usize = 0xffff;
 
@@ -18,7 +20,8 @@ pub(crate) fn expand_fixed_offset_layout(
     let mut emitted_input = input.clone();
     emitted_input
         .attrs
-        .retain(|attr| !attr.path().is_ident("fixed_layout"));
+        .retain(|attr| !attr.path().is_ident("fixed_offset_layout"));
+
     ensure_allow_dead_code(&mut emitted_input.attrs);
 
     let struct_name = &emitted_input.ident;
@@ -47,13 +50,12 @@ pub(crate) fn expand_fixed_offset_layout(
     let field_count = fields.named.len();
     for (index, field) in fields.named.iter_mut().enumerate() {
         let field_ident = field.ident.as_ref().expect("named field");
-        reject_max_len(field)?;
 
         let is_last_field = index + 1 == field_count;
 
         let layout = parse_field_layout(field, is_last_field)?;
 
-        strip_capacity_attr(&mut field.attrs);
+        strip_field_attr(&mut field.attrs);
 
         match layout.check_borrow_alignment(offset, field_ident) {
             Ok(Some(issue)) => {
@@ -86,21 +88,24 @@ pub(crate) fn expand_fixed_offset_layout(
         offset += layout.slot_min_len();
         offsets.push(offset);
 
-        if let Some(slot_len) = layout.slot_len_expr() {
-            total_len_expr = if total_len_expr.is_empty() {
-                quote!(#slot_len)
-            } else {
-                quote!(#total_len_expr + #slot_len)
-            };
-        } else if is_last_field {
-            flexible_field = Some(field_ident);
-            total_len_expr = if total_len_expr.is_empty() {
-                quote!(#FLEXIBLE_LEN_WIDTH)
-            } else {
-                quote!(#total_len_expr + #FLEXIBLE_LEN_WIDTH)
-            };
-        } else {
-            unreachable!();
+        match layout.slot_len_expr() {
+            Ok(slot_len) => {
+                total_len_expr = if total_len_expr.is_empty() {
+                    quote!(#slot_len)
+                } else {
+                    quote!(#total_len_expr + #slot_len)
+                };
+            }
+            Err(len_width) => {
+                assert!(is_last_field, "field must the last item");
+
+                flexible_field = Some((field_ident, len_width)); 
+                total_len_expr = if total_len_expr.is_empty() {
+                    quote!(#len_width)
+                } else {
+                    quote!(#total_len_expr + #len_width)
+                };
+            }
         }
     }
 
@@ -108,7 +113,7 @@ pub(crate) fn expand_fixed_offset_layout(
         let field_count = usize_lit(field_count);
         quote!(#field_count)
     };
-    let (offsets_expr, datalen_const_expr) = {
+    let (offsets_expr, datalen) = {
         // I could use offsets directly but that generates the code littered
         // with usize suffixes, e.g:
         //
@@ -116,13 +121,13 @@ pub(crate) fn expand_fixed_offset_layout(
         //
         // I hate this, which is why I'm converting Vec<usize> into Vec<LitInt>.
         //
+        let datalen = offsets.pop().unwrap();
         let mut offsets: Vec<_> = offsets.into_iter().map(usize_lit).collect();
 
         // the last one isn't offset to any member, but
         // actually represents the size of the struct
-        let datalen = offsets.pop().unwrap();
 
-        (quote! { [#(#offsets),*] }, quote!(#datalen))
+        (quote! { [#(#offsets),*] }, datalen)
     };
 
     if let Some(err) = layout_error {
@@ -131,32 +136,33 @@ pub(crate) fn expand_fixed_offset_layout(
 
     let where_clause = impl_where_clause(&where_bounds);
 
-    let msg = format!("Sum of encodable-sizes must be {}.", datalen_const_expr);
+    let msg = format!("Sum of encodable-sizes must be {}.", datalen);
 
-    let (datalen_var, datalen_check, check_logfmt, encoding_buf_var, encoding_ret_ty) =
-        if let Some(flexible_field) = flexible_field {
+    let (datalen_vars, datalen_check, check_logfmt, encoding_buf_var, encoding_ret_ty) =
+        if let Some((flexible_field, len_width)) = flexible_field {
+            let max_datalen = datalen + 2usize.pow(len_width as u32 * 8) - 1;
             let logfmt = format!(
-                "bytes [len={{}}] cannot be deserialized to {} which needs at least {} bytes",
-                struct_name, datalen_const_expr
+                "bytes [len={{}}] cannot be deserialized to {} which needs at least {} or at most {} ytes",
+                 struct_name, datalen, max_datalen 
             );
             (
-                quote!(MIN_DATA_LEN),
-                quote!(bytes.len() < Self::MIN_DATA_LEN),
+                quote!(pub const MIN_DATA_LEN: usize = #total_len_expr; pub const MAX_DATA_LEN: usize = #max_datalen;),
+                quote!(bytes.len() < Self::MIN_DATA_LEN || bytes.len() > Self::MAX_DATA_LEN),
                 logfmt,
-                quote!(vec![0; #datalen_const_expr + self.#flexible_field.len()]),
+                quote!(vec![0; #datalen + self.#flexible_field.len()]),
                 quote!(Vec<u8>),
             )
         } else {
             let logfmt = format!(
                 "bytes [len={{}}] cannot be deserialized to {} which needs exactly {} bytes",
-                struct_name, datalen_const_expr
+                struct_name, datalen
             );
             (
-                quote!(DATA_LEN),
+                quote!(pub const DATA_LEN: usize = #total_len_expr;),
                 quote!(bytes.len() != Self::DATA_LEN),
                 logfmt,
-                quote!([0; #datalen_const_expr]),
-                quote!([u8; #datalen_const_expr]),
+                quote!([0; #datalen]),
+                quote!([u8; #datalen]),
             )
         };
 
@@ -165,7 +171,7 @@ pub(crate) fn expand_fixed_offset_layout(
 
         impl #struct_name {
             #[doc = #msg]
-            pub const #datalen_var: usize = #total_len_expr;
+            #datalen_vars 
 
             #[doc = "Byte offsets marking the start of each field"]
             pub const OFFSETS: [usize; #field_count_expr] = #offsets_expr;
@@ -461,11 +467,12 @@ impl FixedFieldKind {
         }
     }
 
-    fn slot_len_expr(&self) -> Option<proc_macro2::TokenStream> {
+    // return len_expr or
+    fn slot_len_expr(&self) -> Result<proc_macro2::TokenStream, usize> {
         match self {
             Self::Value { value, optional } => {
                 let ty = value.ty();
-                Some(if *optional {
+                Ok(if *optional {
                     quote!((1 + core::mem::size_of::<#ty>()))
                 } else {
                     quote!(core::mem::size_of::<#ty>())
@@ -477,6 +484,7 @@ impl FixedFieldKind {
                 capacity
                     .comptime_capacity_lit()
                     .map(|cap| quote!((#len_width_lit + core::mem::size_of::<#elem_ty>() * #cap)))
+                    .ok_or(capacity.len_width())
             }
         }
     }
@@ -662,7 +670,7 @@ impl FixedFieldKind {
 
 fn parse_field_layout(field: &syn::Field, is_last_field: bool) -> syn::Result<FixedFieldKind> {
     let ty = &field.ty;
-    let capacity = capacity_attr(field)?;
+    let capacity = Capacity::parse_field_attr(field, is_last_field)?;
 
     if let Some(elem_ty) = vec_inner(ty)? {
         let capacity = capacity.ok_or_else(|| {
@@ -672,19 +680,6 @@ fn parse_field_layout(field: &syn::Field, is_last_field: bool) -> syn::Result<Fi
             )
         })?;
 
-        if let Capacity::Value(capacity) = capacity {
-            if capacity > MAX_CAPACITY {
-                return Err(syn::Error::new(
-             field.span(),
-             "capacity above 0xFFFF is not supported implying len_width can be at max 2 bytes",
-         ));
-            }
-        } else if !is_last_field {
-            return Err(syn::Error::new_spanned(
-                field,
-                "#[capacity = flexible] is applicable on the last field which has to be Vec",
-            ));
-        };
         return Ok(FixedFieldKind::Vec {
             elem: parse_value_kind(elem_ty)?,
             capacity,
@@ -781,44 +776,45 @@ fn impl_where_clause(bounds: &[proc_macro2::TokenStream]) -> proc_macro2::TokenS
     }
 }
 
-fn reject_max_len(field: &syn::Field) -> syn::Result<()> {
-    for attr in &field.attrs {
-        if attr.path().is_ident("max_len") {
-            return Err(syn::Error::new_spanned(
-                attr,
-                "#[max_len] is not used by fixed_layout",
-            ));
-        }
-    }
-    Ok(())
-}
-
-fn strip_capacity_attr(attrs: &mut Vec<Attribute>) {
-    attrs.retain(|attr| !attr.path().is_ident("capacity"));
+fn strip_field_attr(attrs: &mut Vec<Attribute>) {
+    attrs.retain(|attr| !FIELD_ATTRIBUTES.iter().any(|a| attr.path().is_ident(a)));
 }
 
 #[derive(Copy, Clone)]
 enum Capacity {
-    Value(usize),
-    Flexible,
+    Fixed { capacity: usize },
+    Flexible { len_width: usize },
 }
 
 impl Capacity {
-    fn comptime_capacity(&self) -> Option<usize> {
-        let Capacity::Value(val) = self else {
-            return None;
-        };
-        Some(*val)
+    fn capacity(self) -> usize {
+        match self {
+            Capacity::Fixed { capacity } => capacity,
+            Capacity::Flexible { len_width } => 2usize.pow(len_width as u32 * 8) - 1,
+        }
+    }
+    fn comptime_capacity(self) -> Option<usize> {
+        match self {
+            Capacity::Fixed { capacity } => Some(capacity),
+            Capacity::Flexible { len_width: _ } => None,
+        }
     }
 
     fn comptime_capacity_lit(&self) -> Option<LitInt> {
         self.comptime_capacity().map(usize_lit)
     }
 
-    fn len_width(&self) -> usize {
-        self.comptime_capacity()
-            .map(|value| if value <= 0xff { 1 } else { 2 })
-            .unwrap_or(FLEXIBLE_LEN_WIDTH)
+    fn len_width(self) -> usize {
+        match self {
+            Capacity::Fixed { capacity } => {
+                if capacity <= 0xff {
+                    1
+                } else {
+                    2
+                }
+            }
+            Capacity::Flexible { len_width } => len_width,
+        }
     }
 
     fn len_width_lit(&self) -> LitInt {
@@ -832,52 +828,90 @@ impl Capacity {
             _ => unreachable!(),
         }
     }
-}
 
-fn capacity_attr(field: &syn::Field) -> syn::Result<Option<Capacity>> {
-    for attr in &field.attrs {
-        if !attr.path().is_ident("capacity") {
-            continue;
+    fn parse_field_attr(field: &syn::Field, is_last_field: bool) -> syn::Result<Option<Capacity>> {
+        let mut capacity = None;
+        let mut flexible = None;
+        for attr in &field.attrs {
+            if attr.path().is_ident("capacity") {
+                let syn::Meta::NameValue(meta) = &attr.meta else {
+                    return Err(syn::Error::new_spanned(
+                        attr,
+                        "capacity must use the form `#[capacity = IntLiteral]`",
+                    ));
+                };
+                let Expr::Lit(ExprLit {
+                    lit: Lit::Int(lit_int),
+                    ..
+                }) = &meta.value
+                else {
+                    return Err(syn::Error::new_spanned(
+                        attr,
+                        "capacity must use the form `#[capacity = IntLiteral]`",
+                    ));
+                };
+
+                let cap: usize = lit_int.base10_parse()?;
+
+                if cap > MAX_CAPACITY {
+                    return Err(syn::Error::new(
+                        field.span(),
+                        "capacity above 0xFFFF is not supported (because len_width <= 2)",
+                    ));
+                }
+
+                capacity = Some(cap);
+            } else if attr.path().is_ident("flexible") {
+                if !is_last_field {
+                    return Err(syn::Error::new_spanned(
+                        field,
+                        "#[flexible] is applicable on the last field only if it is a Vec type",
+                    ));
+                }
+                let syn::Meta::NameValue(meta) = &attr.meta else {
+                    return Err(syn::Error::new_spanned(
+                        attr,
+                        "flexible must use the form `#[flexible = 1|2]`",
+                    ));
+                };
+                let Expr::Lit(ExprLit {
+                    lit: Lit::Int(lit_int),
+                    ..
+                }) = &meta.value
+                else {
+                    return Err(syn::Error::new_spanned(
+                        attr,
+                        "flexible must use the form `#[flexible = 1|2]`",
+                    ));
+                };
+
+                let len_width: usize = lit_int.base10_parse()?;
+
+                if len_width > MAX_LEN_WIDTH {
+                    return Err(syn::Error::new(
+                        field.span(),
+                        "flexible must be either 1 or 2",
+                    ));
+                }
+                flexible = Some(len_width);
+            }
         }
 
-        //if capacity.is_some() {
-        //    return Err(syn::Error::new_spanned(
-        //        attr,
-        //        "duplicate `#[capacity = N]` on fixed_layout field",
-        //    ));
-        //}
-
-        let syn::Meta::NameValue(meta) = &attr.meta else {
+        if capacity.is_some() && flexible.is_some() {
             return Err(syn::Error::new_spanned(
-                attr,
-                "capacity must use the form `#[capacity = N]`",
+                field,
+                "#[capacity] and #[flexible] cannot be used together]",
             ));
-        };
+        }
 
-        match &meta.value {
-            Expr::Path(ExprPath {
-                path: Path { segments, .. },
-                ..
-            }) => {
-                if segments.len() == 1 && segments[0].ident.to_string() == "flexible" {
-                    return Ok(Some(Capacity::Flexible));
-                }
-                return Err(syn::Error::new_spanned(
-                    attr,
-                    "capacity must use the form `#[capacity = N]`",
-                ));
-            }
-            Expr::Lit(ExprLit {
-                lit: Lit::Int(lit_int),
-                ..
-            }) => {
-                return Ok(Some(Capacity::Value(lit_int.base10_parse()?)));
-            }
-            _ => {}
-        };
+        if let Some(capacity) = capacity {
+            Ok(Some(Capacity::Fixed { capacity }))
+        } else if let Some(len_width) = flexible {
+            Ok(Some(Capacity::Flexible { len_width }))
+        } else {
+            Ok(None)
+        }
     }
-
-    Ok(None)
 }
 
 fn option_inner(ty: &Type) -> Option<&Type> {
