@@ -112,7 +112,7 @@ export const requiredAuthTokenSchema = z.object({
 
 export const transactionResponseSchema = z.object({
   kind: z.enum(["deposit", "withdraw", "transfer"]),
-  version: z.literal("legacy"),
+  version: z.enum(["legacy", "v0"]),
   transactionBase64: z.string(),
   sendTo: balanceLocationSchema,
   recentBlockhash: z.string(),
@@ -271,6 +271,9 @@ export const transferRequestSchema = z.object({
   split: z.int().positive().max(15).openapi({
     example: 1,
     description: "Optional. Private transfer only. Defaults to 1. Must be between 1 and 15.",
+  }).optional(),
+  legacy: z.boolean().openapi({
+    description: "Optional. Defaults to false. When true, skips lookup-table compilation and returns a legacy transaction.",
   }).optional(),
 }).openapi("TransferRequest", {
   example: {

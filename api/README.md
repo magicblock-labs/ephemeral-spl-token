@@ -151,6 +151,37 @@ curl http://127.0.0.1:8787/reference
 - `yarn typecheck`: TypeScript check
 - `yarn test`: run Vitest suite
 - `yarn deploy`: deploy with Wrangler, uploading Worker secrets from `.prod.vars`
+- `yarn create:private-transfer-lut -- [options]`: create a reusable address lookup table for private `base -> base` transfers covering SOL and USDC
+
+## Private Transfer LUT Script
+
+The repo includes [scripts/create-private-transfer-lut.js](./scripts/create-private-transfer-lut.js) for creating a reusable lookup table for private `base -> base` transfers.
+
+Defaults:
+
+- loads RPC URLs from `.dev.vars`
+- targets `mainnet` unless `--cluster devnet` is passed
+- resolves `validator` from the selected ephemeral RPC unless `--validator` is provided
+- includes SOL and USDC mint-specific accounts plus the shared program/global accounts
+- leaves the LUT mutable by default; pass `--freeze` to freeze it after extending
+
+Examples:
+
+```bash
+yarn create:private-transfer-lut -- --cluster mainnet
+yarn create:private-transfer-lut -- --cluster devnet
+yarn create:private-transfer-lut -- --cluster mainnet --freeze
+```
+
+Useful overrides:
+
+```bash
+yarn create:private-transfer-lut -- \
+  --cluster mainnet \
+  --payer ~/.config/solana/id.json \
+  --authority ~/.config/solana/lut-authority.json \
+  --validator <VALIDATOR_PUBKEY>
+```
 
 ## API Documentation
 

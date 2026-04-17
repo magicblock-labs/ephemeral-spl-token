@@ -1,4 +1,5 @@
 import {
+  compileLegacyTransactionToV0,
   delegateTransferQueueIx,
   deriveRentPda,
   deriveTransferQueue,
@@ -47,6 +48,10 @@ const TRANSFER_QUEUE_RENT_LAMPORTS = LAMPORTS_PER_SOL / 50;
 const PRIVATE_TRANSFER_MAX_DELAY_MS_LIMIT = 10n * 60n * 1000n;
 const TRANSFER_QUEUE_RECENT_SIGNATURE_LIMIT = 5;
 const TRANSFER_QUEUE_STALE_MS = 60_000;
+const PRIVATE_BASE_TO_BASE_TRANSFER_LOOKUP_TABLES = {
+  mainnet: new PublicKey("2J2Pw639kU7U6rj7qUXY5sVXdJqyt4DjEcVxzqmFrFds"),
+  devnet: new PublicKey("HFmj4QbofPjhXP2vdnDARDQFw1AucSQTKVAs8df4tkUy"),
+} as const;
 
 const connectionCache = new Map<string, Connection>();
 const validatorCache = new Map<string, Promise<PublicKey | undefined>>();
@@ -66,7 +71,7 @@ type RpcConfig = {
 
 type TransactionResponse = {
   kind: "deposit" | "withdraw" | "transfer" | "initializeMint";
-  version: "legacy";
+  version: "legacy" | "v0";
   transactionBase64: string;
   sendTo: SendTarget;
   recentBlockhash: string;
@@ -125,6 +130,7 @@ type TransferInput = {
   maxDelayMs?: string;
   clientRefId?: string;
   split?: number;
+  legacy?: boolean;
 };
 
 type BalanceInput = {
@@ -501,6 +507,18 @@ function throwTransactionBuildError(error: unknown): never {
   throw new ApiError(400, "TRANSACTION_BUILD_ERROR", message);
 }
 
+function createUnsignedTransaction(
+  instructions: TransactionInstruction[],
+  feePayer: PublicKey,
+  blockhash: BlockhashResult,
+) {
+  const transaction = new Transaction();
+  transaction.feePayer = feePayer;
+  transaction.recentBlockhash = blockhash.blockhash;
+  transaction.add(...instructions);
+  return transaction;
+}
+
 function serializeTransaction(
   kind: TransactionResponse["kind"],
   sendTo: SendTarget,
@@ -509,10 +527,7 @@ function serializeTransaction(
   blockhash: BlockhashResult,
   validator?: PublicKey,
 ): TransactionResponse {
-  const transaction = new Transaction();
-  transaction.feePayer = feePayer;
-  transaction.recentBlockhash = blockhash.blockhash;
-  transaction.add(...instructions);
+  const transaction = createUnsignedTransaction(instructions, feePayer, blockhash);
 
   return {
     kind,
@@ -530,6 +545,54 @@ function serializeTransaction(
     requiredSigners: getRequiredSigners(feePayer, instructions),
     validator: validator?.toBase58(),
   };
+}
+
+async function trySerializePrivateBaseToBaseTransferTransactionWithLookupTable(
+  config: RpcConfig,
+  instructions: TransactionInstruction[],
+  feePayer: PublicKey,
+  blockhash: BlockhashResult,
+  validator?: PublicKey,
+): Promise<TransactionResponse | undefined> {
+  if (config.cluster === "custom") {
+    return undefined;
+  }
+
+  const lookupTableAddress = PRIVATE_BASE_TO_BASE_TRANSFER_LOOKUP_TABLES[config.cluster];
+
+  try {
+    const lookupTableResponse = await getBaseConnection(config).getAddressLookupTable(lookupTableAddress);
+    const lookupTable = lookupTableResponse.value;
+
+    if (!lookupTable) {
+      return undefined;
+    }
+
+    const transaction = createUnsignedTransaction(instructions, feePayer, blockhash);
+    const compiled = compileLegacyTransactionToV0({
+      transaction,
+      lookupTables: [lookupTable],
+    });
+
+    if (compiled.usedLookupTables.length === 0 || compiled.bytesSaved <= 0) {
+      return undefined;
+    }
+
+    return {
+      kind: "transfer",
+      version: "v0",
+      transactionBase64: Buffer.from(compiled.transaction.serialize()).toString("base64"),
+      sendTo: "base",
+      recentBlockhash: blockhash.blockhash,
+      lastValidBlockHeight: blockhash.lastValidBlockHeight,
+      instructionCount: instructions.length,
+      requiredSigners: getRequiredSigners(feePayer, instructions),
+      validator: validator?.toBase58(),
+    };
+  }
+  catch {
+    return undefined;
+  }
 }
 
 export async function buildDepositTransaction(env: AppEnv, input: DepositInput) {
@@ -772,6 +835,26 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
       })),
       ...(input.memo !== undefined ? [createMemoInstruction(input.memo)] : []),
     ];
+
+    if (
+      !input.legacy
+      && 
+      input.visibility === "private"
+      && input.fromBalance === "base"
+      && input.toBalance === "base"
+    ) {
+      const versionedResponse = await trySerializePrivateBaseToBaseTransferTransactionWithLookupTable(
+        config,
+        instructions,
+        feePayer,
+        blockhash,
+        validator,
+      );
+
+      if (versionedResponse) {
+        return versionedResponse;
+      }
+    }
 
     return serializeTransaction(
       "transfer",
