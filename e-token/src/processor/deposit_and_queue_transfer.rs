@@ -1,6 +1,10 @@
 use crate::processor::ensure_transfer_queue_crank::derive_queue_crank_task_id;
 use crate::processor::execute_transfer_callback::derive_group_receipt_id;
-use crate::processor::utils::{get_associated_token_address, read_mint_decimals, validate_token_account, MAGIC_VAULT_ID};
+use crate::processor::internal::token_vault::transfer_to_vault_for_mint;
+use crate::processor::utils::{
+    get_associated_token_address, read_mint_decimals, validate_token_account, CRANK_SIGNER,
+    MAGIC_VAULT_ID,
+};
 use core::{convert::TryFrom, marker::PhantomData};
 use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
 use ephemeral_rollups_pinocchio::crank::{CrankInstruction, ScheduleCrankArgs, ScheduleCrankCpi};
@@ -20,7 +24,6 @@ use pinocchio::sysvars::clock::Clock;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_token_2022::instructions::TransferChecked;
-use crate::processor::internal::token_vault::transfer_to_vault_for_mint;
 
 const MILLIS_PER_SECOND: u64 = 1_000;
 
@@ -261,7 +264,7 @@ fn create_group_receipt(
     // Accounts required on crank tick
     let (group_receipt, _) = derive_group_receipt_id(queue_info.address(), group_id);
     let tick_accounts = [
-        InstructionAccount::readonly(&validator),
+        InstructionAccount::readonly_signer(&CRANK_SIGNER),
         InstructionAccount::writable(queue_info.address()),
         InstructionAccount::writable(&group_receipt),
         InstructionAccount::writable(&MAGIC_VAULT_ID),

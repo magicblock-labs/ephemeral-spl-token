@@ -10,23 +10,26 @@ use ephemeral_rollups_pinocchio::{
     },
     spl::consts::TOKEN_PROGRAM_ID,
 };
-use ephemeral_spl_api::instruction::internal::{EXECUTE_TRANSFER_CALLBACK, MARK_TRANSFER_QUEUE_REFILL_PENDING};
+use ephemeral_spl_api::instruction::internal::{
+    EXECUTE_TRANSFER_CALLBACK, MARK_TRANSFER_QUEUE_REFILL_PENDING,
+};
 use ephemeral_spl_api::state::transfer_queue::{
     queue_peek_from_data, queue_pop_from_data, queue_views_checked, QueuedTransfer, QUEUE_SEED,
 };
-use ephemeral_spl_api::{
-    instruction::internal::{EXECUTE_READY_QUEUED_TRANSFER},
-    require_n_accounts,
-};
+use ephemeral_spl_api::{instruction::internal::EXECUTE_READY_QUEUED_TRANSFER, require_n_accounts};
 use ephemeral_spl_api::{require, require_eq_keys};
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::{clock::Clock, Sysvar};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
 
-use crate::processor::utils::MAGIC_VAULT_ID;
 use crate::processor::initialize_rent_pda::RENT_PDA;
-use crate::processor::internal::transfer_queue_refill::{queue_refill_state_address, refill_transfer_queue_amounts, MARK_TRANSFER_QUEUE_REFILL_PENDING_COMPUTE_UNITS, MARK_TRANSFER_QUEUE_REFILL_PENDING_ESCROW_INDEX};
+use crate::processor::internal::transfer_queue_refill::{
+    queue_refill_state_address, refill_transfer_queue_amounts,
+    MARK_TRANSFER_QUEUE_REFILL_PENDING_COMPUTE_UNITS,
+    MARK_TRANSFER_QUEUE_REFILL_PENDING_ESCROW_INDEX,
+};
+use crate::processor::utils::MAGIC_VAULT_ID;
 
 const EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX: u8 = 0;
 
@@ -237,7 +240,8 @@ fn schedule_execute_ready_transfer(
         queue_state.queue_len
     );
 
-    let (vault, _) = ephemeral_spl_api::Address::find_program_address(&[queue_state.mint.as_ref()], program_id);
+    let (vault, _) =
+        ephemeral_spl_api::Address::find_program_address(&[queue_state.mint.as_ref()], program_id);
 
     let amount_bytes: [u8; 8] = queued_transfer.amount.to_le_bytes();
 

@@ -1,7 +1,7 @@
 use crate::processor::execute_transfer_callback::{
     derive_group_receipt_id, log_group_receipt, read_u32_le,
 };
-use crate::processor::utils::GroupReceiptController;
+use crate::processor::utils::{GroupReceiptController, CRANK_SIGNER};
 use core::num::NonZeroU32;
 use ephemeral_spl_api::state::transfer_queue::{
     queue_views_checked, TransferQueueHeader, QUEUE_SEED,
@@ -10,11 +10,24 @@ use ephemeral_spl_api::Address;
 use pinocchio::error::ProgramError;
 use pinocchio::{AccountView, ProgramResult};
 
+///
+/// Executes on: ER only.
+///
+/// Accounts:
+///
+///  0: [signer]            - PDA     : Crank authenticator.
+///  1: [writable]          - PDA     : Queue.
+///  2: [writable]          - PDA     : Group Receip, ephemeral account.
+///  3: [writable]          - PDA     : Magic vault.
+///  4: []                  - Magic   : Magic program.
+///
+/// Instruction Data: InitializeGroupReceiptArgs
+///
 pub fn process_initialize_group_receipt(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let [validator, queue_info, group_receipt, magic_vault, magic_program] = accounts else {
+    let [crank_signer, queue_info, group_receipt, magic_vault, magic_program] = accounts else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
@@ -23,7 +36,7 @@ pub fn process_initialize_group_receipt(
 
     let data = unsafe { queue_info.borrow_unchecked() };
     let (header, _) = queue_views_checked(data)?;
-    let group_receipt_bump = validate(validator, queue_info, group_receipt, header, &args)?;
+    let group_receipt_bump = validate(crank_signer, queue_info, group_receipt, header, &args)?;
 
     if group_receipt.owned_by(&crate::ID) {
         pinocchio_log::log!("Group receipt was initialized already!");
@@ -51,24 +64,23 @@ pub fn process_initialize_group_receipt(
 }
 
 fn validate(
-    validator: &AccountView,
+    crank_signer: &AccountView,
     queue_info: &AccountView,
     group_receipt: &AccountView,
     header: &TransferQueueHeader,
     args: &InitializeGroupReceiptArgs,
 ) -> Result<u8, ProgramError> {
-    if !validator.is_signer() {
+    if !crank_signer.is_signer() {
         return Err(ProgramError::MissingRequiredSignature);
+    }
+    if crank_signer.address() != &CRANK_SIGNER {
+        return Err(ProgramError::IncorrectAuthority);
     }
 
     // Under condition that queue can be created only by validator
     // Verifies both validator & queue
     let (derived_queue, _) = Address::find_program_address(
-        &[
-            QUEUE_SEED,
-            header.mint.as_ref(),
-            validator.address().as_ref(),
-        ],
+        &[QUEUE_SEED, header.mint.as_ref(), header.validator.as_ref()],
         &crate::ID,
     );
 
