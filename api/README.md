@@ -11,7 +11,7 @@ This project is designed to:
 
 The API uses the published SDK package:
 
-- `@magicblock-labs/ephemeral-rollups-sdk@0.10.1`
+- `@magicblock-labs/ephemeral-rollups-sdk@0.10.9`
 
 ## What The API Does
 
@@ -26,7 +26,7 @@ The API exposes:
 - `POST /mcp`
 - `GET /.well-known/mcp.json`
 
-Transaction endpoints return an unsigned serialized legacy Solana transaction as base64 plus metadata such as:
+Transaction endpoints return an unsigned serialized Solana transaction (legacy or v0) as base64 plus metadata such as:
 
 - `sendTo`: where the client should submit the signed transaction, `"base"` or `"ephemeral"`
 - `recentBlockhash`
@@ -89,6 +89,8 @@ Variables:
 - `EPHEMERAL_RPC_URL`: mainnet ephemeral RPC used when `cluster` is omitted or set to `mainnet`
 - `BASE_DEVNET_RPC_URL`: devnet base Solana RPC used when `cluster=devnet`
 - `EPHEMERAL_DEVNET_RPC_URL`: devnet ephemeral RPC used when `cluster=devnet`
+- `PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE`: optional mainnet LUT override for private `base -> base` transfers
+- `PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE`: optional devnet LUT override for private `base -> base` transfers
 - `CORS_ORIGIN`: CORS origin, `*` by default
 
 Example:
@@ -98,6 +100,8 @@ BASE_RPC_URL=https://rpc.magicblock.app/mainnet
 EPHEMERAL_RPC_URL=https://mainnet.magicblock.app
 BASE_DEVNET_RPC_URL=https://rpc.magicblock.app/devnet
 EPHEMERAL_DEVNET_RPC_URL=https://devnet.magicblock.app
+# PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE=
+# PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE=
 CORS_ORIGIN=*
 ```
 
@@ -151,6 +155,39 @@ curl http://127.0.0.1:8787/reference
 - `yarn typecheck`: TypeScript check
 - `yarn test`: run Vitest suite
 - `yarn deploy`: deploy with Wrangler, uploading Worker secrets from `.prod.vars`
+- `yarn create:private-transfer-lut -- [options]`: create a reusable address lookup table for private `base -> base` transfers covering SOL and USDC
+
+## Private Transfer LUT Script
+
+The repo includes [scripts/create-private-transfer-lut.js](./scripts/create-private-transfer-lut.js) for creating a reusable lookup table for private `base -> base` transfers.
+
+Defaults:
+
+- loads RPC URLs from `.dev.vars`
+- targets `mainnet` unless `--cluster devnet` is passed
+- resolves `validator` from the selected ephemeral RPC unless `--validator` is provided
+- includes SOL and USDC mint-specific accounts plus the shared program/global accounts
+- leaves the LUT mutable by default; pass `--freeze` to freeze it after extending
+
+After the script succeeds, copy the `lookupTable` value from its JSON output into `PRIVATE_BASE_TO_BASE_TRANSFER_LOOKUP_TABLES` in `src/lib/solana.ts`, or set the matching `PRIVATE_BASE_TO_BASE_TRANSFER_<CLUSTER>_LOOKUP_TABLE` worker env var before redeploying. Until one of those is updated, the API will not use the new LUT.
+
+Examples:
+
+```bash
+yarn create:private-transfer-lut -- --cluster mainnet
+yarn create:private-transfer-lut -- --cluster devnet
+yarn create:private-transfer-lut -- --cluster mainnet --freeze
+```
+
+Useful overrides:
+
+```bash
+yarn create:private-transfer-lut -- \
+  --cluster mainnet \
+  --payer ~/.config/solana/id.json \
+  --authority ~/.config/solana/lut-authority.json \
+  --validator <VALIDATOR_PUBKEY>
+```
 
 ## API Documentation
 
@@ -530,7 +567,7 @@ The API automatically decides:
 - which blockhash to use
 - whether the client should send to the base RPC or ephemeral RPC
 
-`initVaultIfMissing` is optional and defaults to `false`.
+`initVaultIfMissing` is optional and defaults to `false`. Private `base -> base` transfers may return a v0 transaction when a useful lookup table is configured; pass `legacy: true` to force legacy serialization.
 
 The returned `sendTo` value is:
 
@@ -602,6 +639,7 @@ Relevant fields:
 - `minDelayMs`
 - `maxDelayMs`
 - `split`
+- `legacy`
 
 ### `GET /v1/spl/balance`
 
@@ -689,5 +727,5 @@ The included test suite verifies:
 
 - This API returns unsigned transactions only
 - The client is responsible for signing and submitting them
-- The API currently serializes legacy `Transaction`, not versioned transactions
+- The API serializes legacy `Transaction` by default; private `base -> base` transfers may return a v0 transaction when a useful lookup table is configured
 - `transfer` prepends a noop instruction to preserve the same behavior as the current app flow

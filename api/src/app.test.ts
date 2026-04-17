@@ -10,6 +10,8 @@ import {
   magicFeeVaultPdaFromValidator,
 } from "@magicblock-labs/ephemeral-rollups-sdk";
 import {
+  AddressLookupTableAccount,
+  AddressLookupTableProgram,
   AccountInfo,
   Connection,
   Keypair,
@@ -18,6 +20,7 @@ import {
   SystemInstruction,
   SystemProgram,
   Transaction,
+  VersionedTransaction,
 } from "@solana/web3.js";
 
 import app from "./app";
@@ -74,6 +77,38 @@ function createIdentityResponse(identity: string) {
       "content-type": "application/json",
     },
   });
+}
+
+function createLookupTableResponse(value: AddressLookupTableAccount | null): Awaited<ReturnType<Connection["getAddressLookupTable"]>> {
+  return {
+    context: {
+      slot: 0,
+    },
+    value,
+  };
+}
+
+function createLookupTableAccount(addresses: PublicKey[]) {
+  return new AddressLookupTableAccount({
+    key: Keypair.generate().publicKey,
+    state: {
+      deactivationSlot: 18446744073709551615n,
+      lastExtendedSlot: 0,
+      lastExtendedSlotStartIndex: 0,
+      authority: Keypair.generate().publicKey,
+      addresses,
+    },
+  });
+}
+
+function createLookupTableAccountInfo(): AccountInfo<Buffer> {
+  return {
+    data: Buffer.alloc(0),
+    executable: false,
+    lamports: 0,
+    owner: AddressLookupTableProgram.programId,
+    rentEpoch: 0,
+  };
 }
 
 type TestExecutionContext = ExecutionContext & {
@@ -684,6 +719,7 @@ describe("app", () => {
       blockhash: "11111111111111111111111111111111",
       lastValidBlockHeight: 123,
     });
+    vi.spyOn(Connection.prototype, "getAddressLookupTable").mockResolvedValue(createLookupTableResponse(null));
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       expect(String(input)).toBe(transferEnv.EPHEMERAL_RPC_URL);
       return createIdentityResponse(resolvedValidator);
@@ -714,11 +750,203 @@ describe("app", () => {
       sendTo: string;
       recentBlockhash: string;
       validator: string;
+      version: string;
     };
 
     expect(json.sendTo).toBe("base");
     expect(json.recentBlockhash).toBe("11111111111111111111111111111111");
     expect(json.validator).toBe(resolvedValidator);
+    expect(json.version).toBe("legacy");
+  });
+
+  it("builds a v0 private base transfer when the LUT is useful", async () => {
+    const transferEnv = {
+      ...env,
+      EPHEMERAL_RPC_URL: "https://ephemeral.transfer.v0.rpc.test",
+    };
+    const mint = new PublicKey("So11111111111111111111111111111111111111112");
+    const validator = new PublicKey(resolvedValidator);
+    const [transferQueue] = deriveTransferQueue(mint, validator);
+    const [rentPda] = deriveRentPda();
+    const [vault] = deriveVault(mint);
+    const vaultAta = deriveVaultAta(mint, vault);
+
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123,
+    });
+    vi.spyOn(Connection.prototype, "getAddressLookupTable").mockResolvedValue(createLookupTableResponse(
+      createLookupTableAccount([
+        mint,
+        transferQueue,
+        rentPda,
+        vault,
+        vaultAta,
+        TOKEN_PROGRAM_ID,
+        SystemProgram.programId,
+      ]),
+    ));
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockResolvedValue(createLookupTableAccountInfo());
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(transferEnv.EPHEMERAL_RPC_URL);
+      return createIdentityResponse(resolvedValidator);
+    });
+
+    const response = await app.request("/v1/spl/transfer", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        from: owner,
+        to: destination,
+        mint: mint.toBase58(),
+        amount: 2,
+        visibility: "private",
+        fromBalance: "base",
+        toBalance: "base",
+        minDelayMs: "0",
+        maxDelayMs: "0",
+        split: 1,
+      }),
+    }, transferEnv);
+
+    expect(response.status).toBe(200);
+
+    const json = await response.json() as {
+      version: string;
+      transactionBase64: string;
+    };
+
+    expect(json.version).toBe("v0");
+    expect(() => VersionedTransaction.deserialize(Buffer.from(json.transactionBase64, "base64"))).not.toThrow();
+  });
+
+  it("returns a legacy private base transfer when legacy=true even if the LUT is useful", async () => {
+    const transferEnv = {
+      ...env,
+      EPHEMERAL_RPC_URL: "https://ephemeral.transfer.legacy.rpc.test",
+    };
+    const mint = new PublicKey("So11111111111111111111111111111111111111112");
+    const validator = new PublicKey(resolvedValidator);
+    const [transferQueue] = deriveTransferQueue(mint, validator);
+    const [rentPda] = deriveRentPda();
+    const [vault] = deriveVault(mint);
+    const vaultAta = deriveVaultAta(mint, vault);
+
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123,
+    });
+    const getAddressLookupTableSpy = vi
+      .spyOn(Connection.prototype, "getAddressLookupTable")
+      .mockResolvedValue(createLookupTableResponse(
+        createLookupTableAccount([
+          mint,
+          transferQueue,
+          rentPda,
+          vault,
+          vaultAta,
+          TOKEN_PROGRAM_ID,
+          SystemProgram.programId,
+        ]),
+      ));
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockResolvedValue(createLookupTableAccountInfo());
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(transferEnv.EPHEMERAL_RPC_URL);
+      return createIdentityResponse(resolvedValidator);
+    });
+
+    const response = await app.request("/v1/spl/transfer", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        from: owner,
+        to: destination,
+        mint: mint.toBase58(),
+        amount: 2,
+        visibility: "private",
+        fromBalance: "base",
+        toBalance: "base",
+        minDelayMs: "0",
+        maxDelayMs: "0",
+        split: 1,
+        legacy: true,
+      }),
+    }, transferEnv);
+
+    expect(response.status).toBe(200);
+
+    const json = await response.json() as {
+      version: string;
+      transactionBase64: string;
+    };
+
+    expect(json.version).toBe("legacy");
+    expect(() => Transaction.from(Buffer.from(json.transactionBase64, "base64"))).not.toThrow();
+    expect(getAddressLookupTableSpy).not.toHaveBeenCalled();
+  });
+
+  it("falls back to a legacy private base transfer when the LUT has no matching addresses", async () => {
+    const transferEnv = {
+      ...env,
+      EPHEMERAL_RPC_URL: "https://ephemeral.transfer.no-match.rpc.test",
+    };
+
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123,
+    });
+    const getAddressLookupTableSpy = vi
+      .spyOn(Connection.prototype, "getAddressLookupTable")
+      .mockResolvedValue(createLookupTableResponse(
+        createLookupTableAccount([
+          Keypair.generate().publicKey,
+          Keypair.generate().publicKey,
+          Keypair.generate().publicKey,
+          Keypair.generate().publicKey,
+          Keypair.generate().publicKey,
+          Keypair.generate().publicKey,
+          Keypair.generate().publicKey,
+        ]),
+      ));
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockResolvedValue(createLookupTableAccountInfo());
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(transferEnv.EPHEMERAL_RPC_URL);
+      return createIdentityResponse(resolvedValidator);
+    });
+
+    const response = await app.request("/v1/spl/transfer", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        from: owner,
+        to: destination,
+        mint: "So11111111111111111111111111111111111111112",
+        amount: 2,
+        visibility: "private",
+        fromBalance: "base",
+        toBalance: "base",
+        minDelayMs: "0",
+        maxDelayMs: "0",
+        split: 1,
+      }),
+    }, transferEnv);
+
+    expect(response.status).toBe(200);
+
+    const json = await response.json() as {
+      version: string;
+      transactionBase64: string;
+    };
+
+    expect(json.version).toBe("legacy");
+    expect(() => Transaction.from(Buffer.from(json.transactionBase64, "base64"))).not.toThrow();
+    expect(getAddressLookupTableSpy).toHaveBeenCalledOnce();
   });
 
   it("includes clientRefId in private transfer payloads when provided", async () => {
@@ -743,6 +971,7 @@ describe("app", () => {
       blockhash: "11111111111111111111111111111111",
       lastValidBlockHeight: 123,
     });
+    vi.spyOn(Connection.prototype, "getAddressLookupTable").mockResolvedValue(createLookupTableResponse(null));
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       expect(String(input)).toBe(transferEnv.EPHEMERAL_RPC_URL);
       return createIdentityResponse(resolvedValidator);
