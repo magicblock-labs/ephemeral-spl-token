@@ -16,7 +16,8 @@ struct PrivateTransferArgs {
 
 #[test]
 fn fixed_layout_flexible_private_args() {
-    assert_eq!(PrivateTransferArgs::MIN_DATA_LEN, 128);
+    assert_eq!(PrivateTransferArgs::MIN_DATA_LEN, 126);
+    assert_eq!(PrivateTransferArgs::MAX_DATA_LEN, 126 + 2 + 0xFFFF);
 
     let value = PrivateTransferArgs {
         shuttle_id: 100,
@@ -26,7 +27,7 @@ fn fixed_layout_flexible_private_args() {
         encrypted_data_suffix: vec![10, 20, 30, 40, 50, 60, 70, 80],
     };
 
-    let mut aligned = Aligned([0; PrivateTransferArgs::MIN_DATA_LEN + 8]);
+    let mut aligned = Aligned([0; PrivateTransferArgs::MIN_DATA_LEN + 2 + 8]);
 
     assert!(aligned.0.len() <= PrivateTransferArgs::MAX_DATA_LEN);
 
@@ -61,13 +62,21 @@ fn fixed_layout_flexible_private_args() {
         &[10, 20, 30, 40, 50, 60, 70, 80]
     );
 
-    assert_eq!(value.encode(), Ok(aligned.0.into()));
+    let encoded = value.encode();
+    assert_eq!(encoded, Ok(aligned.0.into()));
+    let encoded = encoded.unwrap();
+
+    let mut encoded_out = vec![255; aligned.0.len() + 4];
+    value.encode_to(&mut encoded_out).unwrap();
+
+    assert_eq!(&encoded_out[..aligned.0.len()], &encoded);
+
+    // the last 4 bytes must not be overwritten by encode_to()
+    assert_eq!(&encoded_out[aligned.0.len()..], &[255, 255, 255, 255]);
 }
 
 #[test]
 fn fixed_layout_flexible_private_args_optional_vector() {
-    assert_eq!(PrivateTransferArgs::MIN_DATA_LEN, 128);
-
     let value = PrivateTransferArgs {
         shuttle_id: 100,
         amount: 200,
@@ -76,9 +85,19 @@ fn fixed_layout_flexible_private_args_optional_vector() {
         encrypted_data_suffix: vec![],
     };
 
+    let encoded = value.encode().unwrap();
+
+    assert_eq!(encoded.len(), PrivateTransferArgs::MIN_DATA_LEN);
+
+    let mut encoded_out = [255; PrivateTransferArgs::MIN_DATA_LEN + 4];
+    value.encode_to(&mut encoded_out).unwrap();
+
+    assert_eq!(&encoded_out[..PrivateTransferArgs::MIN_DATA_LEN], &encoded);
+
+    // the last 4 bytes must not be overwritten by encode_to()
     assert_eq!(
-        value.encode().unwrap().len(),
-        PrivateTransferArgs::MIN_DATA_LEN
+        &encoded_out[PrivateTransferArgs::MIN_DATA_LEN..],
+        &[255, 255, 255, 255]
     );
 }
 
@@ -86,6 +105,32 @@ fn fixed_layout_flexible_private_args_optional_vector() {
 struct FlexibleOptional {
     shuttle_id: u32,
     amount: u64,
-    //    #[optional]
+    pda: Option<[u8; 32]>,
+    #[flexible = 2]
     validator: Option<[u8; 32]>,
+}
+
+#[test]
+fn fixed_layout_flexible_optional() {
+    assert_eq!(FlexibleOptional::MIN_DATA_LEN, 45);
+    assert_eq!(FlexibleOptional::MAX_DATA_LEN, 45 + 1 + 32);
+
+    let value = FlexibleOptional {
+        shuttle_id: 10,
+        amount: 20,
+        pda: Some([3; 32]),
+        validator: None,
+    };
+
+    let encoded = value.encode().unwrap();
+    assert_eq!(
+        &encoded[..],
+        [
+            value.shuttle_id.to_le_bytes().as_slice(),
+            value.amount.to_le_bytes().as_slice(),
+            &[1],
+            &[3; 32][..],
+        ]
+        .concat()
+    );
 }
