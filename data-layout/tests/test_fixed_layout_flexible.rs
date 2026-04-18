@@ -106,7 +106,7 @@ struct FlexibleOptional {
     shuttle_id: u32,
     amount: u64,
     pda: Option<[u8; 32]>,
-    #[flexible = 2]
+    #[flexible]
     validator: Option<[u8; 32]>,
 }
 
