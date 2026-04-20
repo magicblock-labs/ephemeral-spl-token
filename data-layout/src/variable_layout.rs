@@ -44,23 +44,25 @@ pub(crate) fn expand_variable_offset_layout(
 
     let mut where_bounds = Vec::<proc_macro2::TokenStream>::new();
     let mut view_methods = Vec::new();
+    let mut validate_steps = Vec::new();
 
-    // let mut validate_steps = Vec::new();
     let layout_error: Option<syn::Error> = None;
     let mut min_datalen = 0;
     let mut max_datalen = 0;
+    let mut min_datalen_expr = quote!();
+    let mut max_datalen_expr = quote!();
 
-    // first field is always at fixed-offset 0
     let mut field_offsets = vec![];
+    let mut seen_variable_sized_field = false;
 
     let field_count = fields.named.len();
-    let fixed_offset = Some(0);
     for (index, field) in fields.named.iter_mut().enumerate() {
         let field_ident = field.ident.as_ref().expect("named field");
 
         let is_last_field = index + 1 == field_count;
 
         let field_layout = parse_field_layout(field, is_last_field)?;
+        let has_dynamic_offset = seen_variable_sized_field;
 
         strip_field_attr(&mut field.attrs);
 
@@ -83,67 +85,47 @@ pub(crate) fn expand_variable_offset_layout(
         //     }
         // }
 
+        if has_dynamic_offset {
+            field_offsets.push(FieldOffset::VariableOffset {
+                layout: field_layout.clone(),
+            });
+        } else {
+            field_offsets.push(FieldOffset::FixedOffset {
+                offset,
+                layout: field_layout.clone(),
+            });
+        }
+
         match field_layout.slot_minmax_len() {
             Ok((slot_len_expr, slot_len)) => {
                 min_datalen += slot_len;
                 max_datalen += slot_len;
-
-                //
-                // Important:
-                //
-                // Update offset because field_layouts will be appended with a layout
-                // for the NEXT field (if any), not the field of this current iteration.
-                //
-                if field_offsets
-                    .last()
-                    .map(|offset: &FieldOffset| offset.fixed_offset().is_some())
-                    .unwrap_or(true)
-                {
-                    field_offsets.push(FieldOffset::FixedOffset {
-                        offset,
-                        layout: field_layout.clone(),
-                    });
-                } else {
-                    field_offsets.push(FieldOffset::VariableOffset {
-                        fixed_len: None,
-                        fixed_size_layout: false,
-                        layout: field_layout.clone(),
-                    });
-                }
-
                 offset += slot_len;
+
+                if min_datalen_expr.is_empty() {
+                    min_datalen_expr = slot_len_expr.clone();
+                    max_datalen_expr = slot_len_expr;
+                } else {
+                    min_datalen_expr = quote!(#min_datalen_expr + #slot_len_expr);
+                    max_datalen_expr = quote!(#max_datalen_expr + #slot_len_expr);
+                }
             }
             Err(((slot_min_len_expr, slot_min_len), (slot_max_len_expr, slot_max_len))) => {
                 min_datalen += slot_min_len;
                 max_datalen += slot_max_len;
+                seen_variable_sized_field = true;
 
-                // Since we field_layouts is appended with a layout for the NEXT field (if any),
-                // it must have variable offset, because thue current field is variable-len field,
-                // not necessarily variable-offset field (note that there is a difference!!).
-
-                if let Some(last_offset) = field_offsets.last() {
-                    if last_offset.layout().is_fixed() {
-                        field_offsets.push(FieldOffset::FixedOffset {
-                            offset,
-                            layout: field_layout.clone(),
-                        });
-                    } else {
-                        field_offsets.push(FieldOffset::VariableOffset {
-                            fixed_len: None,
-                            fixed_size_layout: false,
-                            layout: field_layout.clone(),
-                        });
-                    }
+                if min_datalen_expr.is_empty() {
+                    min_datalen_expr = slot_min_len_expr.clone();
+                    max_datalen_expr = slot_max_len_expr;
                 } else {
-                    field_offsets.push(FieldOffset::FixedOffset {
-                        offset,
-                        layout: field_layout.clone(),
-                    });
+                    min_datalen_expr = quote!(#min_datalen_expr + #slot_min_len_expr);
+                    max_datalen_expr = quote!(#max_datalen_expr + #slot_max_len_expr);
                 }
             }
         }
 
-        // validate_steps.push(layout.gen_validate_vec_len(offset, field_ident));
+        validate_steps.push(field_layout.gen_validate_step(field_ident));
         view_methods.push(field_layout.gen_view_methods(
             offset,
             field_ident,
@@ -190,7 +172,8 @@ pub(crate) fn expand_variable_offset_layout(
 
     let where_clause = impl_where_clause(&where_bounds);
 
-    let msg = format!("Sum of encodable-sizes must be {}.", datalen);
+    let min_msg = format!("Minimum size of encoded data = {}", min_datalen);
+    let max_msg = format!("Maximum size of encoded data = {}", max_datalen);
 
     let min_datalen_lit = usize_lit(min_datalen);
     let max_datalen_lit = usize_lit(max_datalen);
@@ -209,9 +192,10 @@ pub(crate) fn expand_variable_offset_layout(
         #emitted_input
 
         impl #struct_name {
-            #[doc = #msg]
-            pub const MIN_DATA_LEN: usize = #min_datalen_lit;
-            pub const MAX_DATA_LEN: usize = #max_datalen_lit;
+            #[doc = #min_msg]
+            pub const MIN_DATA_LEN: usize = #min_datalen_expr;
+            #[doc = #max_msg]
+            pub const MAX_DATA_LEN: usize = #max_datalen_expr;
 
             //#[doc = "Byte offsets marking the start of each field"]
             //pub const OFFSETS: [usize; #field_count_expr] = #offsets_expr;
@@ -249,7 +233,8 @@ pub(crate) fn expand_variable_offset_layout(
                     );
                 }
 
-                // #(#validate_steps)*
+                let mut offset = 0usize;
+                #(#validate_steps)*
 
                 Ok(())
             }
@@ -318,23 +303,12 @@ pub(crate) fn expand_variable_offset_layout(
 enum FieldOffset {
     // A field gets this value only if there is no variable-len field before it.
     // Once a variable-len field is seen, all other fields will be VariableOffset.
-    FixedOffset {
-        offset: usize,
-        layout: FieldLayout,
-    },
+    FixedOffset { offset: usize, layout: FieldLayout },
 
     // Note that it depends on the order of fields, e.g
     // if a u64 appears after Vec<u8> (or Option<u16>) field, then it will
     // be treated as VariableOffset as the offset for this field is fixed anymore.
-    VariableOffset {
-        // size of any fixed size including Option of any fixed size.
-        // and when the size is variable, it must be None
-        fixed_len: Option<usize>,
-
-        // true if fixed-layout, else false
-        fixed_size_layout: bool,
-        layout: FieldLayout,
-    },
+    VariableOffset { layout: FieldLayout },
 }
 
 impl FieldOffset {
@@ -348,7 +322,7 @@ impl FieldOffset {
     fn layout(&self) -> &FieldLayout {
         match self {
             FieldOffset::FixedOffset { layout, .. } => layout,
-            FieldOffset::VariableOffset { layout, .. } => layout,
+            FieldOffset::VariableOffset { layout } => layout,
         }
     }
 }
@@ -448,7 +422,7 @@ impl FieldLayout {
                 let ty = value.ty();
                 if *optional {
                     Err((
-                        (quote!(0), 0),
+                        (quote!(1), 1),
                         (quote!((1 + core::mem::size_of::<#ty>())), 1 + value.size()),
                     ))
                 } else {
@@ -460,12 +434,154 @@ impl FieldLayout {
                 let len_width_lit = usize_lit(flexible.len_width);
                 let capacity_lit = usize_lit(flexible.capacity());
                 Err((
-                    (quote!(0), 0),
+                    (quote!(#len_width_lit), flexible.len_width),
                     (
                         quote!((#len_width_lit + core::mem::size_of::<#elem_ty>() * #capacity_lit)),
                         flexible.len_width + elem.size() * flexible.capacity(),
                     ),
                 ))
+            }
+        }
+    }
+
+    fn gen_validate_step(&self, field_ident: &Ident) -> proc_macro2::TokenStream {
+        let field_name = field_ident.to_string();
+
+        match self {
+            Self::Value { value, optional } => {
+                let value_size = usize_lit(value.size());
+                let value_align = usize_lit(value.align());
+                let alignment_check = if matches!(value.access_mode(), AccessMode::Ref) {
+                    quote! {
+                        if data_offset % #value_align != 0 {
+                            pinocchio_log::log!(
+                                "Invalid alignment for field {}: payload starts at offset {}, expected {}-byte alignment",
+                                #field_name,
+                                data_offset,
+                                #value_align,
+                            );
+                            return Err(pinocchio::error::ProgramError::InvalidInstructionData);
+                        }
+                    }
+                } else {
+                    quote!()
+                };
+
+                if *optional {
+                    quote! {
+                        if offset >= bytes.len() {
+                            pinocchio_log::log!(
+                                "Missing Option tag for field {} at offset {}",
+                                #field_name,
+                                offset,
+                            );
+                            return Err(pinocchio::error::ProgramError::InvalidInstructionData);
+                        }
+
+                        match bytes[offset] {
+                            0 => {
+                                offset += 1;
+                            }
+                            1 => {
+                                let data_offset = offset + 1;
+                                #alignment_check
+                                let end = data_offset + #value_size;
+                                if end > bytes.len() {
+                                    pinocchio_log::log!(
+                                        "Truncated payload for field {}: need {} bytes, have {}",
+                                        #field_name,
+                                        end,
+                                        bytes.len(),
+                                    );
+                                    return Err(pinocchio::error::ProgramError::InvalidInstructionData);
+                                }
+                                offset = end;
+                            }
+                            tag => {
+                                pinocchio_log::log!(
+                                    "Invalid Option tag for field {}: tag = {}",
+                                    #field_name,
+                                    tag,
+                                );
+                                return Err(pinocchio::error::ProgramError::InvalidInstructionData);
+                            }
+                        }
+                    }
+                } else {
+                    quote! {
+                        let data_offset = offset;
+                        #alignment_check
+                        let end = data_offset + #value_size;
+                        if end > bytes.len() {
+                            pinocchio_log::log!(
+                                "Truncated payload for field {}: need {} bytes, have {}",
+                                #field_name,
+                                end,
+                                bytes.len(),
+                            );
+                            return Err(pinocchio::error::ProgramError::InvalidInstructionData);
+                        }
+                        offset = end;
+                    }
+                }
+            }
+            Self::Vec { elem, flexible } => {
+                let elem_size = usize_lit(elem.size());
+                let elem_align = usize_lit(elem.align());
+                let len_width_lit = usize_lit(flexible.len_width);
+                let len_expr = match flexible.len_width {
+                    1 => quote!(bytes[offset] as usize),
+                    2 => quote!({
+                        let raw: [u8; 2] = bytes[offset..offset + 2]
+                            .try_into()
+                            .expect("validated len header");
+                        u16::from_le_bytes(raw) as usize
+                    }),
+                    _ => unreachable!("read_len_expr: len_width more than 2 isn't supported"),
+                };
+                let alignment_check = if elem.align() > 1 {
+                    quote! {
+                        if len != 0 && data_offset % #elem_align != 0 {
+                            pinocchio_log::log!(
+                                "Invalid alignment for field {}: element data starts at offset {}, expected {}-byte alignment",
+                                #field_name,
+                                data_offset,
+                                #elem_align,
+                            );
+                            return Err(pinocchio::error::ProgramError::InvalidInstructionData);
+                        }
+                    }
+                } else {
+                    quote!()
+                };
+
+                quote! {
+                    let data_offset = offset + #len_width_lit;
+                    if data_offset > bytes.len() {
+                        pinocchio_log::log!(
+                            "Missing length header for field {} at offset {}",
+                            #field_name,
+                            offset,
+                        );
+                        return Err(pinocchio::error::ProgramError::InvalidInstructionData);
+                    }
+
+                    let len = #len_expr;
+                    #alignment_check
+
+                    let end = data_offset + len * #elem_size;
+                    if end > bytes.len() {
+                        pinocchio_log::log!(
+                            "Truncated Vec payload for field {}: need {} bytes, have {}",
+                            #field_name,
+                            end,
+                            bytes.len(),
+                        );
+                        return Err(pinocchio::error::ProgramError::InvalidInstructionData);
+                    }
+
+                    offset = end;
+                }
             }
         }
     }
@@ -790,6 +906,9 @@ impl FieldLayout {
                     pub fn #field_ident(&self) -> &[#elem_ty] {
                         let offset = #offset_expr;
                         let len = #len_expr;
+                        if len == 0 {
+                            return &[];
+                        }
                         let start = offset + #len_width_lit;
                         let end = start + len * #elem_size;
                         bytemuck::cast_slice::<u8, #elem_ty>(&self.bytes[start..end])
@@ -829,7 +948,7 @@ impl FieldLayout {
     }
 }
 
-fn parse_field_layout(field: &syn::Field, is_last_field: bool) -> syn::Result<FieldLayout> {
+fn parse_field_layout(field: &syn::Field, _is_last_field: bool) -> syn::Result<FieldLayout> {
     let ty = &field.ty;
     let attribute = parse_field_attr(field)?;
 
@@ -1223,14 +1342,9 @@ fn find_data_offset(
     value: &FixedValueKind,
     field_offsets: &[FieldOffset],
 ) -> proc_macro2::TokenStream {
-    let ty = value.ty();
-
-    println!("---- find_data_offset ----");
-
     match field_offsets.last().unwrap() {
         FieldOffset::FixedOffset { offset, .. } => {
             let offset = usize_lit(*offset);
-            println!("FixedOffset: offset = {}", offset);
             quote!(#offset)
         }
         FieldOffset::VariableOffset { .. } => {
@@ -1247,19 +1361,11 @@ fn find_data_offset(
 
             assert_eq!(layout.is_fixed(), false);
 
-            let current = field_offsets.last().unwrap().layout();
-
-            println!("field_offsets: {:#?}", field_offsets);
-            println!("index: {:?}", index);
-            println!("offset: {:?}", offset);
-            println!("len: {:?}", field_offsets.len());
-
             // | F | F | V | V | V | V |
             //
             let current_offset_expr = field_offsets[index..field_offsets.len() - 1]
                 .iter()
                 .fold(quote!(#offset), |expr, field_offset| {
-                        println!(">> FOLDING fixed_offset: {:?}", field_offset);
                     match field_offset {
                     FieldOffset::FixedOffset { layout, .. } => {
                         // unreachable!("getter_body: FixedOffset is impossible as this point only VariableOffset is expected"),
@@ -1294,7 +1400,7 @@ fn find_data_offset(
                             },
                         }
                     },
-                    FieldOffset::VariableOffset { layout, .. } => match layout {
+                    FieldOffset::VariableOffset { layout } => match layout {
                         FieldLayout::Value { value, optional } => {
                             if *optional {
                                 let fixed_lit = value.size();
@@ -1326,7 +1432,6 @@ fn find_data_offset(
                 }
                 });
 
-            println!("VariableOffset: offset"); // = {:#?}", current_offset_expr);
             quote!(#current_offset_expr)
         }
     }
