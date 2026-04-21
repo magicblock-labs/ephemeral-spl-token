@@ -3,6 +3,7 @@ use pinocchio::error::ProgramError;
 pub mod ephemeral_ata;
 pub mod global_vault;
 pub mod shuttle_ephemeral_ata;
+pub mod stash;
 pub mod transfer_queue;
 pub mod transfer_queue_refill;
 

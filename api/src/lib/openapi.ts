@@ -12,12 +12,13 @@ export function jsonContent(schema: ZodTypeAny, description: string, example?: u
   };
 }
 
-export function jsonContentRequired(schema: ZodTypeAny, description: string) {
+export function jsonContentRequired(schema: ZodTypeAny, description: string, example?: unknown) {
   return {
     required: true,
     content: {
       "application/json": {
         schema,
+        ...(example === undefined ? {} : { example }),
       },
     },
     description,

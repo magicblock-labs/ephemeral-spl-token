@@ -28,6 +28,7 @@ solana-pubkey = { workspace = true }
 magicblock-delegation-program-api = { workspace = true, default-features = false, features = [
     "cpi",
 ] }
+hydra-api = { workspace = true }
 
 [dev-dependencies]
 bytemuck = { workspace = true }

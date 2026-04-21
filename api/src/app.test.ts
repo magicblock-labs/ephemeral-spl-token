@@ -3,10 +3,15 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import {
   deriveEphemeralAta,
+  deriveHydraCrankPda,
   deriveRentPda,
+  deriveStashAta,
+  deriveStashPda,
   deriveTransferQueue,
   deriveVault,
   deriveVaultAta,
+  EPHEMERAL_SPL_TOKEN_PROGRAM_ID,
+  HYDRA_PROGRAM_ID,
   magicFeeVaultPdaFromValidator,
 } from "@magicblock-labs/ephemeral-rollups-sdk";
 import {
@@ -20,6 +25,8 @@ import {
   SystemInstruction,
   SystemProgram,
   Transaction,
+  TransactionInstruction,
+  TransactionMessage,
   VersionedTransaction,
 } from "@solana/web3.js";
 
@@ -149,11 +156,18 @@ describe("app", () => {
 
     const json = await response.json() as {
       paths: Record<string, {
-        get?: unknown;
+        get?: {
+          parameters?: Array<{
+            name?: string;
+            required?: boolean;
+          }>;
+        };
         post?: {
           requestBody?: {
             content?: Record<string, {
-              schema?: unknown;
+              schema?: {
+                properties?: Record<string, unknown>;
+              };
             }>;
           };
           responses?: Record<string, {
@@ -177,6 +191,33 @@ describe("app", () => {
     expect(json.paths["/v1/spl/login"]).toBeDefined();
     expect(json.paths["/v1/spl/is-mint-initialized"]).toBeDefined();
     expect(json.paths["/v1/spl/initialize-mint"]).toBeDefined();
+    expect(json.paths["/v1/swap/quote"]).toBeDefined();
+    expect(json.paths["/v1/swap/swap"]).toBeDefined();
+    expect(json.paths["/v1/swap/swap-instructions"]).toBeUndefined();
+    expect(json.paths["/v1/swap/program-id-to-label"]).toBeUndefined();
+    expect(json.paths["/v1/swap/quote"]?.get?.parameters).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "inputMint", required: true }),
+      expect.objectContaining({ name: "outputMint", required: true }),
+      expect.objectContaining({ name: "amount", required: true }),
+      expect.objectContaining({ name: "slippageBps" }),
+      expect.objectContaining({ name: "swapMode" }),
+    ]));
+    expect(json.paths["/v1/swap/swap"]?.post?.requestBody?.content?.["application/json"]?.schema).toBeDefined();
+    expect(json.paths["/v1/swap/quote"]?.get?.responses?.["200"]?.content?.["application/json"]?.example).toMatchObject({
+      inputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      outputMint: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+      inAmount: "1000000",
+      outAmount: "999519",
+    });
+    expect(json.paths["/v1/swap/swap"]?.post?.requestBody?.content?.["application/json"]?.example).toMatchObject({
+      userPublicKey: "3rXKwQ1kpjBd5tdcco32qsvqUh1BnZjcYnS5kYrP7AYE",
+      quoteResponse: {
+        inputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        outputMint: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+        inAmount: "1000000",
+        outAmount: "999519",
+      },
+    });
     expect(json.paths["/v1/spl/deposit"]?.post?.responses?.["200"]?.content?.["application/json"]?.example).toMatchObject({
       kind: "deposit",
       instructionCount: 3,
@@ -185,6 +226,344 @@ describe("app", () => {
       kind: "withdraw",
       instructionCount: 2,
     });
+  });
+
+  it("proxies Metis quote requests to the configured upstream endpoint", async () => {
+    const metisEnv = {
+      ...env,
+      METIS_SWAP_API_URL: "https://triton.rpc.test/private-token/metis",
+    };
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      expect(String(input)).toBe(
+        `${metisEnv.METIS_SWAP_API_URL}/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v&amount=1000000&slippageBps=50`,
+      );
+      expect(init?.method).toBe("GET");
+      return new Response(JSON.stringify({
+        inputMint: "So11111111111111111111111111111111111111112",
+        outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        outAmount: "999000",
+      }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+        },
+      });
+    });
+
+    const response = await app.request(
+      "/v1/swap/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v&amount=1000000&slippageBps=50",
+      {},
+      metisEnv,
+    );
+
+    expect(response.status).toBe(200);
+
+    const json = await response.json() as {
+      outAmount: string;
+    };
+
+    expect(json.outAmount).toBe("999000");
+  });
+
+  it("proxies Metis swap requests to the configured upstream endpoint", async () => {
+    const metisEnv = {
+      ...env,
+      METIS_SWAP_API_URL: "https://triton.rpc.test/private-token/metis/",
+    };
+    const quoteResponse = {
+      inputMint: "So11111111111111111111111111111111111111112",
+      inAmount: "1000000",
+      outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      outAmount: "999000",
+      otherAmountThreshold: "998000",
+      swapMode: "ExactIn",
+      slippageBps: 50,
+      priceImpactPct: "0.01",
+      routePlan: [{
+        swapInfo: {
+          ammKey: "AMM111111111111111111111111111111111111111",
+          inputMint: "So11111111111111111111111111111111111111112",
+          outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          inAmount: "1000000",
+          outAmount: "999000",
+          label: "Raydium",
+        },
+        percent: 100,
+        bps: 10_000,
+      }],
+    };
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      expect(String(input)).toBe("https://triton.rpc.test/private-token/metis/swap");
+      expect(init?.method).toBe("POST");
+      expect(init?.headers).toBeInstanceOf(Headers);
+      expect((init?.headers as Headers).get("content-type")).toBe("application/json");
+      const rawBody = init?.body;
+      const decodedBody = typeof rawBody === "string"
+        ? rawBody
+        : new TextDecoder().decode(rawBody as ArrayBuffer);
+      expect(JSON.parse(decodedBody)).toMatchObject({
+        userPublicKey: owner,
+        quoteResponse,
+      });
+      return new Response(JSON.stringify({
+        swapTransaction: "base64-tx",
+      }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+        },
+      });
+    });
+
+    const response = await app.request("/v1/swap/swap", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        userPublicKey: owner,
+        quoteResponse,
+      }),
+    }, metisEnv);
+
+    expect(response.status).toBe(200);
+
+    const json = await response.json() as {
+      swapTransaction: string;
+    };
+
+    expect(json.swapTransaction).toBe("base64-tx");
+  });
+
+  it("returns a config error when the Metis endpoint is missing", async () => {
+    const response = await app.request(
+      "/v1/swap/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v&amount=1000000",
+      {},
+      env,
+    );
+
+    expect(response.status).toBe(500);
+
+    const json = await response.json() as {
+      error: {
+        code: string;
+        message: string;
+      };
+    };
+
+    expect(json.error.code).toBe("CONFIG_ERROR");
+    expect(json.error.message).toBe("Missing worker environment variable `METIS_SWAP_API_URL`");
+  });
+
+  it("visibility=private forces the stash ATA and appends schedule_private_transfer", async () => {
+    const metisEnv = {
+      ...env,
+      METIS_SWAP_API_URL: "https://triton.rpc.test/private-token/metis",
+    };
+    const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+    const recipient = Keypair.generate().publicKey.toBase58();
+    const validator = Keypair.generate().publicKey.toBase58();
+    const quoteResponse = {
+      inputMint: "So11111111111111111111111111111111111111112",
+      inAmount: "1000000",
+      outputMint,
+      outAmount: "999000",
+      otherAmountThreshold: "998000",
+      swapMode: "ExactIn",
+      slippageBps: 50,
+      priceImpactPct: "0.01",
+      routePlan: [{
+        swapInfo: {
+          ammKey: "AMM111111111111111111111111111111111111111",
+          inputMint: "So11111111111111111111111111111111111111112",
+          outputMint,
+          inAmount: "1000000",
+          outAmount: "999000",
+          label: "Raydium",
+        },
+        percent: 100,
+        bps: 10_000,
+      }],
+    };
+
+    const ownerPk = new PublicKey(owner);
+    const [, stashPda] = [deriveStashPda(ownerPk, new PublicKey(outputMint))[0], deriveStashPda(ownerPk, new PublicKey(outputMint))[0]];
+    const [stashAtaExpected] = deriveStashAta(ownerPk, new PublicKey(outputMint));
+    const [hydraCrankExpected] = deriveHydraCrankPda(stashPda);
+
+    // Jupiter-like mock: a v0 tx with a single memo ix and no ALTs.
+    const memoIx = new TransactionInstruction({
+      programId: new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"),
+      keys: [],
+      data: Buffer.from("jupiter-mock"),
+    });
+    const jupiterV0 = new VersionedTransaction(
+      new TransactionMessage({
+        payerKey: ownerPk,
+        recentBlockhash: "11111111111111111111111111111111",
+        instructions: [memoIx],
+      }).compileToV0Message(),
+    );
+    const jupiterBase64 = Buffer.from(jupiterV0.serialize()).toString("base64");
+
+    let metisRequestBody: Record<string, unknown> | undefined;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.startsWith("https://triton.rpc.test") && url.endsWith("/swap")) {
+        const rawBody = init?.body;
+        metisRequestBody = JSON.parse(
+          typeof rawBody === "string"
+            ? rawBody
+            : new TextDecoder().decode(rawBody as ArrayBuffer),
+        );
+        return new Response(
+          JSON.stringify({ swapTransaction: jupiterBase64 }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      // BASE_RPC_URL (no ALTs in our fake tx, so nothing interesting to mock).
+      return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+    });
+
+    const response = await app.request("/v1/swap/swap", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        userPublicKey: owner,
+        quoteResponse,
+        visibility: "private",
+        destination: recipient,
+        minDelayMs: "100",
+        maxDelayMs: "300",
+        split: 1,
+        validator,
+      }),
+    }, metisEnv);
+
+    expect(response.status).toBe(200);
+
+    const json = await response.json() as {
+      swapTransaction: string;
+      privateTransfer: { stashAta: string; hydraCrankPda: string; shuttleId: number };
+    };
+
+    // Metis received the forced destinationTokenAccount + forced v0.
+    expect(metisRequestBody?.destinationTokenAccount).toBe(stashAtaExpected.toBase58());
+    expect(metisRequestBody?.asLegacyTransaction).toBe(false);
+    // Private-only fields were stripped before proxying.
+    expect(metisRequestBody?.visibility).toBeUndefined();
+    expect(metisRequestBody?.destination).toBeUndefined();
+    expect(metisRequestBody?.minDelayMs).toBeUndefined();
+    expect(metisRequestBody?.split).toBeUndefined();
+
+    // Diagnostic block is correct.
+    expect(json.privateTransfer.stashAta).toBe(stashAtaExpected.toBase58());
+    expect(json.privateTransfer.hydraCrankPda).toBe(hydraCrankExpected.toBase58());
+    expect(typeof json.privateTransfer.shuttleId).toBe("number");
+
+    // Returned tx: [idempotent-ATA-create, memo, schedule_private_transfer].
+    const returned = VersionedTransaction.deserialize(
+      Buffer.from(json.swapTransaction, "base64"),
+    );
+    const decompiled = TransactionMessage.decompile(returned.message, {
+      addressLookupTableAccounts: [],
+    });
+
+    expect(decompiled.instructions).toHaveLength(3);
+
+    const [createIx, memoRebuilt, scheduleIx] = decompiled.instructions;
+    const ataProgram = new PublicKey(
+      "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+    );
+    expect(createIx.programId.toBase58()).toBe(ataProgram.toBase58());
+    expect(createIx.data[0]).toBe(1); // CreateIdempotent
+
+    expect(memoRebuilt.programId.toBase58()).toBe(memoIx.programId.toBase58());
+
+    expect(scheduleIx.programId.toBase58()).toBe(
+      EPHEMERAL_SPL_TOKEN_PROGRAM_ID.toBase58(),
+    );
+    expect(scheduleIx.data[0]).toBe(30);
+    expect(scheduleIx.keys).toHaveLength(7);
+    expect(scheduleIx.keys[1].pubkey.toBase58()).toBe(stashPda.toBase58());
+    expect(scheduleIx.keys[4].pubkey.toBase58()).toBe(HYDRA_PROGRAM_ID.toBase58());
+  });
+
+  it("visibility=private rejects missing required fields", async () => {
+    const metisEnv = {
+      ...env,
+      METIS_SWAP_API_URL: "https://triton.rpc.test/private-token/metis",
+    };
+    const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+    const quoteResponse = {
+      inputMint: "So11111111111111111111111111111111111111112",
+      inAmount: "1000000",
+      outputMint,
+      outAmount: "999000",
+      otherAmountThreshold: "998000",
+      swapMode: "ExactIn",
+      slippageBps: 50,
+      priceImpactPct: "0.01",
+      routePlan: [],
+    };
+
+    const response = await app.request("/v1/swap/swap", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        userPublicKey: owner,
+        quoteResponse,
+        visibility: "private",
+        // destination + delays + split intentionally missing
+      }),
+    }, metisEnv);
+
+    expect(response.status).toBe(400);
+    const json = await response.json() as { error: { code: string; message: string } };
+    expect(json.error.code).toBe("INVALID_REQUEST");
+    expect(json.error.message).toMatch(/destination, minDelayMs/);
+  });
+
+  it("visibility=private rejects a mismatched destinationTokenAccount", async () => {
+    const metisEnv = {
+      ...env,
+      METIS_SWAP_API_URL: "https://triton.rpc.test/private-token/metis",
+    };
+    const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+    const recipient = Keypair.generate().publicKey.toBase58();
+    const quoteResponse = {
+      inputMint: "So11111111111111111111111111111111111111112",
+      inAmount: "1000000",
+      outputMint,
+      outAmount: "999000",
+      otherAmountThreshold: "998000",
+      swapMode: "ExactIn",
+      slippageBps: 50,
+      priceImpactPct: "0.01",
+      routePlan: [],
+    };
+
+    const response = await app.request("/v1/swap/swap", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        userPublicKey: owner,
+        quoteResponse,
+        visibility: "private",
+        destination: recipient,
+        minDelayMs: "0",
+        maxDelayMs: "0",
+        split: 1,
+        destinationTokenAccount: Keypair.generate().publicKey.toBase58(),
+      }),
+    }, metisEnv);
+
+    expect(response.status).toBe(400);
+    const json = await response.json() as { error: { code: string; message: string } };
+    expect(json.error.code).toBe("INVALID_REQUEST");
+    expect(json.error.message).toMatch(/destinationTokenAccount is controlled/);
   });
 
   it("serves MCP info and discovery documents", async () => {

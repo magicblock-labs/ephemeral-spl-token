@@ -22,6 +22,8 @@ The API exposes:
 - `POST /v1/spl/transfer`
 - `GET /v1/spl/balance`
 - `GET /v1/spl/private-balance`
+- `GET /v1/swap/quote`
+- `POST /v1/swap/swap`
 - `GET /mcp`
 - `POST /mcp`
 - `GET /.well-known/mcp.json`
@@ -89,6 +91,7 @@ Variables:
 - `EPHEMERAL_RPC_URL`: mainnet ephemeral RPC used when `cluster` is omitted or set to `mainnet`
 - `BASE_DEVNET_RPC_URL`: devnet base Solana RPC used when `cluster=devnet`
 - `EPHEMERAL_DEVNET_RPC_URL`: devnet ephemeral RPC used when `cluster=devnet`
+- `METIS_SWAP_API_URL`: optional Triton Metis Swap API base URL, including your private token and the `/metis` suffix
 - `PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE`: optional mainnet LUT override for private `base -> base` transfers
 - `PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE`: optional devnet LUT override for private `base -> base` transfers
 - `CORS_ORIGIN`: CORS origin, `*` by default
@@ -100,6 +103,7 @@ BASE_RPC_URL=https://rpc.magicblock.app/mainnet
 EPHEMERAL_RPC_URL=https://mainnet.magicblock.app
 BASE_DEVNET_RPC_URL=https://rpc.magicblock.app/devnet
 EPHEMERAL_DEVNET_RPC_URL=https://devnet.magicblock.app
+METIS_SWAP_API_URL=https://<endpoint>.rpcpool.com/<private_token>/metis
 # PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE=
 # PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE=
 CORS_ORIGIN=*
@@ -136,6 +140,8 @@ Useful routes:
 - `GET /health`
 - `GET /doc`
 - `GET /reference`
+- `GET /v1/swap/quote`
+- `POST /v1/swap/swap`
 - `GET /mcp`
 - `POST /mcp`
 - `GET /.well-known/mcp.json`

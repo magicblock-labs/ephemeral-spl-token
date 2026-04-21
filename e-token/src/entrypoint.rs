@@ -221,6 +221,18 @@ pub(crate) fn inner_process_instruction(
 
             process_pending_transfer_queue_refill(accounts, instruction_data)
         }
+        instruction::PROCESS_SCHEDULED_PRIVATE_TRANSFER => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: ProcessScheduledPrivateTransfer");
+
+            process_scheduled_private_transfer(accounts, instruction_data)
+        }
+        instruction::SCHEDULE_PRIVATE_TRANSFER => {
+            #[cfg(feature = "logging")]
+            pinocchio_log::log!("Instruction: SchedulePrivateTransfer");
+
+            process_schedule_private_transfer(accounts, instruction_data)
+        }
         internal::UNDELEGATION_CALLBACK => {
             #[cfg(feature = "logging")]
             pinocchio_log::log!("Instruction: UndelegationCallback");
