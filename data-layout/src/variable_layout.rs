@@ -12,8 +12,6 @@ const FIELD_ATTRIBUTES: &[&str] = &["capacity", "flexible"];
 // [capacity = flexible] array-len is always encoded as 2-bytes
 const MAX_LEN_WIDTH: usize = 2;
 
-const MAX_CAPACITY: usize = 0xffff;
-
 pub(crate) fn expand_variable_offset_layout(
     attr: &str,
     input: &ItemStruct,
@@ -37,55 +35,40 @@ pub(crate) fn expand_variable_offset_layout(
     };
 
     let mut offset = 0usize;
-    let mut offsets = vec![0];
-
-    let total_len_expr = quote!();
-    let fields_encode_expr = quote!();
 
     let mut where_bounds = Vec::<proc_macro2::TokenStream>::new();
     let mut view_methods = Vec::new();
     let mut validate_steps = Vec::new();
+    let mut encoded_len_steps = Vec::new();
+    let mut encode_steps = Vec::new();
 
-    let layout_error: Option<syn::Error> = None;
     let mut min_datalen = 0;
     let mut max_datalen = 0;
     let mut min_datalen_expr = quote!();
     let mut max_datalen_expr = quote!();
+    let mut update_maxmin_datalen =
+        |(slot_min_len_expr, slot_min_len), (slot_max_len_expr, slot_max_len)| {
+            min_datalen += slot_min_len;
+            max_datalen += slot_max_len;
+            if min_datalen_expr.is_empty() {
+                min_datalen_expr = slot_min_len_expr;
+                max_datalen_expr = slot_max_len_expr;
+            } else {
+                min_datalen_expr = quote!(#min_datalen_expr + #slot_min_len_expr);
+                max_datalen_expr = quote!(#max_datalen_expr + #slot_max_len_expr);
+            }
+        };
 
     let mut field_offsets = vec![];
     let mut seen_variable_sized_field = false;
 
-    let field_count = fields.named.len();
     for (index, field) in fields.named.iter_mut().enumerate() {
         let field_ident = field.ident.as_ref().expect("named field");
-
-        let is_last_field = index + 1 == field_count;
-
-        let field_layout = parse_field_layout(field, is_last_field)?;
-        let has_dynamic_offset = seen_variable_sized_field;
+        let field_layout = parse_field_layout(field)?;
 
         strip_field_attr(&mut field.attrs);
 
-        // match layout.check_ref_alignment(offset, field_ident) {
-        //     Ok(Some(issue)) => {
-        //         if let Some(existing) = &mut layout_error {
-        //             existing.combine(issue.error);
-        //         } else {
-        //             layout_error = Some(issue.error);
-        //         }
-        //         offset += issue.padding;
-        //     }
-        //     Ok(None) => {}
-        //     Err(err) => {
-        //         if let Some(existing) = &mut layout_error {
-        //             existing.combine(err);
-        //         } else {
-        //             layout_error = Some(err);
-        //         }
-        //     }
-        // }
-
-        if has_dynamic_offset {
+        if seen_variable_sized_field {
             field_offsets.push(FieldOffset::VariableOffset {
                 layout: field_layout.clone(),
             });
@@ -98,76 +81,26 @@ pub(crate) fn expand_variable_offset_layout(
 
         match field_layout.slot_minmax_len() {
             Ok((slot_len_expr, slot_len)) => {
-                min_datalen += slot_len;
-                max_datalen += slot_len;
                 offset += slot_len;
-
-                if min_datalen_expr.is_empty() {
-                    min_datalen_expr = slot_len_expr.clone();
-                    max_datalen_expr = slot_len_expr;
-                } else {
-                    min_datalen_expr = quote!(#min_datalen_expr + #slot_len_expr);
-                    max_datalen_expr = quote!(#max_datalen_expr + #slot_len_expr);
-                }
+                update_maxmin_datalen((slot_len_expr.clone(), slot_len), (slot_len_expr, slot_len));
             }
             Err(((slot_min_len_expr, slot_min_len), (slot_max_len_expr, slot_max_len))) => {
-                min_datalen += slot_min_len;
-                max_datalen += slot_max_len;
                 seen_variable_sized_field = true;
-
-                if min_datalen_expr.is_empty() {
-                    min_datalen_expr = slot_min_len_expr.clone();
-                    max_datalen_expr = slot_max_len_expr;
-                } else {
-                    min_datalen_expr = quote!(#min_datalen_expr + #slot_min_len_expr);
-                    max_datalen_expr = quote!(#max_datalen_expr + #slot_max_len_expr);
-                }
+                update_maxmin_datalen(
+                    (slot_min_len_expr, slot_min_len),
+                    (slot_max_len_expr, slot_max_len),
+                );
             }
         }
 
         validate_steps.push(field_layout.gen_validate_step(field_ident));
-        view_methods.push(field_layout.gen_view_methods(
-            offset,
-            field_ident,
-            &field_offsets[..=index],
-        )?);
-
-        // fields_encode_expr = layout.gen_field_encode(fields_encode_expr, offset, field_ident);
+        encoded_len_steps.push(field_layout.gen_encoded_len_step(field_ident));
+        encode_steps.push(field_layout.gen_field_encode_step(field_ident));
+        view_methods.push(field_layout.gen_view_methods(field_ident, &field_offsets[..=index])?);
 
         if let Some(bound) = field_layout.bound() {
             where_bounds.push(bound);
         }
-    }
-
-    // remove the last entry, as it is supposed to be for the NEXT field
-    // to the last one and next-to-last does not exist.
-    // field_offsets.pop();
-
-    // println!("field_layouts: {:#?}", field_offsets);
-
-    let field_count_expr = {
-        let field_count = usize_lit(field_count);
-        quote!(#field_count)
-    };
-    let (offsets_expr, datalen) = {
-        // I could use offsets directly but that generates the code littered
-        // with usize suffixes, e.g:
-        //
-        //  const OFFSETS: [usize; 6usize] = [0usize, 4usize, 12usize, 45usize, 18usize];
-        //
-        // I hate this, which is why I'm converting Vec<usize> into Vec<LitInt>.
-        //
-        let datalen = offsets.pop().unwrap();
-        let offsets: Vec<_> = offsets.into_iter().map(usize_lit).collect();
-
-        // the last one isn't offset to any member, but
-        // actually represents the size of the struct
-
-        (quote! { [#(#offsets),*] }, datalen)
-    };
-
-    if let Some(err) = layout_error {
-        return Err(err);
     }
 
     let where_clause = impl_where_clause(&where_bounds);
@@ -175,8 +108,6 @@ pub(crate) fn expand_variable_offset_layout(
     let min_msg = format!("Minimum size of encoded data = {}", min_datalen);
     let max_msg = format!("Maximum size of encoded data = {}", max_datalen);
 
-    let min_datalen_lit = usize_lit(min_datalen);
-    let max_datalen_lit = usize_lit(max_datalen);
     let msgfmt_1 = if max_datalen != min_datalen {
         format!(
         "bytes [len={{}}] cannot be deserialized to {} which needs at least {} and at most {} bytes"
@@ -197,9 +128,6 @@ pub(crate) fn expand_variable_offset_layout(
             #[doc = #max_msg]
             pub const MAX_DATA_LEN: usize = #max_datalen_expr;
 
-            //#[doc = "Byte offsets marking the start of each field"]
-            //pub const OFFSETS: [usize; #field_count_expr] = #offsets_expr;
-
             pub fn try_view_from(
                 bytes: &[u8],
             ) -> core::result::Result<#view_name<'_>, pinocchio::error::ProgramError> {
@@ -207,16 +135,31 @@ pub(crate) fn expand_variable_offset_layout(
                 Ok(#view_name { bytes })
             }
 
-            // pub fn encode_to(&self, bytes: &mut [u8]) -> core::result::Result<(), pinocchio::error::ProgramError> {
-            //     #fields_encode_expr;
-            //     Ok(())
-            // }
+            pub fn encode_to(
+                &self,
+                bytes: &mut [u8],
+            ) -> core::result::Result<(), pinocchio::error::ProgramError> {
+                let encoded_len = self.__encoded_len()?;
+                if bytes.len() < encoded_len {
+                    pinocchio_log::log!(
+                        "bytes [len={}] are too small to encode {} which needs {} bytes",
+                        bytes.len(),
+                        stringify!(#struct_name),
+                        encoded_len,
+                    );
+                    return Err(pinocchio::error::ProgramError::AccountDataTooSmall);
+                }
 
-            // pub fn encode(&self) -> core::result::Result<#encoding_ret_ty, pinocchio::error::ProgramError> {
-            //     let mut bytes = #encoding_buf_var;
-            //     self.encode_to(&mut bytes)?;
-            //     Ok(bytes)
-            // }
+                let mut offset = 0usize;
+                #(#encode_steps)*
+                Ok(())
+            }
+
+            pub fn encode(&self) -> core::result::Result<Vec<u8>, pinocchio::error::ProgramError> {
+                let mut bytes = vec![0; self.__encoded_len()?];
+                self.encode_to(&mut bytes)?;
+                Ok(bytes)
+            }
 
             fn __validate_bytes(
                 bytes: &[u8],
@@ -239,48 +182,13 @@ pub(crate) fn expand_variable_offset_layout(
                 Ok(())
             }
 
-            // fn __validate_option(
-            //     bytes: &[u8],
-            //     offset: usize,
-            //     field_name: &'static str,
-            // ) -> core::result::Result<(), pinocchio::error::ProgramError> {
-            //     match bytes[offset] {
-            //         0 | 1 => {}
-
-            //         tag => {
-            //             pinocchio_log::log!("Invalid Option tag for field {}::{} : tag = {} (which should be either 0 or 1)", stringify!(#struct_name), field_name, tag);
-            //             return Err(pinocchio::error::ProgramError::InvalidInstructionData);
-            //         }
-            //     }
-            //     Ok(())
-            // }
-
-            // fn __validate_vec_len(
-            //     bytes: &[u8],
-            //     offset: usize,
-            //     capacity: usize,
-            //     len_width: usize,
-            //     field_name: &'static str,
-            //     expect_msg: &'static str
-            // ) -> core::result::Result<(), pinocchio::error::ProgramError> {
-            //     let len = match len_width {
-            //         1 =>  bytes[offset] as usize,
-            //         2 => {
-            //             let raw: [u8; 2] =bytes[offset..offset + 2].try_into().expect("validated len");
-            //             u16::from_le_bytes(raw) as usize
-            //         },
-            //         _ => {
-            //             unreachable!()
-            //         }
-            //     };
-            //     if len > capacity {
-            //         pinocchio_log::log!("Invalid Vec length for field {}::{} : capacity = {}, len = {}", stringify!(#struct_name), field_name, capacity, len);
-            //         return Err(pinocchio::error::ProgramError::InvalidInstructionData);
-            //     }
-            //     Ok(())
-            // }
-            //
-
+            fn __encoded_len(
+                &self,
+            ) -> core::result::Result<usize, pinocchio::error::ProgramError> {
+                let mut len = 0usize;
+                #(#encoded_len_steps)*
+                Ok(len)
+            }
         }
 
         #[allow(dead_code)]
@@ -393,11 +301,6 @@ enum FieldLayout {
     },
 }
 
-struct PaddingIssue {
-    padding: usize,
-    error: syn::Error,
-}
-
 impl FieldLayout {
     fn is_fixed(&self) -> bool {
         match self {
@@ -440,6 +343,41 @@ impl FieldLayout {
                         flexible.len_width + elem.size() * flexible.capacity(),
                     ),
                 ))
+            }
+        }
+    }
+
+    fn gen_encoded_len_step(&self, field_ident: &Ident) -> proc_macro2::TokenStream {
+        match self {
+            Self::Value { value, optional } => {
+                let value_size = usize_lit(value.size());
+                if *optional {
+                    quote! {
+                        len += if self.#field_ident.is_some() { 1 + #value_size } else { 1 };
+                    }
+                } else {
+                    quote! {
+                        len += #value_size;
+                    }
+                }
+            }
+            Self::Vec { elem, flexible } => {
+                let elem_size = usize_lit(elem.size());
+                let len_width = usize_lit(flexible.len_width);
+                let capacity = usize_lit(flexible.capacity());
+                quote! {
+                    let field_len = self.#field_ident.len();
+                    if field_len > #capacity {
+                        pinocchio_log::log!(
+                            "Cannot encode field {}: len {} exceeds max {}",
+                            stringify!(#field_ident),
+                            field_len,
+                            #capacity,
+                        );
+                        return Err(pinocchio::error::ProgramError::InvalidRealloc);
+                    }
+                    len += #len_width + field_len * #elem_size;
+                }
             }
         }
     }
@@ -580,6 +518,50 @@ impl FieldLayout {
                         return Err(pinocchio::error::ProgramError::InvalidInstructionData);
                     }
 
+                    offset = end;
+                }
+            }
+        }
+    }
+
+    fn gen_field_encode_step(&self, field_ident: &Ident) -> proc_macro2::TokenStream {
+        match self {
+            Self::Value { value, optional } => {
+                let value_size = usize_lit(value.size());
+                if *optional {
+                    quote! {
+                        if let core::option::Option::Some(value) = &self.#field_ident {
+                            bytes[offset] = 1;
+                            bytes[offset + 1..offset + 1 + #value_size]
+                                .copy_from_slice(bytemuck::bytes_of(value));
+                            offset += 1 + #value_size;
+                        } else {
+                            bytes[offset] = 0;
+                            offset += 1;
+                        }
+                    }
+                } else {
+                    quote! {
+                        bytes[offset..offset + #value_size]
+                            .copy_from_slice(bytemuck::bytes_of(&self.#field_ident));
+                        offset += #value_size;
+                    }
+                }
+            }
+            Self::Vec { elem, flexible } => {
+                let elem_size = usize_lit(elem.size());
+                let len_width = usize_lit(flexible.len_width);
+                let len_width_ty = flexible.len_width_ty();
+                quote! {
+                    let field_len = self.#field_ident.len();
+                    bytes[offset..offset + #len_width]
+                        .copy_from_slice(bytemuck::bytes_of(&(field_len as #len_width_ty)));
+                    let start = offset + #len_width;
+                    let end = start + field_len * #elem_size;
+                    if field_len != 0 {
+                        bytes[start..end]
+                            .copy_from_slice(bytemuck::cast_slice(self.#field_ident.as_slice()));
+                    }
                     offset = end;
                 }
             }
@@ -823,7 +805,6 @@ impl FieldLayout {
 
     fn gen_view_methods(
         &self,
-        offset: usize,
         field_ident: &Ident,
         field_offsets: &[FieldOffset],
     ) -> syn::Result<proc_macro2::TokenStream> {
@@ -832,10 +813,8 @@ impl FieldLayout {
                 let ty = value.ty();
                 let value_size = usize_lit(value.size());
                 let access_mode = value.access_mode();
-                let offset_expr = find_data_offset(value, field_offsets);
+                let offset_expr = find_data_offset(field_offsets);
                 let data_offset_expr = if *optional {
-                    // note that it refers to the varible 'offset' declared inside the generated code,
-                    // not to offset_expr which is an expression.
                     quote!(offset + 1)
                 } else {
                     quote!(offset)
@@ -861,26 +840,18 @@ impl FieldLayout {
                             #return_expr
                         }
                     }),
-                    (true, AccessMode::Copy) => {
-                        //let value_body = getter_body(value, offset + 1)?;
-                        Ok(quote! {
-                            pub fn #field_ident(&self) -> core::option::Option<#ty> {
-                                // (self.bytes[(#offset)] != 0).then(||#getter_body)
-                                let offset = #offset_expr;
-                                (self.bytes[offset] != 0).then(|| #return_expr)
-                            }
-                        })
-                    }
-                    (true, AccessMode::Ref) => {
-                        //let value_body = getter_body(value, offset + 1)?;
-                        Ok(quote! {
-                            pub fn #field_ident(&self) -> core::option::Option<&#ty> {
-                                //(self.bytes[(#offset)] != 0).then(||#getter_body)
-                                let offset = #offset_expr;
-                                (self.bytes[offset] != 0).then(|| #return_expr)
-                            }
-                        })
-                    }
+                    (true, AccessMode::Copy) => Ok(quote! {
+                        pub fn #field_ident(&self) -> core::option::Option<#ty> {
+                            let offset = #offset_expr;
+                            (self.bytes[offset] != 0).then(|| #return_expr)
+                        }
+                    }),
+                    (true, AccessMode::Ref) => Ok(quote! {
+                        pub fn #field_ident(&self) -> core::option::Option<&#ty> {
+                            let offset = #offset_expr;
+                            (self.bytes[offset] != 0).then(|| #return_expr)
+                        }
+                    }),
                 }
             }
             Self::Vec { elem, flexible } => {
@@ -900,8 +871,7 @@ impl FieldLayout {
                     }
                 };
 
-                //let access_mode = elem.access_mode();
-                let offset_expr = find_data_offset(elem, field_offsets);
+                let offset_expr = find_data_offset(field_offsets);
                 Ok(quote! {
                     pub fn #field_ident(&self) -> &[#elem_ty] {
                         let offset = #offset_expr;
@@ -914,41 +884,12 @@ impl FieldLayout {
                         bytemuck::cast_slice::<u8, #elem_ty>(&self.bytes[start..end])
                     }
                 })
-                // Ok(quote!())
-                // let elem_ty = elem.ty();
-                // let len_expr = read_len_expr(offset, capacity.len_width());
-                // let offset = usize_lit(offset);
-                // let len_width_lit = capacity.len_width_lit();
-                // if let Some(cap) = capacity.comptime_capacity_lit() {
-                //     let capacity_name = format_ident!("{}_capacity", accessor_ident(field_ident));
-                //     Ok(quote! {
-                //         pub fn #field_ident(&self) -> &[#elem_ty] {
-                //             let len = #len_expr;
-                //             let start = #offset + #len_width_lit;
-                //             let end = start + (len * core::mem::size_of::<#elem_ty>());
-                //             bytemuck::cast_slice::<u8, #elem_ty>(&self.bytes[start..end])
-                //         }
-
-                //         pub const fn #capacity_name(&self) -> usize {
-                //             #cap
-                //         }
-                //     })
-                // } else {
-                //     Ok(quote! {
-                //         pub fn #field_ident(&self) -> &[#elem_ty] {
-                //             let len = #len_expr;
-                //             let start = #offset + #len_width_lit;
-                //             let end = start + (len * core::mem::size_of::<#elem_ty>());
-                //             bytemuck::cast_slice::<u8, #elem_ty>(&self.bytes[start..end])
-                //         }
-                //     })
-                // }
             }
         }
     }
 }
 
-fn parse_field_layout(field: &syn::Field, _is_last_field: bool) -> syn::Result<FieldLayout> {
+fn parse_field_layout(field: &syn::Field) -> syn::Result<FieldLayout> {
     let ty = &field.ty;
     let attribute = parse_field_attr(field)?;
 
@@ -1124,7 +1065,7 @@ fn parse_field_attr(field: &syn::Field) -> syn::Result<Option<FieldAttribute>> {
                     else {
                         return Err(syn::Error::new_spanned(
                             attr,
-                            "flexible must use the form `#[flexible = 1|2]` (on Vec field) or #[flexible] (on Option field)",
+                            "flexible must use the form `#[flexible = 1|2]` on a Vec field",
                         ));
                     };
 
@@ -1141,7 +1082,7 @@ fn parse_field_attr(field: &syn::Field) -> syn::Result<Option<FieldAttribute>> {
                 _meta => {
                     return Err(syn::Error::new_spanned(
                         attr,
-                        "flexible must use the form `#[flexible = 1|2]` (on Vec field) or #[flexible] (on Option field)",
+                        "flexible must use the form `#[flexible = 1|2]` on a Vec field",
                     ));
                 }
             };
@@ -1233,22 +1174,6 @@ fn usize_lit(value: usize) -> LitInt {
     LitInt::new(&value.to_string(), Span::call_site())
 }
 
-fn accessor_ident(field_ident: &Ident) -> Ident {
-    let field_name = field_ident.to_string();
-    let trimmed = field_name.trim_start_matches('_');
-    if trimmed.is_empty() {
-        format_ident!("{}", field_name)
-    } else {
-        format_ident!("{}", trimmed)
-    }
-}
-
-fn bytes_slice_expr(offset: usize, len: usize) -> proc_macro2::TokenStream {
-    let offset = usize_lit(offset);
-    let len = usize_lit(len);
-    quote!(&self.bytes[#offset..#offset + #len])
-}
-
 fn integer_size_and_align(ty: &Type) -> Option<(usize, usize)> {
     match integer_primitive_name(ty).as_deref() {
         Some("i8" | "u8") => Some((1, 1)),
@@ -1262,12 +1187,6 @@ fn integer_size_and_align(ty: &Type) -> Option<(usize, usize)> {
         }
         _ => None,
     }
-}
-
-fn size_and_align_of(ty: &Type) -> (usize, usize) {
-    integer_size_and_align(ty)
-        .or_else(|| fixed_array_size_and_align(ty).ok())
-        .expect("type must be a supported by now")
 }
 
 fn fixed_array_size_and_align(ty: &Type) -> syn::Result<(usize, usize)> {
@@ -1298,11 +1217,6 @@ fn fixed_array_size_and_align(ty: &Type) -> syn::Result<(usize, usize)> {
 
     Ok((len * elem_size, elem_align))
 }
-
-fn borrow_ref_expr(ty: &Type, bytes_expr: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
-    quote!(bytemuck::from_bytes::<#ty>(#bytes_expr))
-}
-
 fn read_copy_expr(
     value: &FixedValueKind,
     bytes_expr: proc_macro2::TokenStream,
@@ -1338,10 +1252,7 @@ fn parse_integer_expr(
     })
 }
 
-fn find_data_offset(
-    value: &FixedValueKind,
-    field_offsets: &[FieldOffset],
-) -> proc_macro2::TokenStream {
+fn find_data_offset(field_offsets: &[FieldOffset]) -> proc_macro2::TokenStream {
     match field_offsets.last().unwrap() {
         FieldOffset::FixedOffset { offset, .. } => {
             let offset = usize_lit(*offset);
@@ -1433,140 +1344,6 @@ fn find_data_offset(
                 });
 
             quote!(#current_offset_expr)
-        }
-    }
-}
-
-fn find_data_offset__(
-    value: &FixedValueKind,
-    field_offsets: &[FieldOffset],
-) -> syn::Result<proc_macro2::TokenStream> {
-    let ty = value.ty();
-    match field_offsets.last().unwrap() {
-        FieldOffset::FixedOffset { offset, .. } => {
-            let slice_expr = bytes_slice_expr(*offset, value.size());
-            match value.access_mode() {
-                AccessMode::Copy => read_copy_expr(value, slice_expr),
-                AccessMode::Ref => Ok(borrow_ref_expr(ty, slice_expr)),
-            }
-        }
-        FieldOffset::VariableOffset { .. } => {
-            if field_offsets.len() == 0 {
-                return Ok(quote! {959});
-            }
-
-            let (index, offset, layout) = field_offsets
-                .iter()
-                .enumerate()
-                .rev()
-                .find_map(|(index, field_offset)| {
-                    field_offset
-                        .fixed_offset()
-                        .map(|offset| (index, offset, field_offset.layout()))
-                })
-                .unwrap();
-
-            assert_eq!(layout.is_fixed(), false);
-
-            let current = field_offsets.last().unwrap().layout();
-
-            println!("field_offsets: {:#?}", field_offsets);
-            println!("index: {:?}", index);
-            println!("offset: {:?}", offset);
-
-            // | F | F | V | V | V | V |
-            //
-            let current_offset_expr = field_offsets[index..field_offsets.len() - 1]
-                .iter()
-                .fold(quote!(#offset), |expr, field_offset| match field_offset {
-                    FieldOffset::FixedOffset { layout, .. } => {
-                        // unreachable!("getter_body: FixedOffset is impossible as this point only VariableOffset is expected"),
-                        // acutally only the first entry has FixedOffset with layout.is_fixed() == false
-                        match layout {
-                            FieldLayout::Value { value, optional } => {
-                                if *optional {
-                                    let fixed_lit = value.size();
-                                    quote! {
-                                        if self.bytes[0] == 0 {
-                                            #expr + 1
-                                        } else {
-                                            #expr + (1 + #fixed_lit)
-                                        }
-                                    }
-                                } else {
-                                    let fixed_lit = value.size();
-                                    quote! {#expr + #fixed_lit}
-                                }
-                            }
-                            FieldLayout::Vec { elem, flexible } => {
-                                let elem_size = usize_lit(elem.size());
-                                match flexible.len_width {
-                                    1 => {
-                                        quote! {
-                                            #expr + (1 + (self.bytes[0] as usize) * #elem_size)
-                                        }
-                                    }
-                                    2 => {
-                                        quote! {
-                                            #expr + (2 + (core::ptr::read_unaligned(self.bytes.as_ptr() as *const u16)  as usize) * #elem_size)
-                                        }
-                                    }
-                                    _ => unreachable!("getter_body: len_width cannot be greater than 2"),
-                                }
-                            },
-                        }
-                    },
-                    FieldOffset::VariableOffset { layout, .. } => match layout {
-                        FieldLayout::Value { value, optional } => {
-                            if *optional {
-                                let fixed_lit = value.size();
-                                quote! {
-                                    if self.bytes[0] == 0 {
-                                        #expr + 1
-                                    } else {
-                                        #expr + (1 + #fixed_lit)
-                                    }
-                                }
-                            } else {
-                                let fixed_lit = value.size();
-                                quote! {#expr + #fixed_lit}
-                            }
-                        }
-                        FieldLayout::Vec { elem, flexible } => {
-                            let elem_size = usize_lit(elem.size());
-                            match flexible.len_width {
-                                1 => {
-                                    quote! {
-                                        #expr + (1 + (self.bytes[0] as usize) * #elem_size)
-                                    }
-                                }
-                                2 => {
-                                    quote! {
-                                        #expr + (2 + (core::ptr::read_unaligned(self.bytes.as_ptr() as *const u16)  as usize) * #elem_size)
-                                    }
-                                }
-                                _ => unreachable!("getter_body: len_width cannot be greater than 2"),
-                            }
-                        },
-                    },
-                });
-
-            Ok(quote! {
-                let offset = #current_offset_expr;
-            })
-        }
-    }
-}
-
-fn read_len_expr(offset: usize, len_width: usize) -> proc_macro2::TokenStream {
-    match len_width {
-        1 => quote!(self.bytes[#offset] as usize),
-        2 => quote!({
-            let raw: [u8; 2] = self.bytes[#offset..#offset + 2].try_into().expect("validated len");
-            u16::from_le_bytes(raw) as usize
-        }),
-        _ => {
-            unreachable!("read_len_expr: len_width more than 2 isn't supported")
         }
     }
 }

@@ -31,10 +31,11 @@ fn variable_layout_private_args() {
         encrypted_data_suffix: vec![10, 20, 30, 40, 50, 60, 70, 80],
     };
 
-    let mut aligned =
-        Aligned([0; PrivateTransferArgs::MIN_DATA_LEN + (1 + 32) + (1 + 4) + (2 + 8)]);
+    let expected_len = 4 + 8 + (1 + 32) + (1 + 4) + (2 + 8);
+    let mut aligned = Aligned([0; 4 + 8 + (1 + 32) + (1 + 4) + (2 + 8)]);
 
     assert!(aligned.0.len() <= PrivateTransferArgs::MAX_DATA_LEN);
+    assert!(aligned.0.len() >= PrivateTransferArgs::MIN_DATA_LEN);
 
     let bytes = &mut aligned.0;
 
@@ -67,17 +68,16 @@ fn variable_layout_private_args() {
         &[10, 20, 30, 40, 50, 60, 70, 80]
     );
 
-    // let encoded = value.encode();
-    // assert_eq!(encoded, Ok(aligned.0.into()));
-    // let encoded = encoded.unwrap();
+    let encoded = value.encode();
+    assert_eq!(encoded, Ok(aligned.0.to_vec()));
+    let encoded = encoded.unwrap();
 
-    // let mut encoded_out = vec![255; aligned.0.len() + 4];
-    // value.encode_to(&mut encoded_out).unwrap();
+    let mut encoded_out = vec![255; expected_len + 4];
+    value.encode_to(&mut encoded_out).unwrap();
 
-    // assert_eq!(&encoded_out[..aligned.0.len()], &encoded);
+    assert_eq!(&encoded_out[..expected_len], &encoded);
 
-    // // the last 4 bytes must not be overwritten by encode_to()
-    // assert_eq!(&encoded_out[aligned.0.len()..], &[255, 255, 255, 255]);
+    assert_eq!(&encoded_out[expected_len..], &[255, 255, 255, 255]);
 }
 
 #[variable_offset_layout]
@@ -119,6 +119,37 @@ fn variable_layout_computes_offsets_after_variable_fields() {
 }
 
 #[test]
+fn variable_layout_encode_supports_fields_after_variable_fields() {
+    let value = VariableOffsetViewArgs {
+        header: 7,
+        validator: Some(9),
+        payload: vec![1, 2, 3],
+        amount: 77,
+        checksum: 0xBEEF,
+    };
+
+    let encoded = value.encode().unwrap();
+    assert_eq!(
+        encoded,
+        [
+            7_u16.to_le_bytes().as_slice(),
+            &[1],
+            9_u32.to_le_bytes().as_slice(),
+            &[3],
+            &[1, 2, 3],
+            77_u64.to_le_bytes().as_slice(),
+            0xBEEF_u16.to_le_bytes().as_slice(),
+        ]
+        .concat()
+    );
+
+    let mut encoded_out = [255; 24];
+    value.encode_to(&mut encoded_out).unwrap();
+    assert_eq!(&encoded_out[..encoded.len()], &encoded);
+    assert_eq!(&encoded_out[encoded.len()..], &[255, 255, 255]);
+}
+
+#[test]
 fn variable_layout_handles_none_and_empty_vec_before_trailing_fields() {
     let mut aligned = Aligned([0; VariableOffsetViewArgs::MIN_DATA_LEN]);
     let bytes = &mut aligned.0;
@@ -136,6 +167,61 @@ fn variable_layout_handles_none_and_empty_vec_before_trailing_fields() {
     assert_eq!(view.payload(), &[]);
     assert_eq!(view.amount(), 55);
     assert_eq!(view.checksum(), 9);
+}
+
+#[test]
+fn variable_layout_encode_minimal_case_with_trailing_fields() {
+    let value = VariableOffsetViewArgs {
+        header: 5,
+        validator: None,
+        payload: vec![],
+        amount: 55,
+        checksum: 9,
+    };
+
+    let encoded = value.encode().unwrap();
+    assert_eq!(encoded.len(), VariableOffsetViewArgs::MIN_DATA_LEN);
+    assert_eq!(
+        encoded,
+        [
+            5_u16.to_le_bytes().as_slice(),
+            &[0],
+            &[0],
+            55_u64.to_le_bytes().as_slice(),
+            9_u16.to_le_bytes().as_slice(),
+        ]
+        .concat()
+    );
+}
+
+#[test]
+fn variable_layout_encode_to_rejects_small_output_buffer() {
+    let value = VariableOffsetViewArgs {
+        header: 7,
+        validator: Some(9),
+        payload: vec![1, 2, 3],
+        amount: 77,
+        checksum: 0xBEEF,
+    };
+
+    let mut out = [0_u8; 20];
+    assert_eq!(
+        value.encode_to(&mut out).unwrap_err(),
+        ProgramError::AccountDataTooSmall
+    );
+}
+
+#[test]
+fn variable_layout_encode_rejects_vec_len_that_exceeds_len_width() {
+    let value = PrivateTransferArgs {
+        shuttle_id: 100,
+        amount: 200,
+        validator: Some([1; 32]),
+        encrypted_destination: vec![0; 256],
+        encrypted_data_suffix: vec![],
+    };
+
+    assert_eq!(value.encode().unwrap_err(), ProgramError::InvalidRealloc);
 }
 
 #[test]
