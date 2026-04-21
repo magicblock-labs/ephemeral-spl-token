@@ -4,7 +4,9 @@ use crate::processor::internal::token_vault::transfer_to_vault_for_mint;
 use crate::processor::utils::{
     get_associated_token_address, read_mint_decimals, validate_token_account,
 };
-use data_layout::fixed_offset_layout;
+use alloc::vec;
+use alloc::vec::Vec;
+use data_layout::variable_offset_layout;
 #[cfg(feature = "logging")]
 use ephemeral_spl_api::state::transfer_queue::queue_peek_next_task_id_from_data;
 use ephemeral_spl_api::state::transfer_queue::{
@@ -219,7 +221,7 @@ pub fn process_deposit_and_queue_transfer(
     Ok(())
 }
 
-#[fixed_offset_layout]
+#[variable_offset_layout]
 pub struct DepositAndQueueTransferArgs {
     pub amount: u64,
     pub min_delay_ms: u64,

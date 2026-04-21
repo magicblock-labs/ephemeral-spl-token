@@ -222,7 +222,9 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
             destination_owner.as_array(),
             &validator.to_bytes(),
         )
-        .expect("validator key should be valid for encryption"),
+        .expect("validator key should be valid for encryption")
+        .try_into()
+        .expect("encrypted destination must be 80 bytes"),
         encrypted_data_suffix: dlp_api::encryption::encrypt_ed25519_recipient(
             &DepositAndQueueTransferArgs {
                 amount: 0, // dont care its value

@@ -2,7 +2,7 @@
 use alloc::string::ToString;
 use alloc::vec;
 use alloc::vec::Vec;
-use data_layout::{fixed_offset_layout, variable_offset_layout};
+use data_layout::variable_offset_layout;
 use dlp_api::args::{
     EncryptedBuffer, MaybeEncryptedAccountMeta, MaybeEncryptedInstruction, MaybeEncryptedIxData,
     MaybeEncryptedPubkey,
@@ -193,7 +193,6 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
 pub struct DepositAndDelegateShuttleWithPrivateTransferArgs {
     pub shuttle_id: u32,
     pub amount: u64,
-    pub validator: Option<[u8; 32]>,
     //
     // [capacity = 80] is because sealed-box encryption adds 48 bytes of overhead
     // irrespective of input bytes. So since encrypted_destination is encrypted
@@ -201,8 +200,8 @@ pub struct DepositAndDelegateShuttleWithPrivateTransferArgs {
     //
     // ref: https://github.com/jedisct1/libsodium-rs/blob/b3ad9336c0/src/crypto_box/mod.rs#L229-L232
     //
-    #[flexible = 1]
-    pub encrypted_destination: Vec<u8>,
+    pub encrypted_destination: [u8; 80],
+    pub validator: Option<[u8; 32]>,
     #[flexible = 1]
     pub encrypted_data_suffix: Vec<u8>,
 }

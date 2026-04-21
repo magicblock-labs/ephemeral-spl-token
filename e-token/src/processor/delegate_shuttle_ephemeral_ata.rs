@@ -1,4 +1,6 @@
-use data_layout::fixed_offset_layout;
+use alloc::vec;
+use alloc::vec::Vec;
+use data_layout::variable_offset_layout;
 use ephemeral_rollups_pinocchio::instruction::DelegateAccountCpiBuilder;
 use ephemeral_rollups_pinocchio::types::DelegateConfig;
 use ephemeral_spl_api::state::{
@@ -109,7 +111,7 @@ pub fn process_delegate_shuttle_ephemeral_ata(
     .invoke()
 }
 
-#[fixed_offset_layout]
+#[variable_offset_layout]
 pub struct DelegateShuttleArgs {
     pub validator: Option<[u8; 32]>,
 }

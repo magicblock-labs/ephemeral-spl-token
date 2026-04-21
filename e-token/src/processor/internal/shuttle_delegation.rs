@@ -1,6 +1,8 @@
 #[cfg(feature = "logging")]
 use alloc::string::ToString;
-use data_layout::fixed_offset_layout;
+use alloc::vec;
+use alloc::vec::Vec;
+use data_layout::variable_offset_layout;
 
 use core::mem::MaybeUninit;
 use dlp_api::args::PostDelegationActions;
@@ -66,7 +68,7 @@ pub(crate) struct DepositAndDelegateShuttleCommonArgs<'a> {
     pub(crate) validator: Option<&'a [u8; 32]>,
 }
 
-#[fixed_offset_layout]
+#[variable_offset_layout]
 pub struct DepositAndDelegateShuttleArgs {
     pub shuttle_id: u32,
     pub amount: u64,

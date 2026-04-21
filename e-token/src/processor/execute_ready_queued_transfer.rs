@@ -1,3 +1,5 @@
+use alloc::vec;
+use alloc::vec::Vec;
 use {
     ephemeral_rollups_pinocchio::pda::ephemeral_balance_pda_from_payer,
     ephemeral_spl_api::state::{
@@ -12,7 +14,7 @@ use crate::processor::{
     internal::token_vault::validate_vault_for_mint,
     utils::read_mint_decimals,
 };
-use data_layout::fixed_offset_layout;
+use data_layout::variable_offset_layout;
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
 
@@ -141,7 +143,7 @@ pub fn process_execute_ready_queued_transfer(
     Ok(())
 }
 
-#[fixed_offset_layout]
+#[variable_offset_layout]
 pub struct ExecuteQueuedTransferArgs {
     pub amount: u64,
     pub client_ref_id: Option<u64>,

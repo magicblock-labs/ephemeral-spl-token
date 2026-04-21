@@ -1,4 +1,6 @@
-use data_layout::fixed_offset_layout;
+use alloc::vec;
+use alloc::vec::Vec;
+use data_layout::variable_offset_layout;
 use ephemeral_rollups_pinocchio::acl::{
     consts::PERMISSION_PROGRAM_ID, instruction::CreatePermissionCpiBuilder,
     pda::permission_pda_from_permissioned_account, types::MembersArgs,
@@ -170,7 +172,7 @@ pub fn process_initialize_transfer_queue(
     Ok(())
 }
 
-#[fixed_offset_layout]
+#[variable_offset_layout]
 pub struct InitializeTransferQueueArgs {
     pub requested_items: Option<u32>,
 }
