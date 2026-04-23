@@ -40,6 +40,7 @@ const env = {
   EPHEMERAL_RPC_URL: "https://ephemeral.rpc.test",
   BASE_DEVNET_RPC_URL: "https://base.devnet.rpc.test",
   EPHEMERAL_DEVNET_RPC_URL: "https://ephemeral.devnet.rpc.test",
+  CLUSTER: "mainnet" as const,
   CORS_ORIGIN: "*",
 };
 
@@ -47,6 +48,19 @@ const DEVNET_USDC_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
 const owner = Keypair.generate().publicKey.toBase58();
 const destination = Keypair.generate().publicKey.toBase58();
 const resolvedValidator = Keypair.generate().publicKey.toBase58();
+
+function deriveAssociatedTokenAddress(mint: string, owner: string) {
+  const [ata] = PublicKey.findProgramAddressSync(
+    [
+      new PublicKey(owner).toBuffer(),
+      TOKEN_PROGRAM_ID.toBuffer(),
+      new PublicKey(mint).toBuffer(),
+    ],
+    new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"),
+  );
+
+  return ata.toBase58();
+}
 
 function createMcpFetch() {
   return (input: RequestInfo | URL, init?: RequestInit) => {
@@ -1876,9 +1890,13 @@ describe("app", () => {
 
   it("builds a gasless private transfer with the sponsor as fee payer", async () => {
     const sponsor = Keypair.generate();
+    const mint = DEVNET_USDC_MINT;
+    const amount = 5_000_000;
+    const ownerAta = deriveAssociatedTokenAddress(mint, owner);
+    const sponsorAta = deriveAssociatedTokenAddress(mint, sponsor.publicKey.toBase58());
     const transferEnv = {
       ...env,
-      EPHEMERAL_RPC_URL: "https://ephemeral.gasless-transfer.rpc.test",
+      EPHEMERAL_DEVNET_RPC_URL: "https://ephemeral.gasless-transfer.rpc.test",
       GASLESS_SPONSOR_SECRET_KEY: JSON.stringify(Array.from(sponsor.secretKey)),
     };
 
@@ -1888,7 +1906,7 @@ describe("app", () => {
     });
     vi.spyOn(Connection.prototype, "getAccountInfo").mockResolvedValue(null);
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-      expect(String(input)).toBe(transferEnv.EPHEMERAL_RPC_URL);
+      expect(String(input)).toBe(transferEnv.EPHEMERAL_DEVNET_RPC_URL);
       return createIdentityResponse(resolvedValidator);
     });
     vi.spyOn(globalThis.crypto, "getRandomValues").mockImplementation((array) => {
@@ -1909,8 +1927,9 @@ describe("app", () => {
       body: JSON.stringify({
         from: owner,
         to: destination,
-        mint: "So11111111111111111111111111111111111111112",
-        amount: 2,
+        mint,
+        amount,
+        cluster: "devnet",
         visibility: "private",
         fromBalance: "base",
         toBalance: "base",
@@ -1941,15 +1960,21 @@ describe("app", () => {
     );
     expect(sponsorSignature?.signature).not.toBeNull();
 
-    const refillIx = transaction.instructions[0]!;
-    expect(refillIx.programId.toBase58()).toBe(EPHEMERAL_SPL_TOKEN_PROGRAM_ID.toBase58());
-    expect(Array.from(refillIx.data)).toEqual([28, 0, 0, 0, 0, 0, 0, 0]);
+    const relayFeeIx = transaction.instructions[0]!;
+    expect(relayFeeIx.programId.toBase58()).toBe(TOKEN_PROGRAM_ID.toBase58());
+    expect(relayFeeIx.keys.map((key) => key.pubkey.toBase58())).toEqual([
+      ownerAta,
+      sponsorAta,
+      owner,
+    ]);
+    expect(relayFeeIx.data[0]).toBe(3);
+    expect(relayFeeIx.data.readBigUInt64LE(1)).toBe(200_000n);
 
     const privateTransferIx = transaction.instructions[1]!;
     expect(privateTransferIx.programId.toBase58()).toBe(EPHEMERAL_SPL_TOKEN_PROGRAM_ID.toBase58());
     expect(Array.from(privateTransferIx.data.subarray(0, 8))).toEqual([25, 0, 0, 0, 0, 0, 0, 0]);
     expect(privateTransferIx.data.readUInt32LE(8)).toBe(7);
-    expect(privateTransferIx.data.readBigUInt64LE(12)).toBe(2n);
+    expect(privateTransferIx.data.readBigUInt64LE(12)).toBe(BigInt(amount));
     expect(privateTransferIx.data.subarray(100, 101)).toEqual(Buffer.from([1]));
     expect(privateTransferIx.data.subarray(101, 133)).toEqual(new PublicKey(resolvedValidator).toBuffer());
     expect(privateTransferIx.data[133]).toBe(privateTransferIx.data.length - 134);
@@ -1958,7 +1983,7 @@ describe("app", () => {
   it("rejects gasless transfers when the sponsor key is not configured", async () => {
     const transferEnv = {
       ...env,
-      EPHEMERAL_RPC_URL: "https://ephemeral.gasless-missing.rpc.test",
+      EPHEMERAL_DEVNET_RPC_URL: "https://ephemeral.gasless-missing.rpc.test",
     };
 
     const response = await app.request("/v1/spl/transfer", {
@@ -1969,8 +1994,9 @@ describe("app", () => {
       body: JSON.stringify({
         from: owner,
         to: destination,
-        mint: "So11111111111111111111111111111111111111112",
-        amount: 2,
+        mint: DEVNET_USDC_MINT,
+        amount: 5_000_000,
+        cluster: "devnet",
         visibility: "private",
         fromBalance: "base",
         toBalance: "base",

@@ -274,7 +274,7 @@ export const transferRequestSchema = z.object({
   }).optional(),
   gasless: z.boolean().openapi({
     example: true,
-    description: "Optional. Private transfer only. When true, the API uses the configured sponsor as transaction fee payer and instruction payer.",
+    description: "Optional. Private transfer only. When true, the API uses the configured sponsor as transaction fee payer and prepends a relay-fee token transfer to the sponsor ATA.",
   }).optional(),
   legacy: z.boolean().openapi({
     description: "Optional. Defaults to false. When true, skips lookup-table compilation and returns a legacy transaction.",

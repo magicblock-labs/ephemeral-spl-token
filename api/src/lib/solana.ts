@@ -57,6 +57,7 @@ const PRIVATE_BASE_TO_BASE_TRANSFER_LOOKUP_TABLES = {
   mainnet: new PublicKey("2J2Pw639kU7U6rj7qUXY5sVXdJqyt4DjEcVxzqmFrFds"),
   devnet: new PublicKey("HFmj4QbofPjhXP2vdnDARDQFw1AucSQTKVAs8df4tkUy"),
 } as const;
+const GASLESS_RELAY_FEE_MICRO_USDC = 200_000n; // 0.2 USDC/USDT
 const GASLESS_STABLECOIN_MIN_AMOUNT = BigInt(5 * 1_000_000); // 5 USDC/USDT
 
 const connectionCache = new Map<string, Connection>();
@@ -443,6 +444,34 @@ function createMemoInstruction(memo: string) {
   });
 }
 
+function createTokenTransferInstruction(
+  source: PublicKey,
+  destination: PublicKey,
+  authority: PublicKey,
+  amount: bigint,
+) {
+  const data = Buffer.alloc(9);
+  data[0] = 3; // TokenInstruction::Transfer
+  data.writeBigUInt64LE(amount, 1);
+
+  return new TransactionInstruction({
+    programId: TOKEN_PROGRAM_ID,
+    keys: [
+      { pubkey: source, isSigner: false, isWritable: true },
+      { pubkey: destination, isSigner: false, isWritable: true },
+      { pubkey: authority, isSigner: true, isWritable: false },
+    ],
+    data,
+  });
+}
+
+function isProcessPendingTransferQueueRefillInstruction(instruction: TransactionInstruction) {
+  return instruction.programId.equals(EPHEMERAL_SPL_TOKEN_PROGRAM_ID)
+    && instruction.data.length === 8
+    && instruction.data.readUInt32LE(0) === 28
+    && instruction.data.readUInt32LE(4) === 0;
+}
+
 function createRandomShuttleId() {
   return crypto.getRandomValues(new Uint32Array(1))[0] & 0x7fffffff;
 }
@@ -558,7 +587,6 @@ function getRequiredSigners(feePayer: PublicKey, instructions: TransactionInstru
 }
 
 function isSupportedGaslessMint(cluster: RpcConfig["cluster"], mint: PublicKey) {
-  console.log("isSupportedGaslessMint: ", cluster);
   if (cluster === "custom") {
     return true;
   }
@@ -889,7 +917,6 @@ export async function buildInitializeMintTransaction(
 
 export async function buildTransferTransaction(env: AppEnv, input: TransferInput, authToken?: string) {
   try {
-    console.log("input: ", input, input.cluster);
     const config = resolveRpcConfig(env, input.cluster);
     const from = parsePublicKey(input.from, "from");
     const to = parsePublicKey(input.to, "to");
@@ -972,6 +999,16 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
     const sponsor = input.gasless ? getGaslessSponsorKeypair(env) : undefined;
     const payer = sponsor?.publicKey ?? from;
     const feePayer = sponsor?.publicKey ?? from;
+    const gaslessFeeInstructions = sponsor
+      ? [
+        createTokenTransferInstruction(
+          getAssociatedTokenAddressSync(mint, from, false, TOKEN_PROGRAM_ID),
+          getAssociatedTokenAddressSync(mint, sponsor.publicKey, false, TOKEN_PROGRAM_ID),
+          from,
+          GASLESS_RELAY_FEE_MICRO_USDC,
+        ),
+      ]
+      : [];
 
     const shouldResolveValidator = input.validator
       || input.visibility === "private"
@@ -985,29 +1022,44 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
     const sendTo: SendTarget = input.fromBalance === "ephemeral" ? "ephemeral" : "base";
     const blockhash = await getBlockhash(config, sendTo, authToken);
 
+    const transferInstructions = await transferSpl(from, to, mint, amount, {
+      visibility: input.visibility,
+      fromBalance: input.fromBalance,
+      toBalance: input.toBalance,
+      payer,
+      validator,
+      initIfMissing: input.initIfMissing,
+      initAtasIfMissing: input.initAtasIfMissing,
+      initVaultIfMissing: input.initVaultIfMissing,
+      shuttleId,
+      privateTransfer: input.minDelayMs !== undefined
+        || input.maxDelayMs !== undefined
+        || input.clientRefId !== undefined
+        || input.split !== undefined
+        ? {
+          minDelayMs,
+          maxDelayMs,
+          clientRefId,
+          split,
+        }
+        : undefined,
+    });
+
+
+    // Gasless private base->base already adds a relay-fee token transfer. Dropping
+    // the opportunistic queue-refill ix keeps the full transaction under Solana's
+    // packet limit while preserving the actual private transfer instruction.
+    const effectiveTransferInstructions = sponsor
+      && input.visibility === "private"
+      && input.fromBalance === "base"
+      && input.toBalance === "base"
+      && transferInstructions.length > 0
+      ? transferInstructions.filter(ix => !isProcessPendingTransferQueueRefillInstruction(ix))
+      : transferInstructions;
+
     const instructions = [
-      ...(await transferSpl(from, to, mint, amount, {
-        visibility: input.visibility,
-        fromBalance: input.fromBalance,
-        toBalance: input.toBalance,
-        payer,
-        validator,
-        initIfMissing: input.initIfMissing,
-        initAtasIfMissing: input.initAtasIfMissing,
-        initVaultIfMissing: input.initVaultIfMissing,
-        shuttleId,
-        privateTransfer: input.minDelayMs !== undefined
-          || input.maxDelayMs !== undefined
-          || input.clientRefId !== undefined
-          || input.split !== undefined
-          ? {
-            minDelayMs,
-            maxDelayMs,
-            clientRefId,
-            split,
-          }
-          : undefined,
-      })),
+      ...gaslessFeeInstructions,
+      ...effectiveTransferInstructions,
       ...(input.memo !== undefined ? [createMemoInstruction(input.memo)] : []),
     ];
 
@@ -1030,6 +1082,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
         return versionedResponse;
       }
     }
+    console.log("instructions: ", instructions);
 
     return serializeTransaction(
       "transfer",
@@ -1042,6 +1095,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
     );
   }
   catch (error) {
+    console.log("gasless tx: ", error);
     throwTransactionBuildError(error);
   }
 }
