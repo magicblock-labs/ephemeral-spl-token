@@ -14,7 +14,6 @@ use ephemeral_spl_api::debug_log;
 use ephemeral_spl_api::instruction::ESplInstruction;
 use ephemeral_spl_api::state::transfer_queue::{queue_views, TransferQueue};
 use ephemeral_spl_api::{consts, require, require_eq_keys, require_n_accounts};
-use pinocchio::address;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use solana_instruction::{AccountMeta, Instruction};
 
@@ -22,7 +21,7 @@ use crate::processor::{
     internal::shuttle_delegation::{
         merge_shuttle_into_token_account_action,
         process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions,
-        undelegate_and_close_shuttle_action_to_recipient, DepositAndDelegateShuttleAccounts,
+        undelegate_and_close_shuttle_action, DepositAndDelegateShuttleAccounts,
         DepositAndDelegateShuttleCommonArgs,
     },
     utils::read_mint_decimals,
@@ -154,14 +153,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
         ProgramError::InvalidSeeds
     );
 
-    // if payer_info != owner_info, then payer_info is the sponsored relayer account
-    // and therefore, it is a gasless transfer.
-    let is_gasless = !address::address_eq(payer_info.address(), owner_info.address());
-    if is_gasless {
-        require_supported_gasless_mint(common_accounts.mint_info.address())?;
-    }
-
-    let fee_amount = private_transfer_fee_amount(args.amount(), is_gasless)?;
+    let fee_amount = private_transfer_fee_amount(args.amount())?;
     let private_transfer_amount = args
         .amount()
         .checked_sub(fee_amount)
@@ -170,21 +162,6 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
         common_accounts.mint_info,
         common_accounts.token_program_info,
     )?;
-
-    //
-    // In both flows (gasless or non-gasless), the shuttle setup lamports ultimately come from
-    // payer_info: payer_info first funds rent_pda_info, and rent_pda_info then creates
-    // the temporary shuttle accounts. The difference is where those lamports are reimbursed when
-    // the temporary accounts are later closed:
-    //  - non-gasless flow: reimbursed back into rent_pda_info
-    //  - gasless flow: reimbursed back into payer_info (the relayer) so the relayer's SOL
-    //    balance does not keep going down over time.
-    //
-    let refund_recipient_info = if is_gasless {
-        payer_info
-    } else {
-        rent_pda_info
-    };
 
     let actions = {
         let private_transfer = private_transfer_action_encrypted(
@@ -200,10 +177,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
                 common_accounts.owner_source_token_info,
             ),
             private_transfer_fee_action(&common_accounts, fee_amount, mint_decimals),
-            undelegate_and_close_shuttle_action_to_recipient(
-                &common_accounts,
-                refund_recipient_info.address(),
-            ),
+            undelegate_and_close_shuttle_action(&common_accounts),
         ]
         .cleartext_with_insertable(private_transfer, 1)
     };
@@ -213,7 +187,6 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
         args.common_args()?,
         ephemeral_spl_api::consts::SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS,
         actions,
-        refund_recipient_info,
     )
 }
 
@@ -295,52 +268,12 @@ fn private_transfer_action_encrypted(
 }
 
 #[inline(always)]
-fn private_transfer_fee_amount(amount: u64, is_gasless: bool) -> Result<u64, ProgramError> {
-    let total_fee_basic_points = if is_gasless {
-        consts::PRIVATE_TRANSFER_FEE_BASIS_POINTS + consts::GASLESS_PLATFORM_FEE_BASIS_POINTS
-    } else {
-        consts::PRIVATE_TRANSFER_FEE_BASIS_POINTS
-    };
-    let additional_fee = if is_gasless {
-        //
-        // Note that the actual network fee is in SOL, not in USDC and is deducted from
-        // sponsored relayer wallet.
-        //
-        // So here, even though we are compensating/reimbursing it, this is not wallet-level
-        // reimbursement, rather organization-level reimbursement, because this amount goes
-        // to the protocol vault, not to the relayer wallet and both wallet belongs to the
-        // same organization.
-        //
-        consts::GASLESS_RELAY_TX_FEE_COMPENSATION_MICRO_USDC
-    } else {
-        0
-    };
-
+fn private_transfer_fee_amount(amount: u64) -> Result<u64, ProgramError> {
     Ok((amount as u128)
-        .checked_mul(total_fee_basic_points as u128)
+        .checked_mul(consts::PRIVATE_TRANSFER_FEE_BASIS_POINTS as u128)
         .ok_or(ProgramError::InvalidInstructionData)?
         .checked_div(consts::BASIS_POINTS_FACTOR)
-        .ok_or(ProgramError::InvalidInstructionData)?
-        .checked_add(additional_fee as u128)
         .ok_or(ProgramError::InvalidInstructionData)? as u64)
-}
-
-#[cfg(not(feature = "testing"))]
-#[inline(always)]
-fn require_supported_gasless_mint(mint: &pinocchio::Address) -> Result<(), ProgramError> {
-    require!(
-        address::address_eq(mint, &consts::MAINNET_USDC_MINT)
-            || address::address_eq(mint, &consts::MAINNET_USDT_MINT)
-            || address::address_eq(mint, &consts::DEVNET_USDC_MINT),
-        ProgramError::InvalidInstructionData
-    );
-    Ok(())
-}
-
-#[cfg(feature = "testing")]
-#[inline(always)]
-fn require_supported_gasless_mint(_mint: &pinocchio::Address) -> Result<(), ProgramError> {
-    Ok(())
 }
 
 fn private_transfer_fee_action(

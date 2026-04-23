@@ -1,5 +1,3 @@
-use crate::Address;
-
 /// Flat lamport fee charged by sponsored shuttle delegation setup flows.
 ///
 /// 0.0005 SOL = 500_000 lamports.
@@ -17,20 +15,7 @@ pub const SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS: u64 = 1_539_280;
 ///
 /// 10 basis points = 0.1%.
 pub const PRIVATE_TRANSFER_FEE_BASIS_POINTS: u64 = 10;
-pub const GASLESS_PLATFORM_FEE_BASIS_POINTS: u64 = 10;
 pub const BASIS_POINTS_FACTOR: u128 = 10_000;
-
-pub const MAINNET_USDC_MINT: Address =
-    solana_address::address!("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
-pub const MAINNET_USDT_MINT: Address =
-    solana_address::address!("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB");
-pub const DEVNET_USDC_MINT: Address =
-    solana_address::address!("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU");
-
-/// Flat microUSDC fee to compensate relayed base-layer transaction fees.
-///
-/// 0.1 USDC = 1_00_000 microUSDC
-pub const GASLESS_RELAY_TX_FEE_COMPENSATION_MICRO_USDC: u64 = 1_00_000;
 
 /// Flat lamport fee charged by sponsored lamports transfer flows.
 ///

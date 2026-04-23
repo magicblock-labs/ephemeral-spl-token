@@ -99,7 +99,6 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge(
         args.common_args(),
         0,
         default_post_delegation_actions(&accounts).cleartext(),
-        accounts.common.rent_pda_info,
     )
 }
 

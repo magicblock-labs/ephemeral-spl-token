@@ -94,7 +94,6 @@ pub(crate) fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actio
     args: DepositAndDelegateShuttleCommonArgs<'_>,
     extra_setup_lamports: u64,
     post_actions: PostDelegationActions,
-    refund_recipient_info: &AccountView,
 ) -> ProgramResult {
     let prepared = prepare_sponsored_shuttle_delegation(
         accounts.payer_info,
@@ -102,7 +101,6 @@ pub(crate) fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actio
         accounts.shuttle_info,
         accounts.shuttle_eata_info,
         accounts.shuttle_wallet_ata_info,
-        refund_recipient_info,
         accounts.owner_info,
         accounts.mint_info,
         accounts.token_program_info,
@@ -162,7 +160,6 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
     shuttle_info: &AccountView,
     shuttle_eata_info: &AccountView,
     shuttle_wallet_ata_info: &AccountView,
-    refund_recipient_info: &AccountView,
     owner_info: &AccountView,
     mint_info: &AccountView,
     token_program_info: &AccountView,
@@ -230,7 +227,7 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
         shuttle_info,
         shuttle_eata_info,
         shuttle_wallet_ata_info,
-        refund_recipient_info,
+        rent_pda_info,
         owner_info,
         mint_info,
         token_program_info,
@@ -251,8 +248,7 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
 
     let shuttle = load_initialized::<ShuttleMetadata>(unsafe { shuttle_info.borrow_unchecked() })?;
     require!(
-        shuttle.owner == *owner_info.address()
-            && shuttle.payer == *refund_recipient_info.address(),
+        shuttle.owner == *owner_info.address() && shuttle.payer == *rent_pda_info.address(),
         ProgramError::IncorrectAuthority
     );
 
@@ -371,19 +367,9 @@ pub(crate) fn merge_shuttle_into_token_account_action(
 pub(crate) fn undelegate_and_close_shuttle_action(
     accounts: &DepositAndDelegateShuttleAccounts<'_>,
 ) -> Instruction {
-    undelegate_and_close_shuttle_action_to_recipient(
-        accounts,
-        accounts.rent_pda_info.address(),
-    )
-}
-
-pub(crate) fn undelegate_and_close_shuttle_action_to_recipient(
-    accounts: &DepositAndDelegateShuttleAccounts<'_>,
-    reimbursement_recipient: &Address,
-) -> Instruction {
     build_undelegate_and_close_shuttle_instruction(
         accounts.payer_info.address(),
-        reimbursement_recipient,
+        accounts.rent_pda_info.address(),
         accounts.shuttle_info.address(),
         accounts.shuttle_eata_info.address(),
         accounts.shuttle_wallet_ata_info.address(),

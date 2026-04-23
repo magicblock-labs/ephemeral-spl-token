@@ -109,7 +109,6 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
         accounts.shuttle_info,
         accounts.shuttle_eata_info,
         accounts.shuttle_wallet_ata_info,
-        accounts.rent_pda_info,
         accounts.owner_info,
         accounts.mint_info,
         accounts.token_program_info,

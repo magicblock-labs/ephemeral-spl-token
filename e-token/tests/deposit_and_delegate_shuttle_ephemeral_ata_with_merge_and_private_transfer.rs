@@ -22,6 +22,7 @@ use ephemeral_token_program::{
 };
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
+use solana_program::rent::Rent;
 use solana_program_pack::Pack;
 use solana_program_test::tokio;
 use solana_pubkey::Pubkey;
@@ -61,7 +62,7 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
         pt.add_account(
             owner.pubkey(),
             Account {
-                lamports: 10_000_000_000,
+                lamports: Rent::default().minimum_balance(0).max(1),
                 data: vec![],
                 owner: solana_system_interface::program::ID,
                 executable: false,
@@ -71,7 +72,8 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
     })
     .await;
 
-    let payer = owner.pubkey();
+    let payer_kp = utils::fixed_payer_keypair();
+    let payer = payer_kp.pubkey();
     let mint_kp = utils::test_keypair(
         "deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer::mint",
     );
@@ -86,7 +88,7 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
 
     let _setup = utils::setup_mint_and_token_accounts(
         &mut context,
-        &owner,
+        &payer_kp,
         &mint_kp,
         DECIMALS,
         STARTING_BALANCE,
@@ -186,7 +188,7 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
             ix_mint_owner_source,
         ],
         Some(&payer),
-        &[&owner, &owner_token],
+        &[&payer_kp, &owner_token],
         context.last_blockhash,
     );
     context
@@ -283,7 +285,7 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
     let tx_delegate_queue = Transaction::new_signed_with_payer(
         &[ix_delegate_queue],
         Some(&payer),
-        &[&owner],
+        &[&payer_kp],
         context.banks_client.get_latest_blockhash().await.unwrap(),
     );
     common::metrics::process_transaction_record_cu(
@@ -297,7 +299,7 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
     let tx_delegate = Transaction::new_signed_with_payer(
         &[ix_delegate],
         Some(&payer),
-        &[&owner],
+        &[&payer_kp, &owner],
         context.banks_client.get_latest_blockhash().await.unwrap(),
     );
     common::metrics::process_transaction_record_cu(
