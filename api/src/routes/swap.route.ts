@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import {
   AddressLookupTableAccount,
+  ComputeBudgetProgram,
   Connection,
   PublicKey,
   SystemProgram,
@@ -30,6 +31,27 @@ const TOKEN_PROGRAM_ID = new PublicKey(
 const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey(
   "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
 );
+
+// Extra compute units to cover the appended
+// `schedule_private_transfer` ix. Measured conservatively — the ix does
+// ~10 `create_program_address` derivations, one system Transfer, one Hydra
+// Create CPI (which itself creates an account), and one post-top-up
+// Transfer (~30k CU in practice; 40k leaves comfortable headroom).
+const SCHEDULE_IX_CU_BUDGET = 40_000;
+// ComputeBudget instruction layout: 1-byte discriminator + 4-byte u32.
+const COMPUTE_BUDGET_SET_UNIT_LIMIT_DISC = 0x02;
+const COMPUTE_BUDGET_SET_UNIT_LIMIT_IX_LEN = 5;
+const COMPUTE_UNIT_LIMIT_MAX = 1_400_000;
+
+class PrivateSwapUpstreamError extends Error {
+  causeValue?: unknown;
+
+  constructor(message: string, causeValue?: unknown) {
+    super(message);
+    this.name = "PrivateSwapUpstreamError";
+    this.causeValue = causeValue;
+  }
+}
 
 const tags = ["Swap"];
 const USDC_TO_USDT_QUOTE_EXAMPLE = {
@@ -91,6 +113,31 @@ const USDC_TO_USDT_QUOTE_EXAMPLE = {
 const SWAP_REQUEST_EXAMPLE = {
   userPublicKey: "3rXKwQ1kpjBd5tdcco32qsvqUh1BnZjcYnS5kYrP7AYE",
   quoteResponse: USDC_TO_USDT_QUOTE_EXAMPLE,
+} as const;
+
+const SWAP_REQUEST_PRIVATE_EXAMPLE = {
+  userPublicKey: "3rXKwQ1kpjBd5tdcco32qsvqUh1BnZjcYnS5kYrP7AYE",
+  quoteResponse: USDC_TO_USDT_QUOTE_EXAMPLE,
+  visibility: "private",
+  destination: "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+  minDelayMs: "0",
+  maxDelayMs: "0",
+  split: 1,
+} as const;
+
+const SWAP_RESPONSE_PUBLIC_EXAMPLE = {
+  swapTransaction: "AQABA...base64...",
+  lastValidBlockHeight: 318_120_000,
+} as const;
+
+const SWAP_RESPONSE_PRIVATE_EXAMPLE = {
+  swapTransaction: "AQABA...base64 with appended ATA-create + schedule_private_transfer...",
+  lastValidBlockHeight: 318_120_000,
+  privateTransfer: {
+    stashAta: "9mZP3xKHvVqXd3xtk72nSeEwJjmsgqmXvUDfwNA9BM4K",
+    hydraCrankPda: "HyDraCrNkPdA11111111111111111111111111111111",
+    shuttleId: 2_147_483_647,
+  },
 } as const;
 
 const unsignedIntegerStringSchema = z
@@ -368,12 +415,68 @@ const swapRoute = createRoute({
   path: "/v1/swap/swap",
   method: "post",
   tags,
-  description: "Build an unsigned swap transaction from a quote.",
+  description: [
+    "Build an unsigned swap transaction from a quote.",
+    "",
+    "Supports two visibility modes:",
+    "",
+    "- **`visibility: \"public\"`** (default) — pure pass-through to the Jupiter/Metis",
+    "  upstream. The returned transaction is whatever the upstream produces.",
+    "- **`visibility: \"private\"`** — the server forces Jupiter's output into a",
+    "  program-owned stash ATA (deterministically derived from `(userPublicKey,",
+    "  quoteResponse.outputMint)`), prepends an idempotent ATA-create, and appends a",
+    "  `schedule_private_transfer` instruction that registers a one-shot Hydra",
+    "  crank. When the crank fires, it self-CPIs into the on-chain private-transfer",
+    "  flow to deliver the swapped tokens to `destination` with the requested",
+    "  delay/split policy. The returned transaction is a v0 `VersionedTransaction`",
+    "  that is still unsigned — the client signs and submits.",
+    "",
+    "When `visibility = \"private\"`, the fields `destination`, `minDelayMs`,",
+    "`maxDelayMs`, and `split` are **required**. `clientRefId` and `validator` are",
+    "optional. Explicitly setting `destinationTokenAccount` to anything other than",
+    "the server-derived stash ATA returns 400.",
+  ].join("\n"),
   request: {
-    body: jsonContentRequired(swapRequestSchema, "Swap request", SWAP_REQUEST_EXAMPLE),
+    body: jsonContentRequired(
+      swapRequestSchema,
+      "Swap request",
+      undefined,
+      {
+        // `private` first so Scalar renders it as the default Request Body —
+        // it's the richer payload that surfaces every new field.
+        private: {
+          summary: "Private swap + scheduled transfer",
+          description:
+            "Forces Jupiter's output into the program-owned stash ATA and appends schedule_private_transfer.",
+          value: SWAP_REQUEST_PRIVATE_EXAMPLE,
+        },
+        public: {
+          summary: "Public swap (default behaviour, upstream proxy)",
+          value: SWAP_REQUEST_EXAMPLE,
+        },
+      },
+    ),
   },
   responses: {
-    200: jsonContent(swapResponseSchema, "Swap transaction"),
+    200: jsonContent(
+      swapResponseSchema,
+      "Swap transaction",
+      undefined,
+      {
+        private: {
+          summary: "Response for visibility=private (with diagnostic block)",
+          value: SWAP_RESPONSE_PRIVATE_EXAMPLE,
+        },
+        public: {
+          summary: "Response for visibility=public",
+          value: SWAP_RESPONSE_PUBLIC_EXAMPLE,
+        },
+      },
+    ),
+    400: jsonContent(
+      errorResponseSchema,
+      "Invalid request (missing or conflicting private-transfer fields)",
+    ),
     500: jsonContent(errorResponseSchema, "Configuration error"),
     502: jsonContent(errorResponseSchema, "Upstream error"),
   },
@@ -518,7 +621,6 @@ async function handlePrivateSwap(
 
   const [stashPda] = deriveStashPda(userPubkey, mintPubkey);
   const [stashAta] = deriveStashAta(userPubkey, mintPubkey);
-  const [hydraCrankPda] = deriveHydraCrankPda(stashPda);
 
   if (body.destinationTokenAccount && body.destinationTokenAccount !== stashAta.toBase58()) {
     throw new ApiError(
@@ -537,6 +639,7 @@ async function handlePrivateSwap(
   }
 
   const shuttleId = Math.floor(Math.random() * 0x1_0000_0000);
+  const [hydraCrankPda] = deriveHydraCrankPda(stashPda, shuttleId);
 
   // --- forward the swap request to Metis with the stash ATA forced ---
   const upstreamBody = buildUpstreamSwapBody(body, stashAta);
@@ -569,30 +672,66 @@ async function handlePrivateSwap(
     });
   }
 
-  const metisJson = await metisResponse.json() as {
+  let metisJson: {
     swapTransaction: string;
     lastValidBlockHeight?: number;
     prioritizationFeeLamports?: number;
     [k: string]: unknown;
   };
+  let rebuilt: string;
 
-  // --- deserialize, prepend ATA-create, append schedule_private_transfer ---
-  const connection = new Connection(env.BASE_RPC_URL, "confirmed");
-  const rebuilt = await rebuildSwapTransaction({
-    connection,
-    base64Tx: metisJson.swapTransaction,
-    payer: userPubkey,
-    mint: mintPubkey,
-    stashPda,
-    stashAta,
-    destinationOwner: destinationPubkey,
-    shuttleId,
-    minDelayMs: minDelayBig,
-    maxDelayMs: maxDelayBig,
-    split,
-    validator: validatorPubkey,
-    clientRefId: clientRefIdBig,
-  });
+  try {
+    const parsed = await metisResponse.json() as {
+      swapTransaction?: unknown;
+      lastValidBlockHeight?: number;
+      prioritizationFeeLamports?: number;
+      [k: string]: unknown;
+    };
+
+    if (typeof parsed.swapTransaction !== "string" || parsed.swapTransaction.length === 0) {
+      throw new PrivateSwapUpstreamError("Upstream swap response missing swapTransaction");
+    }
+
+    metisJson = {
+      ...parsed,
+      swapTransaction: parsed.swapTransaction,
+    };
+
+    // --- deserialize, prepend ATA-create, append schedule_private_transfer ---
+    const connection = new Connection(env.BASE_RPC_URL, "confirmed");
+    rebuilt = await rebuildSwapTransaction({
+      connection,
+      base64Tx: metisJson.swapTransaction,
+      payer: userPubkey,
+      mint: mintPubkey,
+      stashPda,
+      stashAta,
+      destinationOwner: destinationPubkey,
+      shuttleId,
+      minDelayMs: minDelayBig,
+      maxDelayMs: maxDelayBig,
+      split,
+      validator: validatorPubkey,
+      clientRefId: clientRefIdBig,
+    });
+  }
+  catch (error) {
+    if (error instanceof PrivateSwapUpstreamError) {
+      throw new ApiError(502, "SWAP_UPSTREAM_ERROR", error.message, error.causeValue === undefined
+        ? undefined
+        : {
+          message: error.causeValue instanceof Error ? error.causeValue.message : String(error.causeValue),
+        });
+    }
+
+    if (error instanceof SyntaxError) {
+      throw new ApiError(502, "SWAP_UPSTREAM_ERROR", "Invalid JSON in upstream swap response", {
+        message: error.message,
+      });
+    }
+
+    throw error;
+  }
 
   const responseBody = {
     ...metisJson,
@@ -670,21 +809,46 @@ async function rebuildSwapTransaction(input: RebuildInput): Promise<string> {
     clientRefId,
   } = input;
 
-  const txBytes = Uint8Array.from(atob(base64Tx), (c) => c.charCodeAt(0));
-  const versionedTx = VersionedTransaction.deserialize(txBytes);
+  let txBytes: Uint8Array;
+  try {
+    txBytes = Uint8Array.from(atob(base64Tx), (c) => c.charCodeAt(0));
+  }
+  catch (error) {
+    throw new PrivateSwapUpstreamError("Invalid upstream swap transaction encoding", error);
+  }
+
+  let versionedTx: VersionedTransaction;
+  try {
+    versionedTx = VersionedTransaction.deserialize(txBytes);
+  }
+  catch (error) {
+    throw new PrivateSwapUpstreamError("Invalid upstream swap transaction", error);
+  }
 
   const altKeys = versionedTx.message.addressTableLookups.map((l) => l.accountKey);
   const lookupTables: AddressLookupTableAccount[] = [];
   for (const key of altKeys) {
-    const resp = await connection.getAddressLookupTable(key);
+    let resp: Awaited<ReturnType<Connection["getAddressLookupTable"]>>;
+    try {
+      resp = await connection.getAddressLookupTable(key);
+    }
+    catch (error) {
+      throw new PrivateSwapUpstreamError("Failed to fetch swap address lookup table", error);
+    }
     if (resp.value) {
       lookupTables.push(resp.value);
     }
   }
 
-  const message = TransactionMessage.decompile(versionedTx.message, {
-    addressLookupTableAccounts: lookupTables,
-  });
+  let message: TransactionMessage;
+  try {
+    message = TransactionMessage.decompile(versionedTx.message, {
+      addressLookupTableAccounts: lookupTables,
+    });
+  }
+  catch (error) {
+    throw new PrivateSwapUpstreamError("Failed to decompile upstream swap transaction", error);
+  }
 
   message.instructions.unshift(
     createAssociatedTokenAccountIdempotentInstruction(
@@ -694,6 +858,13 @@ async function rebuildSwapTransaction(input: RebuildInput): Promise<string> {
       mint,
     ),
   );
+
+  // Jupiter/Metis sizes the tx's SetComputeUnitLimit for its own swap only.
+  // Our appended ATA-create + schedule_private_transfer need extra CU;
+  // Solana rejects duplicate ComputeBudget ixs, so we rewrite in place
+  // (or prepend a fresh one if none exists — it lands at index 0, which
+  // is the conventional slot for ComputeBudget ixs).
+  bumpComputeUnitLimit(message.instructions, SCHEDULE_IX_CU_BUDGET);
   message.instructions.push(
     schedulePrivateTransferIx(
       payer,
@@ -734,6 +905,34 @@ function createAssociatedTokenAccountIdempotentInstruction(
     ],
     data: Buffer.from([1]),
   });
+}
+
+/**
+ * If the tx already carries a `SetComputeUnitLimit`, rewrite its u32
+ * payload to `min(existing + extraCu, MAX)` in place so our appended ix
+ * has enough CU. If it doesn't, leave the tx alone — Solana's default
+ * budget (200k × ix_count, capped at 1.4M) already covers both Jupiter
+ * and our appended ixs, so adding a limit would only risk capping below
+ * that default. Solana rejects duplicate ComputeBudget ixs anyway.
+ */
+function bumpComputeUnitLimit(
+  instructions: TransactionInstruction[],
+  extraCu: number,
+): void {
+  for (const ix of instructions) {
+    if (
+      ix.programId.equals(ComputeBudgetProgram.programId)
+      && ix.data.length === COMPUTE_BUDGET_SET_UNIT_LIMIT_IX_LEN
+      && ix.data[0] === COMPUTE_BUDGET_SET_UNIT_LIMIT_DISC
+    ) {
+      const data = Buffer.from(ix.data);
+      const existing = data.readUInt32LE(1);
+      const bumped = Math.min(existing + extraCu, COMPUTE_UNIT_LIMIT_MAX);
+      data.writeUInt32LE(bumped, 1);
+      ix.data = data;
+      return;
+    }
+  }
 }
 
 function bytesToBase64(bytes: Uint8Array): string {

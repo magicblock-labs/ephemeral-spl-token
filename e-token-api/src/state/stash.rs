@@ -49,11 +49,7 @@ impl StashPda {
     }
 
     #[inline(always)]
-    pub fn signer_seeds<'a>(
-        user: &'a Address,
-        mint: &'a Address,
-        bump: &'a [u8],
-    ) -> [Seed<'a>; 4] {
+    pub fn signer_seeds<'a>(user: &'a Address, mint: &'a Address, bump: &'a [u8]) -> [Seed<'a>; 4] {
         [
             Seed::from(STASH_PDA_SEED),
             Seed::from(user.as_ref()),

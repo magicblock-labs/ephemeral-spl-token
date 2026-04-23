@@ -209,7 +209,7 @@ describe("app", () => {
       inAmount: "1000000",
       outAmount: "999519",
     });
-    expect(json.paths["/v1/swap/swap"]?.post?.requestBody?.content?.["application/json"]?.example).toMatchObject({
+    expect(json.paths["/v1/swap/swap"]?.post?.requestBody?.content?.["application/json"]?.examples?.public?.value).toMatchObject({
       userPublicKey: "3rXKwQ1kpjBd5tdcco32qsvqUh1BnZjcYnS5kYrP7AYE",
       quoteResponse: {
         inputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
@@ -217,6 +217,41 @@ describe("app", () => {
         inAmount: "1000000",
         outAmount: "999519",
       },
+    });
+
+    // Private-swap visibility + required params are documented on the named
+    // SwapRequest component (the request body itself uses a $ref).
+    const swapRequestSchema = (json.components?.schemas as Record<string, any>)?.SwapRequest;
+    expect(swapRequestSchema?.properties?.visibility).toBeDefined();
+    expect(swapRequestSchema?.properties?.destination).toBeDefined();
+    expect(swapRequestSchema?.properties?.minDelayMs).toBeDefined();
+    expect(swapRequestSchema?.properties?.maxDelayMs).toBeDefined();
+    expect(swapRequestSchema?.properties?.split).toBeDefined();
+    expect(swapRequestSchema?.properties?.clientRefId).toBeDefined();
+    expect(swapRequestSchema?.properties?.validator).toBeDefined();
+
+    // Both request examples (public + private) are surfaced.
+    const swapRequestExamples = json.paths["/v1/swap/swap"]?.post?.requestBody?.content?.["application/json"]?.examples;
+    expect(swapRequestExamples?.public?.value).toMatchObject({
+      userPublicKey: "3rXKwQ1kpjBd5tdcco32qsvqUh1BnZjcYnS5kYrP7AYE",
+    });
+    expect(swapRequestExamples?.private?.value).toMatchObject({
+      visibility: "private",
+      destination: expect.any(String),
+      minDelayMs: "0",
+      maxDelayMs: "0",
+      split: 1,
+    });
+
+    // The `privateTransfer` diagnostic is present on the response schema +
+    // visible in the private example.
+    const swapResponseSchema = (json.components?.schemas as Record<string, any>)?.SwapResponse;
+    expect(swapResponseSchema?.properties?.privateTransfer).toBeDefined();
+    const swapResponseExamples = json.paths["/v1/swap/swap"]?.post?.responses?.["200"]?.content?.["application/json"]?.examples;
+    expect(swapResponseExamples?.private?.value?.privateTransfer).toMatchObject({
+      stashAta: expect.any(String),
+      hydraCrankPda: expect.any(String),
+      shuttleId: expect.any(Number),
     });
     expect(json.paths["/v1/spl/deposit"]?.post?.responses?.["200"]?.content?.["application/json"]?.example).toMatchObject({
       kind: "deposit",
@@ -389,9 +424,8 @@ describe("app", () => {
     };
 
     const ownerPk = new PublicKey(owner);
-    const [, stashPda] = [deriveStashPda(ownerPk, new PublicKey(outputMint))[0], deriveStashPda(ownerPk, new PublicKey(outputMint))[0]];
+    const stashPda = deriveStashPda(ownerPk, new PublicKey(outputMint))[0];
     const [stashAtaExpected] = deriveStashAta(ownerPk, new PublicKey(outputMint));
-    const [hydraCrankExpected] = deriveHydraCrankPda(stashPda);
 
     // Jupiter-like mock: a v0 tx with a single memo ix and no ALTs.
     const memoIx = new TransactionInstruction({
@@ -460,10 +494,14 @@ describe("app", () => {
 
     // Diagnostic block is correct.
     expect(json.privateTransfer.stashAta).toBe(stashAtaExpected.toBase58());
-    expect(json.privateTransfer.hydraCrankPda).toBe(hydraCrankExpected.toBase58());
     expect(typeof json.privateTransfer.shuttleId).toBe("number");
+    // Crank PDA depends on the server-generated shuttleId; rederive to match.
+    const [hydraCrankExpected] = deriveHydraCrankPda(stashPda, json.privateTransfer.shuttleId);
+    expect(json.privateTransfer.hydraCrankPda).toBe(hydraCrankExpected.toBase58());
 
     // Returned tx: [idempotent-ATA-create, memo, schedule_private_transfer].
+    // The Jupiter mock has no SetComputeUnitLimit, so we deliberately leave
+    // the tx alone — Solana's default (200k × ix_count) covers us.
     const returned = VersionedTransaction.deserialize(
       Buffer.from(json.swapTransaction, "base64"),
     );
@@ -472,6 +510,14 @@ describe("app", () => {
     });
 
     expect(decompiled.instructions).toHaveLength(3);
+
+    const computeBudgetProgram = new PublicKey(
+      "ComputeBudget111111111111111111111111111111",
+    );
+    // No SetComputeUnitLimit was prepended.
+    expect(
+      decompiled.instructions.some((ix) => ix.programId.equals(computeBudgetProgram)),
+    ).toBe(false);
 
     const [createIx, memoRebuilt, scheduleIx] = decompiled.instructions;
     const ataProgram = new PublicKey(
@@ -489,6 +535,189 @@ describe("app", () => {
     expect(scheduleIx.keys).toHaveLength(7);
     expect(scheduleIx.keys[1].pubkey.toBase58()).toBe(stashPda.toBase58());
     expect(scheduleIx.keys[4].pubkey.toBase58()).toBe(HYDRA_PROGRAM_ID.toBase58());
+  });
+
+  it("visibility=private bumps an existing SetComputeUnitLimit in place rather than prepending", async () => {
+    const metisEnv = {
+      ...env,
+      METIS_SWAP_API_URL: "https://triton.rpc.test/private-token/metis",
+    };
+    const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+    const recipient = Keypair.generate().publicKey.toBase58();
+    const validator = Keypair.generate().publicKey.toBase58();
+    const quoteResponse = {
+      inputMint: "So11111111111111111111111111111111111111112",
+      inAmount: "1000000",
+      outputMint,
+      outAmount: "999000",
+      otherAmountThreshold: "998000",
+      swapMode: "ExactIn",
+      slippageBps: 50,
+      priceImpactPct: "0.01",
+      routePlan: [],
+    };
+
+    const ownerPk = new PublicKey(owner);
+
+    // Jupiter-like mock: a v0 tx that already carries a SetComputeUnitLimit
+    // at 100k units (typical Jupiter number), followed by a memo.
+    const existingLimit = 100_000;
+    const setLimitData = Buffer.alloc(5);
+    setLimitData[0] = 0x02;
+    setLimitData.writeUInt32LE(existingLimit, 1);
+    const computeBudgetProgram = new PublicKey(
+      "ComputeBudget111111111111111111111111111111",
+    );
+    const existingLimitIx = new TransactionInstruction({
+      programId: computeBudgetProgram,
+      keys: [],
+      data: setLimitData,
+    });
+    const memoIx = new TransactionInstruction({
+      programId: new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"),
+      keys: [],
+      data: Buffer.from("jupiter-mock"),
+    });
+    const jupiterV0 = new VersionedTransaction(
+      new TransactionMessage({
+        payerKey: ownerPk,
+        recentBlockhash: "11111111111111111111111111111111",
+        instructions: [existingLimitIx, memoIx],
+      }).compileToV0Message(),
+    );
+    const jupiterBase64 = Buffer.from(jupiterV0.serialize()).toString("base64");
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.startsWith("https://triton.rpc.test") && url.endsWith("/swap")) {
+        return new Response(
+          JSON.stringify({ swapTransaction: jupiterBase64 }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+    });
+
+    const response = await app.request("/v1/swap/swap", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        userPublicKey: owner,
+        quoteResponse,
+        visibility: "private",
+        destination: recipient,
+        minDelayMs: "0",
+        maxDelayMs: "0",
+        split: 1,
+        validator,
+      }),
+    }, metisEnv);
+
+    expect(response.status).toBe(200);
+    const json = await response.json() as { swapTransaction: string };
+
+    const returned = VersionedTransaction.deserialize(
+      Buffer.from(json.swapTransaction, "base64"),
+    );
+    const decompiled = TransactionMessage.decompile(returned.message, {
+      addressLookupTableAccounts: [],
+    });
+
+    // Same 4 ixs (no new SetComputeUnitLimit prepended), but the existing
+    // one has been rewritten with a bumped value.
+    expect(decompiled.instructions).toHaveLength(4);
+    const cbCount = decompiled.instructions.filter((ix) =>
+      ix.programId.equals(computeBudgetProgram),
+    ).length;
+    expect(cbCount).toBe(1);
+
+    const cbIx = decompiled.instructions.find((ix) =>
+      ix.programId.equals(computeBudgetProgram),
+    )!;
+    const bumped = Buffer.from(cbIx.data).readUInt32LE(1);
+    expect(bumped).toBe(existingLimit + 40_000);
+  });
+
+  it("visibility=private returns 502 when the upstream swap response is missing swapTransaction", async () => {
+    const metisEnv = {
+      ...env,
+      METIS_SWAP_API_URL: "https://triton.rpc.test/private-token/metis",
+    };
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(
+      JSON.stringify({ lastValidBlockHeight: 123 }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    ));
+
+    const response = await app.request("/v1/swap/swap", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        userPublicKey: owner,
+        quoteResponse: {
+          inputMint: "So11111111111111111111111111111111111111112",
+          inAmount: "1000000",
+          outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          outAmount: "999000",
+          otherAmountThreshold: "998000",
+          swapMode: "ExactIn",
+          slippageBps: 50,
+          priceImpactPct: "0.01",
+          routePlan: [],
+        },
+        visibility: "private",
+        destination,
+        minDelayMs: "0",
+        maxDelayMs: "0",
+        split: 1,
+      }),
+    }, metisEnv);
+
+    expect(response.status).toBe(502);
+    const json = await response.json() as { error: { code: string; message: string } };
+    expect(json.error.code).toBe("SWAP_UPSTREAM_ERROR");
+    expect(json.error.message).toBe("Upstream swap response missing swapTransaction");
+  });
+
+  it("visibility=private returns 502 when the upstream swap transaction is invalid", async () => {
+    const metisEnv = {
+      ...env,
+      METIS_SWAP_API_URL: "https://triton.rpc.test/private-token/metis",
+    };
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(
+      JSON.stringify({ swapTransaction: "%%%%" }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    ));
+
+    const response = await app.request("/v1/swap/swap", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        userPublicKey: owner,
+        quoteResponse: {
+          inputMint: "So11111111111111111111111111111111111111112",
+          inAmount: "1000000",
+          outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          outAmount: "999000",
+          otherAmountThreshold: "998000",
+          swapMode: "ExactIn",
+          slippageBps: 50,
+          priceImpactPct: "0.01",
+          routePlan: [],
+        },
+        visibility: "private",
+        destination,
+        minDelayMs: "0",
+        maxDelayMs: "0",
+        split: 1,
+      }),
+    }, metisEnv);
+
+    expect(response.status).toBe(502);
+    const json = await response.json() as { error: { code: string; message: string } };
+    expect(json.error.code).toBe("SWAP_UPSTREAM_ERROR");
+    expect(json.error.message).toBe("Invalid upstream swap transaction encoding");
   });
 
   it("visibility=private rejects missing required fields", async () => {

@@ -7,7 +7,7 @@ use pinocchio::cpi::{invoke_signed_with_bounds, Signer};
 use pinocchio::instruction::{InstructionAccount, InstructionView};
 use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
 
-use crate::processor::utils::read_token_account;
+use crate::processor::utils::{is_supported_token_program, read_token_account};
 
 /// Account count on this top-level instruction (mirrors instruction 25's layout).
 pub(crate) const SCHEDULED_PT_ACCOUNTS: usize = 19;
@@ -62,27 +62,8 @@ pub fn process_scheduled_private_transfer(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let [
-        stash_payer_info,
-        rent_pda_info,
-        shuttle_info,
-        shuttle_eata_info,
-        shuttle_wallet_ata_info,
-        stash_owner_info,
-        owner_program_info,
-        buffer_info,
-        delegation_record_info,
-        delegation_metadata_info,
-        delegation_program_info,
-        associated_token_program_info,
-        system_program_info,
-        mint_info,
-        token_program_info,
-        global_vault_info,
-        stash_ata_info,
-        vault_token_info,
-        queue_info,
-    ] = require_n_accounts!(accounts, 19);
+    let [stash_payer_info, rent_pda_info, shuttle_info, shuttle_eata_info, shuttle_wallet_ata_info, stash_owner_info, owner_program_info, buffer_info, delegation_record_info, delegation_metadata_info, delegation_program_info, associated_token_program_info, system_program_info, mint_info, token_program_info, global_vault_info, stash_ata_info, vault_token_info, queue_info] =
+        require_n_accounts!(accounts, 19);
 
     require!(
         instruction_data.len() >= PREFIX_LEN,
@@ -98,10 +79,21 @@ pub fn process_scheduled_private_transfer(
     let stash_bump = instruction_data[32];
     let shuttle_id_bytes = &instruction_data[33..37];
     let tail = &instruction_data[37..];
+    let mut tail_cursor = 0;
+    let validator_bytes = read_vardata(tail, &mut tail_cursor)?;
+    read_vardata(tail, &mut tail_cursor)?;
+    read_vardata(tail, &mut tail_cursor)?;
+    require!(
+        tail_cursor == tail.len(),
+        ProgramError::InvalidInstructionData
+    );
+    require!(
+        validator_bytes.is_empty() || validator_bytes.len() == 32,
+        ProgramError::InvalidInstructionData
+    );
 
     // -------- validate stash PDA derivation --------
-    let derived_stash =
-        StashPda::derive_pda(&user, mint_info.address(), stash_bump)?;
+    let derived_stash = StashPda::derive_pda(&user, mint_info.address(), stash_bump)?;
     require_eq_keys!(
         &derived_stash,
         stash_payer_info.address(),
@@ -111,6 +103,10 @@ pub fn process_scheduled_private_transfer(
         stash_owner_info.address(),
         stash_payer_info.address(),
         ProgramError::InvalidSeeds
+    );
+    require!(
+        is_supported_token_program(token_program_info.address()),
+        ProgramError::IncorrectProgramId
     );
 
     // -------- sweep: amount = current stash ATA token balance --------
@@ -128,8 +124,7 @@ pub fn process_scheduled_private_transfer(
     ix_data.extend_from_slice(tail);
 
     // -------- build ix 25 account metas (19) --------
-    let mut metas =
-        [const { MaybeUninit::<InstructionAccount>::uninit() }; SCHEDULED_PT_ACCOUNTS];
+    let mut metas = [const { MaybeUninit::<InstructionAccount>::uninit() }; SCHEDULED_PT_ACCOUNTS];
     unsafe {
         metas
             .get_unchecked_mut(0)
@@ -243,9 +238,18 @@ pub fn process_scheduled_private_transfer(
         queue_info,
     ];
 
-    invoke_signed_with_bounds::<SCHEDULED_PT_ACCOUNTS>(
-        &instruction,
-        &account_refs,
-        &[stash_signer],
-    )
+    invoke_signed_with_bounds::<SCHEDULED_PT_ACCOUNTS>(&instruction, &account_refs, &[stash_signer])
+}
+
+#[inline(always)]
+fn read_vardata<'a>(data: &'a [u8], cursor: &mut usize) -> Result<&'a [u8], ProgramError> {
+    require!(*cursor < data.len(), ProgramError::InvalidInstructionData);
+    let len = data[*cursor] as usize;
+    let start = *cursor + 1;
+    let end = start
+        .checked_add(len)
+        .ok_or(ProgramError::InvalidInstructionData)?;
+    require!(end <= data.len(), ProgramError::InvalidInstructionData);
+    *cursor = end;
+    Ok(&data[start..end])
 }

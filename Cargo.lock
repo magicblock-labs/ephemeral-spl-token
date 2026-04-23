@@ -2472,6 +2472,8 @@ checksum = "aef567967bd72619b69531fac59f1a466dde53653e37a3ba0b9b909b17a66b4e"
 dependencies = [
  "pinocchio 0.11.1",
  "solana-address 2.6.0",
+ "solana-instruction 3.1.0",
+ "solana-pubkey 4.0.0",
 ]
 
 [[package]]

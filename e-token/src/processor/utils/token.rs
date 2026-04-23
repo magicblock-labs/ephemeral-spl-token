@@ -2,6 +2,15 @@ use ephemeral_spl_api::require;
 use pinocchio::{address::address_eq, error::ProgramError, AccountView, Address};
 use pinocchio_token_2022::state::{Mint, TokenAccount};
 
+const SPL_TOKEN_PROGRAM_ID: Address =
+    Address::from_str_const("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+
+#[inline(always)]
+pub(crate) fn is_supported_token_program(token_program: &Address) -> bool {
+    address_eq(token_program, &SPL_TOKEN_PROGRAM_ID)
+        || address_eq(token_program, &pinocchio_token_2022::ID)
+}
+
 #[inline(always)]
 pub(crate) fn read_mint_decimals(
     mint_info: &AccountView,
