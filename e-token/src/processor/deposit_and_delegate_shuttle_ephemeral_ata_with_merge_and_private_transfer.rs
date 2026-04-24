@@ -203,6 +203,16 @@ pub struct DepositAndDelegateShuttleWithPrivateTransferArgs {
     //
     pub encrypted_destination: [u8; 80],
     pub validator: Option<[u8; 32]>,
+    //
+    // This becomes the encrypted suffix of instruction-data for DepositAndQueueTransfer. So this
+    // suffix has everthing of DepositAndQueueTransferArgs except the first field (amount: u64)
+    //
+    // min_delay_ms: u64,
+    // max_delay_ms: u64,
+    // split: u32,
+    // flags: Option<u8>,
+    // client_ref_id: Option<u64>,
+    //
     #[flexible = 1]
     pub encrypted_data_suffix: Vec<u8>,
 }

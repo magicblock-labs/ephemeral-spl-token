@@ -233,7 +233,7 @@ function getGaslessSponsorKeypair(env: AppEnv) {
     throw new ApiError(
       503,
       "SPONSOR_UNAVAILABLE",
-      "Gasless private transfers are not configured",
+      "Gasless transfers are not configured",
     );
   }
 
@@ -467,9 +467,8 @@ function createTokenTransferInstruction(
 
 function isProcessPendingTransferQueueRefillInstruction(instruction: TransactionInstruction) {
   return instruction.programId.equals(EPHEMERAL_SPL_TOKEN_PROGRAM_ID)
-    && instruction.data.length === 8
-    && instruction.data.readUInt32LE(0) === 28
-    && instruction.data.readUInt32LE(4) === 0;
+    && instruction.data.length === 1
+    && instruction.data.readInt8(0) === 28;
 }
 
 function createRandomShuttleId() {
@@ -971,15 +970,6 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
       throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "split cannot exceed amount");
     }
 
-    if (input.gasless && input.visibility !== "private") {
-      // TODO (snawaz): remove this unecessary restriction once private flow works
-      throw new ApiError(
-        400,
-        "INVALID_GASLESS_TRANSFER",
-        "gasless is supported only for private transfers",
-      );
-    }
-
     if (input.gasless && !isSupportedGaslessMint(config.cluster, mint)) {
       throw new ApiError(
         400,
@@ -1044,8 +1034,6 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
         }
         : undefined,
     });
-
-
     // Gasless private base->base already adds a relay-fee token transfer. Dropping
     // the opportunistic queue-refill ix keeps the full transaction under Solana's
     // packet limit while preserving the actual private transfer instruction.
@@ -1095,7 +1083,6 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
     );
   }
   catch (error) {
-    console.log("gasless tx: ", error);
     throwTransactionBuildError(error);
   }
 }

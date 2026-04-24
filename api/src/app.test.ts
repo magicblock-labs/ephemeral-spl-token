@@ -1980,6 +1980,83 @@ describe("app", () => {
     expect(privateTransferIx.data[133]).toBe(privateTransferIx.data.length - 134);
   });
 
+  it("builds a gasless public transfer with the sponsor as fee payer", async () => {
+    const sponsor = Keypair.generate();
+    const mint = DEVNET_USDC_MINT;
+    const amount = 5_000_000;
+    const ownerAta = deriveAssociatedTokenAddress(mint, owner);
+    const sponsorAta = deriveAssociatedTokenAddress(mint, sponsor.publicKey.toBase58());
+    const destinationAta = deriveAssociatedTokenAddress(mint, destination);
+    const transferEnv = {
+      ...env,
+      EPHEMERAL_DEVNET_RPC_URL: "https://ephemeral.gasless-public-transfer.rpc.test",
+      GASLESS_SPONSOR_SECRET_KEY: JSON.stringify(Array.from(sponsor.secretKey)),
+    };
+
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123,
+    });
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockResolvedValue(null);
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(transferEnv.EPHEMERAL_DEVNET_RPC_URL);
+      return createIdentityResponse(resolvedValidator);
+    });
+
+    const response = await app.request("/v1/spl/transfer", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        from: owner,
+        to: destination,
+        mint,
+        amount,
+        cluster: "devnet",
+        visibility: "public",
+        fromBalance: "base",
+        toBalance: "base",
+        gasless: true,
+      }),
+    }, transferEnv);
+
+    expect(response.status).toBe(200);
+
+    const json = await response.json() as {
+      requiredSigners: string[];
+      transactionBase64: string;
+    };
+    expect(json.requiredSigners).toEqual(expect.arrayContaining([
+      owner,
+      sponsor.publicKey.toBase58(),
+    ]));
+
+    const transaction = Transaction.from(Buffer.from(json.transactionBase64, "base64"));
+    expect(transaction.feePayer?.toBase58()).toBe(sponsor.publicKey.toBase58());
+    expect(transaction.instructions).toHaveLength(2);
+
+    const relayFeeIx = transaction.instructions[0]!;
+    expect(relayFeeIx.programId.toBase58()).toBe(TOKEN_PROGRAM_ID.toBase58());
+    expect(relayFeeIx.keys.map((key) => key.pubkey.toBase58())).toEqual([
+      ownerAta,
+      sponsorAta,
+      owner,
+    ]);
+    expect(relayFeeIx.data[0]).toBe(3);
+    expect(relayFeeIx.data.readBigUInt64LE(1)).toBe(200_000n);
+
+    const publicTransferIx = transaction.instructions[1]!;
+    expect(publicTransferIx.programId.toBase58()).toBe(TOKEN_PROGRAM_ID.toBase58());
+    expect(publicTransferIx.keys.map((key) => key.pubkey.toBase58())).toEqual([
+      ownerAta,
+      destinationAta,
+      owner,
+    ]);
+    expect(publicTransferIx.data[0]).toBe(3);
+    expect(publicTransferIx.data.readBigUInt64LE(1)).toBe(BigInt(amount));
+  });
+
   it("rejects gasless transfers when the sponsor key is not configured", async () => {
     const transferEnv = {
       ...env,
@@ -2013,7 +2090,7 @@ describe("app", () => {
       };
     };
     expect(json.error.code).toBe("SPONSOR_UNAVAILABLE");
-    expect(json.error.message).toBe("Gasless private transfers are not configured");
+    expect(json.error.message).toBe("Gasless transfers are not configured");
   });
 
   it("includes clientRefId in private transfer payloads when provided", async () => {
