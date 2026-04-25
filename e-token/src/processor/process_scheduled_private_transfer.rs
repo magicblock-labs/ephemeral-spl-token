@@ -54,7 +54,11 @@ const PREFIX_LEN: usize = 32 + 1 + 4;
 /// 16: [writable]          - SPL     : Stash ATA (owner_source_token in ix 25).
 /// 17: [writable]          - SPL     : Vault token account.
 /// 18: [writable]          - PDA     : Transfer queue account.
-/// 19: []                  - PDA     : Hydra crank PDA (provenance witness).
+/// 19: [writable]          - PDA     : Hydra crank PDA (provenance witness;
+///                                     writable in the meta only because
+///                                     Trigger marks it writable at slot 0,
+///                                     and Solana's sysvar serializes the
+///                                     tx-level writable union).
 ///
 /// Instruction data (after the entrypoint strips the discriminator):
 ///
