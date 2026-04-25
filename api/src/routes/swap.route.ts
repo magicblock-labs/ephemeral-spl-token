@@ -875,6 +875,7 @@ async function rebuildSwapTransaction(input: RebuildInput): Promise<string> {
       maxDelayMs,
       split,
       validator,
+      undefined,
       clientRefId,
     ),
   );
