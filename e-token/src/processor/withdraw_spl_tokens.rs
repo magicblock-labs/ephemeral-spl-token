@@ -1,5 +1,7 @@
-use bytemuck::{Pod, Zeroable};
-use ephemeral_spl_api::{require_n_accounts, PodView};
+use alloc::vec;
+use alloc::vec::Vec;
+use data_layout::variable_offset_layout;
+use ephemeral_spl_api::require_n_accounts;
 use pinocchio::{AccountView, ProgramResult};
 
 use crate::processor::internal::token_vault::withdraw_ephemeral_ata_tokens;
@@ -34,7 +36,7 @@ pub fn process_withdraw_spl_tokens(
         token_program_info,
     ] = require_n_accounts!(accounts, 7);
 
-    let args = WithdrawArgs::try_view_from(instruction_data)?;
+    let args = WithdrawArgs::decode(instruction_data)?;
 
     withdraw_ephemeral_ata_tokens(
         owner,
@@ -45,12 +47,11 @@ pub fn process_withdraw_spl_tokens(
         vault_source_token_acc,
         user_dest_token_acc,
         token_program_info,
-        args.amount,
+        args.amount(),
     )
 }
 
-#[repr(C)]
-#[derive(Copy, Clone, Pod, Zeroable)]
+#[variable_offset_layout(buffer_offset = 1)]
 pub struct WithdrawArgs {
     amount: u64,
 }

@@ -82,7 +82,10 @@ pub fn process_delegate_ephemeral_ata(
     .invoke()
 }
 
-#[variable_offset_layout(buffer_offset = 0, option = implicit)]
+#[variable_offset_layout(buffer_offset = 1, option = implicit)]
 pub struct DelegateArgs {
     pub validator: Option<[u8; 32]>,
 }
+
+static_assertions::const_assert!(DelegateArgs::MIN_DATA_LEN == 0);
+static_assertions::const_assert!(DelegateArgs::MAX_DATA_LEN == 32);

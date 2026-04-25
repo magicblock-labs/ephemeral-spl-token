@@ -212,8 +212,8 @@ impl ESplInstruction {
     }
 
     #[inline(always)]
-    pub const fn to_bytes(self) -> [u8; 8] {
-        [self.discriminator(), 0, 0, 0, 0, 0, 0, 0]
+    pub const fn to_bytes(self) -> [u8; 1] {
+        [self.discriminator()]
     }
 
     #[inline(always)]
@@ -223,7 +223,7 @@ impl ESplInstruction {
 
     #[inline(always)]
     pub fn with_data(self, instruction_data: &[u8]) -> Vec<u8> {
-        let mut data = Vec::with_capacity(8 + instruction_data.len());
+        let mut data = Vec::with_capacity(1 + instruction_data.len());
         data.extend_from_slice(&self.to_bytes());
         data.extend_from_slice(instruction_data);
         data

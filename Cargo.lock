@@ -1889,6 +1889,7 @@ dependencies = [
  "solana-system-interface 2.0.0",
  "solana-transaction 3.0.2",
  "spl-token-interface",
+ "static_assertions",
 ]
 
 [[package]]

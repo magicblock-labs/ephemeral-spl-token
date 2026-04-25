@@ -13,10 +13,6 @@ pub mod program {
     pub use ephemeral_rollups_pinocchio::consts::DELEGATION_PROGRAM_ID;
 }
 
-mod pod_view;
-
-pub use pod_view::PodView;
-
 solana_address::declare_id!("SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2");
 
 /// Re-exported `Address` type from solana-address for convenience.

@@ -1,5 +1,4 @@
 use ephemeral_spl_api::instruction::ESplInstruction;
-use ephemeral_spl_api::require_ge;
 use ephemeral_spl_api::{error::EphemeralSplError, require};
 
 use {
@@ -65,13 +64,7 @@ pub fn process_instruction(accounts: &[AccountView], instruction_data: &[u8]) ->
 /// Process public instruction
 #[inline(never)]
 fn process_public_instruction(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
-    require_ge!(
-        instruction_data.len(),
-        8,
-        ProgramError::InvalidInstructionData
-    );
-
-    let (discriminator, data) = instruction_data.split_at(8);
+    let (discriminator, data) = instruction_data.split_at(1);
 
     match ESplInstruction::try_from(discriminator[0])
         .map_err(|_| EphemeralSplError::InstructionNotFound)?
@@ -257,13 +250,7 @@ fn process_internal_instruction(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    require_ge!(
-        instruction_data.len(),
-        8,
-        ProgramError::InvalidInstructionData
-    );
-
-    let (discriminator, data) = instruction_data.split_at(8);
+    let (discriminator, data) = instruction_data.split_at(1);
 
     match ESplInternalInstruction::try_from(discriminator[0])
         .map_err(|_| EphemeralSplError::InstructionNotFound)?
@@ -271,9 +258,6 @@ fn process_internal_instruction(
         ESplInternalInstruction::UndelegationCallback => {
             #[cfg(feature = "logging")]
             pinocchio_log::log!("Instruction: UndelegationCallback");
-            // this is a special instruction: in this case the discriminator is just one byte
-            // and the rest is data.
-            let (_discriminator, data) = instruction_data.split_at(1);
             process_undelegation_callback(accounts, data)
         }
         ESplInternalInstruction::SettleAndCloseShuttleIntent => {

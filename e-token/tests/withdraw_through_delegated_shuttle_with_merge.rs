@@ -520,13 +520,6 @@ async fn undelegate_and_close_shuttle_ephemeral_ata_schedules_close_action() {
         close_action.args.data,
         vec![
             TestInternalInstruction::SettleAndCloseShuttleIntent.discriminator(),
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
             u8::MAX
         ]
     );

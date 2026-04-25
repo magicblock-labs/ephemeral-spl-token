@@ -1,10 +1,12 @@
-use bytemuck::{Pod, Zeroable};
+use alloc::vec;
+use alloc::vec::Vec;
+use data_layout::variable_offset_layout;
 use ephemeral_rollups_pinocchio::acl::{
     consts::PERMISSION_PROGRAM_ID,
     instruction::UpdatePermissionCpiBuilder,
     types::{Member, MemberFlags, MembersArgs},
 };
-use ephemeral_spl_api::{require, require_eq_keys, PodView};
+use ephemeral_spl_api::{require, require_eq_keys};
 use ephemeral_spl_api::{
     require_n_accounts,
     state::{ephemeral_ata::EphemeralAta, load_initialized},
@@ -35,7 +37,7 @@ pub fn process_reset_ephemeral_ata_permission(
         permission_program,
     ] = require_n_accounts!(accounts, 4);
 
-    let args = ResetEphemeralAtaPermissionArgs::try_view_from(instruction_data)?;
+    let args = ResetEphemeralAtaPermissionArgs::decode(instruction_data)?;
 
     require!(
         owner_info.is_signer(),
@@ -62,7 +64,7 @@ pub fn process_reset_ephemeral_ata_permission(
         ProgramError::InvalidAccountData
     );
 
-    let mut members_flag = MemberFlags::from_acl_flag_byte(args.flag_byte);
+    let mut members_flag = MemberFlags::from_acl_flag_byte(args.flag_byte());
     members_flag.set(MemberFlags::AUTHORITY);
     let members_buf = [Member {
         flags: members_flag,
@@ -85,8 +87,7 @@ pub fn process_reset_ephemeral_ata_permission(
     .invoke()
 }
 
-#[repr(C)]
-#[derive(Copy, Clone, Pod, Zeroable)]
+#[variable_offset_layout(buffer_offset = 1)]
 pub struct ResetEphemeralAtaPermissionArgs {
     flag_byte: u8,
 }

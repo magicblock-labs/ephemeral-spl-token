@@ -42,14 +42,14 @@ impl TestInternalInstruction {
     pub const fn discriminator(self) -> u8 {
         self as u8
     }
-    pub const fn to_bytes(self) -> [u8; 8] {
-        [self.discriminator(), 0, 0, 0, 0, 0, 0, 0]
+    pub const fn to_bytes(self) -> [u8; 1] {
+        [self.discriminator()]
     }
     pub fn to_vec(self) -> Vec<u8> {
         self.to_bytes().to_vec()
     }
     pub fn with_data(self, instruction_data: &[u8]) -> Vec<u8> {
-        let mut data = Vec::with_capacity(8 + instruction_data.len());
+        let mut data = Vec::with_capacity(1 + instruction_data.len());
         data.extend_from_slice(&self.to_bytes());
         data.extend_from_slice(instruction_data);
         data

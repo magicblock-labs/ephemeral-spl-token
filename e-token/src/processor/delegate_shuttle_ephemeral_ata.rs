@@ -111,7 +111,10 @@ pub fn process_delegate_shuttle_ephemeral_ata(
     .invoke()
 }
 
-#[variable_offset_layout(buffer_offset = 0, option = implicit)]
+#[variable_offset_layout(buffer_offset = 1, option = implicit)]
 pub struct DelegateShuttleArgs {
     pub validator: Option<[u8; 32]>,
 }
+
+static_assertions::const_assert!(DelegateShuttleArgs::MIN_DATA_LEN == 0);
+static_assertions::const_assert!(DelegateShuttleArgs::MAX_DATA_LEN == 32);

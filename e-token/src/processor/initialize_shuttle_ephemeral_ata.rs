@@ -1,5 +1,7 @@
-use bytemuck::{Pod, Zeroable};
-use ephemeral_spl_api::{require, require_n_accounts, PodView};
+use alloc::vec;
+use alloc::vec::Vec;
+use data_layout::variable_offset_layout;
+use ephemeral_spl_api::{require, require_n_accounts};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
 use crate::processor::internal::ephemeral_ata::initialize_shuttle_ephemeral_ata_with_sponsor;
@@ -38,7 +40,7 @@ pub fn process_initialize_shuttle_ephemeral_ata(
         system_program_info,
     ] = require_n_accounts!(accounts, 9);
 
-    let args = InitializeShuttleEphemeralAtaArgs::try_view_from(instruction_data)?;
+    let args = InitializeShuttleEphemeralAtaArgs::decode(instruction_data)?;
 
     require!(
         payer_info.is_signer(),
@@ -56,14 +58,13 @@ pub fn process_initialize_shuttle_ephemeral_ata(
         mint_info,
         token_program_info,
         system_program_info,
-        args.shuttle_id,
+        args.shuttle_id(),
     )?;
 
     Ok(())
 }
 
-#[repr(C)]
-#[derive(Copy, Clone, Pod, Zeroable)]
+#[variable_offset_layout(buffer_offset = 1)]
 pub struct InitializeShuttleEphemeralAtaArgs {
     shuttle_id: u32,
 }

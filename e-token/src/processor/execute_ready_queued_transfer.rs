@@ -143,13 +143,16 @@ pub fn process_execute_ready_queued_transfer(
     Ok(())
 }
 
-#[variable_offset_layout(buffer_offset = 0, option = implicit)]
+#[variable_offset_layout(buffer_offset = 1, option = implicit)]
 pub struct ExecuteQueuedTransferArgs {
     pub amount: u64,
     pub client_ref_id: Option<u64>,
     pub escrow_index: u8,
     pub flags: u8,
 }
+
+static_assertions::const_assert!(ExecuteQueuedTransferArgs::MIN_DATA_LEN == 10);
+static_assertions::const_assert!(ExecuteQueuedTransferArgs::MAX_DATA_LEN == 18);
 
 //assert!(ExecuteQueuedTransferArgs::MIN_DATA_LEN, 10);
 //assert!(ExecuteQueuedTransferArgs::MAX_DATA_LEN, 18);

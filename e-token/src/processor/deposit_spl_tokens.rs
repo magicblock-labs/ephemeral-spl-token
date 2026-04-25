@@ -1,7 +1,8 @@
-use bytemuck::{Pod, Zeroable};
-
+use alloc::vec;
+use alloc::vec::Vec;
+use data_layout::variable_offset_layout;
 use ephemeral_spl_api::state::{load_initialized, load_mut_initialized};
-use ephemeral_spl_api::{require, require_n_accounts, PodView};
+use ephemeral_spl_api::{require, require_n_accounts};
 
 use {
     ephemeral_spl_api::state::ephemeral_ata::EphemeralAta,
@@ -40,7 +41,7 @@ pub fn process_deposit_spl_tokens(
         token_program_info,
     ] = require_n_accounts!(accounts, 7);
 
-    let args = DepositArgs::try_view_from(instruction_data)?;
+    let args = DepositArgs::decode(instruction_data)?;
 
     // Validate EphemeralAta ownership first, before reading raw data.
     require!(
@@ -62,21 +63,20 @@ pub fn process_deposit_spl_tokens(
         user_authority,
         token_program_info,
         &ephemeral_ata_mint,
-        args.amount,
+        args.amount(),
     )?;
 
     let ephemeral_ata =
         load_mut_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked_mut() })?;
     ephemeral_ata.amount = ephemeral_ata
         .amount
-        .checked_add(args.amount)
+        .checked_add(args.amount())
         .ok_or(ProgramError::InvalidArgument)?;
 
     Ok(())
 }
 
-#[repr(C)]
-#[derive(Copy, Clone, Pod, Zeroable)]
+#[variable_offset_layout(buffer_offset = 1)]
 pub struct DepositArgs {
     amount: u64,
 }

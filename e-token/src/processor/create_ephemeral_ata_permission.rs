@@ -1,11 +1,13 @@
-use bytemuck::{Pod, Zeroable};
+use alloc::vec;
+use alloc::vec::Vec;
+use data_layout::variable_offset_layout;
 use ephemeral_rollups_pinocchio::acl::{
     consts::PERMISSION_PROGRAM_ID,
     instruction::CreatePermissionCpiBuilder,
     pda::permission_pda_from_permissioned_account,
     types::{Member, MemberFlags, MembersArgs},
 };
-use ephemeral_spl_api::{require, require_eq_keys, PodView};
+use ephemeral_spl_api::{require, require_eq_keys};
 use ephemeral_spl_api::{
     require_n_accounts,
     state::{ephemeral_ata::EphemeralAta, load_initialized},
@@ -38,7 +40,7 @@ pub fn process_create_ephemeral_ata_permission(
         permission_program,
     ] = require_n_accounts!(accounts, 5);
 
-    let args = CreateEphemeralAtaPermissionArgs::try_view_from(instruction_data)?;
+    let args = CreateEphemeralAtaPermissionArgs::decode(instruction_data)?;
 
     require!(
         payer_info.is_signer(),
@@ -54,7 +56,7 @@ pub fn process_create_ephemeral_ata_permission(
     let ephemeral_ata =
         load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
 
-    let flag_byte = args.flag_byte;
+    let flag_byte = args.flag_byte();
 
     // Valid in 2 cases:
     // - Payer is the owner of the eata
@@ -103,8 +105,7 @@ pub fn process_create_ephemeral_ata_permission(
         .invoke()
 }
 
-#[repr(C)]
-#[derive(Copy, Clone, Pod, Zeroable)]
+#[variable_offset_layout(buffer_offset = 1)]
 pub struct CreateEphemeralAtaPermissionArgs {
     flag_byte: u8,
 }

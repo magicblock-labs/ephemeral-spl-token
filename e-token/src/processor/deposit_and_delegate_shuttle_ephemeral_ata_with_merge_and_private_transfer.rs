@@ -189,7 +189,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
     )
 }
 
-#[variable_offset_layout(buffer_offset = 0)]
+#[variable_offset_layout(buffer_offset = 1)]
 pub struct DepositAndDelegateShuttleWithPrivateTransferArgs {
     pub shuttle_id: u32,
     pub amount: u64,

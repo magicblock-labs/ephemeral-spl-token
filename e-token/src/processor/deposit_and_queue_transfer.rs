@@ -221,7 +221,7 @@ pub fn process_deposit_and_queue_transfer(
     Ok(())
 }
 
-#[variable_offset_layout(buffer_offset = 0)]
+#[variable_offset_layout(buffer_offset = 1)]
 pub struct DepositAndQueueTransferArgs {
     pub amount: u64,
     pub min_delay_ms: u64,

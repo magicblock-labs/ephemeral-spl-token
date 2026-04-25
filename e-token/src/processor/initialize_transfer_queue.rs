@@ -172,7 +172,10 @@ pub fn process_initialize_transfer_queue(
     Ok(())
 }
 
-#[variable_offset_layout(buffer_offset = 0, option = implicit)]
+#[variable_offset_layout(buffer_offset = 1, option = implicit)]
 pub struct InitializeTransferQueueArgs {
     pub requested_items: Option<u32>,
 }
+
+static_assertions::const_assert!(InitializeTransferQueueArgs::MIN_DATA_LEN == 0);
+static_assertions::const_assert!(InitializeTransferQueueArgs::MAX_DATA_LEN == 4);

@@ -17,13 +17,17 @@ logging = []
 [dependencies]
 bytemuck = { workspace = true }
 const-crypto = { workspace = true }
+data-layout = { path = "../data-layout" }
 ephemeral-rollups-pinocchio = { workspace = true }
+ephemeral-spl-api = { path = "../e-token-api" }
+magicblock-delegation-program-api = { workspace = true, default-features = false, features = [
+    "cpi",
+] }
 pinocchio = { workspace = true }
 pinocchio-log = { workspace = true }
 pinocchio-system = { workspace = true }
 pinocchio-token-2022 = { workspace = true }
 pinocchio-associated-token-account = { workspace = true }
-ephemeral-spl-api = { path = "../e-token-api" }
 solana-instruction = { workspace = true }
 solana-pubkey = { workspace = true }
 magicblock-delegation-program-api = { workspace = true, default-features = false, features = [
@@ -32,6 +36,7 @@ magicblock-delegation-program-api = { workspace = true, default-features = false
 hydra-api = { workspace = true }
 spl-token-interface = { workspace = true }
 data-layout = { path = "../data-layout" }
+static_assertions = { workspace = true }
 
 [dev-dependencies]
 bytemuck = { workspace = true }

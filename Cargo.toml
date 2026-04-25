@@ -57,3 +57,4 @@ magicblock-delegation-program-api = { version = "0.1.1", default-features = fals
 bytemuck = { version = "1.25.0", features = ["derive", "min_const_generics"] }
 const-crypto = "0.3.0"
 hydra-api = { version = "0.1.1", default-features = false, features = ["client"] }
+static_assertions = "1.1.0"
