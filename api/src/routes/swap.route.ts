@@ -617,11 +617,13 @@ async function handlePrivateSwap(
   }
 
   let userPubkey: PublicKey;
+  let payerPubkey: PublicKey;
   let mintPubkey: PublicKey;
   let destinationPubkey: PublicKey;
   let validatorPubkey: PublicKey;
   try {
     userPubkey = new PublicKey(body.userPublicKey);
+    payerPubkey = body.payer ? new PublicKey(body.payer) : userPubkey;
     mintPubkey = new PublicKey(body.quoteResponse.outputMint);
     destinationPubkey = new PublicKey(destination);
     validatorPubkey = validator
@@ -688,7 +690,7 @@ async function handlePrivateSwap(
       baseRpcUrl: env.BASE_RPC_URL,
       body,
       quoteResponse: body.quoteResponse,
-      payer: userPubkey,
+      payer: payerPubkey,
       mint: mintPubkey,
       stashPda,
       stashAta,
@@ -728,7 +730,7 @@ async function handlePrivateSwap(
           baseRpcUrl: env.BASE_RPC_URL,
           body,
           quoteResponse: requoted,
-          payer: userPubkey,
+          payer: payerPubkey,
           mint: mintPubkey,
           stashPda,
           stashAta,

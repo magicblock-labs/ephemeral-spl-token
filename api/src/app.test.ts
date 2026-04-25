@@ -537,6 +537,92 @@ describe("app", () => {
     expect(scheduleIx.keys[4].pubkey.toBase58()).toBe(HYDRA_PROGRAM_ID.toBase58());
   });
 
+  it("visibility=private honors a custom payer for appended instructions", async () => {
+    const metisEnv = {
+      ...env,
+      METIS_SWAP_API_URL: "https://triton.rpc.test/private-token/metis",
+    };
+    const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+    const sponsor = Keypair.generate().publicKey;
+    const recipient = Keypair.generate().publicKey.toBase58();
+    const validator = Keypair.generate().publicKey.toBase58();
+    const quoteResponse = {
+      inputMint: "So11111111111111111111111111111111111111112",
+      inAmount: "1000000",
+      outputMint,
+      outAmount: "999000",
+      otherAmountThreshold: "998000",
+      swapMode: "ExactIn",
+      slippageBps: 50,
+      priceImpactPct: "0.01",
+      routePlan: [],
+    };
+
+    const memoIx = new TransactionInstruction({
+      programId: new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"),
+      keys: [],
+      data: Buffer.from("jupiter-mock"),
+    });
+    const jupiterV0 = new VersionedTransaction(
+      new TransactionMessage({
+        payerKey: sponsor,
+        recentBlockhash: "11111111111111111111111111111111",
+        instructions: [memoIx],
+      }).compileToV0Message(),
+    );
+    const jupiterBase64 = Buffer.from(jupiterV0.serialize()).toString("base64");
+
+    let metisRequestBody: Record<string, unknown> | undefined;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.startsWith("https://triton.rpc.test") && url.endsWith("/swap")) {
+        const rawBody = init?.body;
+        metisRequestBody = JSON.parse(
+          typeof rawBody === "string"
+            ? rawBody
+            : new TextDecoder().decode(rawBody as ArrayBuffer),
+        );
+        return new Response(
+          JSON.stringify({ swapTransaction: jupiterBase64 }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+    });
+
+    const response = await app.request("/v1/swap/swap", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        userPublicKey: owner,
+        payer: sponsor.toBase58(),
+        quoteResponse,
+        visibility: "private",
+        destination: recipient,
+        minDelayMs: "0",
+        maxDelayMs: "0",
+        split: 1,
+        validator,
+      }),
+    }, metisEnv);
+
+    expect(response.status).toBe(200);
+    expect(metisRequestBody?.payer).toBe(sponsor.toBase58());
+
+    const json = await response.json() as { swapTransaction: string };
+    const returned = VersionedTransaction.deserialize(
+      Buffer.from(json.swapTransaction, "base64"),
+    );
+    const decompiled = TransactionMessage.decompile(returned.message, {
+      addressLookupTableAccounts: [],
+    });
+
+    const [createIx, , scheduleIx] = decompiled.instructions;
+    expect(returned.message.staticAccountKeys[0]?.toBase58()).toBe(sponsor.toBase58());
+    expect(createIx?.keys[0]?.pubkey.toBase58()).toBe(sponsor.toBase58());
+    expect(scheduleIx?.keys[0]?.pubkey.toBase58()).toBe(sponsor.toBase58());
+  });
+
   it("visibility=private bumps an existing SetComputeUnitLimit in place rather than prepending", async () => {
     const metisEnv = {
       ...env,
