@@ -207,13 +207,13 @@ pub enum ESplInstruction {
 
 impl ESplInstruction {
     #[inline(always)]
-    pub const fn discriminator(self) -> u8 {
+    pub const fn value(self) -> u8 {
         self as u8
     }
 
     #[inline(always)]
     pub const fn to_bytes(self) -> [u8; 1] {
-        [self.discriminator()]
+        [self.value()]
     }
 
     #[inline(always)]

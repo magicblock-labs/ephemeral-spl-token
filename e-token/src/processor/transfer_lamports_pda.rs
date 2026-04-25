@@ -3,7 +3,7 @@ use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
-use crate::processor::internal::lamports_pda::{derive_lamports_pda, parse_amount_and_salt};
+use crate::processor::internal::lamports_pda::{derive_lamports_pda, AmountAndSaltArgs};
 
 ///
 /// Executes on:
@@ -27,7 +27,7 @@ pub fn process_transfer_lamports_pda(
         destination_info,
     ] = require_n_accounts!(accounts, 3);
 
-    let (amount, salt) = parse_amount_and_salt(instruction_data)?;
+    let args = AmountAndSaltArgs::decode(instruction_data)?;
 
     require!(
         payer_info.is_signer(),
@@ -43,8 +43,11 @@ pub fn process_transfer_lamports_pda(
         ProgramError::InvalidAccountData
     );
 
-    let (derived_lamports_pda, _) =
-        derive_lamports_pda(payer_info.address(), destination_info.address(), &salt);
+    let (derived_lamports_pda, _) = derive_lamports_pda(
+        payer_info.address(),
+        destination_info.address(),
+        args.salt(),
+    );
     require_eq_keys!(
         &derived_lamports_pda,
         lamports_pda_info.address(),
@@ -53,14 +56,14 @@ pub fn process_transfer_lamports_pda(
 
     let expected_balance = Rent::get()?
         .try_minimum_balance(0)?
-        .checked_add(amount)
+        .checked_add(args.amount())
         .ok_or(ProgramError::InvalidArgument)?;
     require!(
         lamports_pda_info.lamports() >= expected_balance,
         ProgramError::InvalidArgument
     );
 
-    transfer_lamports(lamports_pda_info, destination_info, amount)
+    transfer_lamports(lamports_pda_info, destination_info, args.amount())
 }
 
 fn transfer_lamports(

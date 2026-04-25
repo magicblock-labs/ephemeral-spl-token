@@ -145,10 +145,10 @@ pub fn process_execute_ready_queued_transfer(
 
 #[variable_offset_layout(buffer_offset = 1, option = implicit)]
 pub struct ExecuteQueuedTransferArgs {
-    pub amount: u64,
-    pub client_ref_id: Option<u64>,
     pub escrow_index: u8,
+    pub amount: u64,
     pub flags: u8,
+    pub client_ref_id: Option<u64>,
 }
 
 static_assertions::const_assert!(matches!(ExecuteQueuedTransferArgs::DATA_LENS, [10, 18]));

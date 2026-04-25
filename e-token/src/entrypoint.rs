@@ -52,7 +52,7 @@ pub fn process_instruction(accounts: &[AccountView], instruction_data: &[u8]) ->
     let result = {
         // UndelegationCallback is the first internal type, so anything less than that is public
         // instruction
-        if instruction_data[0] < ESplInternalInstruction::UndelegationCallback.discriminator() {
+        if instruction_data[0] < ESplInternalInstruction::UndelegationCallback.value() {
             process_public_instruction(accounts, instruction_data)
         } else {
             process_internal_instruction(accounts, instruction_data)

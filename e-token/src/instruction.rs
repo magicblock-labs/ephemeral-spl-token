@@ -40,13 +40,13 @@ pub(crate) enum ESplInternalInstruction {
 
 impl ESplInternalInstruction {
     #[inline(always)]
-    pub(crate) const fn discriminator(self) -> u8 {
+    pub(crate) const fn value(self) -> u8 {
         self as u8
     }
 
     #[inline(always)]
     pub(crate) const fn to_bytes(self) -> [u8; 1] {
-        [self.discriminator()]
+        [self.value()]
     }
 
     #[inline(always)]

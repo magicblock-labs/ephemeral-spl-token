@@ -14,11 +14,13 @@ use pinocchio_system::instructions::{CreateAccount, Transfer};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_pubkey::Pubkey;
 
-use crate::instruction::ESplInternalInstruction;
 use crate::processor::{
     initialize_rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
-    internal::lamports_pda::{derive_lamports_pda, parse_amount_and_salt, LAMPORTS_PDA_SEED},
+    internal::lamports_pda::{derive_lamports_pda, LAMPORTS_PDA_SEED},
     internal::shuttle_delegation::delegate_account_with_actions_from_sponsor,
+};
+use crate::{
+    instruction::ESplInternalInstruction, processor::internal::lamports_pda::AmountAndSaltArgs,
 };
 
 ///
@@ -59,9 +61,9 @@ pub fn process_sponsored_lamports_transfer(
         destination_delegation_record_info,
     ] = require_n_accounts!(accounts, 11);
 
-    let (amount, salt) = parse_amount_and_salt(instruction_data)?;
+    let args = AmountAndSaltArgs::decode(instruction_data)?;
 
-    require!(amount != 0, ProgramError::InvalidArgument);
+    require!(args.amount() != 0, ProgramError::InvalidArgument);
     require!(
         payer_info.is_signer(),
         ProgramError::MissingRequiredSignature
@@ -93,8 +95,11 @@ pub fn process_sponsored_lamports_transfer(
 
     let validator =
         read_destination_validator(destination_info, destination_delegation_record_info)?;
-    let (derived_lamports_pda, lamports_pda_bump) =
-        derive_lamports_pda(payer_info.address(), destination_info.address(), &salt);
+    let (derived_lamports_pda, lamports_pda_bump) = derive_lamports_pda(
+        payer_info.address(),
+        destination_info.address(),
+        &args.salt(),
+    );
     require_eq_keys!(
         &derived_lamports_pda,
         lamports_pda_info.address(),
@@ -121,7 +126,7 @@ pub fn process_sponsored_lamports_transfer(
         Seed::from(LAMPORTS_PDA_SEED),
         Seed::from(payer_info.address().as_ref()),
         Seed::from(destination_info.address().as_ref()),
-        Seed::from(salt.as_ref()),
+        Seed::from(args.salt()),
         Seed::from(&lamports_pda_bump_seed),
     ];
     let lamports_pda_signer = Signer::from(&lamports_pda_signer_seeds);
@@ -138,7 +143,7 @@ pub fn process_sponsored_lamports_transfer(
     Transfer {
         from: payer_info,
         to: lamports_pda_info,
-        lamports: amount,
+        lamports: args.amount(),
     }
     .invoke()?;
 
@@ -146,22 +151,22 @@ pub fn process_sponsored_lamports_transfer(
         LAMPORTS_PDA_SEED,
         payer_info.address().as_ref(),
         destination_info.address().as_ref(),
-        salt.as_ref(),
+        args.salt(),
     ];
     let post_actions = alloc::vec![
         transfer_lamports_pda_action(
             payer_info,
             lamports_pda_info,
             destination_info,
-            amount,
-            &salt,
+            args.amount(),
+            args.salt(),
         ),
         undelegate_lamports_pda_action(
             payer_info,
             rent_pda_info,
             lamports_pda_info,
             destination_info,
-            &salt,
+            args.salt(),
         ),
     ];
 

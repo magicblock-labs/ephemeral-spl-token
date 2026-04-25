@@ -4,8 +4,11 @@ use ephemeral_rollups_pinocchio::pda::{
     delegation_metadata_pda_from_delegated_account, delegation_record_pda_from_delegated_account,
 };
 use ephemeral_spl_api::{
-    consts::SPONSORED_LAMPORTS_TRANSFER_SETUP_LAMPORTS, instruction, ID as PROGRAM,
+    consts::SPONSORED_LAMPORTS_TRANSFER_SETUP_LAMPORTS,
+    instruction::{self, ESplInstruction},
+    ID as PROGRAM,
 };
+use ephemeral_token_program::AmountAndSaltArgs;
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::rent::Rent;
@@ -131,11 +134,6 @@ async fn sponsored_lamports_transfer_delegates_zero_data_pda_and_charges_fee() {
         .unwrap()
         .expect("rent pda must exist");
 
-    let mut sponsored_transfer_data =
-        instruction::ESplInstruction::SponsoredLamportsTransfer.to_vec();
-    sponsored_transfer_data.extend_from_slice(&TRANSFER_AMOUNT.to_le_bytes());
-    sponsored_transfer_data.extend_from_slice(&SALT);
-
     let ix_sponsored_transfer = Instruction {
         program_id: PROGRAM,
         accounts: vec![
@@ -151,7 +149,14 @@ async fn sponsored_lamports_transfer_delegates_zero_data_pda_and_charges_fee() {
             AccountMeta::new(destination.pubkey(), false),
             AccountMeta::new_readonly(destination_delegation_record_pda, false),
         ],
-        data: sponsored_transfer_data,
+        data: ESplInstruction::SponsoredLamportsTransfer.with_data(
+            &AmountAndSaltArgs {
+                amount: TRANSFER_AMOUNT,
+                salt: SALT,
+            }
+            .encode()
+            .unwrap(),
+        ),
     };
     let tx_sponsored_transfer = Transaction::new_signed_with_payer(
         &[ix_sponsored_transfer],

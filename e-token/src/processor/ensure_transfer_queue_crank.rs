@@ -20,7 +20,7 @@ pub const CRANK_EXECUTION_INTERVAL_MILLIS: i64 = 500;
 const PROCESS_QUEUE_TICK_CRANK_ACCOUNTS: usize = 4;
 const SCHEDULE_CRANK_CPI_ACCOUNTS: usize = 5;
 const SCHEDULE_CRANK_DATA_LEN: usize =
-    4 + 8 + 8 + 8 + 8 + 32 + 8 + (PROCESS_QUEUE_TICK_CRANK_ACCOUNTS * 34) + 8 + 8;
+    4 + 8 + 8 + 8 + 8 + 32 + 8 + (PROCESS_QUEUE_TICK_CRANK_ACCOUNTS * 34) + 8 + 1;
 
 ///
 /// Executes on:
