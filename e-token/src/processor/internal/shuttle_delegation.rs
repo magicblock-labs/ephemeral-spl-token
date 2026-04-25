@@ -75,8 +75,7 @@ pub struct DepositAndDelegateShuttleArgs {
     pub validator: Option<[u8; 32]>,
 }
 
-static_assertions::const_assert!(DepositAndDelegateShuttleArgs::MIN_DATA_LEN == 12);
-static_assertions::const_assert!(DepositAndDelegateShuttleArgs::MAX_DATA_LEN == 44);
+static_assertions::const_assert!(matches!(DepositAndDelegateShuttleArgs::DATA_LENS, [12, 44]));
 
 impl DepositAndDelegateShuttleArgsView<'_> {
     #[inline]

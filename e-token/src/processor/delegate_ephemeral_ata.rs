@@ -87,5 +87,4 @@ pub struct DelegateArgs {
     pub validator: Option<[u8; 32]>,
 }
 
-static_assertions::const_assert!(DelegateArgs::MIN_DATA_LEN == 0);
-static_assertions::const_assert!(DelegateArgs::MAX_DATA_LEN == 32);
+static_assertions::const_assert!(matches!(DelegateArgs::DATA_LENS, [0, 32]));

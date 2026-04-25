@@ -221,7 +221,7 @@ pub fn process_deposit_and_queue_transfer(
     Ok(())
 }
 
-#[variable_offset_layout(buffer_offset = 1)]
+#[variable_offset_layout(buffer_offset = 1, option = implicit)]
 pub struct DepositAndQueueTransferArgs {
     pub amount: u64,
     pub min_delay_ms: u64,
@@ -230,6 +230,11 @@ pub struct DepositAndQueueTransferArgs {
     pub flags: Option<u8>,
     pub client_ref_id: Option<u64>,
 }
+
+static_assertions::const_assert!(matches!(
+    DepositAndQueueTransferArgs::DATA_LENS,
+    [28, 29, 36, 37]
+));
 
 #[inline(always)]
 fn validate_deposit_and_queue_transfer_params(

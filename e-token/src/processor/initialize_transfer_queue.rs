@@ -177,5 +177,4 @@ pub struct InitializeTransferQueueArgs {
     pub requested_items: Option<u32>,
 }
 
-static_assertions::const_assert!(InitializeTransferQueueArgs::MIN_DATA_LEN == 0);
-static_assertions::const_assert!(InitializeTransferQueueArgs::MAX_DATA_LEN == 4);
+static_assertions::const_assert!(matches!(InitializeTransferQueueArgs::DATA_LENS, [0, 4]));

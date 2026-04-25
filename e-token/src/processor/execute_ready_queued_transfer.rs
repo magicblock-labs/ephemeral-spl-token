@@ -151,11 +151,7 @@ pub struct ExecuteQueuedTransferArgs {
     pub flags: u8,
 }
 
-static_assertions::const_assert!(ExecuteQueuedTransferArgs::MIN_DATA_LEN == 10);
-static_assertions::const_assert!(ExecuteQueuedTransferArgs::MAX_DATA_LEN == 18);
-
-//assert!(ExecuteQueuedTransferArgs::MIN_DATA_LEN, 10);
-//assert!(ExecuteQueuedTransferArgs::MAX_DATA_LEN, 18);
+static_assertions::const_assert!(matches!(ExecuteQueuedTransferArgs::DATA_LENS, [10, 18]));
 
 impl ExecuteQueuedTransferArgsView<'_> {
     pub fn should_create_destination_ata_idempotent(&self) -> bool {
