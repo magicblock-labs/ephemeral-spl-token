@@ -194,9 +194,10 @@ pub fn process_schedule_private_transfer(
     )?;
     let queue = TransferQueue::derive_pda(&mint, &validator, queue_bump)?;
 
-    // scheduled_metas mirror ix 25's account layout. Slot 5 aliases slot 0
-    // (stash PDA); the flag must match Solana's tx-level writable union, so
-    // both are writable.
+    // Slots 0..19 mirror ix 25's layout. Slot 5 aliases slot 0 (stash PDA);
+    // the flag must match Solana's tx-level writable union, so both are
+    // writable. Slot 19 is the Hydra crank PDA (provenance witness for
+    // ix 29).
     let sched_metas: [(&Address, bool); SCHEDULED_PT_ACCOUNTS] = [
         (stash_pda_info.address(), true),
         (rent_pda_info.address(), true),
@@ -217,6 +218,7 @@ pub fn process_schedule_private_transfer(
         (&stash_ata, true),
         (&vault_token, true),
         (&queue, true),
+        (hydra_crank_pda_info.address(), false),
     ];
 
     let vardata_tail = &instruction_data[FIXED_PREFIX_LEN..cursor];
@@ -291,7 +293,7 @@ pub fn process_schedule_private_transfer(
 }
 
 #[inline(always)]
-fn derive_hydra_seed(stash_pda: &Address, shuttle_id_bytes: &[u8; 4]) -> [u8; 32] {
+pub(crate) fn derive_hydra_seed(stash_pda: &Address, shuttle_id_bytes: &[u8; 4]) -> [u8; 32] {
     let mut seed = *stash_pda.as_array();
     seed[..4].copy_from_slice(shuttle_id_bytes);
     seed

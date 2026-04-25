@@ -8,10 +8,14 @@ use pinocchio::instruction::{InstructionAccount, InstructionView};
 use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
 
 use crate::processor::initialize_rent_pda::RENT_PDA;
+use crate::processor::schedule_private_transfer::derive_hydra_seed;
 use crate::processor::utils::{is_supported_token_program, read_token_account};
 
-/// Account count on this top-level instruction (mirrors instruction 25's layout).
-pub(crate) const SCHEDULED_PT_ACCOUNTS: usize = 19;
+/// Number of metas forwarded to instruction 25.
+pub(crate) const SCHEDULED_PT_INNER_ACCOUNTS: usize = 19;
+
+/// Total accounts on this top-level instruction (ix 25 layout + Hydra crank).
+pub(crate) const SCHEDULED_PT_ACCOUNTS: usize = SCHEDULED_PT_INNER_ACCOUNTS + 1;
 
 /// Fixed prefix of `instruction_data` injected by `schedule_private_transfer`
 /// when it baked the Hydra-scheduled payload:
@@ -26,8 +30,10 @@ const PREFIX_LEN: usize = 32 + 1 + 4;
 /// `[b"stash", user, mint]` and `invoke_signed`s into instruction 25 with
 /// the stash PDA covering both the `payer` and `owner` signer slots.
 ///
-/// Accounts (match instruction 25's layout verbatim so the self-CPI can
-/// forward the slice):
+/// Accounts: slots 0..19 mirror instruction 25's layout verbatim so the
+/// self-CPI can forward that prefix unchanged. Slot 19 is the Hydra crank
+/// PDA, the provenance witness — `crank.authority == RENT_PDA` and
+/// `crank.authority_signer == 1` proves ix 30 created the schedule.
 ///
 ///  0: [writable]          - PDA     : Stash PDA (payer in ix 25).
 ///  1: [writable]          - PDA     : Rent PDA account.
@@ -48,6 +54,7 @@ const PREFIX_LEN: usize = 32 + 1 + 4;
 /// 16: [writable]          - SPL     : Stash ATA (owner_source_token in ix 25).
 /// 17: [writable]          - SPL     : Vault token account.
 /// 18: [writable]          - PDA     : Transfer queue account.
+/// 19: []                  - PDA     : Hydra crank PDA (provenance witness).
 ///
 /// Instruction data (after the entrypoint strips the discriminator):
 ///
@@ -63,8 +70,8 @@ pub fn process_scheduled_private_transfer(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let [stash_payer_info, rent_pda_info, shuttle_info, shuttle_eata_info, shuttle_wallet_ata_info, stash_owner_info, owner_program_info, buffer_info, delegation_record_info, delegation_metadata_info, delegation_program_info, associated_token_program_info, system_program_info, mint_info, token_program_info, global_vault_info, stash_ata_info, vault_token_info, queue_info] =
-        require_n_accounts!(accounts, 19);
+    let [stash_payer_info, rent_pda_info, shuttle_info, shuttle_eata_info, shuttle_wallet_ata_info, stash_owner_info, owner_program_info, buffer_info, delegation_record_info, delegation_metadata_info, delegation_program_info, associated_token_program_info, system_program_info, mint_info, token_program_info, global_vault_info, stash_ata_info, vault_token_info, queue_info, hydra_crank_info] =
+        require_n_accounts!(accounts, 20);
 
     require!(
         instruction_data.len() >= PREFIX_LEN,
@@ -115,6 +122,30 @@ pub fn process_scheduled_private_transfer(
         ProgramError::IncorrectProgramId
     );
 
+    require!(
+        hydra_crank_info.owned_by(&Address::new_from_array(hydra_api::ID.to_bytes())),
+        ProgramError::InvalidAccountOwner
+    );
+    let shuttle_id_arr: [u8; 4] = shuttle_id_bytes
+        .try_into()
+        .map_err(|_| ProgramError::InvalidInstructionData)?;
+    let hydra_seed = derive_hydra_seed(stash_payer_info.address(), &shuttle_id_arr);
+    let (expected_crank, _) = hydra_api::state::find_crank_pda(&hydra_seed);
+    require_eq_keys!(
+        &expected_crank,
+        hydra_crank_info.address(),
+        ProgramError::InvalidSeeds
+    );
+    let crank_data = hydra_crank_info.try_borrow()?;
+    let crank = unsafe { hydra_api::state::load_crank(&crank_data)? };
+    let crank_authority = Address::new_from_array(crank.authority);
+    require_eq_keys!(&crank_authority, &RENT_PDA, ProgramError::InvalidSeeds);
+    require!(
+        crank.authority_signer == 1,
+        ProgramError::InvalidAccountData
+    );
+    drop(crank_data);
+
     // -------- sweep: amount = current stash ATA token balance --------
     let effective_amount = read_token_account(stash_ata_info)?.amount();
     require!(effective_amount != 0, ProgramError::InvalidAccountData);
@@ -130,7 +161,8 @@ pub fn process_scheduled_private_transfer(
     ix_data.extend_from_slice(tail);
 
     // -------- build ix 25 account metas (19) --------
-    let mut metas = [const { MaybeUninit::<InstructionAccount>::uninit() }; SCHEDULED_PT_ACCOUNTS];
+    let mut metas =
+        [const { MaybeUninit::<InstructionAccount>::uninit() }; SCHEDULED_PT_INNER_ACCOUNTS];
     unsafe {
         metas
             .get_unchecked_mut(0)
@@ -210,7 +242,7 @@ pub fn process_scheduled_private_transfer(
         accounts: unsafe {
             core::slice::from_raw_parts(
                 metas.as_ptr() as *const InstructionAccount,
-                SCHEDULED_PT_ACCOUNTS,
+                SCHEDULED_PT_INNER_ACCOUNTS,
             )
         },
         data: &ix_data,
@@ -222,7 +254,7 @@ pub fn process_scheduled_private_transfer(
     let stash_signer_seeds = StashPda::signer_seeds(&user, mint_info.address(), &stash_bump_seed);
     let stash_signer = Signer::from(&stash_signer_seeds);
 
-    let account_refs: [&AccountView; SCHEDULED_PT_ACCOUNTS] = [
+    let account_refs: [&AccountView; SCHEDULED_PT_INNER_ACCOUNTS] = [
         stash_payer_info,
         rent_pda_info,
         shuttle_info,
@@ -244,7 +276,11 @@ pub fn process_scheduled_private_transfer(
         queue_info,
     ];
 
-    invoke_signed_with_bounds::<SCHEDULED_PT_ACCOUNTS>(&instruction, &account_refs, &[stash_signer])
+    invoke_signed_with_bounds::<SCHEDULED_PT_INNER_ACCOUNTS>(
+        &instruction,
+        &account_refs,
+        &[stash_signer],
+    )
 }
 
 #[inline(always)]

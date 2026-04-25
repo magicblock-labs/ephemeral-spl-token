@@ -37,6 +37,7 @@ const SCHEDULE_IX_CU_BUDGET = 40_000;
 const COMPUTE_BUDGET_SET_UNIT_LIMIT_DISC = 0x02;
 const COMPUTE_BUDGET_SET_UNIT_LIMIT_IX_LEN = 5;
 const COMPUTE_UNIT_LIMIT_MAX = 1_400_000;
+const PRIVATE_TRANSFER_MAX_DELAY_MS_LIMIT = 10n * 60n * 1000n;
 const SOLANA_WIRE_TRANSACTION_SIZE_LIMIT = 1232;
 const PRIVATE_SWAP_DEFAULT_MAX_ACCOUNTS = 39;
 const PRIVATE_SWAP_MIN_MAX_ACCOUNTS = 1;
@@ -649,6 +650,10 @@ async function handlePrivateSwap(
   const clientRefIdBig = clientRefId !== undefined ? BigInt(clientRefId) : undefined;
   if (maxDelayBig < minDelayBig) {
     throw new ApiError(400, "INVALID_REQUEST", "maxDelayMs must be >= minDelayMs");
+  }
+
+  if (maxDelayBig > PRIVATE_TRANSFER_MAX_DELAY_MS_LIMIT) {
+    throw new ApiError(400, "INVALID_REQUEST", "maxDelayMs must be less than or equal to 600000");
   }
 
   const shuttleId = Math.floor(Math.random() * 0x1_0000_0000);
