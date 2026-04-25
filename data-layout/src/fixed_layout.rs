@@ -191,7 +191,7 @@ pub(crate) fn expand_fixed_offset_layout(
             #[doc = "Byte offsets marking the start of each field"]
             pub const OFFSETS: [usize; #field_count_expr] = #offsets_expr;
 
-            pub fn try_view_from(
+            pub fn decode(
                 bytes: &[u8],
             ) -> core::result::Result<#view_name<'_>, pinocchio::error::ProgramError> {
                 Self::__validate_bytes(bytes)?;

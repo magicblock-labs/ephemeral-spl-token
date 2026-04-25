@@ -146,7 +146,7 @@ pub(crate) fn expand_variable_offset_layout(
             #[doc = #max_msg]
             pub const MAX_DATA_LEN: usize = #max_datalen_expr;
 
-            pub fn try_view_from(
+            pub fn decode(
                 bytes: &[u8],
             ) -> core::result::Result<#view_name<'_>, pinocchio::error::ProgramError> {
                 Self::__validate_bytes(bytes)?;
@@ -1398,7 +1398,11 @@ impl BorrowedRequirement {
         }
     }
 
-    fn variable_offset_alignment_message(self, field_ident: &Ident, buffer_offset: usize) -> String {
+    fn variable_offset_alignment_message(
+        self,
+        field_ident: &Ident,
+        buffer_offset: usize,
+    ) -> String {
         let align = self.align();
         match self {
             Self::Value { .. } => format!(

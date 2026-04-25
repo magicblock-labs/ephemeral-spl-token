@@ -48,7 +48,7 @@ fn fixed_offset_layout_private_args() {
     bytes[118] = 8;
     bytes[119..127].copy_from_slice(&[10, 20, 30, 40, 50, 60, 70, 80]);
 
-    let view = PrivateTransferFixedArgs::try_view_from(bytes).unwrap();
+    let view = PrivateTransferFixedArgs::decode(bytes).unwrap();
 
     assert_eq!(view.shuttle_id(), 100);
     assert_eq!(view.amount(), 200);
@@ -77,7 +77,7 @@ fn fixed_offset_layout_large_vec_elements_are_borrowed() {
     // element ([u8; 9]) of the vector
     bytes[1..10].copy_from_slice(&[1, 2, 3, 4, 5, 6, 7, 8, 9]);
 
-    let view = FixedLargeElements::try_view_from(&bytes).unwrap();
+    let view = FixedLargeElements::decode(&bytes).unwrap();
     let _: &[[u8; 9]] = view.validators();
     assert_eq!(view.validators(), &[[1, 2, 3, 4, 5, 6, 7, 8, 9]]);
 }
@@ -113,7 +113,7 @@ fn fixed_offset_layout_reserves_constant_space() {
     bytes[52..54].copy_from_slice(&11_u16.to_le_bytes());
     bytes[54..56].copy_from_slice(&13_u16.to_le_bytes());
 
-    let view = FixedReadonlyArgs::try_view_from(bytes).unwrap();
+    let view = FixedReadonlyArgs::decode(bytes).unwrap();
     assert_eq!(view.amount(), 9);
     let _: Option<&[u8; 32]> = view.validator();
     assert_eq!(view.validator(), Some(&[7_u8; 32]));
@@ -135,7 +135,7 @@ fn fixed_offset_layout_rejects_invalid_vec_len() {
     bytes[51] = 11;
 
     assert_eq!(
-        FixedReadonlyArgs::try_view_from(bytes).unwrap_err(),
+        FixedReadonlyArgs::decode(bytes).unwrap_err(),
         ProgramError::InvalidInstructionData
     );
 }
@@ -162,7 +162,7 @@ fn fixed_offset_layout_borrows_aligned_large_fields() {
     bytes[31] = 1;
     bytes[32..48].copy_from_slice(&[3, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0]);
 
-    let view = FixedAlignedBorrowedFields::try_view_from(bytes).unwrap();
+    let view = FixedAlignedBorrowedFields::decode(bytes).unwrap();
     let _: &[u64; 2] = view.payload();
     assert_eq!(view.payload(), &[1, 2]);
 

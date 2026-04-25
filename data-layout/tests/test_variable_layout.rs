@@ -57,7 +57,7 @@ fn variable_layout_private_args() {
     bytes[50..52].copy_from_slice(&8_u16.to_le_bytes());
     bytes[52..60].copy_from_slice(&[10, 20, 30, 40, 50, 60, 70, 80]);
 
-    let view = PrivateTransferArgs::try_view_from(bytes).unwrap();
+    let view = PrivateTransferArgs::decode(bytes).unwrap();
 
     assert_eq!(view.shuttle_id(), 100);
     assert_eq!(view.amount(), 200);
@@ -109,7 +109,7 @@ fn variable_layout_computes_offsets_after_variable_fields() {
     bytes[11..19].copy_from_slice(&77_u64.to_le_bytes());
     bytes[19..21].copy_from_slice(&0xBEEF_u16.to_le_bytes());
 
-    let view = VariableOffsetViewArgs::try_view_from(bytes).unwrap();
+    let view = VariableOffsetViewArgs::decode(bytes).unwrap();
 
     assert_eq!(view.header(), 7);
     assert_eq!(view.validator(), Some(9));
@@ -160,7 +160,7 @@ fn variable_layout_handles_none_and_empty_vec_before_trailing_fields() {
     bytes[4..12].copy_from_slice(&55_u64.to_le_bytes());
     bytes[12..14].copy_from_slice(&9_u16.to_le_bytes());
 
-    let view = VariableOffsetViewArgs::try_view_from(bytes).unwrap();
+    let view = VariableOffsetViewArgs::decode(bytes).unwrap();
 
     assert_eq!(view.header(), 5);
     assert_eq!(view.validator(), None);
@@ -236,7 +236,7 @@ fn variable_layout_try_view_from_rejects_invalid_option_tag() {
     bytes[12..14].copy_from_slice(&13_u16.to_le_bytes());
 
     assert_eq!(
-        VariableOffsetViewArgs::try_view_from(bytes).unwrap_err(),
+        VariableOffsetViewArgs::decode(bytes).unwrap_err(),
         ProgramError::InvalidInstructionData
     );
 }
@@ -253,7 +253,7 @@ fn variable_layout_try_view_from_rejects_truncated_vec_payload() {
     bytes[12..14].copy_from_slice(&13_u16.to_le_bytes());
 
     assert_eq!(
-        VariableOffsetViewArgs::try_view_from(bytes).unwrap_err(),
+        VariableOffsetViewArgs::decode(bytes).unwrap_err(),
         ProgramError::InvalidInstructionData
     );
 }
@@ -276,7 +276,7 @@ fn variable_layout_allows_borrowed_fields_after_stably_aligned_variable_data() {
     bytes[8..24].copy_from_slice(&[10, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 0, 0, 0, 0]);
     bytes[24..40].copy_from_slice(&[1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0]);
 
-    let view = BorrowedAfterStableVariableArgs::try_view_from(bytes).unwrap();
+    let view = BorrowedAfterStableVariableArgs::decode(bytes).unwrap();
 
     assert_eq!(view.pad(), [9; 7]);
     assert_eq!(view.prefix(), &[10, 11]);
@@ -295,7 +295,7 @@ fn variable_layout_rejects_misaligned_base_buffer_for_borrowed_fields() {
     bytes[25..41].copy_from_slice(&[1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0]);
 
     assert_eq!(
-        BorrowedAfterStableVariableArgs::try_view_from(&bytes[1..]).unwrap_err(),
+        BorrowedAfterStableVariableArgs::decode(&bytes[1..]).unwrap_err(),
         ProgramError::InvalidInstructionData
     );
 }
@@ -313,7 +313,7 @@ fn variable_layout_buffer_offset_one_allows_unaligned_copy_only_views() {
     bytes[1..9].copy_from_slice(&55_u64.to_le_bytes());
     bytes[9..13].copy_from_slice(&7_u32.to_le_bytes());
 
-    let view = UnalignedCopyArgs::try_view_from(&bytes[1..]).unwrap();
+    let view = UnalignedCopyArgs::decode(&bytes[1..]).unwrap();
     assert_eq!(view.amount(), 55);
     assert_eq!(view.counter(), 7);
 }
@@ -364,12 +364,12 @@ fn variable_layout_supports_implicit_option_without_tag() {
         .concat()
     );
 
-    let none_view = ImplicitOptionArgs::try_view_from(&none_encoded).unwrap();
+    let none_view = ImplicitOptionArgs::decode(&none_encoded).unwrap();
     assert_eq!(none_view.shuttle_id(), 100);
     assert_eq!(none_view.amount(), 200);
     assert_eq!(none_view.validator(), None);
 
-    let some_view = ImplicitOptionArgs::try_view_from(&some_encoded).unwrap();
+    let some_view = ImplicitOptionArgs::decode(&some_encoded).unwrap();
     assert_eq!(some_view.shuttle_id(), 100);
     assert_eq!(some_view.amount(), 200);
     assert_eq!(some_view.validator(), Some(&[1; 32]));
@@ -394,7 +394,7 @@ fn variable_layout_computes_offsets_after_implicit_option() {
         0xBEEF_u16.to_le_bytes().as_slice(),
     ]
     .concat();
-    let none_view = ImplicitOptionWithTrailingArgs::try_view_from(&none_bytes).unwrap();
+    let none_view = ImplicitOptionWithTrailingArgs::decode(&none_bytes).unwrap();
     assert_eq!(none_view.header(), 7);
     assert_eq!(none_view.validator(), None);
     assert_eq!(none_view.amount(), 55);
@@ -407,7 +407,7 @@ fn variable_layout_computes_offsets_after_implicit_option() {
         0xBEEF_u16.to_le_bytes().as_slice(),
     ]
     .concat();
-    let some_view = ImplicitOptionWithTrailingArgs::try_view_from(&some_bytes).unwrap();
+    let some_view = ImplicitOptionWithTrailingArgs::decode(&some_bytes).unwrap();
     assert_eq!(some_view.header(), 7);
     assert_eq!(some_view.validator(), Some([9, 8, 7, 6]));
     assert_eq!(some_view.amount(), 55);
@@ -424,7 +424,7 @@ fn variable_layout_rejects_invalid_implicit_option_length() {
     .concat();
 
     assert_eq!(
-        ImplicitOptionWithTrailingArgs::try_view_from(&bytes).unwrap_err(),
+        ImplicitOptionWithTrailingArgs::decode(&bytes).unwrap_err(),
         ProgramError::InvalidInstructionData
     );
 }

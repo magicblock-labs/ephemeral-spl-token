@@ -83,7 +83,7 @@ mod variable_layout;
 ///   - pub const OFFSETS: [usize; N]
 ///
 /// Methods:
-///   - pub fn try_view_from(bytes: &[u8]) -> Result<SelfView, ProgramError>
+///   - pub fn decode(bytes: &[u8]) -> Result<SelfView, ProgramError>
 ///   - pub fn encode(&self) -> Result<[u8; DATA_LEN], ProgramError>
 ///   - pub fn encode_to(&self, bytes: &mut [u8; DATA_LEN]) -> Result<(), ProgramError>
 ///
@@ -143,12 +143,12 @@ pub fn fixed_offset_layout(attr: TokenStream, item: TokenStream) -> TokenStream 
 ///       Example:
 ///
 ///       - if the original instruction input buffer is 8-byte aligned and
-///         the payload slice passed to try_view_from() is &input[1..], then
+///         the payload slice passed to decode() is &input[1..], then
 ///         buffer_offset = 1.
 ///
 ///       The macro uses this contract both at runtime and at compile-time:
 ///
-///       - try_view_from() validates that the actual slice pointer matches
+///       - decode() validates that the actual slice pointer matches
 ///         this offset
 ///       - borrowed getters are only generated when their alignment can be
 ///         guaranteed for every valid encoding under this buffer_offset
@@ -166,7 +166,7 @@ pub fn fixed_offset_layout(attr: TokenStream, item: TokenStream) -> TokenStream 
 ///       - None omits the optional payload entirely
 ///       - Some(value) writes only the payload bytes
 ///
-///       The generated try_view_from() accepts only the two valid total lengths
+///       The generated decode() accepts only the two valid total lengths
 ///       implied by those two cases.
 ///
 /// Field attributes:
@@ -197,7 +197,7 @@ pub fn fixed_offset_layout(attr: TokenStream, item: TokenStream) -> TokenStream 
 ///   - pub const MAX_DATA_LEN: usize
 ///
 /// Methods:
-///   - pub fn try_view_from(bytes: &[u8]) -> Result<SelfView, ProgramError>
+///   - pub fn decode(bytes: &[u8]) -> Result<SelfView, ProgramError>
 ///   - pub fn encode(&self) -> Result<Vec<u8>, ProgramError>
 ///   - pub fn encode_to(&self, bytes: &mut [u8]) -> Result<(), ProgramError>
 ///

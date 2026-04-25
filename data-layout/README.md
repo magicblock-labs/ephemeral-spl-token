@@ -19,7 +19,7 @@ Validation rules:
 
 - validation happens aggressively during view construction
 - getters do not return `Result<>`
-- after `try_view_from(...)` succeeds, getters may rely on the layout being valid
+- after `decode(...)` succeeds, getters may rely on the layout being valid
 
 # Usage
 
@@ -87,7 +87,7 @@ pub struct DepositAndDelegateShuttleArgsViewMut<'a> { ... } // only with #[varia
 impl DepositAndDelegateShuttleArgs {
     pub const DATA_LEN: usize = ...;
 
-    pub fn try_view_from(bytes: &[u8]) -> Result<DepositAndDelegateShuttleArgsView<'_>, ProgramError>;
+    pub fn decode(bytes: &[u8]) -> Result<DepositAndDelegateShuttleArgsView<'_>, ProgramError>;
     pub fn try_view_from_mut(bytes: &mut [u8]) -> Result<DepositAndDelegateShuttleArgsViewMut<'_>, ProgramError>;
 }
 ```

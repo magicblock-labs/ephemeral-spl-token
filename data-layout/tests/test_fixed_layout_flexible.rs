@@ -51,7 +51,7 @@ fn fixed_layout_flexible_private_args() {
     bytes[126..128].copy_from_slice(&8_u16.to_le_bytes());
     bytes[128..136].copy_from_slice(&[10, 20, 30, 40, 50, 60, 70, 80]);
 
-    let view = PrivateTransferArgs::try_view_from(bytes).unwrap();
+    let view = PrivateTransferArgs::decode(bytes).unwrap();
 
     assert_eq!(view.shuttle_id(), 100);
     assert_eq!(view.amount(), 200);
