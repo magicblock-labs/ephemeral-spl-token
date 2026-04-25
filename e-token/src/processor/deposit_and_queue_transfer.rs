@@ -58,7 +58,7 @@ pub fn process_deposit_and_queue_transfer(
     ] = require_n_accounts!(accounts, 9);
 
     pinocchio_log::log!("instruction_data: {}", instruction_data.len());
-    let args = DepositAndQueueTransferArgs::try_view_from(instruction_data)?;
+    let args = DepositAndQueueTransferArgs::decode(instruction_data)?;
 
     require!(
         user_authority.is_signer(),
@@ -221,7 +221,7 @@ pub fn process_deposit_and_queue_transfer(
     Ok(())
 }
 
-#[variable_offset_layout]
+#[variable_offset_layout(buffer_offset = 0)]
 pub struct DepositAndQueueTransferArgs {
     pub amount: u64,
     pub min_delay_ms: u64,

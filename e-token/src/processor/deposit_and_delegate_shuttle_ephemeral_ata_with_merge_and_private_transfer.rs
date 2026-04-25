@@ -83,7 +83,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
         queue_info,
     ] = require_n_accounts!(accounts, 19);
 
-    let args = DepositAndDelegateShuttleWithPrivateTransferArgs::try_view_from(instruction_data)?;
+    let args = DepositAndDelegateShuttleWithPrivateTransferArgs::decode(instruction_data)?;
     require!(args.amount() != 0, ProgramError::InvalidInstructionData);
 
     let common_accounts = DepositAndDelegateShuttleAccounts {
@@ -189,7 +189,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
     )
 }
 
-#[variable_offset_layout]
+#[variable_offset_layout(buffer_offset = 0)]
 pub struct DepositAndDelegateShuttleWithPrivateTransferArgs {
     pub shuttle_id: u32,
     pub amount: u64,

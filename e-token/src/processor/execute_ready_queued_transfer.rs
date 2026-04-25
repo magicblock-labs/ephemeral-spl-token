@@ -58,7 +58,7 @@ pub fn process_execute_ready_queued_transfer(
         escrow_signer,
     ] = require_n_accounts!(accounts, 12);
 
-    let args = ExecuteQueuedTransferArgs::try_view_from(instruction_data)?;
+    let args = ExecuteQueuedTransferArgs::decode(instruction_data)?;
 
     // Note that accounts [source_program, escrow_authority, escrow_signer] are appended by DLP's
     // CallHandlerV2 instruction.
@@ -143,13 +143,16 @@ pub fn process_execute_ready_queued_transfer(
     Ok(())
 }
 
-#[variable_offset_layout]
+#[variable_offset_layout(buffer_offset = 0, option = implicit)]
 pub struct ExecuteQueuedTransferArgs {
     pub amount: u64,
     pub client_ref_id: Option<u64>,
     pub escrow_index: u8,
     pub flags: u8,
 }
+
+//assert!(ExecuteQueuedTransferArgs::MIN_DATA_LEN, 10);
+//assert!(ExecuteQueuedTransferArgs::MAX_DATA_LEN, 18);
 
 impl ExecuteQueuedTransferArgsView<'_> {
     pub fn should_create_destination_ata_idempotent(&self) -> bool {

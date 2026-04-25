@@ -68,7 +68,7 @@ pub(crate) struct DepositAndDelegateShuttleCommonArgs<'a> {
     pub(crate) validator: Option<&'a [u8; 32]>,
 }
 
-#[variable_offset_layout]
+#[variable_offset_layout(buffer_offset = 0, option = implicit)]
 pub struct DepositAndDelegateShuttleArgs {
     pub shuttle_id: u32,
     pub amount: u64,

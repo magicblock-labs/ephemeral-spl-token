@@ -52,7 +52,7 @@ pub fn process_initialize_transfer_queue(
         permission_program_info,
     ] = require_n_accounts!(accounts, 7);
 
-    let args = InitializeTransferQueueArgs::try_view_from(instruction_data)?;
+    let args = InitializeTransferQueueArgs::decode(instruction_data)?;
 
     let (requested_items, queue_size) = if let Some(items) = args.requested_items() {
         (items, HEADER_LEN + ITEM_LEN * items as usize)
@@ -172,7 +172,7 @@ pub fn process_initialize_transfer_queue(
     Ok(())
 }
 
-#[variable_offset_layout]
+#[variable_offset_layout(buffer_offset = 0, option = implicit)]
 pub struct InitializeTransferQueueArgs {
     pub requested_items: Option<u32>,
 }

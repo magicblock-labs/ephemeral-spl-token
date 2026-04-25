@@ -38,7 +38,7 @@ pub fn process_delegate_ephemeral_ata(
         system_program,
     ] = require_n_accounts!(accounts, 8);
 
-    let args = DelegateArgs::try_view_from(instruction_data)?;
+    let args = DelegateArgs::decode(instruction_data)?;
 
     let delegation_program = ephemeral_spl_api::program::DELEGATION_PROGRAM_ID;
     if ephemeral_ata_info.owned_by(&delegation_program) {
@@ -82,7 +82,7 @@ pub fn process_delegate_ephemeral_ata(
     .invoke()
 }
 
-#[variable_offset_layout]
+#[variable_offset_layout(buffer_offset = 0, option = implicit)]
 pub struct DelegateArgs {
     pub validator: Option<[u8; 32]>,
 }
