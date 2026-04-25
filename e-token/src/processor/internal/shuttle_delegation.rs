@@ -529,7 +529,7 @@ pub(crate) fn delegate_account_with_actions_from_sponsor(
             account: pda_acc,
             owner: &DELEGATION_PROGRAM_ID,
         }
-        .invoke_signed(&[delegate_signer.clone()])?;
+        .invoke_signed(core::slice::from_ref(&delegate_signer))?;
     }
 
     let delegate_args = DelegateAccountArgs {

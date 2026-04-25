@@ -71,5 +71,10 @@ pub fn process_undelegate_ephemeral_ata(
     validate_token_account(ata_info, &mint, Some(payer.address()), None)?;
 
     // Commit and undelegate with the user's ATA and the ephemeral ATA as the account set
-    commit_and_undelegate_accounts(payer, &[ata_info.clone()], magic_context, magic_program)
+    commit_and_undelegate_accounts(
+        payer,
+        core::slice::from_ref(ata_info),
+        magic_context,
+        magic_program,
+    )
 }
