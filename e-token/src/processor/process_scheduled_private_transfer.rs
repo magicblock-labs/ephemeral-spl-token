@@ -7,6 +7,7 @@ use pinocchio::cpi::{invoke_signed_with_bounds, Signer};
 use pinocchio::instruction::{InstructionAccount, InstructionView};
 use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
 
+use crate::processor::initialize_rent_pda::RENT_PDA;
 use crate::processor::utils::{is_supported_token_program, read_token_account};
 
 /// Account count on this top-level instruction (mirrors instruction 25's layout).
@@ -71,11 +72,11 @@ pub fn process_scheduled_private_transfer(
     );
 
     // -------- parse prefix --------
-    let user = {
-        let mut buf = [0u8; 32];
-        buf.copy_from_slice(&instruction_data[0..32]);
-        Address::new_from_array(buf)
-    };
+    let user = Address::new_from_array(
+        instruction_data[0..32]
+            .try_into()
+            .map_err(|_| ProgramError::InvalidInstructionData)?,
+    );
     let stash_bump = instruction_data[32];
     let shuttle_id_bytes = &instruction_data[33..37];
     let tail = &instruction_data[37..];
@@ -102,6 +103,11 @@ pub fn process_scheduled_private_transfer(
     require_eq_keys!(
         stash_owner_info.address(),
         stash_payer_info.address(),
+        ProgramError::InvalidSeeds
+    );
+    require_eq_keys!(
+        rent_pda_info.address(),
+        &RENT_PDA,
         ProgramError::InvalidSeeds
     );
     require!(

@@ -29,6 +29,7 @@ magicblock-delegation-program-api = { workspace = true, default-features = false
     "cpi",
 ] }
 hydra-api = { workspace = true }
+spl-token-interface = { workspace = true }
 
 [dev-dependencies]
 bytemuck = { workspace = true }

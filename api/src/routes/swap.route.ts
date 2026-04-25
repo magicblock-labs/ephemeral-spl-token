@@ -21,15 +21,10 @@ import { getEnv, type AppBindings } from "../env";
 import { openApiDefaultHook } from "../lib/create-app";
 import { ApiError, errorResponseSchema } from "../lib/errors";
 import { jsonContent, jsonContentRequired } from "../lib/openapi";
+import { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID } from "../lib/solana";
 
 const DEFAULT_FALLBACK_VALIDATOR = new PublicKey(
   "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57",
-);
-const TOKEN_PROGRAM_ID = new PublicKey(
-  "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-);
-const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey(
-  "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
 );
 
 // Extra compute units to cover the appended
@@ -42,6 +37,9 @@ const SCHEDULE_IX_CU_BUDGET = 40_000;
 const COMPUTE_BUDGET_SET_UNIT_LIMIT_DISC = 0x02;
 const COMPUTE_BUDGET_SET_UNIT_LIMIT_IX_LEN = 5;
 const COMPUTE_UNIT_LIMIT_MAX = 1_400_000;
+const SOLANA_WIRE_TRANSACTION_SIZE_LIMIT = 1232;
+const PRIVATE_SWAP_DEFAULT_MAX_ACCOUNTS = 39;
+const PRIVATE_SWAP_MIN_MAX_ACCOUNTS = 1;
 
 class PrivateSwapUpstreamError extends Error {
   causeValue?: unknown;
@@ -49,6 +47,18 @@ class PrivateSwapUpstreamError extends Error {
   constructor(message: string, causeValue?: unknown) {
     super(message);
     this.name = "PrivateSwapUpstreamError";
+    this.causeValue = causeValue;
+  }
+}
+
+class PrivateSwapTooLargeError extends Error {
+  txLength?: number;
+  causeValue?: unknown;
+
+  constructor(message: string, txLength?: number, causeValue?: unknown) {
+    super(message);
+    this.name = "PrivateSwapTooLargeError";
+    this.txLength = txLength;
     this.causeValue = causeValue;
   }
 }
@@ -381,6 +391,9 @@ const swapRequestSchema = z.object({
   }),
 }).passthrough().openapi("SwapRequest");
 
+type QuoteResponse = z.infer<typeof quoteResponseSchema>;
+type SwapRequest = z.infer<typeof swapRequestSchema>;
+
 const privateTransferDiagnosticSchema = z.object({
   stashAta: z.string(),
   hydraCrankPda: z.string(),
@@ -589,7 +602,7 @@ app.openapi(
 
 async function handlePrivateSwap(
   c: Context<{ Bindings: AppBindings }>,
-  body: z.infer<typeof swapRequestSchema>,
+  body: SwapRequest,
 ): Promise<Response> {
   const { destination, minDelayMs, maxDelayMs, split, clientRefId, validator } = body;
 
@@ -640,68 +653,19 @@ async function handlePrivateSwap(
 
   const shuttleId = Math.floor(Math.random() * 0x1_0000_0000);
   const [hydraCrankPda] = deriveHydraCrankPda(stashPda, shuttleId);
-
-  // --- forward the swap request to Metis with the stash ATA forced ---
-  const upstreamBody = buildUpstreamSwapBody(body, stashAta);
   const env = getEnv(c.env);
-  const metisUrl = getMetisSwapApiUrl(c.env);
   if (!env.BASE_RPC_URL) {
     throw new ApiError(500, "CONFIG_ERROR", "Missing worker environment variable `BASE_RPC_URL`");
   }
 
-  const metisResponse = await (async () => {
-    try {
-      return await fetch(`${metisUrl}/swap`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(upstreamBody),
-      });
-    }
-    catch (error) {
-      throw new ApiError(502, "SWAP_UPSTREAM_ERROR", "Failed to reach the swap upstream", {
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-  })();
-
-  if (!metisResponse.ok) {
-    // Pass upstream error body through unchanged.
-    return new Response(metisResponse.body, {
-      status: metisResponse.status,
-      headers: metisResponse.headers,
-    });
-  }
-
-  let metisJson: {
-    swapTransaction: string;
-    lastValidBlockHeight?: number;
-    prioritizationFeeLamports?: number;
-    [k: string]: unknown;
-  };
-  let rebuilt: string;
-
+  let metisJson: UpstreamSwapResponse | undefined;
+  let rebuilt: string | undefined;
   try {
-    const parsed = await metisResponse.json() as {
-      swapTransaction?: unknown;
-      lastValidBlockHeight?: number;
-      prioritizationFeeLamports?: number;
-      [k: string]: unknown;
-    };
-
-    if (typeof parsed.swapTransaction !== "string" || parsed.swapTransaction.length === 0) {
-      throw new PrivateSwapUpstreamError("Upstream swap response missing swapTransaction");
-    }
-
-    metisJson = {
-      ...parsed,
-      swapTransaction: parsed.swapTransaction,
-    };
-
-    // --- deserialize, prepend ATA-create, append schedule_private_transfer ---
-    const connection = new Connection(env.BASE_RPC_URL, "confirmed");
-    rebuilt = await rebuildSwapTransaction({
-      connection,
-      base64Tx: metisJson.swapTransaction,
+    const firstAttempt = await tryBuildPrivateSwapAttempt({
+      bindings: c.env,
+      baseRpcUrl: env.BASE_RPC_URL,
+      body,
+      quoteResponse: body.quoteResponse,
       payer: userPubkey,
       mint: mintPubkey,
       stashPda,
@@ -714,6 +678,56 @@ async function handlePrivateSwap(
       validator: validatorPubkey,
       clientRefId: clientRefIdBig,
     });
+
+    if (firstAttempt.kind === "upstream_non_ok") {
+      return new Response(firstAttempt.response.body, {
+        status: firstAttempt.response.status,
+        headers: firstAttempt.response.headers,
+      });
+    }
+
+    if (firstAttempt.kind === "success") {
+      metisJson = firstAttempt.metisJson;
+      rebuilt = firstAttempt.rebuilt;
+    }
+    else {
+      for (
+        let maxAccounts = PRIVATE_SWAP_DEFAULT_MAX_ACCOUNTS;
+        maxAccounts >= PRIVATE_SWAP_MIN_MAX_ACCOUNTS;
+        maxAccounts -= 1
+      ) {
+        const requoted = await requotePrivateSwap(c.env, body.quoteResponse, maxAccounts);
+        if (!requoted) {
+          continue;
+        }
+
+        const requoteAttempt = await tryBuildPrivateSwapAttempt({
+          bindings: c.env,
+          baseRpcUrl: env.BASE_RPC_URL,
+          body,
+          quoteResponse: requoted,
+          payer: userPubkey,
+          mint: mintPubkey,
+          stashPda,
+          stashAta,
+          destinationOwner: destinationPubkey,
+          shuttleId,
+          minDelayMs: minDelayBig,
+          maxDelayMs: maxDelayBig,
+          split,
+          validator: validatorPubkey,
+          clientRefId: clientRefIdBig,
+        });
+
+        if (requoteAttempt.kind === "upstream_non_ok" || requoteAttempt.kind === "too_large") {
+          continue;
+        }
+
+        metisJson = requoteAttempt.metisJson;
+        rebuilt = requoteAttempt.rebuilt;
+        break;
+      }
+    }
   }
   catch (error) {
     if (error instanceof PrivateSwapUpstreamError) {
@@ -733,6 +747,17 @@ async function handlePrivateSwap(
     throw error;
   }
 
+  if (!metisJson || !rebuilt) {
+    throw new ApiError(
+      502,
+      "SWAP_UPSTREAM_ERROR",
+      `Failed to fit private swap transaction within ${SOLANA_WIRE_TRANSACTION_SIZE_LIMIT} bytes`,
+      {
+        startingMaxAccounts: PRIVATE_SWAP_DEFAULT_MAX_ACCOUNTS,
+      },
+    );
+  }
+
   const responseBody = {
     ...metisJson,
     swapTransaction: rebuilt,
@@ -747,8 +772,9 @@ async function handlePrivateSwap(
 }
 
 function buildUpstreamSwapBody(
-  body: z.infer<typeof swapRequestSchema>,
+  body: SwapRequest,
   stashAta: PublicKey,
+  quoteResponse: QuoteResponse = body.quoteResponse,
 ): Record<string, unknown> {
   // Strip the private-only fields before forwarding; override the
   // destination ATA; force v0 so we can splice instructions back in.
@@ -771,9 +797,214 @@ function buildUpstreamSwapBody(
   void _validator;
   return {
     ...rest,
+    quoteResponse,
     destinationTokenAccount: stashAta.toBase58(),
     asLegacyTransaction: false,
   };
+}
+
+type UpstreamSwapResponse = {
+  swapTransaction: string;
+  lastValidBlockHeight?: number;
+  prioritizationFeeLamports?: number;
+  [k: string]: unknown;
+};
+
+type PrivateSwapAttemptResult =
+  | {
+    kind: "success";
+    metisJson: UpstreamSwapResponse;
+    rebuilt: string;
+  }
+  | {
+    kind: "too_large";
+  }
+  | {
+    kind: "upstream_non_ok";
+    response: Response;
+  };
+
+type PrivateSwapAttemptInput = {
+  bindings: AppBindings;
+  baseRpcUrl: string;
+  body: SwapRequest;
+  quoteResponse: QuoteResponse;
+  payer: PublicKey;
+  mint: PublicKey;
+  stashPda: PublicKey;
+  stashAta: PublicKey;
+  destinationOwner: PublicKey;
+  shuttleId: number;
+  minDelayMs: bigint;
+  maxDelayMs: bigint;
+  split: number;
+  validator: PublicKey;
+  clientRefId?: bigint;
+};
+
+async function fetchUpstreamSwap(
+  bindings: AppBindings,
+  body: unknown,
+): Promise<Response> {
+  try {
+    return await fetch(`${getMetisSwapApiUrl(bindings)}/swap`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+  catch (error) {
+    throw new ApiError(502, "SWAP_UPSTREAM_ERROR", "Failed to reach the swap upstream", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+function buildRequoteParams(
+  quoteResponse: QuoteResponse,
+  maxAccounts: number,
+): URLSearchParams {
+  const params = new URLSearchParams({
+    inputMint: quoteResponse.inputMint,
+    outputMint: quoteResponse.outputMint,
+    amount: quoteResponse.swapMode === "ExactOut"
+      ? quoteResponse.outAmount
+      : quoteResponse.inAmount,
+    slippageBps: String(quoteResponse.slippageBps),
+    swapMode: quoteResponse.swapMode,
+    maxAccounts: String(maxAccounts),
+  });
+
+  if (quoteResponse.instructionVersion) {
+    params.set("instructionVersion", quoteResponse.instructionVersion);
+  }
+
+  if (quoteResponse.platformFee?.feeBps !== undefined) {
+    params.set("platformFeeBps", String(quoteResponse.platformFee.feeBps));
+  }
+
+  return params;
+}
+
+async function requotePrivateSwap(
+  bindings: AppBindings,
+  quoteResponse: QuoteResponse,
+  maxAccounts: number,
+): Promise<QuoteResponse | null> {
+  const targetUrl = new URL(`${getMetisSwapApiUrl(bindings)}/quote`);
+  targetUrl.search = buildRequoteParams(quoteResponse, maxAccounts).toString();
+
+  let upstreamResponse: Response;
+  try {
+    upstreamResponse = await fetch(targetUrl, {
+      method: "GET",
+      headers: { accept: "application/json" },
+    });
+  }
+  catch (error) {
+    throw new ApiError(502, "SWAP_UPSTREAM_ERROR", "Failed to reach the swap upstream", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  if (!upstreamResponse.ok) {
+    return null;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = await upstreamResponse.json();
+  }
+  catch (error) {
+    throw new PrivateSwapUpstreamError("Invalid JSON in upstream quote response", error);
+  }
+
+  const validated = quoteResponseSchema.safeParse(parsed);
+  if (!validated.success) {
+    throw new PrivateSwapUpstreamError("Invalid upstream quote response");
+  }
+
+  return validated.data;
+}
+
+async function tryBuildPrivateSwapAttempt(
+  input: PrivateSwapAttemptInput,
+): Promise<PrivateSwapAttemptResult> {
+  const {
+    bindings,
+    baseRpcUrl,
+    body,
+    quoteResponse,
+    payer,
+    mint,
+    stashPda,
+    stashAta,
+    destinationOwner,
+    shuttleId,
+    minDelayMs,
+    maxDelayMs,
+    split,
+    validator,
+    clientRefId,
+  } = input;
+
+  const metisResponse = await fetchUpstreamSwap(
+    bindings,
+    buildUpstreamSwapBody(body, stashAta, quoteResponse),
+  );
+
+  if (!metisResponse.ok) {
+    return {
+      kind: "upstream_non_ok",
+      response: metisResponse,
+    };
+  }
+
+  const parsed = await metisResponse.json() as {
+    swapTransaction?: unknown;
+    lastValidBlockHeight?: number;
+    prioritizationFeeLamports?: number;
+    [k: string]: unknown;
+  };
+
+  if (typeof parsed.swapTransaction !== "string" || parsed.swapTransaction.length === 0) {
+    throw new PrivateSwapUpstreamError("Upstream swap response missing swapTransaction");
+  }
+
+  const metisJson: UpstreamSwapResponse = {
+    ...parsed,
+    swapTransaction: parsed.swapTransaction,
+  };
+
+  try {
+    const rebuilt = await rebuildSwapTransaction({
+      connection: new Connection(baseRpcUrl, "confirmed"),
+      base64Tx: metisJson.swapTransaction,
+      payer,
+      mint,
+      stashPda,
+      stashAta,
+      destinationOwner,
+      shuttleId,
+      minDelayMs,
+      maxDelayMs,
+      split,
+      validator,
+      clientRefId,
+    });
+
+    return {
+      kind: "success",
+      metisJson,
+      rebuilt,
+    };
+  }
+  catch (error) {
+    if (error instanceof PrivateSwapTooLargeError) {
+      return { kind: "too_large" };
+    }
+    throw error;
+  }
 }
 
 type RebuildInput = {
@@ -827,14 +1058,16 @@ async function rebuildSwapTransaction(input: RebuildInput): Promise<string> {
 
   const altKeys = versionedTx.message.addressTableLookups.map((l) => l.accountKey);
   const lookupTables: AddressLookupTableAccount[] = [];
-  for (const key of altKeys) {
-    let resp: Awaited<ReturnType<Connection["getAddressLookupTable"]>>;
-    try {
-      resp = await connection.getAddressLookupTable(key);
-    }
-    catch (error) {
-      throw new PrivateSwapUpstreamError("Failed to fetch swap address lookup table", error);
-    }
+  let lookupTableResponses: Awaited<ReturnType<Connection["getAddressLookupTable"]>>[];
+  try {
+    lookupTableResponses = await Promise.all(
+      altKeys.map((key) => connection.getAddressLookupTable(key)),
+    );
+  }
+  catch (error) {
+    throw new PrivateSwapUpstreamError("Failed to fetch swap address lookup table", error);
+  }
+  for (const resp of lookupTableResponses) {
     if (resp.value) {
       lookupTables.push(resp.value);
     }
@@ -860,10 +1093,9 @@ async function rebuildSwapTransaction(input: RebuildInput): Promise<string> {
   );
 
   // Jupiter/Metis sizes the tx's SetComputeUnitLimit for its own swap only.
-  // Our appended ATA-create + schedule_private_transfer need extra CU;
-  // Solana rejects duplicate ComputeBudget ixs, so we rewrite in place
-  // (or prepend a fresh one if none exists — it lands at index 0, which
-  // is the conventional slot for ComputeBudget ixs).
+  // Our appended ATA-create + schedule_private_transfer need extra CU, so
+  // we bump an existing SetComputeUnitLimit in place when present and leave
+  // the message unchanged when none exists.
   bumpComputeUnitLimit(message.instructions, SCHEDULE_IX_CU_BUDGET);
   message.instructions.push(
     schedulePrivateTransferIx(
@@ -884,7 +1116,29 @@ async function rebuildSwapTransaction(input: RebuildInput): Promise<string> {
     message.compileToV0Message(lookupTables),
   );
 
-  return bytesToBase64(rebuilt.serialize());
+  let serialized: Uint8Array;
+  try {
+    serialized = rebuilt.serialize();
+  }
+  catch (error) {
+    if (error instanceof RangeError) {
+      throw new PrivateSwapTooLargeError(
+        `Rebuilt private swap transaction exceeds ${SOLANA_WIRE_TRANSACTION_SIZE_LIMIT} bytes`,
+        undefined,
+        error,
+      );
+    }
+    throw error;
+  }
+
+  if (serialized.length > SOLANA_WIRE_TRANSACTION_SIZE_LIMIT) {
+    throw new PrivateSwapTooLargeError(
+      `Rebuilt private swap transaction exceeds ${SOLANA_WIRE_TRANSACTION_SIZE_LIMIT} bytes`,
+      serialized.length,
+    );
+  }
+
+  return bytesToBase64(serialized);
 }
 
 function createAssociatedTokenAccountIdempotentInstruction(

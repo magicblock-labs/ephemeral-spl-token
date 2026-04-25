@@ -720,6 +720,101 @@ describe("app", () => {
     expect(json.error.message).toBe("Invalid upstream swap transaction encoding");
   });
 
+  it("visibility=private requotes downward from maxAccounts=39 until the rebuilt transaction fits", async () => {
+    const metisEnv = {
+      ...env,
+      METIS_SWAP_API_URL: "https://triton.rpc.test/private-token/metis",
+    };
+    const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+    const recipient = Keypair.generate().publicKey.toBase58();
+    const validator = Keypair.generate().publicKey.toBase58();
+    const quoteResponse = {
+      inputMint: "So11111111111111111111111111111111111111112",
+      inAmount: "1000000",
+      outputMint,
+      outAmount: "999000",
+      otherAmountThreshold: "998000",
+      swapMode: "ExactIn",
+      slippageBps: 50,
+      priceImpactPct: "0.01",
+      routePlan: [],
+    };
+
+    const ownerPk = new PublicKey(owner);
+    const memoIx = new TransactionInstruction({
+      programId: new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"),
+      keys: [],
+      data: Buffer.from("jupiter-mock"),
+    });
+    const jupiterV0 = new VersionedTransaction(
+      new TransactionMessage({
+        payerKey: ownerPk,
+        recentBlockhash: "11111111111111111111111111111111",
+        instructions: [memoIx],
+      }).compileToV0Message(),
+    );
+    const jupiterBase64 = Buffer.from(jupiterV0.serialize()).toString("base64");
+
+    const originalSerialize = VersionedTransaction.prototype.serialize;
+    let serializeCalls = 0;
+    vi.spyOn(VersionedTransaction.prototype, "serialize").mockImplementation(function (
+      this: VersionedTransaction,
+    ) {
+      serializeCalls += 1;
+      if (serializeCalls <= 2) {
+        return new Uint8Array(1233);
+      }
+      return originalSerialize.call(this);
+    });
+
+    const quoteMaxAccounts: string[] = [];
+    let swapCalls = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = new URL(String(input));
+
+      if (url.origin === "https://triton.rpc.test" && url.pathname.endsWith("/quote")) {
+        quoteMaxAccounts.push(url.searchParams.get("maxAccounts") ?? "");
+        return new Response(JSON.stringify(quoteResponse), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+
+      if (url.origin === "https://triton.rpc.test" && url.pathname.endsWith("/swap")) {
+        swapCalls += 1;
+        return new Response(JSON.stringify({ swapTransaction: jupiterBase64 }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+
+      return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+    });
+
+    const response = await app.request("/v1/swap/swap", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        userPublicKey: owner,
+        quoteResponse,
+        visibility: "private",
+        destination: recipient,
+        minDelayMs: "0",
+        maxDelayMs: "0",
+        split: 1,
+        validator,
+      }),
+    }, metisEnv);
+
+    expect(response.status).toBe(200);
+    expect(swapCalls).toBe(3);
+    expect(quoteMaxAccounts).toEqual(["39", "38"]);
+
+    const json = await response.json() as { swapTransaction: string };
+    expect(typeof json.swapTransaction).toBe("string");
+    expect(json.swapTransaction.length).toBeGreaterThan(0);
+  });
+
   it("visibility=private rejects missing required fields", async () => {
     const metisEnv = {
       ...env,

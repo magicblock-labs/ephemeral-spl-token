@@ -20,7 +20,7 @@ use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
 use pinocchio_system::instructions::Transfer;
 use solana_pubkey::Pubkey;
 
-use crate::processor::initialize_rent_pda::{RENT_PDA_BUMP, RENT_PDA_SEED};
+use crate::processor::initialize_rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED};
 use crate::processor::process_scheduled_private_transfer::SCHEDULED_PT_ACCOUNTS;
 use crate::processor::utils::is_supported_token_program;
 
@@ -44,7 +44,9 @@ const SETUP_LAMPORTS: u64 = ephemeral_spl_api::consts::SPONSORED_SHUTTLE_DELEGAT
 ///  0: [signer]            - Keypair : User who owns the stash PDA.
 ///  1: [writable]          - PDA     : Stash PDA. Seeds `[b"stash", user, mint]`.
 ///  2: [writable]          - PDA     : Rent PDA. Funds the Hydra crank.
-///  3: [writable]          - PDA     : Hydra crank PDA. Derived from the stash PDA bytes.
+///  3: [writable]          - PDA     : Hydra crank PDA. Derived via `derive_hydra_seed`,
+///                                     which mixes the stash PDA and `shuttle_id`, so the
+///                                     crank PDA is unique per stash+shuttle schedule.
 ///  4: []                  - Program : Hydra program.
 ///  5: []                  - Builtin : System program.
 ///  6: []                  - SPL     : Token program (Token / Token-2022) used as an ATA seed.
@@ -128,6 +130,11 @@ pub fn process_schedule_private_transfer(
     require_eq_keys!(
         &derived_stash,
         stash_pda_info.address(),
+        ProgramError::InvalidSeeds
+    );
+    require_eq_keys!(
+        rent_pda_info.address(),
+        &RENT_PDA,
         ProgramError::InvalidSeeds
     );
 

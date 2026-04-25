@@ -14,11 +14,15 @@ function buildMedia(
   example?: unknown,
   examples?: OpenApiExamples,
 ) {
-  return {
-    schema,
-    ...(example === undefined ? {} : { example }),
-    ...(examples === undefined ? {} : { examples }),
-  };
+  if (examples !== undefined) {
+    return { schema, examples };
+  }
+
+  if (example !== undefined) {
+    return { schema, example };
+  }
+
+  return { schema };
 }
 
 export function jsonContent(
