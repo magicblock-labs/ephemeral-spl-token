@@ -3,8 +3,10 @@ use std::fmt::Debug;
 use proc_macro2::Span;
 use quote::{format_ident, quote, ToTokens};
 use syn::{
+    parse::Parser,
+    punctuated::Punctuated,
     spanned::Spanned, Attribute, Expr, ExprLit, Fields, GenericArgument, Ident, ItemStruct, Lit,
-    LitInt, PathArguments, Type, TypePath,
+    LitInt, Meta, PathArguments, Token, Type, TypePath,
 };
 
 const FIELD_ATTRIBUTES: &[&str] = &["capacity", "flexible"];
@@ -16,7 +18,7 @@ pub(crate) fn expand_variable_offset_layout(
     attr: &str,
     input: &ItemStruct,
 ) -> syn::Result<proc_macro2::TokenStream> {
-    parse_args(attr)?;
+    let args = parse_args(attr)?;
     let mut emitted_input = input.clone();
     emitted_input
         .attrs
@@ -62,9 +64,21 @@ pub(crate) fn expand_variable_offset_layout(
     let mut field_offsets = vec![];
     let mut seen_variable_sized_field = false;
 
-    for (index, field) in fields.named.iter_mut().enumerate() {
+    let field_layouts = fields
+        .named
+        .iter()
+        .map(|field| parse_field_layout(field, args.option_encoding))
+        .collect::<syn::Result<Vec<_>>>()?;
+
+    validate_struct_options(struct_name, &fields.named, &field_layouts, &args)?;
+
+    for (index, (field, field_layout)) in fields
+        .named
+        .iter_mut()
+        .zip(field_layouts.iter())
+        .enumerate()
+    {
         let field_ident = field.ident.as_ref().expect("named field");
-        let field_layout = parse_field_layout(field)?;
 
         strip_field_attr(&mut field.attrs);
 
@@ -93,10 +107,14 @@ pub(crate) fn expand_variable_offset_layout(
             }
         }
 
-        validate_steps.push(field_layout.gen_validate_step(field_ident));
+        validate_steps.push(field_layout.gen_validate_step(struct_name, field_ident));
         encoded_len_steps.push(field_layout.gen_encoded_len_step(field_ident));
         encode_steps.push(field_layout.gen_field_encode_step(field_ident));
-        view_methods.push(field_layout.gen_view_methods(field_ident, &field_offsets[..=index])?);
+        view_methods.push(field_layout.gen_view_methods(
+            struct_name,
+            field_ident,
+            &field_offsets[..=index],
+        )?);
 
         if let Some(bound) = field_layout.bound() {
             where_bounds.push(bound);
@@ -293,7 +311,7 @@ impl FixedValueKind {
 enum FieldLayout {
     Value {
         value: FixedValueKind,
-        optional: bool,
+        optional: OptionalKind,
     },
     Vec {
         elem: FixedValueKind,
@@ -301,10 +319,17 @@ enum FieldLayout {
     },
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum OptionalKind {
+    No,
+    Tagged,
+    Implicit,
+}
+
 impl FieldLayout {
     fn is_fixed(&self) -> bool {
         match self {
-            FieldLayout::Value { optional, .. } => *optional == false,
+            FieldLayout::Value { optional, .. } => *optional == OptionalKind::No,
             FieldLayout::Vec { .. } => false,
         }
     }
@@ -323,13 +348,16 @@ impl FieldLayout {
         match self {
             Self::Value { value, optional } => {
                 let ty = value.ty();
-                if *optional {
-                    Err((
+                match optional {
+                    OptionalKind::No => Ok((quote!(core::mem::size_of::<#ty>()), value.size())),
+                    OptionalKind::Tagged => Err((
                         (quote!(1), 1),
                         (quote!((1 + core::mem::size_of::<#ty>())), 1 + value.size()),
-                    ))
-                } else {
-                    Ok((quote!(core::mem::size_of::<#ty>()), value.size()))
+                    )),
+                    OptionalKind::Implicit => Err((
+                        (quote!(0), 0),
+                        (quote!(core::mem::size_of::<#ty>()), value.size()),
+                    )),
                 }
             }
             Self::Vec { elem, flexible } => {
@@ -351,14 +379,16 @@ impl FieldLayout {
         match self {
             Self::Value { value, optional } => {
                 let value_size = usize_lit(value.size());
-                if *optional {
-                    quote! {
-                        len += if self.#field_ident.is_some() { 1 + #value_size } else { 1 };
-                    }
-                } else {
-                    quote! {
+                match optional {
+                    OptionalKind::No => quote! {
                         len += #value_size;
-                    }
+                    },
+                    OptionalKind::Tagged => quote! {
+                        len += if self.#field_ident.is_some() { 1 + #value_size } else { 1 };
+                    },
+                    OptionalKind::Implicit => quote! {
+                        len += if self.#field_ident.is_some() { #value_size } else { 0 };
+                    },
                 }
             }
             Self::Vec { elem, flexible } => {
@@ -382,7 +412,11 @@ impl FieldLayout {
         }
     }
 
-    fn gen_validate_step(&self, field_ident: &Ident) -> proc_macro2::TokenStream {
+    fn gen_validate_step(
+        &self,
+        struct_name: &Ident,
+        field_ident: &Ident,
+    ) -> proc_macro2::TokenStream {
         let field_name = field_ident.to_string();
 
         match self {
@@ -405,8 +439,23 @@ impl FieldLayout {
                     quote!()
                 };
 
-                if *optional {
-                    quote! {
+                match optional {
+                    OptionalKind::No => quote! {
+                        let data_offset = offset;
+                        #alignment_check
+                        let end = data_offset + #value_size;
+                        if end > bytes.len() {
+                            pinocchio_log::log!(
+                                "Truncated payload for field {}: need {} bytes, have {}",
+                                #field_name,
+                                end,
+                                bytes.len(),
+                            );
+                            return Err(pinocchio::error::ProgramError::InvalidInstructionData);
+                        }
+                        offset = end;
+                    },
+                    OptionalKind::Tagged => quote! {
                         if offset >= bytes.len() {
                             pinocchio_log::log!(
                                 "Missing Option tag for field {} at offset {}",
@@ -444,23 +493,35 @@ impl FieldLayout {
                                 return Err(pinocchio::error::ProgramError::InvalidInstructionData);
                             }
                         }
-                    }
-                } else {
-                    quote! {
-                        let data_offset = offset;
-                        #alignment_check
-                        let end = data_offset + #value_size;
-                        if end > bytes.len() {
+                    },
+                    OptionalKind::Implicit => quote! {
+                        if bytes.len() == #struct_name::MIN_DATA_LEN {
+                            // implicit None
+                        } else if bytes.len() == #struct_name::MAX_DATA_LEN {
+                            let data_offset = offset;
+                            #alignment_check
+                            let end = data_offset + #value_size;
+                            if end > bytes.len() {
+                                pinocchio_log::log!(
+                                    "Truncated payload for field {}: need {} bytes, have {}",
+                                    #field_name,
+                                    end,
+                                    bytes.len(),
+                                );
+                                return Err(pinocchio::error::ProgramError::InvalidInstructionData);
+                            }
+                            offset = end;
+                        } else {
                             pinocchio_log::log!(
-                                "Truncated payload for field {}: need {} bytes, have {}",
+                                "Invalid implicit Option encoding for field {}: len {} must be either {} or {}",
                                 #field_name,
-                                end,
                                 bytes.len(),
+                                #struct_name::MIN_DATA_LEN,
+                                #struct_name::MAX_DATA_LEN,
                             );
                             return Err(pinocchio::error::ProgramError::InvalidInstructionData);
                         }
-                        offset = end;
-                    }
+                    },
                 }
             }
             Self::Vec { elem, flexible } => {
@@ -528,8 +589,13 @@ impl FieldLayout {
         match self {
             Self::Value { value, optional } => {
                 let value_size = usize_lit(value.size());
-                if *optional {
-                    quote! {
+                match optional {
+                    OptionalKind::No => quote! {
+                        bytes[offset..offset + #value_size]
+                            .copy_from_slice(bytemuck::bytes_of(&self.#field_ident));
+                        offset += #value_size;
+                    },
+                    OptionalKind::Tagged => quote! {
                         if let core::option::Option::Some(value) = &self.#field_ident {
                             bytes[offset] = 1;
                             bytes[offset + 1..offset + 1 + #value_size]
@@ -539,13 +605,14 @@ impl FieldLayout {
                             bytes[offset] = 0;
                             offset += 1;
                         }
-                    }
-                } else {
-                    quote! {
-                        bytes[offset..offset + #value_size]
-                            .copy_from_slice(bytemuck::bytes_of(&self.#field_ident));
-                        offset += #value_size;
-                    }
+                    },
+                    OptionalKind::Implicit => quote! {
+                        if let core::option::Option::Some(value) = &self.#field_ident {
+                            bytes[offset..offset + #value_size]
+                                .copy_from_slice(bytemuck::bytes_of(value));
+                            offset += #value_size;
+                        }
+                    },
                 }
             }
             Self::Vec { elem, flexible } => {
@@ -805,6 +872,7 @@ impl FieldLayout {
 
     fn gen_view_methods(
         &self,
+        struct_name: &Ident,
         field_ident: &Ident,
         field_offsets: &[FieldOffset],
     ) -> syn::Result<proc_macro2::TokenStream> {
@@ -813,11 +881,10 @@ impl FieldLayout {
                 let ty = value.ty();
                 let value_size = usize_lit(value.size());
                 let access_mode = value.access_mode();
-                let offset_expr = find_data_offset(field_offsets);
-                let data_offset_expr = if *optional {
-                    quote!(offset + 1)
-                } else {
-                    quote!(offset)
+                let offset_expr = find_data_offset(struct_name, field_offsets);
+                let data_offset_expr = match optional {
+                    OptionalKind::No | OptionalKind::Implicit => quote!(offset),
+                    OptionalKind::Tagged => quote!(offset + 1),
                 };
                 let slice_expr =
                     quote!(&self.bytes[#data_offset_expr..#data_offset_expr+#value_size]);
@@ -828,28 +895,40 @@ impl FieldLayout {
                 };
 
                 match (*optional, access_mode) {
-                    (false, AccessMode::Copy) => Ok(quote! {
+                    (OptionalKind::No, AccessMode::Copy) => Ok(quote! {
                         pub fn #field_ident(&self) -> #ty {
                             let offset = #offset_expr;
                             #return_expr
                         }
                     }),
-                    (false, AccessMode::Ref) => Ok(quote! {
+                    (OptionalKind::No, AccessMode::Ref) => Ok(quote! {
                         pub fn #field_ident(&self) -> &#ty {
                             let offset = #offset_expr;
                             #return_expr
                         }
                     }),
-                    (true, AccessMode::Copy) => Ok(quote! {
+                    (OptionalKind::Tagged, AccessMode::Copy) => Ok(quote! {
                         pub fn #field_ident(&self) -> core::option::Option<#ty> {
                             let offset = #offset_expr;
                             (self.bytes[offset] != 0).then(|| #return_expr)
                         }
                     }),
-                    (true, AccessMode::Ref) => Ok(quote! {
+                    (OptionalKind::Tagged, AccessMode::Ref) => Ok(quote! {
                         pub fn #field_ident(&self) -> core::option::Option<&#ty> {
                             let offset = #offset_expr;
                             (self.bytes[offset] != 0).then(|| #return_expr)
+                        }
+                    }),
+                    (OptionalKind::Implicit, AccessMode::Copy) => Ok(quote! {
+                        pub fn #field_ident(&self) -> core::option::Option<#ty> {
+                            let offset = #offset_expr;
+                            (self.bytes.len() == #struct_name::MAX_DATA_LEN).then(|| #return_expr)
+                        }
+                    }),
+                    (OptionalKind::Implicit, AccessMode::Ref) => Ok(quote! {
+                        pub fn #field_ident(&self) -> core::option::Option<&#ty> {
+                            let offset = #offset_expr;
+                            (self.bytes.len() == #struct_name::MAX_DATA_LEN).then(|| #return_expr)
                         }
                     }),
                 }
@@ -871,7 +950,7 @@ impl FieldLayout {
                     }
                 };
 
-                let offset_expr = find_data_offset(field_offsets);
+                let offset_expr = find_data_offset(struct_name, field_offsets);
                 Ok(quote! {
                     pub fn #field_ident(&self) -> &[#elem_ty] {
                         let offset = #offset_expr;
@@ -889,7 +968,10 @@ impl FieldLayout {
     }
 }
 
-fn parse_field_layout(field: &syn::Field) -> syn::Result<FieldLayout> {
+fn parse_field_layout(
+    field: &syn::Field,
+    option_encoding: StructOptionEncoding,
+) -> syn::Result<FieldLayout> {
     let ty = &field.ty;
     let attribute = parse_field_attr(field)?;
 
@@ -932,7 +1014,10 @@ fn parse_field_layout(field: &syn::Field) -> syn::Result<FieldLayout> {
 
         return Ok(FieldLayout::Value {
             value: parse_value_kind(inner)?,
-            optional: true,
+            optional: match option_encoding {
+                StructOptionEncoding::Tagged => OptionalKind::Tagged,
+                StructOptionEncoding::Implicit => OptionalKind::Implicit,
+            },
         });
     }
 
@@ -952,7 +1037,7 @@ fn parse_field_layout(field: &syn::Field) -> syn::Result<FieldLayout> {
 
     Ok(FieldLayout::Value {
         value: parse_value_kind(ty)?,
-        optional: false,
+        optional: OptionalKind::No,
     })
 }
 
@@ -996,14 +1081,112 @@ fn is_allow_dead_code(attr: &Attribute) -> bool {
     found
 }
 
-fn parse_args(attr: &str) -> syn::Result<()> {
-    match attr.trim() {
-        "" => Ok(()),
-        _ => Err(syn::Error::new(
-            Span::call_site(),
-            "variable_offset_layout does not support parameters",
-        )),
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct LayoutArgs {
+    option_encoding: StructOptionEncoding,
+}
+
+impl Default for LayoutArgs {
+    fn default() -> Self {
+        Self {
+            option_encoding: StructOptionEncoding::Tagged,
+        }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum StructOptionEncoding {
+    Tagged,
+    Implicit,
+}
+
+fn parse_args(attr: &str) -> syn::Result<LayoutArgs> {
+    if attr.trim().is_empty() {
+        return Ok(LayoutArgs::default());
+    }
+
+    let metas = Punctuated::<Meta, Token![,]>::parse_terminated.parse_str(attr)?;
+    let mut args = LayoutArgs::default();
+
+    for meta in metas {
+        match meta {
+            Meta::NameValue(meta) if meta.path.is_ident("option") => {
+                let Expr::Path(value) = meta.value else {
+                    return Err(syn::Error::new_spanned(
+                        meta,
+                        "option must use the form `option = implicit`",
+                    ));
+                };
+
+                let Some(ident) = value.path.get_ident() else {
+                    return Err(syn::Error::new_spanned(
+                        value,
+                        "option must use the form `option = implicit`",
+                    ));
+                };
+
+                match ident.to_string().as_str() {
+                    "implicit" => args.option_encoding = StructOptionEncoding::Implicit,
+                    _ => {
+                        return Err(syn::Error::new_spanned(
+                            ident,
+                            "option must be `implicit`",
+                        ))
+                    }
+                }
+            }
+            _ => {
+                return Err(syn::Error::new_spanned(
+                    meta,
+                    "variable_offset_layout only supports `option = implicit`",
+                ))
+            }
+        }
+    }
+
+    Ok(args)
+}
+
+fn validate_struct_options(
+    struct_name: &Ident,
+    fields: &syn::punctuated::Punctuated<syn::Field, Token![,]>,
+    layouts: &[FieldLayout],
+    args: &LayoutArgs,
+) -> syn::Result<()> {
+    if args.option_encoding != StructOptionEncoding::Implicit {
+        return Ok(());
+    }
+
+    if let Some(field) = fields.iter().zip(layouts.iter()).find_map(|(field, layout)| {
+        matches!(layout, FieldLayout::Vec { .. }).then_some(field)
+    }) {
+        return Err(syn::Error::new_spanned(
+            field,
+            "variable_offset_layout(option = implicit) does not support Vec fields",
+        ));
+    }
+
+    let implicit_option_count = layouts
+        .iter()
+        .filter(|layout| {
+            matches!(
+                layout,
+                FieldLayout::Value {
+                    optional: OptionalKind::Implicit,
+                    ..
+                }
+            )
+        })
+        .count();
+
+    if implicit_option_count != 1 {
+        return Err(syn::Error::new_spanned(
+            struct_name,
+            "variable_offset_layout(option = implicit) requires exactly one Option<T> field",
+        ));
+    }
+
+    Ok(())
 }
 
 fn impl_where_clause(bounds: &[proc_macro2::TokenStream]) -> proc_macro2::TokenStream {
@@ -1252,7 +1435,10 @@ fn parse_integer_expr(
     })
 }
 
-fn find_data_offset(field_offsets: &[FieldOffset]) -> proc_macro2::TokenStream {
+fn find_data_offset(
+    struct_name: &Ident,
+    field_offsets: &[FieldOffset],
+) -> proc_macro2::TokenStream {
     match field_offsets.last().unwrap() {
         FieldOffset::FixedOffset { offset, .. } => {
             let offset = usize_lit(*offset);
@@ -1283,14 +1469,15 @@ fn find_data_offset(field_offsets: &[FieldOffset]) -> proc_macro2::TokenStream {
                         // acutally only the first entry has FixedOffset with layout.is_fixed() == false
                         match layout {
                             FieldLayout::Value { value, optional } => {
-                                if *optional {
-                                    let fixed_lit = value.size();
-                                    quote! {
+                                let fixed_lit = value.size();
+                                match optional {
+                                    OptionalKind::No => quote! {#expr + #fixed_lit},
+                                    OptionalKind::Tagged => quote! {
                                         #expr + if self.bytes[#expr] == 0 { 1 } else { 1 + #fixed_lit }
-                                    }
-                                } else {
-                                    let fixed_lit = value.size();
-                                    quote! {#expr + #fixed_lit}
+                                    },
+                                    OptionalKind::Implicit => quote! {
+                                        #expr + if self.bytes.len() == #struct_name::MIN_DATA_LEN { 0 } else { #fixed_lit }
+                                    },
                                 }
                             }
                             FieldLayout::Vec { elem, flexible } => {
@@ -1313,14 +1500,15 @@ fn find_data_offset(field_offsets: &[FieldOffset]) -> proc_macro2::TokenStream {
                     },
                     FieldOffset::VariableOffset { layout } => match layout {
                         FieldLayout::Value { value, optional } => {
-                            if *optional {
-                                let fixed_lit = value.size();
-                                quote! {
+                            let fixed_lit = value.size();
+                            match optional {
+                                OptionalKind::No => quote! {#expr + #fixed_lit},
+                                OptionalKind::Tagged => quote! {
                                     #expr + if self.bytes[#expr] == 0 { 1 } else { 1 + #fixed_lit }
-                                }
-                            } else {
-                                let fixed_lit = value.size();
-                                quote! {#expr + #fixed_lit}
+                                },
+                                OptionalKind::Implicit => quote! {
+                                    #expr + if self.bytes.len() == #struct_name::MIN_DATA_LEN { 0 } else { #fixed_lit }
+                                },
                             }
                         }
                         FieldLayout::Vec { elem, flexible } => {
@@ -1348,10 +1536,10 @@ fn find_data_offset(field_offsets: &[FieldOffset]) -> proc_macro2::TokenStream {
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::expand_variable_offset_layout;
-//     use syn::parse_quote;
+#[cfg(test)]
+mod tests {
+    use super::expand_variable_offset_layout;
+    use syn::parse_quote;
 //
 //     #[test]
 //     fn variable_offset_layout_reports_padding_for_large_field() {
@@ -1473,17 +1661,68 @@ fn find_data_offset(field_offsets: &[FieldOffset]) -> proc_macro2::TokenStream {
 //         );
 //     }
 //
-//     #[test]
-//     fn variable_offset_layout_rejects_parameters() {
-//         let item: syn::ItemStruct = parse_quote! {
-//             struct Args {
-//                 value: u16,
-//             }
-//         };
-//
-//         let error = expand_variable_offset_layout("mut", &item)
-//             .unwrap_err()
-//             .to_string();
-//         assert!(error.contains("variable_offset_layout does not support parameters"));
-//     }
-// }
+    #[test]
+    fn variable_offset_layout_rejects_implicit_without_option() {
+        let item: syn::ItemStruct = parse_quote! {
+            struct Args {
+                value: u16,
+            }
+        };
+
+        let error = expand_variable_offset_layout("option = implicit", &item)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains(
+            "variable_offset_layout(option = implicit) requires exactly one Option<T> field"
+        ));
+    }
+
+    #[test]
+    fn variable_offset_layout_rejects_implicit_with_vec() {
+        let item: syn::ItemStruct = parse_quote! {
+            struct Args {
+                value: Option<u16>,
+                #[flexible = 1]
+                payload: Vec<u8>,
+            }
+        };
+
+        let error = expand_variable_offset_layout("option = implicit", &item)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("variable_offset_layout(option = implicit) does not support Vec fields")
+        );
+    }
+
+    #[test]
+    fn variable_offset_layout_rejects_implicit_with_multiple_options() {
+        let item: syn::ItemStruct = parse_quote! {
+            struct Args {
+                first: Option<u16>,
+                second: Option<u32>,
+            }
+        };
+
+        let error = expand_variable_offset_layout("option = implicit", &item)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains(
+            "variable_offset_layout(option = implicit) requires exactly one Option<T> field"
+        ));
+    }
+
+    #[test]
+    fn variable_offset_layout_rejects_unknown_parameters() {
+        let item: syn::ItemStruct = parse_quote! {
+            struct Args {
+                value: u16,
+            }
+        };
+
+        let error = expand_variable_offset_layout("foo = bar", &item)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("variable_offset_layout only supports `option = implicit`"));
+    }
+}

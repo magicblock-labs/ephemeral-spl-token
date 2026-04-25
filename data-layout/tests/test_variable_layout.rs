@@ -299,3 +299,114 @@ fn variable_layout_rejects_misaligned_borrowed_fields_after_variable_data() {
         ProgramError::InvalidInstructionData
     );
 }
+
+#[variable_offset_layout(option = implicit)]
+struct ImplicitOptionArgs {
+    shuttle_id: u32,
+    validator: Option<[u8; 32]>,
+    amount: u64,
+}
+
+#[test]
+fn variable_layout_supports_implicit_option_without_tag() {
+    assert_eq!(ImplicitOptionArgs::MIN_DATA_LEN, 12);
+    assert_eq!(ImplicitOptionArgs::MAX_DATA_LEN, 44);
+
+    let none_value = ImplicitOptionArgs {
+        shuttle_id: 100,
+        amount: 200,
+        validator: None,
+    };
+    let some_value = ImplicitOptionArgs {
+        shuttle_id: 100,
+        amount: 200,
+        validator: Some([1; 32]),
+    };
+
+    let none_encoded = none_value.encode().unwrap();
+    assert_eq!(none_encoded.len(), 12);
+    assert_eq!(
+        none_encoded,
+        [
+            100_u32.to_le_bytes().as_slice(),
+            200_u64.to_le_bytes().as_slice()
+        ]
+        .concat()
+    );
+
+    let some_encoded = some_value.encode().unwrap();
+    assert_eq!(some_encoded.len(), 44);
+    assert_eq!(
+        some_encoded,
+        [
+            100_u32.to_le_bytes().as_slice(),
+            200_u64.to_le_bytes().as_slice(),
+            &[1; 32],
+        ]
+        .concat()
+    );
+
+    let none_view = ImplicitOptionArgs::try_view_from(&none_encoded).unwrap();
+    assert_eq!(none_view.shuttle_id(), 100);
+    assert_eq!(none_view.amount(), 200);
+    assert_eq!(none_view.validator(), None);
+
+    let some_view = ImplicitOptionArgs::try_view_from(&some_encoded).unwrap();
+    assert_eq!(some_view.shuttle_id(), 100);
+    assert_eq!(some_view.amount(), 200);
+    assert_eq!(some_view.validator(), Some(&[1; 32]));
+}
+
+#[variable_offset_layout(option = implicit)]
+struct ImplicitOptionWithTrailingArgs {
+    header: u16,
+    validator: Option<[u8; 4]>,
+    amount: u64,
+    checksum: u16,
+}
+
+#[test]
+fn variable_layout_computes_offsets_after_implicit_option() {
+    assert_eq!(ImplicitOptionWithTrailingArgs::MIN_DATA_LEN, 12);
+    assert_eq!(ImplicitOptionWithTrailingArgs::MAX_DATA_LEN, 16);
+
+    let none_bytes = [
+        7_u16.to_le_bytes().as_slice(),
+        55_u64.to_le_bytes().as_slice(),
+        0xBEEF_u16.to_le_bytes().as_slice(),
+    ]
+    .concat();
+    let none_view = ImplicitOptionWithTrailingArgs::try_view_from(&none_bytes).unwrap();
+    assert_eq!(none_view.header(), 7);
+    assert_eq!(none_view.validator(), None);
+    assert_eq!(none_view.amount(), 55);
+    assert_eq!(none_view.checksum(), 0xBEEF);
+
+    let some_bytes = [
+        7_u16.to_le_bytes().as_slice(),
+        &[9, 8, 7, 6],
+        55_u64.to_le_bytes().as_slice(),
+        0xBEEF_u16.to_le_bytes().as_slice(),
+    ]
+    .concat();
+    let some_view = ImplicitOptionWithTrailingArgs::try_view_from(&some_bytes).unwrap();
+    assert_eq!(some_view.header(), 7);
+    assert_eq!(some_view.validator(), Some([9, 8, 7, 6]));
+    assert_eq!(some_view.amount(), 55);
+    assert_eq!(some_view.checksum(), 0xBEEF);
+}
+
+#[test]
+fn variable_layout_rejects_invalid_implicit_option_length() {
+    let bytes = [
+        7_u16.to_le_bytes().as_slice(),
+        &[1, 2, 3, 4],
+        55_u64.to_le_bytes().as_slice(),
+    ]
+    .concat();
+
+    assert_eq!(
+        ImplicitOptionWithTrailingArgs::try_view_from(&bytes).unwrap_err(),
+        ProgramError::InvalidInstructionData
+    );
+}
