@@ -98,6 +98,109 @@ pub fn fixed_offset_layout(attr: TokenStream, item: TokenStream) -> TokenStream 
     }
 }
 
+///
+/// Usage
+/// =====
+///
+/// ```ignore
+///
+/// #[variable_offset_layout(buffer_offset = 1)]
+/// struct DepositAndDelegateShuttleWithPrivateTransferArgs {
+///     shuttle_id: u32,
+///     amount: u64,
+///     validator: Option<[u8; 32]>,
+///     #[flexible = 1]
+///     encrypted_destination: Vec<u8>,
+///     #[flexible = 2]
+///     encrypted_data_suffix: Vec<u8>,
+/// }
+///
+/// #[variable_offset_layout(buffer_offset = 1, option = implicit)]
+/// struct DepositAndDelegateShuttleArgs {
+///     shuttle_id: u32,
+///     validator: Option<[u8; 32]>,
+///     amount: u64,
+/// }
+///
+/// ```
+///
+/// Attributes
+/// ==========
+///
+/// Struct attributes:
+///   - #[variable_offset_layout(buffer_offset = 0..7)]
+///   - #[variable_offset_layout(buffer_offset = 0..7, option = implicit)]
+///
+///     - buffer_offset
+///
+///       Mandatory.
+///
+///       It specifies the offset of the input slice pointer from the previous
+///       8-byte aligned base address, i.e:
+///
+///       `(bytes.as_ptr() as usize) % 8`
+///
+///       Example:
+///
+///       - if the original instruction input buffer is 8-byte aligned and
+///         the payload slice passed to try_view_from() is &input[1..], then
+///         buffer_offset = 1.
+///
+///       The macro uses this contract both at runtime and at compile-time:
+///
+///       - try_view_from() validates that the actual slice pointer matches
+///         this offset
+///       - borrowed getters are only generated when their alignment can be
+///         guaranteed for every valid encoding under this buffer_offset
+///
+///     - option = implicit
+///
+///       Optional.
+///
+///       This enables compact Option<T> encoding without a tag byte. It is
+///       supported only when the struct contains exactly one Option<T> field
+///       and no Vec fields.
+///
+///       Encoding:
+///
+///       - None omits the optional payload entirely
+///       - Some(value) writes only the payload bytes
+///
+///       The generated try_view_from() accepts only the two valid total lengths
+///       implied by those two cases.
+///
+/// Field attributes:
+///   - #[flexible = 1|2]
+///
+///     - Mandatory: yes, field-type: Vec
+///
+///     - Examples
+///
+///       - #[flexible = 1]
+///       - #[flexible = 2]
+///
+///     The number indicates the width, in bytes, used to encode Vec length.
+///
+///     - #[flexible = 1]
+///
+///       Vec length is encoded as u8, so len <= 255.
+///
+///     - #[flexible = 2]
+///
+///       Vec length is encoded as u16, so len <= 65535.
+///
+/// APIs
+/// ====
+///
+/// Fields:
+///   - pub const MIN_DATA_LEN: usize
+///   - pub const MAX_DATA_LEN: usize
+///
+/// Methods:
+///   - pub fn try_view_from(bytes: &[u8]) -> Result<SelfView, ProgramError>
+///   - pub fn encode(&self) -> Result<Vec<u8>, ProgramError>
+///   - pub fn encode_to(&self, bytes: &mut [u8]) -> Result<(), ProgramError>
+///
 #[proc_macro_attribute]
 pub fn variable_offset_layout(attr: TokenStream, item: TokenStream) -> TokenStream {
     let attr_string = attr.to_string();

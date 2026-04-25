@@ -4,7 +4,7 @@ use pinocchio::error::ProgramError;
 #[repr(align(8))]
 struct Aligned<const N: usize>([u8; N]);
 
-#[variable_offset_layout]
+#[variable_offset_layout(buffer_offset = 0)]
 struct PrivateTransferArgs {
     shuttle_id: u32,
     amount: u64,
@@ -80,7 +80,7 @@ fn variable_layout_private_args() {
     assert_eq!(&encoded_out[expected_len..], &[255, 255, 255, 255]);
 }
 
-#[variable_offset_layout]
+#[variable_offset_layout(buffer_offset = 0)]
 struct VariableOffsetViewArgs {
     header: u16,
     validator: Option<u32>,
@@ -258,49 +258,67 @@ fn variable_layout_try_view_from_rejects_truncated_vec_payload() {
     );
 }
 
-#[variable_offset_layout]
-struct BorrowedAfterVariableArgs {
-    tag: u8,
+#[variable_offset_layout(buffer_offset = 0)]
+struct BorrowedAfterStableVariableArgs {
+    pad: [u8; 7],
     #[flexible = 1]
-    prefix: Vec<u8>,
+    prefix: Vec<u64>,
     values: [u64; 2],
 }
 
 #[test]
-fn variable_layout_allows_aligned_borrowed_fields_after_variable_data() {
-    let mut aligned = Aligned([0; 24]);
+fn variable_layout_allows_borrowed_fields_after_stably_aligned_variable_data() {
+    let mut aligned = Aligned([0; 40]);
     let bytes = &mut aligned.0;
 
-    bytes[0] = 1;
-    bytes[1] = 6;
-    bytes[2..8].copy_from_slice(&[9, 9, 9, 9, 9, 9]);
-    bytes[8..24].copy_from_slice(&[1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0]);
+    bytes[0..7].copy_from_slice(&[9; 7]);
+    bytes[7] = 2;
+    bytes[8..24].copy_from_slice(&[10, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 0, 0, 0, 0]);
+    bytes[24..40].copy_from_slice(&[1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0]);
 
-    let view = BorrowedAfterVariableArgs::try_view_from(bytes).unwrap();
+    let view = BorrowedAfterStableVariableArgs::try_view_from(bytes).unwrap();
 
-    assert_eq!(view.tag(), 1);
-    assert_eq!(view.prefix(), &[9, 9, 9, 9, 9, 9]);
+    assert_eq!(view.pad(), [9; 7]);
+    assert_eq!(view.prefix(), &[10, 11]);
     let _: &[u64; 2] = view.values();
     assert_eq!(view.values(), &[1, 2]);
 }
 
 #[test]
-fn variable_layout_rejects_misaligned_borrowed_fields_after_variable_data() {
-    let mut aligned = Aligned([0; 19]);
+fn variable_layout_rejects_misaligned_base_buffer_for_borrowed_fields() {
+    let mut aligned = Aligned([0; 41]);
     let bytes = &mut aligned.0;
 
-    bytes[0] = 1;
-    bytes[1] = 1;
-    bytes[2] = 9;
-    bytes[3..19].copy_from_slice(&[1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0]);
+    bytes[1..8].copy_from_slice(&[9; 7]);
+    bytes[8] = 2;
+    bytes[9..25].copy_from_slice(&[10, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 0, 0, 0, 0]);
+    bytes[25..41].copy_from_slice(&[1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0]);
 
     assert_eq!(
-        BorrowedAfterVariableArgs::try_view_from(bytes).unwrap_err(),
+        BorrowedAfterStableVariableArgs::try_view_from(&bytes[1..]).unwrap_err(),
         ProgramError::InvalidInstructionData
     );
 }
 
-#[variable_offset_layout(option = implicit)]
+#[variable_offset_layout(buffer_offset = 1)]
+struct UnalignedCopyArgs {
+    amount: u64,
+    counter: u32,
+}
+
+#[test]
+fn variable_layout_buffer_offset_one_allows_unaligned_copy_only_views() {
+    let mut aligned = Aligned([0; 13]);
+    let bytes = &mut aligned.0;
+    bytes[1..9].copy_from_slice(&55_u64.to_le_bytes());
+    bytes[9..13].copy_from_slice(&7_u32.to_le_bytes());
+
+    let view = UnalignedCopyArgs::try_view_from(&bytes[1..]).unwrap();
+    assert_eq!(view.amount(), 55);
+    assert_eq!(view.counter(), 7);
+}
+
+#[variable_offset_layout(buffer_offset = 0, option = implicit)]
 struct ImplicitOptionArgs {
     shuttle_id: u32,
     validator: Option<[u8; 32]>,
@@ -329,7 +347,7 @@ fn variable_layout_supports_implicit_option_without_tag() {
         none_encoded,
         [
             100_u32.to_le_bytes().as_slice(),
-            200_u64.to_le_bytes().as_slice()
+            200_u64.to_le_bytes().as_slice(),
         ]
         .concat()
     );
@@ -340,8 +358,8 @@ fn variable_layout_supports_implicit_option_without_tag() {
         some_encoded,
         [
             100_u32.to_le_bytes().as_slice(),
-            200_u64.to_le_bytes().as_slice(),
             &[1; 32],
+            200_u64.to_le_bytes().as_slice(),
         ]
         .concat()
     );
@@ -357,7 +375,7 @@ fn variable_layout_supports_implicit_option_without_tag() {
     assert_eq!(some_view.validator(), Some(&[1; 32]));
 }
 
-#[variable_offset_layout(option = implicit)]
+#[variable_offset_layout(buffer_offset = 0, option = implicit)]
 struct ImplicitOptionWithTrailingArgs {
     header: u16,
     validator: Option<[u8; 4]>,
