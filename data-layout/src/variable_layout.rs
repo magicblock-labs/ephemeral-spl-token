@@ -1,4 +1,7 @@
-use std::{collections::BTreeSet, fmt::Debug};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt::Debug,
+};
 
 use proc_macro2::Span;
 use quote::{format_ident, quote, ToTokens};
@@ -63,10 +66,11 @@ pub(crate) fn expand_variable_offset_layout(
     let mut field_offsets = vec![];
     let mut seen_variable_sized_field = false;
 
+    let mut implicit_option_index = 0usize;
     let field_layouts = fields
         .named
         .iter()
-        .map(|field| parse_field_layout(field, args.option_encoding))
+        .map(|field| parse_field_layout(field, args.option_encoding, &mut implicit_option_index))
         .collect::<syn::Result<Vec<_>>>()?;
 
     validate_struct_options(struct_name, &fields.named, &field_layouts, &args)?;
@@ -122,6 +126,10 @@ pub(crate) fn expand_variable_offset_layout(
     }
 
     let where_clause = impl_where_clause(&where_bounds);
+
+    let implicit_len_helpers = implicit_len_helpers(min_datalen, &fields.named, &field_layouts)?;
+    let implicit_len_validation =
+        implicit_len_validation(struct_name, min_datalen, &fields.named, &field_layouts)?;
 
     let min_msg = format!("Minimum size of encoded data = {}", min_datalen);
     let max_msg = format!("Maximum size of encoded data = {}", max_datalen);
@@ -199,6 +207,8 @@ pub(crate) fn expand_variable_offset_layout(
                     );
                 }
 
+                #implicit_len_validation
+
                 let mut offset = 0usize;
                 #(#validate_steps)*
 
@@ -212,6 +222,8 @@ pub(crate) fn expand_variable_offset_layout(
                 #(#encoded_len_steps)*
                 Ok(len)
             }
+
+            #implicit_len_helpers
         }
 
         #[allow(dead_code)]
@@ -328,7 +340,7 @@ enum FieldLayout {
 enum OptionalKind {
     No,
     Tagged,
-    Implicit,
+    Implicit(usize),
 }
 
 impl FieldLayout {
@@ -359,7 +371,7 @@ impl FieldLayout {
                         (quote!(1), 1),
                         (quote!((1 + core::mem::size_of::<#ty>())), 1 + value.size()),
                     )),
-                    OptionalKind::Implicit => Err((
+                    OptionalKind::Implicit(_) => Err((
                         (quote!(0), 0),
                         (quote!(core::mem::size_of::<#ty>()), value.size()),
                     )),
@@ -391,7 +403,7 @@ impl FieldLayout {
                     OptionalKind::Tagged => quote! {
                         len += if self.#field_ident.is_some() { 1 + #value_size } else { 1 };
                     },
-                    OptionalKind::Implicit => quote! {
+                    OptionalKind::Implicit(_) => quote! {
                         len += if self.#field_ident.is_some() { #value_size } else { 0 };
                     },
                 }
@@ -499,10 +511,10 @@ impl FieldLayout {
                             }
                         }
                     },
-                    OptionalKind::Implicit => quote! {
-                        if bytes.len() == #struct_name::MIN_DATA_LEN {
-                            // implicit None
-                        } else if bytes.len() == #struct_name::MAX_DATA_LEN {
+                    OptionalKind::Implicit(bit_index) => {
+                        let bit_index = usize_lit(*bit_index);
+                        quote! {
+                        if #struct_name::__implicit_option_present_for_len(bytes.len(), #bit_index) {
                             let data_offset = offset;
                             #alignment_check
                             let end = data_offset + #value_size;
@@ -516,16 +528,8 @@ impl FieldLayout {
                                 return Err(pinocchio::error::ProgramError::InvalidInstructionData);
                             }
                             offset = end;
-                        } else {
-                            pinocchio_log::log!(
-                                "Invalid implicit Option encoding for field {}: len {} must be either {} or {}",
-                                #field_name,
-                                bytes.len(),
-                                #struct_name::MIN_DATA_LEN,
-                                #struct_name::MAX_DATA_LEN,
-                            );
-                            return Err(pinocchio::error::ProgramError::InvalidInstructionData);
                         }
+                    }
                     },
                 }
             }
@@ -611,7 +615,7 @@ impl FieldLayout {
                             offset += 1;
                         }
                     },
-                    OptionalKind::Implicit => quote! {
+                    OptionalKind::Implicit(_) => quote! {
                         if let core::option::Option::Some(value) = &self.#field_ident {
                             bytes[offset..offset + #value_size]
                                 .copy_from_slice(bytemuck::bytes_of(value));
@@ -888,7 +892,7 @@ impl FieldLayout {
                 let access_mode = value.access_mode();
                 let offset_expr = find_data_offset(struct_name, field_offsets);
                 let data_offset_expr = match optional {
-                    OptionalKind::No | OptionalKind::Implicit => quote!(offset),
+                    OptionalKind::No | OptionalKind::Implicit(_) => quote!(offset),
                     OptionalKind::Tagged => quote!(offset + 1),
                 };
                 let slice_expr =
@@ -924,18 +928,26 @@ impl FieldLayout {
                             (self.bytes[offset] != 0).then(|| #return_expr)
                         }
                     }),
-                    (OptionalKind::Implicit, AccessMode::Copy) => Ok(quote! {
+                    (OptionalKind::Implicit(bit_index), AccessMode::Copy) => {
+                        let bit_index = usize_lit(bit_index);
+                        Ok(quote! {
                         pub fn #field_ident(&self) -> core::option::Option<#ty> {
                             let offset = #offset_expr;
-                            (self.bytes.len() == #struct_name::MAX_DATA_LEN).then(|| #return_expr)
+                            #struct_name::__implicit_option_present_for_len(self.bytes.len(), #bit_index)
+                                .then(|| #return_expr)
                         }
-                    }),
-                    (OptionalKind::Implicit, AccessMode::Ref) => Ok(quote! {
+                    })
+                    }
+                    (OptionalKind::Implicit(bit_index), AccessMode::Ref) => {
+                        let bit_index = usize_lit(bit_index);
+                        Ok(quote! {
                         pub fn #field_ident(&self) -> core::option::Option<&#ty> {
                             let offset = #offset_expr;
-                            (self.bytes.len() == #struct_name::MAX_DATA_LEN).then(|| #return_expr)
+                            #struct_name::__implicit_option_present_for_len(self.bytes.len(), #bit_index)
+                                .then(|| #return_expr)
                         }
-                    }),
+                    })
+                    }
                 }
             }
             Self::Vec { elem, flexible } => {
@@ -976,6 +988,7 @@ impl FieldLayout {
 fn parse_field_layout(
     field: &syn::Field,
     option_encoding: StructOptionEncoding,
+    implicit_option_index: &mut usize,
 ) -> syn::Result<FieldLayout> {
     let ty = &field.ty;
     let attribute = parse_field_attr(field)?;
@@ -1021,7 +1034,11 @@ fn parse_field_layout(
             value: parse_value_kind(inner)?,
             optional: match option_encoding {
                 StructOptionEncoding::Tagged => OptionalKind::Tagged,
-                StructOptionEncoding::Implicit => OptionalKind::Implicit,
+                StructOptionEncoding::Implicit => {
+                    let index = *implicit_option_index;
+                    *implicit_option_index += 1;
+                    OptionalKind::Implicit(index)
+                }
             },
         });
     }
@@ -1208,21 +1225,139 @@ fn validate_struct_options(
             matches!(
                 layout,
                 FieldLayout::Value {
-                    optional: OptionalKind::Implicit,
+                    optional: OptionalKind::Implicit(_),
                     ..
                 }
             )
         })
         .count();
 
-    if implicit_option_count != 1 {
+    if implicit_option_count == 0 {
         return Err(syn::Error::new_spanned(
             struct_name,
-            "variable_offset_layout(option = implicit) requires exactly one Option<T> field",
+            "variable_offset_layout(option = implicit) requires at least one Option<T> field",
         ));
     }
 
+    let _ = implicit_len_map(fields, layouts, 0)?;
+
     Ok(())
+}
+
+fn implicit_len_map(
+    fields: &syn::punctuated::Punctuated<syn::Field, Token![,]>,
+    layouts: &[FieldLayout],
+    base_len: usize,
+) -> syn::Result<Vec<(usize, u128)>> {
+    let implicit_payloads = fields
+        .iter()
+        .zip(layouts.iter())
+        .filter_map(|(field, layout)| match layout {
+            FieldLayout::Value {
+                value,
+                optional: OptionalKind::Implicit(bit_index),
+            } => Some((field, *bit_index, value.size())),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    if implicit_payloads.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    if implicit_payloads.len() > 128 {
+        return Err(syn::Error::new_spanned(
+            fields,
+            "variable_offset_layout(option = implicit) supports at most 128 Option<T> fields",
+        ));
+    }
+
+    let mut sums = BTreeMap::from([(0usize, 0u128)]);
+
+    for (field, bit_index, payload_size) in implicit_payloads {
+        let existing = sums.clone();
+        for (sum, mask) in existing {
+            let next_sum = sum + payload_size;
+            let next_mask = mask | (1u128 << bit_index);
+            if sums.insert(next_sum, next_mask).is_some() {
+                let field_ident = field.ident.as_ref().expect("named field");
+                return Err(syn::Error::new(
+                    field_ident.span(),
+                    format!(
+                        "variable_offset_layout(option = implicit) requires Option<T> payload sizes to have unique subset sums: field `{}` creates duplicate extra payload length {}",
+                        field_ident,
+                        next_sum,
+                    ),
+                ));
+            }
+        }
+    }
+
+    Ok(sums
+        .into_iter()
+        .map(|(extra_len, mask)| (base_len + extra_len, mask))
+        .collect())
+}
+
+fn implicit_len_helpers(
+    min_datalen: usize,
+    fields: &syn::punctuated::Punctuated<syn::Field, Token![,]>,
+    layouts: &[FieldLayout],
+) -> syn::Result<proc_macro2::TokenStream> {
+    let len_map = implicit_len_map(fields, layouts, min_datalen)?;
+    if len_map.is_empty() {
+        return Ok(quote!());
+    }
+
+    let len_arms = len_map.iter().map(|(len, mask)| {
+        let len = usize_lit(*len);
+        let mask = syn::LitInt::new(&format!("{}u128", mask), Span::call_site());
+        quote!(#len => core::option::Option::Some(#mask),)
+    });
+
+    Ok(quote! {
+        fn __implicit_option_mask_for_len(len: usize) -> core::option::Option<u128> {
+            match len {
+                #(#len_arms)*
+                _ => core::option::Option::None,
+            }
+        }
+
+        fn __implicit_option_present_for_len(len: usize, bit_index: usize) -> bool {
+            let mask = Self::__implicit_option_mask_for_len(len)
+                .expect("validated implicit option length");
+            (mask & (1u128 << bit_index)) != 0
+        }
+    })
+}
+
+fn implicit_len_validation(
+    struct_name: &Ident,
+    min_datalen: usize,
+    fields: &syn::punctuated::Punctuated<syn::Field, Token![,]>,
+    layouts: &[FieldLayout],
+) -> syn::Result<proc_macro2::TokenStream> {
+    let len_map = implicit_len_map(fields, layouts, min_datalen)?;
+    if len_map.is_empty() {
+        return Ok(quote!());
+    }
+
+    let valid_lens = format!(
+        "{:?}",
+        len_map.iter().map(|(len, _)| *len).collect::<Vec<_>>()
+    );
+
+    Ok(quote! {
+        if #struct_name::__implicit_option_mask_for_len(bytes.len()).is_none() {
+            pinocchio_log::log!(
+                "Invalid implicit Option encoding for {}: len {} is not one of {}",
+                stringify!(#struct_name),
+                bytes.len(),
+                #valid_lens,
+            );
+            return Err(pinocchio::error::ProgramError::InvalidInstructionData);
+        }
+    })
 }
 
 fn validate_borrowed_field_alignment(
@@ -1477,7 +1612,7 @@ fn possible_len_residues(layout: &FieldLayout, modulus: usize) -> BTreeSet<usize
         FieldLayout::Value { value, optional } => match optional {
             OptionalKind::No => BTreeSet::from([value.size() % modulus]),
             OptionalKind::Tagged => BTreeSet::from([1 % modulus, (1 + value.size()) % modulus]),
-            OptionalKind::Implicit => BTreeSet::from([0, value.size() % modulus]),
+            OptionalKind::Implicit(_) => BTreeSet::from([0, value.size() % modulus]),
         },
         FieldLayout::Vec { elem, flexible } => {
             let capacity = flexible.capacity();
@@ -1787,8 +1922,11 @@ fn find_data_offset(
                                     OptionalKind::Tagged => quote! {
                                         #expr + if self.bytes[#expr] == 0 { 1 } else { 1 + #fixed_lit }
                                     },
-                                    OptionalKind::Implicit => quote! {
-                                        #expr + if self.bytes.len() == #struct_name::MIN_DATA_LEN { 0 } else { #fixed_lit }
+                                    OptionalKind::Implicit(bit_index) => {
+                                        let bit_index = usize_lit(*bit_index);
+                                        quote! {
+                                        #expr + if #struct_name::__implicit_option_present_for_len(self.bytes.len(), #bit_index) { #fixed_lit } else { 0 }
+                                    }
                                     },
                                 }
                             }
@@ -1818,8 +1956,11 @@ fn find_data_offset(
                                 OptionalKind::Tagged => quote! {
                                     #expr + if self.bytes[#expr] == 0 { 1 } else { 1 + #fixed_lit }
                                 },
-                                OptionalKind::Implicit => quote! {
-                                    #expr + if self.bytes.len() == #struct_name::MIN_DATA_LEN { 0 } else { #fixed_lit }
+                                OptionalKind::Implicit(bit_index) => {
+                                    let bit_index = usize_lit(*bit_index);
+                                    quote! {
+                                    #expr + if #struct_name::__implicit_option_present_for_len(self.bytes.len(), #bit_index) { #fixed_lit } else { 0 }
+                                }
                                 },
                             }
                         }
@@ -1985,7 +2126,7 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(error.contains(
-            "variable_offset_layout(option = implicit) requires exactly one Option<T> field"
+            "variable_offset_layout(option = implicit) requires at least one Option<T> field"
         ));
     }
 
@@ -2008,11 +2149,12 @@ mod tests {
     }
 
     #[test]
-    fn variable_offset_layout_rejects_implicit_with_multiple_options() {
+    fn variable_offset_layout_rejects_implicit_with_ambiguous_subset_sums() {
         let item: syn::ItemStruct = parse_quote! {
             struct Args {
-                first: Option<u16>,
-                second: Option<u32>,
+                first: Option<u8>,
+                second: Option<u16>,
+                third: Option<[u8; 3]>,
             }
         };
 
@@ -2020,7 +2162,7 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(error.contains(
-            "variable_offset_layout(option = implicit) requires exactly one Option<T> field"
+            "variable_offset_layout(option = implicit) requires Option<T> payload sizes to have unique subset sums"
         ));
     }
 

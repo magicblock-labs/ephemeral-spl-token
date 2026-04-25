@@ -158,16 +158,19 @@ pub fn fixed_offset_layout(attr: TokenStream, item: TokenStream) -> TokenStream 
 ///       Optional.
 ///
 ///       This enables compact Option<T> encoding without a tag byte. It is
-///       supported only when the struct contains exactly one Option<T> field
-///       and no Vec fields.
+///       supported only when the struct has no Vec fields and the payload
+///       sizes of its Option<T> fields have unique subset sums.
+///
+///       In other words, every valid present/absent combination of the
+///       implicit options must produce a distinct total encoded length.
 ///
 ///       Encoding:
 ///
 ///       - None omits the optional payload entirely
 ///       - Some(value) writes only the payload bytes
 ///
-///       The generated decode() accepts only the two valid total lengths
-///       implied by those two cases.
+///       The generated decode() accepts only the total lengths implied by the
+///       valid combinations of those implicit options.
 ///
 /// Field attributes:
 ///   - #[flexible = 1|2]

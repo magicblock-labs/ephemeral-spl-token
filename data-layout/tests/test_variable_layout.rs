@@ -428,3 +428,70 @@ fn variable_layout_rejects_invalid_implicit_option_length() {
         ProgramError::InvalidInstructionData
     );
 }
+
+#[variable_offset_layout(buffer_offset = 0, option = implicit)]
+struct MultiImplicitOptionArgs {
+    amount: u64,
+    split: u32,
+    flags: Option<u8>,
+    client_ref_id: Option<u64>,
+}
+
+#[test]
+fn variable_layout_supports_multiple_implicit_options_with_unique_subset_sums() {
+    assert_eq!(MultiImplicitOptionArgs::MIN_DATA_LEN, 12);
+    assert_eq!(MultiImplicitOptionArgs::MAX_DATA_LEN, 21);
+
+    let none = MultiImplicitOptionArgs {
+        amount: 11,
+        split: 2,
+        flags: None,
+        client_ref_id: None,
+    };
+    let flags_only = MultiImplicitOptionArgs {
+        amount: 11,
+        split: 2,
+        flags: Some(7),
+        client_ref_id: None,
+    };
+    let client_ref_id_only = MultiImplicitOptionArgs {
+        amount: 11,
+        split: 2,
+        flags: None,
+        client_ref_id: Some(99),
+    };
+    let both = MultiImplicitOptionArgs {
+        amount: 11,
+        split: 2,
+        flags: Some(7),
+        client_ref_id: Some(99),
+    };
+
+    assert_eq!(none.encode().unwrap().len(), 12);
+    assert_eq!(flags_only.encode().unwrap().len(), 13);
+    assert_eq!(client_ref_id_only.encode().unwrap().len(), 20);
+    assert_eq!(both.encode().unwrap().len(), 21);
+
+    let none_encoded = none.encode().unwrap();
+    let none_view = MultiImplicitOptionArgs::decode(&none_encoded).unwrap();
+    assert_eq!(none_view.amount(), 11);
+    assert_eq!(none_view.split(), 2);
+    assert_eq!(none_view.flags(), None);
+    assert_eq!(none_view.client_ref_id(), None);
+
+    let flags_only_encoded = flags_only.encode().unwrap();
+    let flags_only_view = MultiImplicitOptionArgs::decode(&flags_only_encoded).unwrap();
+    assert_eq!(flags_only_view.flags(), Some(7));
+    assert_eq!(flags_only_view.client_ref_id(), None);
+
+    let client_ref_id_only_encoded = client_ref_id_only.encode().unwrap();
+    let client_ref_id_only_view =
+        MultiImplicitOptionArgs::decode(&client_ref_id_only_encoded).unwrap();
+    assert_eq!(client_ref_id_only_view.flags(), None);
+    assert_eq!(client_ref_id_only_view.client_ref_id(), Some(99));
+
+    let both_encoded = both.encode().unwrap();
+    let both_view = MultiImplicitOptionArgs::decode(&both_encoded).unwrap();
+    assert_eq!(both_view.flags(), Some(7));
+    assert_eq!(both_view.client_ref_id(), Some(99));
+}
