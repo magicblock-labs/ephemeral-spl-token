@@ -17,10 +17,9 @@ struct PrivateTransferArgs {
 
 #[test]
 fn variable_layout_private_args() {
-    assert_eq!(PrivateTransferArgs::MIN_DATA_LEN, 16);
     assert_eq!(
-        PrivateTransferArgs::MAX_DATA_LEN,
-        12 + (1 + 32) + (1 + 0xFF) + (2 + 0xFFFF)
+        PrivateTransferArgs::DATA_LEN_RANGE,
+        (16, 12 + (1 + 32) + (1 + 0xFF) + (2 + 0xFFFF))
     );
 
     let value = PrivateTransferArgs {
@@ -34,8 +33,8 @@ fn variable_layout_private_args() {
     let expected_len = 4 + 8 + (1 + 32) + (1 + 4) + (2 + 8);
     let mut aligned = Aligned([0; 4 + 8 + (1 + 32) + (1 + 4) + (2 + 8)]);
 
-    assert!(aligned.0.len() <= PrivateTransferArgs::MAX_DATA_LEN);
-    assert!(aligned.0.len() >= PrivateTransferArgs::MIN_DATA_LEN);
+    assert!(aligned.0.len() <= PrivateTransferArgs::DATA_LEN_RANGE.1);
+    assert!(aligned.0.len() >= PrivateTransferArgs::DATA_LEN_RANGE.0);
 
     let bytes = &mut aligned.0;
 
@@ -92,10 +91,9 @@ struct VariableOffsetViewArgs {
 
 #[test]
 fn variable_layout_computes_offsets_after_variable_fields() {
-    assert_eq!(VariableOffsetViewArgs::MIN_DATA_LEN, 14);
     assert_eq!(
-        VariableOffsetViewArgs::MAX_DATA_LEN,
-        2 + (1 + 4) + (1 + 0xFF) + 8 + 2
+        VariableOffsetViewArgs::DATA_LEN_RANGE,
+        (14, 2 + (1 + 4) + (1 + 0xFF) + 8 + 2)
     );
 
     let mut aligned = Aligned([0; 21]);
@@ -151,7 +149,7 @@ fn variable_layout_encode_supports_fields_after_variable_fields() {
 
 #[test]
 fn variable_layout_handles_none_and_empty_vec_before_trailing_fields() {
-    let mut aligned = Aligned([0; VariableOffsetViewArgs::MIN_DATA_LEN]);
+    let mut aligned = Aligned([0; VariableOffsetViewArgs::DATA_LEN_RANGE.0]);
     let bytes = &mut aligned.0;
 
     bytes[0..2].copy_from_slice(&5_u16.to_le_bytes());
@@ -180,7 +178,7 @@ fn variable_layout_encode_minimal_case_with_trailing_fields() {
     };
 
     let encoded = value.encode().unwrap();
-    assert_eq!(encoded.len(), VariableOffsetViewArgs::MIN_DATA_LEN);
+    assert_eq!(encoded.len(), VariableOffsetViewArgs::DATA_LEN_RANGE.0);
     assert_eq!(
         encoded,
         [
@@ -226,7 +224,7 @@ fn variable_layout_encode_rejects_vec_len_that_exceeds_len_width() {
 
 #[test]
 fn variable_layout_try_view_from_rejects_invalid_option_tag() {
-    let mut aligned = Aligned([0; VariableOffsetViewArgs::MIN_DATA_LEN]);
+    let mut aligned = Aligned([0; VariableOffsetViewArgs::DATA_LEN_RANGE.0]);
     let bytes = &mut aligned.0;
 
     bytes[0..2].copy_from_slice(&1_u16.to_le_bytes());
@@ -243,7 +241,7 @@ fn variable_layout_try_view_from_rejects_invalid_option_tag() {
 
 #[test]
 fn variable_layout_try_view_from_rejects_truncated_vec_payload() {
-    let mut aligned = Aligned([0; VariableOffsetViewArgs::MIN_DATA_LEN]);
+    let mut aligned = Aligned([0; VariableOffsetViewArgs::DATA_LEN_RANGE.0]);
     let bytes = &mut aligned.0;
 
     bytes[0..2].copy_from_slice(&1_u16.to_le_bytes());
@@ -327,8 +325,7 @@ struct ImplicitOptionArgs {
 
 #[test]
 fn variable_layout_supports_implicit_option_without_tag() {
-    assert_eq!(ImplicitOptionArgs::MIN_DATA_LEN, 12);
-    assert_eq!(ImplicitOptionArgs::MAX_DATA_LEN, 44);
+    assert_eq!(ImplicitOptionArgs::DATA_LENS, [12, 44]);
 
     let none_value = ImplicitOptionArgs {
         shuttle_id: 100,
@@ -385,8 +382,7 @@ struct ImplicitOptionWithTrailingArgs {
 
 #[test]
 fn variable_layout_computes_offsets_after_implicit_option() {
-    assert_eq!(ImplicitOptionWithTrailingArgs::MIN_DATA_LEN, 12);
-    assert_eq!(ImplicitOptionWithTrailingArgs::MAX_DATA_LEN, 16);
+    assert_eq!(ImplicitOptionWithTrailingArgs::DATA_LENS, [12, 16]);
 
     let none_bytes = [
         7_u16.to_le_bytes().as_slice(),
@@ -439,8 +435,7 @@ struct MultiImplicitOptionArgs {
 
 #[test]
 fn variable_layout_supports_multiple_implicit_options_with_unique_subset_sums() {
-    assert_eq!(MultiImplicitOptionArgs::MIN_DATA_LEN, 12);
-    assert_eq!(MultiImplicitOptionArgs::MAX_DATA_LEN, 21);
+    assert_eq!(MultiImplicitOptionArgs::DATA_LENS, [12, 13, 20, 21]);
 
     let none = MultiImplicitOptionArgs {
         amount: 11,

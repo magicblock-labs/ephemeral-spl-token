@@ -131,28 +131,17 @@ pub(crate) fn expand_variable_offset_layout(
     let implicit_len_validation =
         implicit_len_validation(struct_name, min_datalen, &fields.named, &field_layouts)?;
 
-    let min_msg = format!("Minimum size of encoded data = {}", min_datalen);
-    let max_msg = format!("Maximum size of encoded data = {}", max_datalen);
-
-    let msgfmt_1 = if max_datalen != min_datalen {
-        format!(
-        "bytes [len={{}}] cannot be deserialized to {} which needs at least {} and at most {} bytes"
-       , struct_name, min_datalen, max_datalen)
-    } else {
-        format!(
-            "bytes [len={{}}] cannot be deserialized to {} which needs exactly {} bytes",
-            struct_name, min_datalen
-        )
-    };
+    let public_len_const = public_len_const(min_datalen_expr.clone(), min_datalen, max_datalen_expr.clone(), max_datalen, &field_layouts)?;
+    let data_len_validation = data_len_validation(struct_name, min_datalen, max_datalen, &field_layouts)?;
 
     Ok(quote! {
         #emitted_input
 
         impl #struct_name {
-            #[doc = #min_msg]
-            pub const MIN_DATA_LEN: usize = #min_datalen_expr;
-            #[doc = #max_msg]
-            pub const MAX_DATA_LEN: usize = #max_datalen_expr;
+            const __MIN_DATA_LEN: usize = #min_datalen_expr;
+            const __MAX_DATA_LEN: usize = #max_datalen_expr;
+
+            #public_len_const
 
             pub fn decode(
                 bytes: &[u8],
@@ -190,12 +179,7 @@ pub(crate) fn expand_variable_offset_layout(
             fn __validate_bytes(
                 bytes: &[u8],
             ) -> core::result::Result<(), pinocchio::error::ProgramError> {
-                if bytes.len() < Self::MIN_DATA_LEN || bytes.len() > Self::MAX_DATA_LEN {
-                    pinocchio_log::log!(#msgfmt_1, bytes.len());
-                    return Err(
-                        pinocchio::error::ProgramError::InvalidInstructionData,
-                    );
-                } else if (bytes.as_ptr() as usize) % 8 != #buffer_offset_lit {
+                if (bytes.as_ptr() as usize) % 8 != #buffer_offset_lit {
                     pinocchio_log::log!(
                         "bytes [ptr_mod_8={}] cannot be deserialized to {} which requires buffer_offset = {} from an 8-byte aligned base",
                         (bytes.as_ptr() as usize) % 8,
@@ -207,6 +191,7 @@ pub(crate) fn expand_variable_offset_layout(
                     );
                 }
 
+                #data_len_validation
                 #implicit_len_validation
 
                 let mut offset = 0usize;
@@ -1355,6 +1340,113 @@ fn implicit_len_validation(
                 bytes.len(),
                 #valid_lens,
             );
+            return Err(pinocchio::error::ProgramError::InvalidInstructionData);
+        }
+    })
+}
+
+fn exact_data_lens(layouts: &[FieldLayout]) -> Option<Vec<usize>> {
+    let mut lengths = BTreeSet::from([0usize]);
+    for layout in layouts {
+        let slot_lengths: BTreeSet<usize> = match layout {
+            FieldLayout::Value { value, optional } => match optional {
+                OptionalKind::No => BTreeSet::from([value.size()]),
+                OptionalKind::Tagged => BTreeSet::from([1, 1 + value.size()]),
+                OptionalKind::Implicit(_) => BTreeSet::from([0, value.size()]),
+            },
+            FieldLayout::Vec { .. } => return None,
+        };
+
+        let mut next = BTreeSet::new();
+        for total in &lengths {
+            for slot_len in &slot_lengths {
+                next.insert(total + slot_len);
+            }
+        }
+        lengths = next;
+    }
+
+    Some(lengths.into_iter().collect())
+}
+
+fn public_len_const(
+    min_datalen_expr: proc_macro2::TokenStream,
+    min_datalen: usize,
+    max_datalen_expr: proc_macro2::TokenStream,
+    max_datalen: usize,
+    layouts: &[FieldLayout],
+) -> syn::Result<proc_macro2::TokenStream> {
+    if let Some(exact_lens) = exact_data_lens(layouts) {
+        if exact_lens.len() == 1 {
+            let data_len = exact_lens[0];
+            let doc = format!("Exact size of encoded data = {}", data_len);
+            return Ok(quote! {
+                #[doc = #doc]
+                pub const DATA_LEN: usize = #min_datalen_expr;
+            });
+        }
+
+        let doc = format!("Exact valid encoded sizes = {:?}", exact_lens);
+        let len_count = usize_lit(exact_lens.len());
+        let len_lits = exact_lens.iter().map(|len| usize_lit(*len));
+        return Ok(quote! {
+            #[doc = #doc]
+            pub const DATA_LENS: [usize; #len_count] = [#(#len_lits),*];
+        });
+    }
+
+    let doc = format!(
+        "Valid encoded size range = ({}, {})",
+        min_datalen, max_datalen
+    );
+    Ok(quote! {
+        #[doc = #doc]
+        pub const DATA_LEN_RANGE: (usize, usize) = (#min_datalen_expr, #max_datalen_expr);
+    })
+}
+
+fn data_len_validation(
+    struct_name: &Ident,
+    min_datalen: usize,
+    max_datalen: usize,
+    layouts: &[FieldLayout],
+) -> syn::Result<proc_macro2::TokenStream> {
+    if let Some(exact_lens) = exact_data_lens(layouts) {
+        if exact_lens.len() == 1 {
+            let msg = format!(
+                "bytes [len={{}}] cannot be deserialized to {} which needs exactly {} bytes",
+                struct_name, exact_lens[0]
+            );
+            return Ok(quote! {
+                if bytes.len() != Self::DATA_LEN {
+                    pinocchio_log::log!(#msg, bytes.len());
+                    return Err(pinocchio::error::ProgramError::InvalidInstructionData);
+                }
+            });
+        }
+
+        let valid_lens = format!("{:?}", exact_lens);
+        let len_patterns = exact_lens.iter().map(|len| usize_lit(*len));
+        return Ok(quote! {
+            if !matches!(bytes.len(), #(#len_patterns)|*) {
+                pinocchio_log::log!(
+                    "bytes [len={}] cannot be deserialized to {} which needs one of {} bytes",
+                    bytes.len(),
+                    stringify!(#struct_name),
+                    #valid_lens,
+                );
+                return Err(pinocchio::error::ProgramError::InvalidInstructionData);
+            }
+        });
+    }
+
+    let msg = format!(
+        "bytes [len={{}}] cannot be deserialized to {} which needs at least {} and at most {} bytes",
+        struct_name, min_datalen, max_datalen
+    );
+    Ok(quote! {
+        if bytes.len() < Self::__MIN_DATA_LEN || bytes.len() > Self::__MAX_DATA_LEN {
+            pinocchio_log::log!(#msg, bytes.len());
             return Err(pinocchio::error::ProgramError::InvalidInstructionData);
         }
     })

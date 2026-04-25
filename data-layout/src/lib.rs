@@ -196,8 +196,12 @@ pub fn fixed_offset_layout(attr: TokenStream, item: TokenStream) -> TokenStream 
 /// ====
 ///
 /// Fields:
-///   - pub const MIN_DATA_LEN: usize
-///   - pub const MAX_DATA_LEN: usize
+///   - pub const DATA_LEN: usize
+///     when the layout has exactly one valid encoded length
+///   - pub const DATA_LENS: [usize; N]
+///     when the layout has no Vec fields and finitely many exact valid lengths
+///   - pub const DATA_LEN_RANGE: (usize, usize)
+///     when the layout contains a Vec field
 ///
 /// Methods:
 ///   - pub fn decode(bytes: &[u8]) -> Result<SelfView, ProgramError>
