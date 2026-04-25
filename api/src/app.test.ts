@@ -887,6 +887,43 @@ describe("app", () => {
     expect(json.error.message).toBe("maxDelayMs must be less than or equal to 600000");
   });
 
+  it("visibility=private rejects split values above 14", async () => {
+    const metisEnv = {
+      ...env,
+      METIS_SWAP_API_URL: "https://triton.rpc.test/private-token/metis",
+    };
+    const quoteResponse = {
+      inputMint: "So11111111111111111111111111111111111111112",
+      inAmount: "1000000",
+      outputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      outAmount: "999000",
+      otherAmountThreshold: "998000",
+      swapMode: "ExactIn",
+      slippageBps: 50,
+      priceImpactPct: "0.01",
+      routePlan: [],
+    };
+
+    const response = await app.request("/v1/swap/swap", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        userPublicKey: owner,
+        quoteResponse,
+        visibility: "private",
+        destination,
+        minDelayMs: "0",
+        maxDelayMs: "0",
+        split: 15,
+      }),
+    }, metisEnv);
+
+    expect(response.status).toBe(400);
+    const json = await response.json() as { error: { code: string; message: string } };
+    expect(json.error.code).toBe("INVALID_REQUEST");
+    expect(json.error.message).toBe("split must be an integer between 1 and 14 when visibility=private");
+  });
+
   it("visibility=private rejects a mismatched destinationTokenAccount", async () => {
     const metisEnv = {
       ...env,
@@ -925,6 +962,46 @@ describe("app", () => {
     const json = await response.json() as { error: { code: string; message: string } };
     expect(json.error.code).toBe("INVALID_REQUEST");
     expect(json.error.message).toMatch(/destinationTokenAccount is controlled/);
+  });
+
+  it("visibility=private rejects nativeDestinationAccount", async () => {
+    const metisEnv = {
+      ...env,
+      METIS_SWAP_API_URL: "https://triton.rpc.test/private-token/metis",
+    };
+    const outputMint = "So11111111111111111111111111111111111111112";
+    const recipient = Keypair.generate().publicKey.toBase58();
+    const quoteResponse = {
+      inputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      inAmount: "1000000",
+      outputMint,
+      outAmount: "999000",
+      otherAmountThreshold: "998000",
+      swapMode: "ExactIn",
+      slippageBps: 50,
+      priceImpactPct: "0.01",
+      routePlan: [],
+    };
+
+    const response = await app.request("/v1/swap/swap", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        userPublicKey: owner,
+        quoteResponse,
+        visibility: "private",
+        destination: recipient,
+        minDelayMs: "0",
+        maxDelayMs: "0",
+        split: 1,
+        nativeDestinationAccount: Keypair.generate().publicKey.toBase58(),
+      }),
+    }, metisEnv);
+
+    expect(response.status).toBe(400);
+    const json = await response.json() as { error: { code: string; message: string } };
+    expect(json.error.code).toBe("INVALID_REQUEST");
+    expect(json.error.message).toBe("nativeDestinationAccount is not supported when visibility=private");
   });
 
   it("serves MCP info and discovery documents", async () => {

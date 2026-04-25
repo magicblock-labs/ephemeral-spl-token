@@ -38,6 +38,7 @@ const COMPUTE_BUDGET_SET_UNIT_LIMIT_DISC = 0x02;
 const COMPUTE_BUDGET_SET_UNIT_LIMIT_IX_LEN = 5;
 const COMPUTE_UNIT_LIMIT_MAX = 1_400_000;
 const PRIVATE_TRANSFER_MAX_DELAY_MS_LIMIT = 10n * 60n * 1000n;
+const PRIVATE_SWAP_MAX_SPLIT = 14;
 const SOLANA_WIRE_TRANSACTION_SIZE_LIMIT = 1232;
 const PRIVATE_SWAP_DEFAULT_MAX_ACCOUNTS = 39;
 const PRIVATE_SWAP_MIN_MAX_ACCOUNTS = 1;
@@ -380,7 +381,7 @@ const swapRequestSchema = z.object({
   }),
   split: z.number().int().positive().optional().openapi({
     example: 1,
-    description: "Number of queue entries to split the transfer across. Required when visibility=private.",
+    description: "Number of queue entries to split the transfer across. Required when visibility=private. Must be between 1 and 14.",
   }),
   clientRefId: unsignedIntegerStringSchema.optional().openapi({
     example: "0",
@@ -645,6 +646,14 @@ async function handlePrivateSwap(
     );
   }
 
+  if (body.nativeDestinationAccount) {
+    throw new ApiError(
+      400,
+      "INVALID_REQUEST",
+      "nativeDestinationAccount is not supported when visibility=private",
+    );
+  }
+
   const minDelayBig = BigInt(minDelayMs);
   const maxDelayBig = BigInt(maxDelayMs);
   const clientRefIdBig = clientRefId !== undefined ? BigInt(clientRefId) : undefined;
@@ -654,6 +663,14 @@ async function handlePrivateSwap(
 
   if (maxDelayBig > PRIVATE_TRANSFER_MAX_DELAY_MS_LIMIT) {
     throw new ApiError(400, "INVALID_REQUEST", "maxDelayMs must be less than or equal to 600000");
+  }
+
+  if (split > PRIVATE_SWAP_MAX_SPLIT) {
+    throw new ApiError(
+      400,
+      "INVALID_REQUEST",
+      "split must be an integer between 1 and 14 when visibility=private",
+    );
   }
 
   const shuttleId = Math.floor(Math.random() * 0x1_0000_0000);
