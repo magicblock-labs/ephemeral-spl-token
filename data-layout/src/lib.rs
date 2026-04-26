@@ -157,12 +157,21 @@ pub fn fixed_offset_layout(attr: TokenStream, item: TokenStream) -> TokenStream 
 ///
 ///       Optional.
 ///
-///       This enables compact Option<T> encoding without a tag byte. It is
-///       supported only when the struct has no Vec fields and the payload
-///       sizes of its Option<T> fields have unique subset sums.
+///       By default, Option<T> is encoded explicitly with a tag byte. That
+///       default/tagged form is locally self-describing: each option carries
+///       its own presence marker, so the meaning of one field does not depend
+///       on the total length of the whole struct.
+///
+///       `option = implicit` instead enables compact Option<T> encoding
+///       without a tag byte. It is supported only when the struct has no Vec
+///       fields and the payload sizes of its Option<T> fields have unique
+///       subset sums.
 ///
 ///       In other words, every valid present/absent combination of the
 ///       implicit options must produce a distinct total encoded length.
+///       This makes the implicit form globally length-described: option
+///       presence is inferred from the overall encoded length, not from a
+///       per-field tag.
 ///
 ///       Encoding:
 ///
@@ -171,6 +180,17 @@ pub fn fixed_offset_layout(attr: TokenStream, item: TokenStream) -> TokenStream 
 ///
 ///       The generated decode() accepts only the total lengths implied by the
 ///       valid combinations of those implicit options.
+///
+///       Stability note:
+///
+///       - Tagged options are easier to extend later because earlier fields
+///         remain locally self-describing.
+///       - Implicit options are more compact, but future schema evolution can
+///         be trickier because adding new trailing options changes the global
+///         length mapping used to infer presence.
+///       - Adding new trailing fixed-size fields is still possible, but adding
+///         more implicit options later may force the layout to stop being
+///         representable as `option = implicit`.
 ///
 /// Field attributes:
 ///   - #[flexible = 1|2]
