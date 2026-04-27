@@ -2,12 +2,13 @@ use crate::processor::utils::{get_associated_token_address, validate_token_accou
 use ephemeral_rollups_pinocchio::intent_bundle::{
     ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
 };
-use ephemeral_spl_api::instruction::internal::SETTLE_AND_CLOSE_SHUTTLE_INTENT;
 use ephemeral_spl_api::state::{
     ephemeral_ata::EphemeralAta, load_initialized, shuttle_ephemeral_ata::ShuttleMetadata,
 };
 use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
+
+use crate::instruction::ESplInternalInstruction;
 
 const DEFAULT_ESCROW_INDEX: u8 = u8::MAX;
 const INTENT_BUNDLE_DATA_BUF_SIZE: usize = 1536;
@@ -159,7 +160,8 @@ fn schedule_shuttle_close_after_undelegate(
         ephemeral_spl_api::Address::find_program_address(&[mint.as_ref()], &crate::ID);
     let vault_token_info =
         get_associated_token_address(&vault_info, mint, token_program_info.address());
-    let close_handler_data = [SETTLE_AND_CLOSE_SHUTTLE_INTENT, escrow_index];
+    let close_handler_data =
+        ESplInternalInstruction::SettleAndCloseShuttleIntent.with_data(&[escrow_index]);
     let close_handler_accounts = [
         ShortAccountMeta {
             pubkey: *rent_reimbursement.address(),

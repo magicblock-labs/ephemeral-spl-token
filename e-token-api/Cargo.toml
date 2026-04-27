@@ -13,7 +13,7 @@ pinocchio-log = { workspace = true }
 pinocchio-pubkey = { workspace = true }
 solana-address = { workspace = true, features = ["bytemuck"] }
 ephemeral-rollups-pinocchio = { workspace = true }
-bytemuck = { workspace = true, features = ["derive"] }
+bytemuck = { workspace = true }
 
 [lints]
 workspace = true

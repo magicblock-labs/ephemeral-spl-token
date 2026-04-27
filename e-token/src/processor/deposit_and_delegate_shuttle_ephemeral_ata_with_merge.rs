@@ -70,7 +70,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge(
         vault_token_info,
     ] = require_n_accounts!(accounts, 19);
 
-    let args = DepositAndDelegateShuttleArgs::try_from_bytes(instruction_data)?;
+    let args = DepositAndDelegateShuttleArgs::decode(instruction_data)?;
 
     let accounts = DepositAndDelegateShuttleWithMergeAccounts {
         common: DepositAndDelegateShuttleAccounts {

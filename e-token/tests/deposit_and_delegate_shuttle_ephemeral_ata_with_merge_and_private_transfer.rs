@@ -16,6 +16,10 @@ use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
 use ephemeral_spl_api::state::transfer_queue::{TransferQueue, TransferQueueHeader, HEADER_LEN};
 use ephemeral_spl_api::state::{load, Initializable};
 use ephemeral_spl_api::ID as PROGRAM;
+use ephemeral_token_program::{
+    DepositAndDelegateShuttleWithPrivateTransferArgs, DepositAndQueueTransferArgs,
+    InitializeTransferQueueArgs,
+};
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::rent::Rent;
@@ -111,7 +115,7 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
             AccountMeta::new(rent_pda, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_RENT_PDA],
+        data: instruction::ESplInstruction::InitializeRentPda.to_vec(),
     };
     let ix_fund_rent = transfer(&payer, &rent_pda, 100_000_000);
     let ix_init_vault = Instruction {
@@ -126,7 +130,7 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
             AccountMeta::new_readonly(utils::associated_token_program_id(), false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_GLOBAL_VAULT],
+        data: instruction::ESplInstruction::InitializeGlobalVault.to_vec(),
     };
     let ix_init_queue = Instruction {
         program_id: PROGRAM,
@@ -139,7 +143,13 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
             AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
         ],
-        data: vec![instruction::INITIALIZE_TRANSFER_QUEUE],
+        data: instruction::ESplInstruction::InitializeTransferQueue.with_data(
+            &InitializeTransferQueueArgs {
+                requested_items: None,
+            }
+            .encode()
+            .unwrap(),
+        ),
     };
     let rent = context.banks_client.get_rent().await.unwrap();
     let ix_create_owner_source = solana_system_interface::instruction::create_account(
@@ -204,50 +214,32 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
     let delegation_record_pda = delegation_record_pda_from_delegated_account(&shuttle_eata);
     let delegation_metadata_pda = delegation_metadata_pda_from_delegated_account(&shuttle_eata);
 
-    let mut delegate_data = vec![
-        instruction::DEPOSIT_AND_DELEGATE_SHUTTLE_EPHEMERAL_ATA_WITH_MERGE_AND_PRIVATE_TRANSFER,
-    ];
-    delegate_data.extend_from_slice(&shuttle_id.to_le_bytes());
-    delegate_data.extend_from_slice(&DEPOSIT_AMOUNT.to_le_bytes());
-
-    // add optional validator (varindex: 0)
-    {
-        delegate_data.push(32);
-        delegate_data.extend_from_slice(validator.as_array());
-    }
-
-    // add encrypted destination owner (varindex: 1)
-    {
-        let data = dlp_api::encryption::encrypt_ed25519_recipient(
+    let args = DepositAndDelegateShuttleWithPrivateTransferArgs {
+        shuttle_id,
+        amount: DEPOSIT_AMOUNT,
+        validator: Some(validator.as_array().to_owned()),
+        encrypted_destination: dlp_api::encryption::encrypt_ed25519_recipient(
             destination_owner.as_array(),
             &validator.to_bytes(),
         )
-        .expect("validator key should be valid for encryption");
-
-        println!("encrypted_destination: {:?}", data);
-
-        delegate_data.push(data.len().try_into().unwrap());
-        delegate_data.extend_from_slice(&data);
-    }
-
-    // add encrypted {min_delay_ms, max_delay_ms, split } (varindex: 2
-    {
-        let data = dlp_api::encryption::encrypt_ed25519_recipient(
-            &[
-                &MIN_DELAY_MS.to_le_bytes()[..],
-                &MAX_DELAY_MS.to_le_bytes()[..],
-                &SPLIT.to_le_bytes()[..],
-            ]
-            .concat(),
+        .expect("validator key should be valid for encryption")
+        .try_into()
+        .expect("encrypted destination must be 80 bytes"),
+        encrypted_data_suffix: dlp_api::encryption::encrypt_ed25519_recipient(
+            &DepositAndQueueTransferArgs {
+                amount: 0, // dont care its value
+                min_delay_ms: MIN_DELAY_MS,
+                max_delay_ms: MAX_DELAY_MS,
+                split: SPLIT,
+                flags: None,
+                client_ref_id: None,
+            }
+            .encode()
+            .unwrap()[8..], // except 'amount', encrypt everthing, amount will be prepended by ix.
             &validator.to_bytes(),
         )
-        .expect("validator key should be valid for encryption");
-
-        println!("encrypted_data_suffix: {:?}", data);
-
-        delegate_data.push(data.len().try_into().unwrap());
-        delegate_data.extend_from_slice(&data);
-    }
+        .expect("validator key should be valid for encryption"),
+    };
 
     let ix_delegate = Instruction {
         program_id: PROGRAM,
@@ -272,7 +264,7 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
             AccountMeta::new(vault_ata, false),
             AccountMeta::new(queue, false),
         ],
-        data: delegate_data,
+        data: instruction::ESplInstruction::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer.with_data(&args.encode().unwrap()),
     };
 
     let ix_delegate_queue = Instruction {
@@ -288,7 +280,7 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
             AccountMeta::new_readonly(ephemeral_rollups_pinocchio::ID, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::DELEGATE_TRANSFER_QUEUE],
+        data: instruction::ESplInstruction::DelegateTransferQueue.to_vec(),
     };
 
     let tx_delegate_queue = Transaction::new_signed_with_payer(
@@ -410,7 +402,8 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
     let fee_amount = DEPOSIT_AMOUNT * PRIVATE_TRANSFER_FEE_BASIS_POINTS / BASIS_POINTS_DENOMINATOR;
     let private_transfer_amount = DEPOSIT_AMOUNT - fee_amount;
 
-    let mut private_transfer_prefix = vec![instruction::DEPOSIT_AND_QUEUE_TRANSFER];
+    let mut private_transfer_prefix =
+        instruction::ESplInstruction::DepositAndQueueTransfer.to_vec();
     private_transfer_prefix.extend_from_slice(&private_transfer_amount.to_le_bytes());
     assert!(
         action_payload

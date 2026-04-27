@@ -3,6 +3,7 @@ use alloc::vec::Vec;
 use ephemeral_rollups_pinocchio::consts::{
     BUFFER, DELEGATION_METADATA, DELEGATION_PROGRAM_ID, DELEGATION_RECORD,
 };
+use ephemeral_spl_api::instruction::ESplInstruction;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::global_vault::GlobalVault;
 use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
@@ -223,7 +224,7 @@ pub fn process_schedule_private_transfer(
     let vardata_tail = &instruction_data[FIXED_PREFIX_LEN..cursor];
     let scheduled_data_len = 1 + 32 + 1 + 4 + vardata_tail.len();
     let mut scheduled_data: Vec<u8> = Vec::with_capacity(scheduled_data_len);
-    scheduled_data.push(ephemeral_spl_api::instruction::PROCESS_SCHEDULED_PRIVATE_TRANSFER);
+    scheduled_data.push(ESplInstruction::ProcessScheduledPrivateTransfer as u8);
     scheduled_data.extend_from_slice(user_info.address().as_ref());
     scheduled_data.push(stash_bump);
     scheduled_data.extend_from_slice(&shuttle_id_bytes);

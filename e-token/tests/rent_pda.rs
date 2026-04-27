@@ -26,7 +26,7 @@ async fn initialize_rent_pda_is_idempotent() {
             AccountMeta::new(rent_pda, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_RENT_PDA],
+        data: instruction::ESplInstruction::InitializeRentPda.to_vec(),
     };
 
     let tx = Transaction::new_signed_with_payer(

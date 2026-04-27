@@ -62,7 +62,7 @@ async fn deposit_spl_tokens_increments_ephemeral_amount() {
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_EPHEMERAL_ATA],
+        data: instruction::ESplInstruction::InitializeEphemeralAta.to_vec(),
     };
 
     // 2) Initialize Global Vault
@@ -78,7 +78,7 @@ async fn deposit_spl_tokens_increments_ephemeral_amount() {
             AccountMeta::new_readonly(utils::associated_token_program_id(), false), // associated token program
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_GLOBAL_VAULT],
+        data: instruction::ESplInstruction::InitializeGlobalVault.to_vec(),
     };
 
     // Send both initializations in one tx
@@ -105,7 +105,7 @@ async fn deposit_spl_tokens_increments_ephemeral_amount() {
 
     // 3) Deposit amount from payer's token to vault's token and increment Ephemeral ATA amount
     let amount: u64 = 100 * 10u64.pow(DECIMALS as u32);
-    let mut data = vec![instruction::DEPOSIT_SPL_TOKENS];
+    let mut data = instruction::ESplInstruction::DepositSplTokens.to_vec();
     data.extend_from_slice(&amount.to_le_bytes());
 
     let ix_deposit = Instruction {

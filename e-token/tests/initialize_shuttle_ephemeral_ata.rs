@@ -33,7 +33,7 @@ async fn initialize_shuttle_ephemeral_ata() {
     let (shuttle_eata, _) = utils::derive_shuttle_eata(PROGRAM, shuttle_ephemeral_ata, mint);
     let shuttle_wallet_ata = utils::derive_associated_token_address(shuttle_ephemeral_ata, mint);
 
-    let mut data = vec![instruction::INITIALIZE_SHUTTLE_EPHEMERAL_ATA];
+    let mut data = instruction::ESplInstruction::InitializeShuttleEphemeralAta.to_vec();
     data.extend_from_slice(&shuttle_id.to_le_bytes());
 
     let ix = Instruction {

@@ -1,6 +1,8 @@
-use core::marker::PhantomData;
-use ephemeral_spl_api::{require, require_n_accounts};
-use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use alloc::vec;
+use alloc::vec::Vec;
+use data_layout::variable_offset_layout;
+use ephemeral_spl_api::require_n_accounts;
+use pinocchio::{AccountView, ProgramResult};
 
 use crate::processor::internal::token_vault::withdraw_ephemeral_ata_tokens;
 
@@ -34,7 +36,7 @@ pub fn process_withdraw_spl_tokens(
         token_program_info,
     ] = require_n_accounts!(accounts, 7);
 
-    let args = WithdrawArgs::try_from_bytes(instruction_data)?;
+    let args = WithdrawArgs::decode(instruction_data)?;
 
     withdraw_ephemeral_ata_tokens(
         owner,
@@ -49,37 +51,7 @@ pub fn process_withdraw_spl_tokens(
     )
 }
 
-///
-/// DataLayout:
-///
-///     00..08 : amount (u64)
-///
-/// ValidLength:
-///
-///     08
-///
-pub struct WithdrawArgs<'a> {
-    raw: *const u8,
-    _data: PhantomData<&'a [u8]>,
-}
-
-impl WithdrawArgs<'_> {
-    #[inline]
-    pub fn try_from_bytes(bytes: &[u8]) -> Result<WithdrawArgs<'_>, ProgramError> {
-        require!(bytes.len() == 8, ProgramError::InvalidInstructionData);
-        Ok(WithdrawArgs {
-            raw: bytes.as_ptr(),
-            _data: PhantomData,
-        })
-    }
-
-    #[inline]
-    pub fn amount(&self) -> u64 {
-        // read LE u64 from bytes[0..8]
-        let mut buf = [0u8; 8];
-        unsafe {
-            core::ptr::copy_nonoverlapping(self.raw, buf.as_mut_ptr(), 8);
-        }
-        u64::from_le_bytes(buf)
-    }
+#[variable_offset_layout(buffer_offset = 1)]
+pub struct WithdrawArgs {
+    amount: u64,
 }

@@ -6,12 +6,9 @@ use ephemeral_rollups_pinocchio::{
     intent_bundle::{ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta},
     spl::consts::TOKEN_PROGRAM_ID,
 };
+use ephemeral_spl_api::require_n_accounts;
 use ephemeral_spl_api::state::transfer_queue::{
     queue_peek_from_data, queue_pop_from_data, queue_views_checked, QueuedTransfer, QUEUE_SEED,
-};
-use ephemeral_spl_api::{
-    instruction::internal::{EXECUTE_READY_QUEUED_TRANSFER, MARK_TRANSFER_QUEUE_REFILL_PENDING},
-    require_n_accounts,
 };
 use ephemeral_spl_api::{require, require_eq_keys};
 use pinocchio::cpi::{Seed, Signer};
@@ -26,6 +23,10 @@ use crate::processor::{
         MARK_TRANSFER_QUEUE_REFILL_PENDING_COMPUTE_UNITS,
         MARK_TRANSFER_QUEUE_REFILL_PENDING_ESCROW_INDEX,
     },
+};
+use crate::{
+    instruction::ESplInternalInstruction,
+    processor::execute_ready_queued_transfer::ExecuteQueuedTransferArgs,
 };
 
 const EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX: u8 = 0;
@@ -168,10 +169,8 @@ fn try_schedule_queue_refill(
         return Ok(false);
     }
 
-    let refill_data = [
-        MARK_TRANSFER_QUEUE_REFILL_PENDING,
-        MARK_TRANSFER_QUEUE_REFILL_PENDING_ESCROW_INDEX,
-    ];
+    let refill_data = ESplInternalInstruction::MarkTransferQueueRefillPending
+        .with_data(&[MARK_TRANSFER_QUEUE_REFILL_PENDING_ESCROW_INDEX]);
     let refill_accounts = [
         ShortAccountMeta {
             pubkey: RENT_PDA,
@@ -254,17 +253,18 @@ fn schedule_execute_ready_transfer(
     let destination_token_account =
         derive_associated_token_address(&queued_transfer.destination_owner, &queue_state.mint);
 
-    let mut execute_data = [0_u8; 19];
-    execute_data[0] = EXECUTE_READY_QUEUED_TRANSFER;
-    execute_data[1] = EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX;
-    execute_data[2..10].copy_from_slice(&queued_transfer.amount.to_le_bytes());
-    execute_data[10] = queued_transfer.flags;
-    let execute_data_len = if queued_transfer.client_ref_id != 0 {
-        execute_data[11..19].copy_from_slice(&queued_transfer.client_ref_id.to_le_bytes());
-        19
-    } else {
-        11
+    let args = ExecuteQueuedTransferArgs {
+        amount: queued_transfer.amount,
+        client_ref_id: if queued_transfer.client_ref_id != 0 {
+            Some(queued_transfer.client_ref_id)
+        } else {
+            None
+        },
+        escrow_index: EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
+        flags: queued_transfer.flags,
     };
+    let execute_data =
+        ESplInternalInstruction::ExecuteReadyQueuedTransfer.with_data(&args.encode().unwrap());
 
     // Note that we initialize CallHandler with 9 accounts only, and then 3 more accounts [source_program,
     // escrow_authority, escrow_signer] are appended by DLP's CallHandlerV2 instruction, which is
@@ -310,7 +310,7 @@ fn schedule_execute_ready_transfer(
     let standalone_actions = [CallHandler {
         destination_program: crate::ID,
         escrow_authority: tick_accounts.queue_info.clone(),
-        args: ActionArgs::new(&execute_data[..execute_data_len])
+        args: ActionArgs::new(&execute_data)
             .with_escrow_index(EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX),
         compute_units: EXECUTE_READY_QUEUED_TRANSFER_COMPUTE_UNITS,
         accounts: &execute_accounts,

@@ -3,8 +3,8 @@ use pinocchio::error::{ProgramError, ToStr};
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EphemeralSplError {
-    // invalid instruction data
-    InvalidInstruction = 1,
+    // invalid discriminator
+    InstructionNotFound = 1,
     // account already initialized / in use
     AlreadyInUse = 2,
     // Ephemeral ATA mismatch
@@ -30,7 +30,7 @@ impl ToStr for EphemeralSplError {
         use EphemeralSplError::*;
 
         match self {
-            InvalidInstruction => "EphemeralSplError::InvalidInstruction",
+            InstructionNotFound => "EphemeralSplError::InstructionNotFound",
             AlreadyInUse => "EphemeralSplError::AlreadyInUse",
             EphemeralAtaMismatch => "EphemeralSplError::EphemeralAtaMismatch",
             MintMismatch => "EphemeralSplError::MintMismatch",
@@ -45,7 +45,7 @@ impl core::convert::TryFrom<u32> for EphemeralSplError {
     type Error = ProgramError;
     fn try_from(value: u32) -> Result<Self, Self::Error> {
         match value {
-            1 => Ok(EphemeralSplError::InvalidInstruction),
+            1 => Ok(EphemeralSplError::InstructionNotFound),
             2 => Ok(EphemeralSplError::AlreadyInUse),
             3 => Ok(EphemeralSplError::EphemeralAtaMismatch),
             4 => Ok(EphemeralSplError::MintMismatch),

@@ -1,4 +1,6 @@
-use core::marker::PhantomData;
+use alloc::vec;
+use alloc::vec::Vec;
+use data_layout::variable_offset_layout;
 use ephemeral_rollups_pinocchio::acl::{
     consts::PERMISSION_PROGRAM_ID,
     instruction::UpdatePermissionCpiBuilder,
@@ -21,7 +23,7 @@ use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 ///  2: [signer]            - Keypair : Owner (must match the Ephemeral ATA owner).
 ///  3: []                  - Program : Permission program (ACL).
 ///
-/// Instruction Data: ResetEphemeralAtaPermission
+/// Instruction Data: ResetEphemeralAtaPermissionArgs
 ///
 #[inline(always)]
 pub fn process_reset_ephemeral_ata_permission(
@@ -35,7 +37,7 @@ pub fn process_reset_ephemeral_ata_permission(
         permission_program,
     ] = require_n_accounts!(accounts, 4);
 
-    let args = ResetEphemeralAtaPermission::try_from_bytes(instruction_data)?;
+    let args = ResetEphemeralAtaPermissionArgs::decode(instruction_data)?;
 
     require!(
         owner_info.is_signer(),
@@ -85,33 +87,7 @@ pub fn process_reset_ephemeral_ata_permission(
     .invoke()
 }
 
-///
-/// DataLayout:
-///
-///     00..01 : flag_byte (u8)
-///
-/// ValidLength:
-///
-///     >= 01
-///
-pub struct ResetEphemeralAtaPermission<'a> {
-    raw: *const u8,
-    _data: PhantomData<&'a [u8]>,
-}
-
-impl ResetEphemeralAtaPermission<'_> {
-    #[inline]
-    pub fn try_from_bytes(bytes: &[u8]) -> Result<ResetEphemeralAtaPermission<'_>, ProgramError> {
-        require!(!bytes.is_empty(), ProgramError::InvalidInstructionData);
-
-        Ok(ResetEphemeralAtaPermission {
-            raw: bytes.as_ptr(),
-            _data: PhantomData,
-        })
-    }
-
-    #[inline]
-    pub fn flag_byte(&self) -> u8 {
-        unsafe { *self.raw }
-    }
+#[variable_offset_layout(buffer_offset = 1)]
+pub struct ResetEphemeralAtaPermissionArgs {
+    flag_byte: u8,
 }

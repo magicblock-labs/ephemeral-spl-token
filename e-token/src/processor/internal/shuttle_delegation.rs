@@ -1,7 +1,10 @@
 #[cfg(feature = "logging")]
 use alloc::string::ToString;
+use alloc::vec;
+use alloc::vec::Vec;
+use data_layout::variable_offset_layout;
 
-use core::{marker::PhantomData, mem::MaybeUninit};
+use core::mem::MaybeUninit;
 use dlp_api::args::PostDelegationActions;
 use ephemeral_rollups_pinocchio::{
     consts::{
@@ -12,6 +15,7 @@ use ephemeral_rollups_pinocchio::{
     types::{DelegateAccountArgs, DelegateConfig},
     utils::{close_pda_acc, make_seed_buf},
 };
+use ephemeral_spl_api::instruction::ESplInstruction;
 use ephemeral_spl_api::state::{
     ephemeral_ata::EphemeralAta, load_initialized, load_mut_initialized,
     shuttle_ephemeral_ata::ShuttleMetadata,
@@ -58,78 +62,24 @@ pub(crate) struct PreparedShuttleDelegation {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct DepositAndDelegateShuttleCommonArgs {
+pub(crate) struct DepositAndDelegateShuttleCommonArgs<'a> {
     pub(crate) shuttle_id: u32,
     pub(crate) amount: u64,
-    pub(crate) validator: Option<[u8; 32]>,
+    pub(crate) validator: Option<&'a [u8; 32]>,
 }
 
-///
-/// DataLayout:
-///
-///     00..04 : shuttle_id (u32)
-///     04..12 : amount (u64)
-///     12..44 : validator (optional [u8; 32])
-///
-/// ValidLength:
-///
-///     12 (without validator)
-///     44 (with validator)
-///
-pub struct DepositAndDelegateShuttleArgs<'a> {
-    raw: *const u8,
-    len: usize,
-    _data: PhantomData<&'a [u8]>,
+#[variable_offset_layout(buffer_offset = 1, option = implicit)]
+pub struct DepositAndDelegateShuttleArgs {
+    pub shuttle_id: u32,
+    pub amount: u64,
+    pub validator: Option<[u8; 32]>,
 }
 
-impl DepositAndDelegateShuttleArgs<'_> {
+static_assertions::const_assert!(matches!(DepositAndDelegateShuttleArgs::DATA_LENS, [12, 44]));
+
+impl DepositAndDelegateShuttleArgsView<'_> {
     #[inline]
-    pub fn try_from_bytes(bytes: &[u8]) -> Result<DepositAndDelegateShuttleArgs<'_>, ProgramError> {
-        require!(
-            bytes.len() == 12 || bytes.len() == 44,
-            ProgramError::InvalidInstructionData
-        );
-
-        Ok(DepositAndDelegateShuttleArgs {
-            raw: bytes.as_ptr(),
-            len: bytes.len(),
-            _data: PhantomData,
-        })
-    }
-
-    #[inline]
-    pub fn shuttle_id(&self) -> u32 {
-        let mut buf = [0u8; 4];
-        unsafe {
-            core::ptr::copy_nonoverlapping(self.raw, buf.as_mut_ptr(), 4);
-        }
-        u32::from_le_bytes(buf)
-    }
-
-    #[inline]
-    pub fn amount(&self) -> u64 {
-        let mut buf = [0u8; 8];
-        unsafe {
-            core::ptr::copy_nonoverlapping(self.raw.add(4), buf.as_mut_ptr(), 8);
-        }
-        u64::from_le_bytes(buf)
-    }
-
-    #[inline]
-    pub fn validator(&self) -> Option<[u8; 32]> {
-        if self.len == 12 {
-            return None;
-        }
-
-        let mut validator = [0u8; 32];
-        unsafe {
-            core::ptr::copy_nonoverlapping(self.raw.add(12), validator.as_mut_ptr(), 32);
-        }
-        Some(validator)
-    }
-
-    #[inline]
-    pub(crate) fn common_args(&self) -> DepositAndDelegateShuttleCommonArgs {
+    pub(crate) fn common_args(&self) -> DepositAndDelegateShuttleCommonArgs<'_> {
         DepositAndDelegateShuttleCommonArgs {
             shuttle_id: self.shuttle_id(),
             amount: self.amount(),
@@ -140,7 +90,7 @@ impl DepositAndDelegateShuttleArgs<'_> {
 
 pub(crate) fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions(
     accounts: &DepositAndDelegateShuttleAccounts<'_>,
-    args: DepositAndDelegateShuttleCommonArgs,
+    args: DepositAndDelegateShuttleCommonArgs<'_>,
     extra_setup_lamports: u64,
     post_actions: PostDelegationActions,
 ) -> ProgramResult {
@@ -366,7 +316,7 @@ pub(crate) fn delegate_sponsored_shuttle_with_post_actions(
 
     let seeds: &[&[u8]] = &[shuttle_info.address().as_ref(), mint.as_ref()];
     let config = DelegateConfig {
-        validator: args.validator.map(Address::new_from_array),
+        validator: args.validator.map(|slice| Address::new_from_array(*slice)),
         ..DelegateConfig::default()
     };
 
@@ -412,7 +362,7 @@ pub(crate) fn merge_shuttle_into_token_account_action(
             AccountMeta::new_readonly(*accounts.mint_info.address(), false),
             AccountMeta::new_readonly(*accounts.token_program_info.address(), false),
         ],
-        data: alloc::vec![ephemeral_spl_api::instruction::MERGE_SHUTTLE_INTO_EPHEMERAL_ATA],
+        data: ESplInstruction::MergeShuttleIntoEphemeralAta.to_vec(),
     }
 }
 
@@ -452,7 +402,7 @@ pub(crate) fn build_undelegate_and_close_shuttle_instruction(
             AccountMeta::new(Pubkey::from(MAGIC_CONTEXT_ID.to_bytes()), false),
             AccountMeta::new_readonly(Pubkey::from(MAGIC_PROGRAM_ID.to_bytes()), false),
         ],
-        data: alloc::vec![ephemeral_spl_api::instruction::UNDELEGATE_AND_CLOSE_SHUTTLE_TO_OWNER],
+        data: ESplInstruction::UndelegateAndCloseShuttleToOwner.to_vec(),
     }
 }
 

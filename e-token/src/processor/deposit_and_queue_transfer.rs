@@ -1,9 +1,12 @@
-use core::{convert::TryFrom, marker::PhantomData};
+use core::convert::TryFrom;
 
 use crate::processor::internal::token_vault::transfer_to_vault_for_mint;
 use crate::processor::utils::{
     get_associated_token_address, read_mint_decimals, validate_token_account,
 };
+use alloc::vec;
+use alloc::vec::Vec;
+use data_layout::variable_offset_layout;
 #[cfg(feature = "logging")]
 use ephemeral_spl_api::state::transfer_queue::queue_peek_next_task_id_from_data;
 use ephemeral_spl_api::state::transfer_queue::{
@@ -54,7 +57,8 @@ pub fn process_deposit_and_queue_transfer(
         reimbursement_token_info,
     ] = require_n_accounts!(accounts, 9);
 
-    let args = DepositAndQueueTransferArgs::try_from_bytes(instruction_data)?;
+    pinocchio_log::log!("instruction_data: {}", instruction_data.len());
+    let args = DepositAndQueueTransferArgs::decode(instruction_data)?;
 
     require!(
         user_authority.is_signer(),
@@ -183,7 +187,7 @@ pub fn process_deposit_and_queue_transfer(
             ready_at,
             client_ref_id,
             task_id: 0,
-            flags: args.flags() | QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
+            flags: args.flags().unwrap_or(0) | QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
             group_id: [0; 3],
         };
         queued_transfer.set_group_id(group_id)?;
@@ -217,112 +221,20 @@ pub fn process_deposit_and_queue_transfer(
     Ok(())
 }
 
-///
-/// DataLayout:
-///
-///     00..08 : amount (u64)
-///     08..16 : min_delay_ms (u64)
-///     16..24 : max_delay_ms (u64)
-///     24..28 : split (u32)
-///     28..29 : flags (optional u8)
-///
-/// ValidLength:
-///
-///     28 | 29
-///
-pub struct DepositAndQueueTransferArgs<'a> {
-    raw: *const u8,
-    len: usize,
-    _data: PhantomData<&'a [u8]>,
+#[variable_offset_layout(buffer_offset = 1, option = implicit)]
+pub struct DepositAndQueueTransferArgs {
+    pub amount: u64,
+    pub min_delay_ms: u64,
+    pub max_delay_ms: u64,
+    pub split: u32,
+    pub flags: Option<u8>,
+    pub client_ref_id: Option<u64>,
 }
 
-impl DepositAndQueueTransferArgs<'_> {
-    const LEN: usize = 28;
-    const LEN_WITH_FLAGS: usize = 29;
-    const LEN_WITH_CLIENT_REF_ID: usize = 36;
-    const LEN_WITH_FLAGS_AND_CLIENT_REF_ID: usize = 37;
-
-    #[inline]
-    pub fn try_from_bytes(bytes: &[u8]) -> Result<DepositAndQueueTransferArgs<'_>, ProgramError> {
-        require!(
-            bytes.len() == Self::LEN
-                || bytes.len() == Self::LEN_WITH_FLAGS
-                || bytes.len() == Self::LEN_WITH_CLIENT_REF_ID
-                || bytes.len() == Self::LEN_WITH_FLAGS_AND_CLIENT_REF_ID,
-            ProgramError::InvalidInstructionData
-        );
-
-        require!(
-            !matches!(
-                bytes.len(),
-                Self::LEN_WITH_FLAGS | Self::LEN_WITH_FLAGS_AND_CLIENT_REF_ID
-            ) || (bytes[Self::LEN] & !QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA) == 0,
-            ProgramError::InvalidInstructionData
-        );
-
-        Ok(DepositAndQueueTransferArgs {
-            raw: bytes.as_ptr(),
-            len: bytes.len(),
-            _data: PhantomData,
-        })
-    }
-
-    #[inline]
-    pub fn amount(&self) -> u64 {
-        self.read_u64(0)
-    }
-
-    #[inline]
-    pub fn min_delay_ms(&self) -> u64 {
-        self.read_u64(8)
-    }
-
-    #[inline]
-    pub fn max_delay_ms(&self) -> u64 {
-        self.read_u64(16)
-    }
-
-    #[inline]
-    pub fn split(&self) -> u32 {
-        let mut buf = [0u8; 4];
-        unsafe {
-            core::ptr::copy_nonoverlapping(self.raw.add(24), buf.as_mut_ptr(), 4);
-        }
-        u32::from_le_bytes(buf)
-    }
-
-    #[inline]
-    pub fn flags(&self) -> u8 {
-        // TODO: Remove legacy flags parsing once all writers emit the
-        // client_ref_id suffix layout without flags.
-        if matches!(
-            self.len,
-            Self::LEN_WITH_FLAGS | Self::LEN_WITH_FLAGS_AND_CLIENT_REF_ID
-        ) {
-            unsafe { *self.raw.add(Self::LEN) }
-        } else {
-            0
-        }
-    }
-
-    #[inline]
-    pub fn client_ref_id(&self) -> Option<u64> {
-        match self.len {
-            Self::LEN_WITH_CLIENT_REF_ID => Some(self.read_u64(Self::LEN)),
-            Self::LEN_WITH_FLAGS_AND_CLIENT_REF_ID => Some(self.read_u64(Self::LEN_WITH_FLAGS)),
-            _ => None,
-        }
-    }
-
-    #[inline]
-    fn read_u64(&self, offset: usize) -> u64 {
-        let mut buf = [0u8; 8];
-        unsafe {
-            core::ptr::copy_nonoverlapping(self.raw.add(offset), buf.as_mut_ptr(), 8);
-        }
-        u64::from_le_bytes(buf)
-    }
-}
+static_assertions::const_assert!(matches!(
+    DepositAndQueueTransferArgs::DATA_LENS,
+    [28, 29, 36, 37]
+));
 
 #[inline(always)]
 fn validate_deposit_and_queue_transfer_params(
@@ -511,41 +423,4 @@ fn hash_delay_seed(destination: &ephemeral_spl_api::Address, queue_position: u64
     hash ^= queue_position;
     hash = hash.wrapping_mul(0x100_0000_01b3);
     hash ^ (hash >> 32)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn valid_base_bytes() -> [u8; DepositAndQueueTransferArgs::LEN] {
-        let mut bytes = [0u8; DepositAndQueueTransferArgs::LEN];
-        bytes[..8].copy_from_slice(&1_u64.to_le_bytes());
-        bytes[8..16].copy_from_slice(&2_u64.to_le_bytes());
-        bytes[16..24].copy_from_slice(&3_u64.to_le_bytes());
-        bytes[24..28].copy_from_slice(&1_u32.to_le_bytes());
-        bytes
-    }
-
-    #[test]
-    fn deposit_and_queue_transfer_args_accept_client_ref_id_without_flags() {
-        let mut bytes = [0u8; DepositAndQueueTransferArgs::LEN_WITH_CLIENT_REF_ID];
-        bytes[..DepositAndQueueTransferArgs::LEN].copy_from_slice(&valid_base_bytes());
-        bytes[DepositAndQueueTransferArgs::LEN..].copy_from_slice(&42_u64.to_le_bytes());
-
-        let args = DepositAndQueueTransferArgs::try_from_bytes(&bytes).unwrap();
-        assert_eq!(args.flags(), 0);
-        assert_eq!(args.client_ref_id(), Some(42));
-    }
-
-    #[test]
-    fn deposit_and_queue_transfer_args_accept_legacy_flags_before_client_ref_id() {
-        let mut bytes = [0u8; DepositAndQueueTransferArgs::LEN_WITH_FLAGS_AND_CLIENT_REF_ID];
-        bytes[..DepositAndQueueTransferArgs::LEN].copy_from_slice(&valid_base_bytes());
-        bytes[DepositAndQueueTransferArgs::LEN] = QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA;
-        bytes[DepositAndQueueTransferArgs::LEN_WITH_FLAGS..].copy_from_slice(&77_u64.to_le_bytes());
-
-        let args = DepositAndQueueTransferArgs::try_from_bytes(&bytes).unwrap();
-        assert_eq!(args.flags(), QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA);
-        assert_eq!(args.client_ref_id(), Some(77));
-    }
 }

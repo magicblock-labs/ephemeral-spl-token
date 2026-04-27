@@ -1,4 +1,6 @@
-use core::marker::PhantomData;
+use alloc::vec;
+use alloc::vec::Vec;
+use data_layout::variable_offset_layout;
 use ephemeral_rollups_pinocchio::acl::{
     consts::PERMISSION_PROGRAM_ID, instruction::CreatePermissionCpiBuilder,
     pda::permission_pda_from_permissioned_account, types::MembersArgs,
@@ -50,7 +52,7 @@ pub fn process_initialize_transfer_queue(
         permission_program_info,
     ] = require_n_accounts!(accounts, 7);
 
-    let args = InitializeTransferQueueArgs::try_from_bytes(instruction_data)?;
+    let args = InitializeTransferQueueArgs::decode(instruction_data)?;
 
     let (requested_items, queue_size) = if let Some(items) = args.requested_items() {
         (items, HEADER_LEN + ITEM_LEN * items as usize)
@@ -170,46 +172,9 @@ pub fn process_initialize_transfer_queue(
     Ok(())
 }
 
-///
-/// DataLayout:
-///
-///     00..04 : requested_items (optional u32)
-///
-/// ValidLength:
-///
-///     00 | 04
-///
-pub struct InitializeTransferQueueArgs<'a> {
-    raw: *const u8,
-    len: usize,
-    _data: PhantomData<&'a [u8]>,
+#[variable_offset_layout(buffer_offset = 1, option = implicit)]
+pub struct InitializeTransferQueueArgs {
+    pub requested_items: Option<u32>,
 }
 
-impl InitializeTransferQueueArgs<'_> {
-    #[inline]
-    pub fn try_from_bytes(bytes: &[u8]) -> Result<InitializeTransferQueueArgs<'_>, ProgramError> {
-        require!(
-            bytes.is_empty() || bytes.len() == 4,
-            ProgramError::InvalidInstructionData
-        );
-
-        Ok(InitializeTransferQueueArgs {
-            raw: bytes.as_ptr(),
-            len: bytes.len(),
-            _data: PhantomData,
-        })
-    }
-
-    #[inline]
-    pub fn requested_items(&self) -> Option<u32> {
-        if self.len == 0 {
-            None
-        } else {
-            let mut buf = [0u8; 4];
-            unsafe {
-                core::ptr::copy_nonoverlapping(self.raw, buf.as_mut_ptr(), 4);
-            }
-            Some(u32::from_le_bytes(buf))
-        }
-    }
-}
+static_assertions::const_assert!(matches!(InitializeTransferQueueArgs::DATA_LENS, [0, 4]));

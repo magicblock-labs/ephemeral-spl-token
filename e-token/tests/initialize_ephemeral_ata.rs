@@ -32,7 +32,7 @@ async fn initialize_ephemeral_ata() {
             AccountMeta::new_readonly(mint, false),  // mint seed  (readonly)
             AccountMeta::new_readonly(solana_system_interface::program::ID, false), // system program (readonly)
         ],
-        data: vec![instruction::INITIALIZE_EPHEMERAL_ATA], // instruction data: discriminator
+        data: instruction::ESplInstruction::InitializeEphemeralAta.to_vec(), // instruction data: discriminator
     };
 
     let tx = Transaction::new_signed_with_payer(
