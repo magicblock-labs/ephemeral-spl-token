@@ -1,5 +1,7 @@
 use crate::processor::utils::GroupReceiptController;
-use ephemeral_spl_api::state::group_receipt::{GroupReceipt, TransferReceipt};
+#[cfg(feature = "logging")]
+use ephemeral_spl_api::state::group_receipt::GroupReceipt;
+use ephemeral_spl_api::state::group_receipt::TransferReceipt;
 use ephemeral_spl_api::state::transfer_queue::{
     queue_views_checked, TransferQueueHeader, QUEUE_SEED,
 };
@@ -46,6 +48,24 @@ pub fn derive_group_receipt_id(queue_address: &Address, group_id: u32) -> (Addre
     )
 }
 
+///
+/// Executes on: ER only.
+///
+/// Accounts:
+///
+///  0: [signer]             - Keypair : Validator authority
+///  1: [writable]           - PDA     : Group receipt account.
+///  2: [writable]           - PDA     : Transfer queue account.
+///  3: []                   - SPL     : Vault account (unused).
+///  4: []                   - SPL     : Mint account.
+///  5: []                   - SPL     : Vault token account (unused).
+///  6: []                   - Builtin : System program (unused).
+///  7: []                   - SPL     : Token program (unused).
+///  8: [writable]           - PDA     : Magic vault account.
+///  9: []                   - Program : Magic program.
+///
+/// Instruction Data: MagicResponse
+///
 pub fn process_execute_transfer_callback(
     accounts: &[AccountView],
     instruction_data: &[u8],
@@ -73,6 +93,8 @@ pub fn process_execute_transfer_callback(
         &args,
         &response,
     )?;
+
+    #[cfg(feature = "logging")]
     if !response.ok {
         if let Ok(value) = core::str::from_utf8(response.error) {
             pinocchio_log::log!("Action failed: {}", value);
@@ -92,7 +114,9 @@ fn validate_common(
     queue_header: &TransferQueueHeader,
 ) -> ProgramResult {
     if !validator.is_signer() {
+        #[cfg(feature = "logging")]
         pinocchio_log::log!("Missing authority to execute callback!");
+
         return Err(ProgramError::MissingRequiredSignature);
     }
 
@@ -144,7 +168,9 @@ fn handle_group_receipt(
     // This means that callback executed faster than initializing crank
     // As we don't know number of splits, initialize partially with 0
     let mut group_receipt = if !group_receipt_info.owned_by(&crate::ID) {
+        #[cfg(feature = "logging")]
         pinocchio_log::log!("TransferCallback: initializing receipt");
+
         GroupReceiptController::create(
             group_receipt_info,
             queue_info,
@@ -165,13 +191,16 @@ fn handle_group_receipt(
 
     // If no transfers left - close account
     if group_receipt.all_transfer_completed() {
+        #[cfg(feature = "logging")]
         log_group_receipt(&group_receipt);
+
         group_receipt.close()
     } else {
         Ok(())
     }
 }
 
+#[cfg(feature = "logging")]
 #[inline(never)]
 pub(crate) fn log_group_receipt(group_receipt: &GroupReceipt) {
     pinocchio_log::log!(
@@ -208,7 +237,7 @@ pub(crate) struct MagicResponseView<'a> {
     /// Raw payload bytes the caller originally attached to the callback.
     pub data: &'a [u8],
     /// Error message bytes (empty when `ok` is true).
-    pub error: &'a [u8],
+    pub _error: &'a [u8],
     /// 64-byte ed25519 signature of the action transaction, if available.
     pub signature: Option<&'a Signature>,
 }
@@ -262,7 +291,7 @@ impl<'a> MagicResponseView<'a> {
         Ok(Self {
             ok,
             data,
-            error,
+            _error: error,
             signature,
         })
     }

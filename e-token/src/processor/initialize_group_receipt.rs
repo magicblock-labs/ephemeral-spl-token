@@ -1,6 +1,6 @@
-use crate::processor::execute_transfer_callback::{
-    derive_group_receipt_id, log_group_receipt, read_u32_le,
-};
+#[cfg(feature = "logging")]
+use crate::processor::execute_transfer_callback::log_group_receipt;
+use crate::processor::execute_transfer_callback::{derive_group_receipt_id, read_u32_le};
 use crate::processor::utils::{GroupReceiptController, CRANK_SIGNER};
 use core::num::NonZeroU32;
 use ephemeral_spl_api::state::transfer_queue::{
@@ -39,7 +39,9 @@ pub fn process_initialize_group_receipt(
     let group_receipt_bump = validate(crank_signer, queue_info, group_receipt, header, &args)?;
 
     if group_receipt.owned_by(&crate::ID) {
+        #[cfg(feature = "logging")]
         pinocchio_log::log!("Group receipt was initialized already!");
+
         handle_already_initialized_receipt(
             queue_info,
             group_receipt,
@@ -119,7 +121,9 @@ fn handle_already_initialized_receipt(
     group_receipt.set_splits(splits)?;
     if splits.get() as usize <= group_receipt.items_len() {
         // All callbacks executed
+        #[cfg(feature = "logging")]
         log_group_receipt(&group_receipt);
+
         group_receipt.close()
     } else {
         Ok(())
