@@ -196,7 +196,7 @@ fn transfer_lamports_pda_action(
     data.extend_from_slice(salt);
 
     Instruction {
-        program_id: Pubkey::from(crate::ID),
+        program_id: crate::ID,
         accounts: alloc::vec![
             AccountMeta::new_readonly(*payer_info.address(), true),
             AccountMeta::new(*lamports_pda_info.address(), false),
@@ -217,7 +217,7 @@ fn undelegate_lamports_pda_action(
     data.extend_from_slice(salt);
 
     Instruction {
-        program_id: Pubkey::from(crate::ID),
+        program_id: crate::ID,
         accounts: alloc::vec![
             AccountMeta::new_readonly(*payer_info.address(), true),
             AccountMeta::new_readonly(*rent_pda_info.address(), false),

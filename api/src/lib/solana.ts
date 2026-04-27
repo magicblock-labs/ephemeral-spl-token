@@ -1,4 +1,5 @@
 import {
+  compileLegacyTransactionToV0,
   delegateTransferQueueIx,
   deriveRentPda,
   deriveTransferQueue,
@@ -11,6 +12,7 @@ import {
   withdrawSpl, initVaultIx, initVaultAtaIx, delegateEphemeralAtaIx, deriveVault, deriveEphemeralAta, deriveVaultAta,
 } from "@magicblock-labs/ephemeral-rollups-sdk";
 import {
+  AddressLookupTableProgram,
   Connection,
   Keypair,
   LAMPORTS_PER_SOL,
@@ -27,7 +29,7 @@ export const TOKEN_PROGRAM_ID = new PublicKey(
   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
 );
 
-const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey(
+export const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey(
   "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
 );
 
@@ -47,6 +49,11 @@ const TRANSFER_QUEUE_RENT_LAMPORTS = LAMPORTS_PER_SOL / 50;
 const PRIVATE_TRANSFER_MAX_DELAY_MS_LIMIT = 10n * 60n * 1000n;
 const TRANSFER_QUEUE_RECENT_SIGNATURE_LIMIT = 5;
 const TRANSFER_QUEUE_STALE_MS = 60_000;
+// Keep these defaults aligned with scripts/create-private-transfer-lut.js. Updating them requires a redeploy.
+const PRIVATE_BASE_TO_BASE_TRANSFER_LOOKUP_TABLES = {
+  mainnet: new PublicKey("2J2Pw639kU7U6rj7qUXY5sVXdJqyt4DjEcVxzqmFrFds"),
+  devnet: new PublicKey("HFmj4QbofPjhXP2vdnDARDQFw1AucSQTKVAs8df4tkUy"),
+} as const;
 
 const connectionCache = new Map<string, Connection>();
 const validatorCache = new Map<string, Promise<PublicKey | undefined>>();
@@ -66,7 +73,7 @@ type RpcConfig = {
 
 type TransactionResponse = {
   kind: "deposit" | "withdraw" | "transfer" | "initializeMint";
-  version: "legacy";
+  version: "legacy" | "v0";
   transactionBase64: string;
   sendTo: SendTarget;
   recentBlockhash: string;
@@ -125,6 +132,7 @@ type TransferInput = {
   maxDelayMs?: string;
   clientRefId?: string;
   split?: number;
+  legacy?: boolean;
 };
 
 type BalanceInput = {
@@ -261,6 +269,20 @@ export function resolveRpcConfig(env: AppEnv, cluster?: string): RpcConfig {
   }
 }
 
+function resolvePrivateBaseToBaseTransferLookupTableAddress(env: AppEnv, cluster: "mainnet" | "devnet") {
+  const configuredAddress = cluster === "mainnet"
+    ? parseConfigPublicKey(
+      env.PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE,
+      "PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE",
+    )
+    : parseConfigPublicKey(
+      env.PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE,
+      "PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE",
+    );
+
+  return configuredAddress ?? PRIVATE_BASE_TO_BASE_TRANSFER_LOOKUP_TABLES[cluster];
+}
+
 function parsePublicKey(value: string, fieldName: string) {
   try {
     return new PublicKey(value);
@@ -307,6 +329,19 @@ function parseOptionalAmount(value: string | undefined, fieldName: string) {
 
 function parseOptionalPublicKey(value: string | undefined, fieldName: string) {
   return value ? parsePublicKey(value, fieldName) : undefined;
+}
+
+function parseConfigPublicKey(value: string | undefined, fieldName: string) {
+  if (!value) {
+    return undefined;
+  }
+
+  try {
+    return new PublicKey(value);
+  }
+  catch {
+    throw new ApiError(500, "CONFIG_ERROR", `${fieldName} must be a valid public key`);
+  }
 }
 
 function redactUrls(value: string) {
@@ -501,6 +536,32 @@ function throwTransactionBuildError(error: unknown): never {
   throw new ApiError(400, "TRANSACTION_BUILD_ERROR", message);
 }
 
+function createUnsignedTransaction(
+  instructions: TransactionInstruction[],
+  feePayer: PublicKey,
+  blockhash: BlockhashResult,
+) {
+  const transaction = new Transaction();
+  transaction.feePayer = feePayer;
+  transaction.recentBlockhash = blockhash.blockhash;
+  transaction.add(...instructions);
+  return transaction;
+}
+
+function collectLookupTableCandidateAddresses(instructions: TransactionInstruction[]) {
+  const addresses = new Set<string>();
+
+  for (const instruction of instructions) {
+    addresses.add(instruction.programId.toBase58());
+
+    for (const key of instruction.keys) {
+      addresses.add(key.pubkey.toBase58());
+    }
+  }
+
+  return addresses;
+}
+
 function serializeTransaction(
   kind: TransactionResponse["kind"],
   sendTo: SendTarget,
@@ -509,10 +570,7 @@ function serializeTransaction(
   blockhash: BlockhashResult,
   validator?: PublicKey,
 ): TransactionResponse {
-  const transaction = new Transaction();
-  transaction.feePayer = feePayer;
-  transaction.recentBlockhash = blockhash.blockhash;
-  transaction.add(...instructions);
+  const transaction = createUnsignedTransaction(instructions, feePayer, blockhash);
 
   return {
     kind,
@@ -530,6 +588,88 @@ function serializeTransaction(
     requiredSigners: getRequiredSigners(feePayer, instructions),
     validator: validator?.toBase58(),
   };
+}
+
+async function trySerializePrivateBaseToBaseTransferTransactionWithLookupTable(
+  env: AppEnv,
+  config: RpcConfig,
+  instructions: TransactionInstruction[],
+  feePayer: PublicKey,
+  blockhash: BlockhashResult,
+  validator?: PublicKey,
+): Promise<TransactionResponse | undefined> {
+  if (config.cluster === "custom") {
+    return undefined;
+  }
+
+  const lookupTableAddress = resolvePrivateBaseToBaseTransferLookupTableAddress(env, config.cluster);
+  const connection = getBaseConnection(config);
+
+  try {
+    const lookupTableResponse = await connection.getAddressLookupTable(lookupTableAddress);
+    const lookupTable = lookupTableResponse.value;
+
+    if (!lookupTable) {
+      throw new Error("lookup table account was not found");
+    }
+
+    const lookupTableAccountInfo = await connection.getAccountInfo(lookupTableAddress, "confirmed");
+
+    if (!lookupTableAccountInfo) {
+      throw new Error("lookup table account info was not found");
+    }
+
+    if (!lookupTableAccountInfo.owner.equals(AddressLookupTableProgram.programId)) {
+      throw new Error("lookup table account has unexpected owner");
+    }
+
+    const lookupTableAddresses = new Set(
+      lookupTable.state.addresses.map((address) => address.toBase58()),
+    );
+    const candidateAddresses = collectLookupTableCandidateAddresses(instructions);
+    let hasExpectedAddress = false;
+
+    for (const address of candidateAddresses) {
+      if (lookupTableAddresses.has(address)) {
+        hasExpectedAddress = true;
+        break;
+      }
+    }
+
+    if (!hasExpectedAddress) {
+      throw new Error("lookup table does not contain any transfer instruction keys");
+    }
+
+    const transaction = createUnsignedTransaction(instructions, feePayer, blockhash);
+    const compiled = compileLegacyTransactionToV0({
+      transaction,
+      lookupTables: [lookupTable],
+    });
+
+    if (compiled.usedLookupTables.length === 0 || compiled.bytesSaved <= 0) {
+      return undefined;
+    }
+
+    return {
+      kind: "transfer",
+      version: "v0",
+      transactionBase64: Buffer.from(compiled.transaction.serialize()).toString("base64"),
+      sendTo: "base",
+      recentBlockhash: blockhash.blockhash,
+      lastValidBlockHeight: blockhash.lastValidBlockHeight,
+      instructionCount: instructions.length,
+      requiredSigners: getRequiredSigners(feePayer, instructions),
+      validator: validator?.toBase58(),
+    };
+  }
+  catch (error) {
+    console.warn("LUT v0 compilation failed, falling back to legacy", {
+      cluster: config.cluster,
+      lookupTable: lookupTableAddress.toBase58(),
+      message: getSanitizedErrorMessage(error),
+    });
+    return undefined;
+  }
 }
 
 export async function buildDepositTransaction(env: AppEnv, input: DepositInput) {
@@ -772,6 +912,26 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
       })),
       ...(input.memo !== undefined ? [createMemoInstruction(input.memo)] : []),
     ];
+
+    if (
+      !input.legacy
+      && input.visibility === "private"
+      && input.fromBalance === "base"
+      && input.toBalance === "base"
+    ) {
+      const versionedResponse = await trySerializePrivateBaseToBaseTransferTransactionWithLookupTable(
+        env,
+        config,
+        instructions,
+        feePayer,
+        blockhash,
+        validator,
+      );
+
+      if (versionedResponse) {
+        return versionedResponse;
+      }
+    }
 
     return serializeTransaction(
       "transfer",

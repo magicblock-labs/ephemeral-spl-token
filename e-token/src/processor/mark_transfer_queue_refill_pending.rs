@@ -131,14 +131,14 @@ fn ensure_queue_refill_state_exists(
                 to: refill_state_info,
                 lamports: rent_exempt_balance,
             }
-            .invoke_signed(&[rent_signer.clone()])?;
+            .invoke_signed(core::slice::from_ref(&rent_signer))?;
         }
 
         Allocate {
             account: refill_state_info,
             space: refill_state_size as u64,
         }
-        .invoke_signed(&[refill_state_signer.clone()])?;
+        .invoke_signed(core::slice::from_ref(&refill_state_signer))?;
 
         Assign {
             account: refill_state_info,

@@ -141,6 +141,51 @@ pub mod instruction {
     ///      Instruction data:
     ///      []        no instruction args
     pub const PROCESS_PENDING_TRANSFER_QUEUE_REFILL: u8 = 28;
+    /// 29 - ProcessScheduledPrivateTransfer: top-level callback fired by the
+    ///      Hydra scheduler. Permissionless, no signer metas (Hydra forbids
+    ///      them). Re-derives the stash PDA from [b"stash", user, mint] and
+    ///      self-CPIs into instruction 25 using `invoke_signed` so the PDA
+    ///      signs for both the `payer` and `owner` slots.
+    ///      Instruction data:
+    ///      [0..32]  user pubkey (stash PDA seed)
+    ///      [32]     stash PDA bump
+    ///      [33..37] shuttle_id (u32 LE)
+    ///      [37..]   len-prefixed optional validator pubkey
+    ///      [...]    len-prefixed encrypted destination owner pubkey
+    ///      [...]    len-prefixed encrypted packed suffix (same format as ix 25)
+    pub const PROCESS_SCHEDULED_PRIVATE_TRANSFER: u8 = 29;
+    /// 30 - SchedulePrivateTransfer: small user-signed ix that creates the
+    ///      stash PDA on first use, funds it + a Hydra crank from the global
+    ///      rent PDA, and CPIs into `hydra::Create` with a one-shot crank that
+    ///      will fire `PROCESS_SCHEDULED_PRIVATE_TRANSFER` as soon as possible.
+    ///      Designed to be appended to a swap tx where the swap's
+    ///      `destinationTokenAccount` is the stash ATA of `(user, mint)`.
+    ///      Keeps the outer-tx footprint tight: the 14 pubkeys that ix 25
+    ///      will need at trigger time are derived on-chain from client-
+    ///      supplied bumps + hard-coded program IDs, so the caller passes
+    ///      only 7 accounts.
+    ///      Accounts:
+    ///      [0] user (signer), [1] stash_pda (w), [2] rent_pda (w),
+    ///      [3] hydra_crank_pda (w), [4] hydra_program,
+    ///      [5] system_program, [6] token_program.
+    ///      Instruction data:
+    ///      [0..4]   shuttle_id (u32 LE)
+    ///      [4]      stash_pda bump
+    ///      [5..37]  mint pubkey (32 B)
+    ///      [37]     shuttle bump
+    ///      [38]     shuttle_eata bump
+    ///      [39]     shuttle_wallet_ata bump
+    ///      [40]     buffer bump
+    ///      [41]     delegation_record bump
+    ///      [42]     delegation_metadata bump
+    ///      [43]     global_vault bump
+    ///      [44]     vault_token bump
+    ///      [45]     stash_ata bump
+    ///      [46]     queue bump
+    ///      [47..]   len-prefixed optional validator pubkey (0 or 32)
+    ///      [...]    len-prefixed encrypted destination owner pubkey
+    ///      [...]    len-prefixed encrypted packed suffix (same format as ix 25)
+    pub const SCHEDULE_PRIVATE_TRANSFER: u8 = 30;
 
     /// Internal-only instruction discriminators used by the on-chain program.
     pub mod internal {

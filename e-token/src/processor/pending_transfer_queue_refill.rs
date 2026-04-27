@@ -159,7 +159,7 @@ fn trigger_queue_refill_via_sponsored_transfer(
     invoke_signed_with_bounds::<SPONSORED_LAMPORTS_TRANSFER_CPI_ACCOUNTS>(
         &sponsored_transfer_instruction,
         &sponsored_transfer_account_refs,
-        &[rent_signer.clone()],
+        core::slice::from_ref(&rent_signer),
     )
 }
 

@@ -21,6 +21,9 @@ export const envSchema = z.object({
   EPHEMERAL_RPC_URL: z.string().url(),
   BASE_DEVNET_RPC_URL: optionalUrl,
   EPHEMERAL_DEVNET_RPC_URL: optionalUrl,
+  METIS_SWAP_API_URL: optionalUrl,
+  PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE: optionalString,
+  PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE: optionalString,
   CORS_ORIGIN: optionalString,
 });
 
@@ -29,6 +32,9 @@ export type AppBindings = {
   EPHEMERAL_RPC_URL?: string;
   BASE_DEVNET_RPC_URL?: string;
   EPHEMERAL_DEVNET_RPC_URL?: string;
+  METIS_SWAP_API_URL?: string;
+  PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE?: string;
+  PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE?: string;
   CORS_ORIGIN?: string;
 };
 

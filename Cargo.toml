@@ -57,3 +57,4 @@ spl-token-interface = "2.0.0"
 magicblock-delegation-program-api = { version = "0.1.1", default-features = false }
 bytemuck = { version = "1.23.1", features = ["derive"] }
 const-crypto = "0.3.0"
+hydra-api = { version = "0.1.1", default-features = false, features = ["client"] }
