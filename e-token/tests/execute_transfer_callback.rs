@@ -1,6 +1,6 @@
 use ephemeral_spl_api::instruction::internal;
 use ephemeral_spl_api::state::group_receipt::{GroupReceipt, GroupReceiptHeader};
-use ephemeral_spl_api::state::transfer_queue::{header_len, QUEUE_SEED, TRANSFER_QUEUE_VERSION};
+use ephemeral_spl_api::state::transfer_queue::{HEADER_LEN, QUEUE_SEED, TRANSFER_QUEUE_VERSION};
 use solana_account::Account as SolanaAccount;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
@@ -76,7 +76,7 @@ fn derive_group_receipt(queue: Pubkey, group_id: u32) -> (Pubkey, u8) {
 
 /// Build a minimal queue account buffer with the fields validated by the program.
 fn queue_account_data(mint: Pubkey, validator: Pubkey, bump: u8) -> Vec<u8> {
-    let mut data = vec![0u8; header_len()];
+    let mut data = vec![0u8; HEADER_LEN];
     // TransferQueueHeader layout (repr C):
     // version(1) bump(1) _pad0(6) mint(32) length(4) _pad1(8) next_task_id(4) crank_task_id(8) validator(32)
     data[0] = TRANSFER_QUEUE_VERSION;
