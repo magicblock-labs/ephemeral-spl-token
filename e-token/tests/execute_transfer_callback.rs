@@ -1,6 +1,7 @@
 use ephemeral_spl_api::instruction::internal;
 use ephemeral_spl_api::state::group_receipt::{GroupReceipt, GroupReceiptHeader};
 use ephemeral_spl_api::state::transfer_queue::{HEADER_LEN, QUEUE_SEED, TRANSFER_QUEUE_VERSION};
+use serial_test::serial;
 use solana_account::Account as SolanaAccount;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
@@ -8,7 +9,6 @@ use solana_program::rent::Rent;
 use solana_program_test::{processor, tokio, ProgramTest};
 use solana_pubkey::{pubkey, Pubkey};
 use solana_signer::Signer;
-use serial_test::serial;
 use solana_transaction::Transaction;
 
 mod common;
