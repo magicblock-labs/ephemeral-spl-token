@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["e-token", "e-token-api", "compare-metrics"]
+members = ["e-token", "e-token-api", "compare-metrics", "data-layout"]
 
 [workspace.package]
 authors = ["MagicBlock Labs <dev@magicblocklabs.xyz>"]
