@@ -15,6 +15,7 @@ pub const SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS: u64 = 1_539_280;
 ///
 /// 10 basis points = 0.1%.
 pub const PRIVATE_TRANSFER_FEE_BASIS_POINTS: u64 = 10;
+pub const BASIS_POINTS_FACTOR: u128 = 10_000;
 
 /// Flat lamport fee charged by sponsored lamports transfer flows.
 ///

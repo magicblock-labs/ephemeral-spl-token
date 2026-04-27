@@ -3,6 +3,7 @@ use alloc::vec::Vec;
 use data_layout::variable_offset_layout;
 use ephemeral_rollups_pinocchio::instruction::DelegateAccountCpiBuilder;
 use ephemeral_rollups_pinocchio::types::DelegateConfig;
+use ephemeral_spl_api::debug_log;
 use ephemeral_spl_api::require_n_accounts;
 use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_initialized};
 use pinocchio::{AccountView, Address, ProgramResult};
@@ -62,10 +63,7 @@ pub fn process_delegate_ephemeral_ata(
     let owner = ephemeral_ata.owner.clone();
     let seeds: &[&[u8]] = &[owner.as_ref(), mint.as_ref()];
 
-    #[cfg(feature = "logging")]
-    {
-        pinocchio_log::log!("Delegating eata");
-    }
+    debug_log!("Delegating eata");
 
     DelegateAccountCpiBuilder::new(
         payer_info,

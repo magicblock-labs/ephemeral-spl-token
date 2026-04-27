@@ -15,6 +15,7 @@ use ephemeral_rollups_pinocchio::{
     types::{DelegateAccountArgs, DelegateConfig},
     utils::{close_pda_acc, make_seed_buf},
 };
+use ephemeral_spl_api::debug_log;
 use ephemeral_spl_api::instruction::ESplInstruction;
 use ephemeral_spl_api::state::{
     ephemeral_ata::EphemeralAta, load_initialized, load_mut_initialized,
@@ -173,8 +174,7 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
 
     require_owned_by!(rent_pda_info, &pinocchio_system::ID);
 
-    #[cfg(feature = "logging")]
-    {
+    debug_log!({
         let shuttle = shuttle_info.address().to_string();
         let shuttle_eata = shuttle_eata_info.address().to_string();
         let shuttle_wallet = shuttle_wallet_ata_info.address().to_string();
@@ -191,7 +191,7 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
             rent_pda.as_str(),
             shuttle_id,
         );
-    }
+    });
 
     require_eq_keys!(
         &RENT_PDA,
@@ -267,8 +267,7 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
 
     let derived_shuttle_eata = EphemeralAta::derive_pda(shuttle_info.address(), &mint, bump)?;
     if derived_shuttle_eata != *shuttle_eata_info.address() {
-        #[cfg(feature = "logging")]
-        {
+        debug_log!({
             let expected = derived_shuttle_eata.to_string();
             let actual = shuttle_eata_info.address().to_string();
             pinocchio_log::log!(
@@ -276,7 +275,7 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
                 expected.as_str(),
                 actual.as_str(),
             );
-        }
+        });
     }
     require_eq_keys!(
         &derived_shuttle_eata,
@@ -325,11 +324,10 @@ pub(crate) fn delegate_sponsored_shuttle_with_post_actions(
         action_signer_accounts.push(payer_info);
     }
 
-    #[cfg(feature = "logging")]
-    {
-        let shuttle_eata = shuttle_eata_info.address().to_string();
-        pinocchio_log::log!("Shuttle eata: {}", shuttle_eata.as_str());
-    }
+    debug_log!(
+        "Shuttle eata: {}",
+        shuttle_eata_info.address().to_string().as_str()
+    );
 
     delegate_account_with_actions_from_sponsor(
         rent_pda_info,

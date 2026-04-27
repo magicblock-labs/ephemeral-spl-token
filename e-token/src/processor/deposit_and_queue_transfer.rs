@@ -7,11 +7,12 @@ use crate::processor::utils::{
 use alloc::vec;
 use alloc::vec::Vec;
 use data_layout::variable_offset_layout;
+use ephemeral_spl_api::debug_log;
 #[cfg(feature = "logging")]
-use ephemeral_spl_api::state::transfer_queue::queue_peek_next_task_id_from_data;
+use ephemeral_spl_api::state::transfer_queue::capacity_from_data_len;
 use ephemeral_spl_api::state::transfer_queue::{
-    capacity_from_data_len, queue_allocate_group_id_from_data,
-    queue_len_and_bump_for_mint_with_capacity, queue_push_from_data, QueuedTransfer, TransferQueue,
+    queue_allocate_group_id_from_data, queue_len_and_bump_for_mint_with_capacity,
+    queue_push_from_data, QueuedTransfer, TransferQueue,
     QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
 };
 use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
@@ -80,16 +81,12 @@ pub fn process_deposit_and_queue_transfer(
     let split = args.split() as usize;
     let decimals = read_mint_decimals(mint_info, token_program_info)?;
 
-    let (queue_len_before, validator, bump, queue_capacity) = {
+    let (queue_len_before, validator, bump) = {
         let data = unsafe { queue_info.borrow_unchecked() };
-        let queue_capacity = capacity_from_data_len(data.len());
         match queue_len_and_bump_for_mint_with_capacity(data, mint_info.address(), split) {
-            Ok((queue_len_before, validator, bump)) => {
-                (queue_len_before, validator, bump, queue_capacity)
-            }
+            Ok((queue_len_before, validator, bump)) => (queue_len_before, validator, bump),
             Err(ProgramError::AccountDataTooSmall) => {
-                #[cfg(feature = "logging")]
-                pinocchio_log::log!("Queue is full");
+                debug_log!("Queue is full");
                 if !address_eq(reimbursement_token_info.address(), &crate::ID) {
                     TransferChecked {
                         mint: mint_info,
@@ -114,9 +111,6 @@ pub fn process_deposit_and_queue_transfer(
         queue_info.address(),
         ProgramError::InvalidSeeds
     );
-
-    #[cfg(not(feature = "logging"))]
-    let _ = (queue_len_before, queue_capacity);
 
     let now_ms = queue_timestamp_now()?;
 
@@ -177,9 +171,6 @@ pub fn process_deposit_and_queue_transfer(
         let ready_at = now_ms
             .checked_add(stored_delay)
             .ok_or(ProgramError::InvalidInstructionData)?;
-        #[cfg(feature = "logging")]
-        let queued_task_id = queue_peek_next_task_id_from_data(data)?;
-
         let mut queued_transfer = QueuedTransfer {
             source,
             destination_owner,
@@ -194,13 +185,12 @@ pub fn process_deposit_and_queue_transfer(
 
         queue_push_from_data(data, queued_transfer)?;
 
-        #[cfg(feature = "logging")]
-        pinocchio_log::log!(
+        debug_log!(
             "DepositAndQueueTransfer split {}/{} group_id: {} task_id: {} client_ref_id: {} amount: {} delay_ms: {} ready_at: {}",
             index + 1,
             split,
             group_id,
-            queued_task_id,
+            ephemeral_spl_api::state::transfer_queue::queue_peek_next_task_id_from_data(data)?,
             client_ref_id,
             queued_amount,
             selected_delay_ms,
@@ -208,12 +198,11 @@ pub fn process_deposit_and_queue_transfer(
         );
     }
 
-    #[cfg(feature = "logging")]
-    pinocchio_log::log!(
+    debug_log!(
         "DepositAndQueueTransfer queue length: {} -> {} capacity: {} delay_range_ms: {}..={}",
         queue_len_before,
         queue_len_before + split,
-        queue_capacity,
+        capacity_from_data_len(data.len()),
         args.min_delay_ms(),
         args.max_delay_ms()
     );

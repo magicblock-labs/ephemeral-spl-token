@@ -3,15 +3,17 @@ use alloc::string::ToString;
 use alloc::vec;
 use alloc::vec::Vec;
 use data_layout::variable_offset_layout;
+
 use dlp_api::args::{
     EncryptedBuffer, MaybeEncryptedAccountMeta, MaybeEncryptedInstruction, MaybeEncryptedIxData,
     MaybeEncryptedPubkey,
 };
 use dlp_api::compact::{self};
 
+use ephemeral_spl_api::debug_log;
 use ephemeral_spl_api::instruction::ESplInstruction;
 use ephemeral_spl_api::state::transfer_queue::{queue_views, TransferQueue};
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
+use ephemeral_spl_api::{consts, require, require_eq_keys, require_n_accounts};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use solana_instruction::{AccountMeta, Instruction};
 
@@ -26,7 +28,6 @@ use crate::processor::{
 };
 use dlp_api::{args::PostDelegationActions, compact::ClearTextWithInsertable};
 
-const BASIS_POINTS_DENOMINATOR: u128 = 10_000;
 const TRANSFER_CHECKED_DISCRIMINATOR: u8 = 12;
 
 ///
@@ -111,8 +112,8 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
         ProgramError::InvalidAccountOwner
     );
 
-    #[cfg(feature = "logging")]
-    {
+    // CHECKPOINT: this entire log wont be printed because of message size (see logs on explorer)
+    debug_log!({
         let shuttle = common_accounts.shuttle_info.address().to_string();
         let shuttle_eata = common_accounts.shuttle_eata_info.address().to_string();
         let shuttle_wallet = common_accounts
@@ -137,7 +138,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
             vault_token.as_str(),
             queue.as_str(),
         );
-    }
+    });
 
     let (bump, validator) = {
         let data = unsafe { queue_info.borrow_unchecked() };
@@ -269,9 +270,9 @@ fn private_transfer_action_encrypted(
 #[inline(always)]
 fn private_transfer_fee_amount(amount: u64) -> Result<u64, ProgramError> {
     Ok((amount as u128)
-        .checked_mul(ephemeral_spl_api::consts::PRIVATE_TRANSFER_FEE_BASIS_POINTS as u128)
+        .checked_mul(consts::PRIVATE_TRANSFER_FEE_BASIS_POINTS as u128)
         .ok_or(ProgramError::InvalidInstructionData)?
-        .checked_div(BASIS_POINTS_DENOMINATOR)
+        .checked_div(consts::BASIS_POINTS_FACTOR)
         .ok_or(ProgramError::InvalidInstructionData)? as u64)
 }
 
