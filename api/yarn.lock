@@ -512,10 +512,10 @@
     "@jridgewell/resolve-uri" "^3.0.3"
     "@jridgewell/sourcemap-codec" "^1.4.10"
 
-"@magicblock-labs/ephemeral-rollups-sdk@0.11.2":
-  version "0.11.2"
-  resolved "https://registry.yarnpkg.com/@magicblock-labs/ephemeral-rollups-sdk/-/ephemeral-rollups-sdk-0.11.2.tgz#8b841be14e0df50cb44fa20b0da83a55dc9cb183"
-  integrity sha512-+JACHzNSmseew9DzD6A/GjZeX8PnVua3PuJBJHSktSpDxkpj8X30m5r6RNfjOLfF+/9PnfESRwg8G50iXtu2jw==
+"@magicblock-labs/ephemeral-rollups-sdk@0.12.0":
+  version "0.12.0"
+  resolved "https://registry.yarnpkg.com/@magicblock-labs/ephemeral-rollups-sdk/-/ephemeral-rollups-sdk-0.12.0.tgz#9cac1ecf4fdefa953d03cdda598b4f43bd4aaddc"
+  integrity sha512-pZMvZ+Qkirvx5C3Fctj8CsM2s/QhD6h3rJJqLdPQX28sg0MX7g6VuDh9Rsr4XWkFHjHysOvRzlAgxmnVXZ0V5A==
   dependencies:
     "@noble/curves" "^1.4.2"
     "@noble/hashes" "^1.4.0"
