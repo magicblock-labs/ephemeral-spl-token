@@ -15,7 +15,7 @@ use pinocchio::{AccountView, ProgramResult};
 ///
 ///  0: [signer]            - PDA     : Crank authenticator.
 ///  1: [writable]          - PDA     : Queue.
-///  2: [writable]          - PDA     : Group Receip, ephemeral account.
+///  2: [writable]          - PDA     : Group Receipt, ephemeral account.
 ///  3: [writable]          - PDA     : Magic vault.
 ///  4: []                  - Magic   : Magic program.
 ///

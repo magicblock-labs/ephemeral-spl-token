@@ -249,7 +249,6 @@ fn schedule_execute_ready_transfer(
     let mut callback_data = [0_u8; 13];
     callback_data[0..8].copy_from_slice(&amount_bytes);
     callback_data[8..12].copy_from_slice(&queued_transfer.group_id().to_le_bytes());
-    // callback_data[12..16].copy_from_slice(&queued_transfer.)
     callback_data[12] = queued_transfer.flags;
 
     let standalone_action_callback_accounts = create_action_callback_accounts(

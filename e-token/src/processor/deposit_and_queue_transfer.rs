@@ -234,7 +234,7 @@ fn create_group_receipt(
     group_id: u32,
     split: u32,
 ) -> ProgramResult {
-    // 0 means that crank will be executed right away
+    // 1 means that crank will be executed right away
     const TICK_INTERVAL_MILLIS: i64 = 1;
     const INITIALIZE_GROUP_RECEIPT_CRANK_ACCOUNTS: usize = 5;
     // ScheduleCrankArgs bincode layout:

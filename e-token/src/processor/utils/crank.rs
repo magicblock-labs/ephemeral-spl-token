@@ -1,6 +1,6 @@
 use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
 
-/// TODO: can be removed once pinnochio SDK supports this
+/// TODO: can be removed once pinocchio SDK supports this
 /// Seed for crank signer PDA that is used currently in magic-program
 pub const CRANK_SEED: &[u8] = b"crank-executor";
 
