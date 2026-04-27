@@ -1219,8 +1219,8 @@ describe("app", () => {
     const transaction = Transaction.from(Buffer.from(json.transactionBase64, "base64"));
     expect(transaction.instructions.length).toBeGreaterThan(0);
     const depositIx = transaction.instructions[transaction.instructions.length - 1]!;
-    expect(Array.from(depositIx.data.subarray(0, 8))).toEqual([24, 0, 0, 0, 0, 0, 0, 0]);
-    expect(depositIx.data[20]).toBe(1);
+    expect(depositIx.data[0]).toBe(24);
+    expect(depositIx.data.length).toBe(45);
   });
 
   it("falls back to the default validator after a transient RPC failure and retries later", async () => {
@@ -1380,12 +1380,13 @@ describe("app", () => {
     const transaction = Transaction.from(Buffer.from(json.transactionBase64, "base64"));
     expect(transaction.instructions.length).toBeGreaterThan(0);
     const withdrawIx = transaction.instructions[transaction.instructions.length - 1]!;
-    expect(Array.from(withdrawIx.data.subarray(0, 8))).toEqual([26, 0, 0, 0, 0, 0, 0, 0]);
-    expect(withdrawIx.data[20]).toBe(1);
+    expect(withdrawIx.data[0]).toBe(26);
+    expect(withdrawIx.data.length).toBe(45);
   });
 
   it("builds an initialize mint transaction with the expected queue setup instructions", async () => {
-    const validator = Keypair.generate().publicKey.toBase58();
+    const validatorPublicKey = Keypair.generate().publicKey;
+    const validator = validatorPublicKey.toBase58();
     const mint = "So11111111111111111111111111111111111111112";
     const [transferQueue] = deriveTransferQueue(new PublicKey(mint), new PublicKey(validator));
     const [rentPda] = deriveRentPda();
@@ -1456,11 +1457,11 @@ describe("app", () => {
     expect(transaction.instructions[4]?.keys.some((key) => key.pubkey.toBase58() === vault.toBase58())).toBe(true);
     expect(transaction.instructions[5]?.keys.some((key) => key.pubkey.toBase58() === vaultAta.toBase58())).toBe(true);
     expect(transaction.instructions[6]?.keys.some((key) => key.pubkey.toBase58() === vaultEphemeralAta.toBase58())).toBe(true);
-    expect(Array.from(transaction.instructions[0]!.data)).toEqual([12, 0, 0, 0, 0, 0, 0, 0, 0]);
-    expect(Array.from(transaction.instructions[1]!.data)).toEqual([23, 0, 0, 0, 0, 0, 0, 0]);
-    expect(Array.from(transaction.instructions[3]!.data)).toEqual([19, 0, 0, 0, 0, 0, 0, 0]);
-    expect(Array.from(transaction.instructions[4]!.data)).toEqual([1, 0, 0, 0, 0, 0, 0, 0]);
-    expect(Array.from(transaction.instructions[6]!.data.subarray(0, 9))).toEqual([4, 0, 0, 0, 0, 0, 0, 0, 1]);
+    expect(Array.from(transaction.instructions[0]!.data)).toEqual([12]);
+    expect(Array.from(transaction.instructions[1]!.data)).toEqual([23]);
+    expect(Array.from(transaction.instructions[3]!.data)).toEqual([19]);
+    expect(Array.from(transaction.instructions[4]!.data)).toEqual([1]);
+    expect(Array.from(transaction.instructions[6]!.data)).toEqual([4, ...validatorPublicKey.toBytes()]);
   });
 
   it("defaults the validator when building an initialize mint transaction", async () => {
@@ -1972,12 +1973,12 @@ describe("app", () => {
 
     const privateTransferIx = transaction.instructions[1]!;
     expect(privateTransferIx.programId.toBase58()).toBe(EPHEMERAL_SPL_TOKEN_PROGRAM_ID.toBase58());
-    expect(Array.from(privateTransferIx.data.subarray(0, 8))).toEqual([25, 0, 0, 0, 0, 0, 0, 0]);
-    expect(privateTransferIx.data.readUInt32LE(8)).toBe(7);
-    expect(privateTransferIx.data.readBigUInt64LE(12)).toBe(BigInt(amount));
-    expect(privateTransferIx.data.subarray(100, 101)).toEqual(Buffer.from([1]));
-    expect(privateTransferIx.data.subarray(101, 133)).toEqual(new PublicKey(resolvedValidator).toBuffer());
-    expect(privateTransferIx.data[133]).toBe(privateTransferIx.data.length - 134);
+    expect(privateTransferIx.data[0]).toBe(25);
+    expect(privateTransferIx.data.readUInt32LE(1)).toBe(7);
+    expect(privateTransferIx.data.readBigUInt64LE(5)).toBe(BigInt(amount));
+    expect(privateTransferIx.data[93]).toBe(1);
+    expect(privateTransferIx.data.subarray(94, 126)).toEqual(new PublicKey(resolvedValidator).toBuffer());
+    expect(privateTransferIx.data[126]).toBe(privateTransferIx.data.length - 127);
   });
 
   it("builds a gasless public transfer with the sponsor as fee payer", async () => {
