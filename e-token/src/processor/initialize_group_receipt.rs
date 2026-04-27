@@ -1,5 +1,3 @@
-#[cfg(feature = "logging")]
-use crate::processor::execute_transfer_callback::log_group_receipt;
 use crate::processor::execute_transfer_callback::{derive_group_receipt_id, read_u32_le};
 use crate::processor::utils::{GroupReceiptController, CRANK_SIGNER};
 use core::num::NonZeroU32;
@@ -122,7 +120,7 @@ fn handle_already_initialized_receipt(
     if splits.get() as usize <= group_receipt.items_len() {
         // All callbacks executed
         #[cfg(feature = "logging")]
-        log_group_receipt(&group_receipt);
+        group_receipt.log();
 
         group_receipt.close()
     } else {

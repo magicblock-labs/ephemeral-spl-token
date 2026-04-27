@@ -88,16 +88,6 @@ impl<'a> GroupReceiptController<'a> {
         Self::view(group_receipt_info, queue_info, magic_vault, magic_program)
     }
 
-    /// Returns `true` if splits are set and not 0
-    pub fn is_fully_initialized(&self) -> bool {
-        self.group_receipt.is_fully_initialized()
-    }
-
-    /// Returns `true` if all transfers are completed
-    pub fn all_transfer_completed(&self) -> bool {
-        self.group_receipt.all_transfer_completed()
-    }
-
     /// Fully initialized `GroupReceipt` with number of splits
     pub fn set_splits(&mut self, splits: NonZeroU32) -> ProgramResult {
         self.group_receipt.set_splits(splits);
@@ -150,6 +140,35 @@ impl<'a> GroupReceiptController<'a> {
             self.magic_vault,
             &[queue_signer],
         )
+    }
+
+    #[cfg(feature = "logging")]
+    #[inline(never)]
+    pub(crate) fn log(&self) {
+        pinocchio_log::log!(
+            "All transfers complete for group id: {} splits: {}",
+            self.group_receipt.id(),
+            self.group_receipt.splits()
+        );
+        if let Ok(items) = self.group_receipt.items() {
+            for (i, item) in items.iter().enumerate() {
+                match item.signature() {
+                    Some(sig) => pinocchio_log::log!(
+                        "transfer[{}] ok: {} amount: {} sig: {}",
+                        i as u32,
+                        item.ok(),
+                        item.amount(),
+                        sig.as_array()
+                    ),
+                    None => pinocchio_log::log!(
+                        "transfer[{}] ok: {} amount: {} sig: None",
+                        i as u32,
+                        item.ok(),
+                        item.amount()
+                    ),
+                }
+            }
+        }
     }
 
     /// Resizes account to hold `num` extra accounts

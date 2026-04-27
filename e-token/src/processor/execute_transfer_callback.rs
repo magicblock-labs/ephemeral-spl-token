@@ -1,6 +1,4 @@
 use crate::processor::utils::GroupReceiptController;
-#[cfg(feature = "logging")]
-use ephemeral_spl_api::state::group_receipt::GroupReceipt;
 use ephemeral_spl_api::state::group_receipt::TransferReceipt;
 use ephemeral_spl_api::state::transfer_queue::{
     queue_views_checked, TransferQueueHeader, QUEUE_SEED,
@@ -96,7 +94,7 @@ pub fn process_execute_transfer_callback(
 
     #[cfg(feature = "logging")]
     if !response.ok {
-        if let Ok(value) = core::str::from_utf8(response.error) {
+        if let Ok(value) = core::str::from_utf8(response._error) {
             pinocchio_log::log!("Action failed: {}", value);
         }
     }
@@ -192,40 +190,11 @@ fn handle_group_receipt(
     // If no transfers left - close account
     if group_receipt.all_transfer_completed() {
         #[cfg(feature = "logging")]
-        log_group_receipt(&group_receipt);
+        group_receipt.log();
 
         group_receipt.close()
     } else {
         Ok(())
-    }
-}
-
-#[cfg(feature = "logging")]
-#[inline(never)]
-pub(crate) fn log_group_receipt(group_receipt: &GroupReceipt) {
-    pinocchio_log::log!(
-        "All transfers complete for group id: {} splits: {}",
-        group_receipt.id(),
-        group_receipt.splits()
-    );
-    if let Ok(items) = group_receipt.items() {
-        for (i, item) in items.iter().enumerate() {
-            match item.signature() {
-                Some(sig) => pinocchio_log::log!(
-                    "transfer[{}] ok: {} amount: {} sig: {}",
-                    i as u32,
-                    item.ok(),
-                    item.amount(),
-                    sig.as_array()
-                ),
-                None => pinocchio_log::log!(
-                    "transfer[{}] ok: {} amount: {} sig: None",
-                    i as u32,
-                    item.ok(),
-                    item.amount()
-                ),
-            }
-        }
     }
 }
 
