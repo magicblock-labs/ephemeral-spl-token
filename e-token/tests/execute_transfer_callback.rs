@@ -8,8 +8,8 @@ use solana_program::rent::Rent;
 use solana_program_test::{processor, tokio, ProgramTest};
 use solana_pubkey::{pubkey, Pubkey};
 use solana_signer::Signer;
+use serial_test::serial;
 use solana_transaction::Transaction;
-use std::sync::{Mutex, OnceLock};
 
 mod common;
 mod utils;
@@ -19,11 +19,6 @@ const MAGIC_PROGRAM: Pubkey = pubkey!("Magic111111111111111111111111111111111111
 const MAGIC_VAULT: Pubkey = pubkey!("MagicVau1t999999999999999999999999999999999");
 
 const GROUP_RECEIPT_SEED: &[u8] = b"group-receipt";
-
-fn test_lock() -> &'static Mutex<()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
-}
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -232,8 +227,8 @@ fn callback_ix(
 /// process_initialize_group_receipt TX), not the last transfer.
 /// No CreateEphemeralAccount CPI to the magic program — only the receipt state changes.
 #[tokio::test]
+#[serial]
 async fn execute_callback_with_pre_initialized_receipt_no_magic_cpi() {
-    let _test_guard = test_lock().lock().unwrap();
     let group_id: u32 = 1;
     let splits: u32 = 2;
 
@@ -289,8 +284,8 @@ async fn execute_callback_with_pre_initialized_receipt_no_magic_cpi() {
 /// Last-transfer callback: receipt pre-initialized with splits=1.
 /// After callback the program CPIs CloseEphemeralAccount.
 #[tokio::test]
+#[serial]
 async fn execute_callback_closes_receipt_when_last_transfer_with_pre_initialized_receipt() {
-    let _test_guard = test_lock().lock().unwrap();
     let group_id: u32 = 1;
     let splits: u32 = 1;
 
@@ -355,8 +350,8 @@ async fn execute_callback_closes_receipt_when_last_transfer_with_pre_initialized
 /// The processor takes the "already owned by program" path, sets splits,
 /// and does not close because no transfers have been recorded yet.
 #[tokio::test]
+#[serial]
 async fn initialize_group_receipt_sets_splits_on_existing_receipt() {
-    let _test_guard = test_lock().lock().unwrap();
     let group_id: u32 = 42;
     let splits: u32 = 3;
 
@@ -407,8 +402,8 @@ async fn initialize_group_receipt_sets_splits_on_existing_receipt() {
 /// one transfer already recorded. When initialized with splits=1, the program
 /// detects all callbacks are done and CPIs CloseEphemeralAccount.
 #[tokio::test]
+#[serial]
 async fn initialize_group_receipt_closes_when_all_callbacks_already_done() {
-    let _test_guard = test_lock().lock().unwrap();
     use ephemeral_spl_api::state::group_receipt::TransferReceipt;
 
     let group_id: u32 = 7;
@@ -478,8 +473,8 @@ async fn initialize_group_receipt_closes_when_all_callbacks_already_done() {
 /// Mid-group callback: receipt already exists, not the last transfer.
 /// No CPI to the magic program — only the receipt state changes.
 #[tokio::test]
+#[serial]
 async fn execute_callback_records_transfer() {
-    let _test_guard = test_lock().lock().unwrap();
     let validator = Keypair::new();
     let mint = Keypair::new().pubkey();
     let (queue, queue_bump) = derive_queue(mint, validator.pubkey());
@@ -587,8 +582,8 @@ async fn execute_callback_records_transfer() {
 /// confirming it reached the close path. The mock's CloseEphemeralAccount is a no-op (see
 /// `common::magic_mock` limitations), so we verify via the program log rather than lamports.
 #[tokio::test]
+#[serial]
 async fn execute_callback_closes_receipt_on_last_transfer() {
-    let _test_guard = test_lock().lock().unwrap();
     let validator = Keypair::new();
     let mint = Keypair::new().pubkey();
     let (queue, queue_bump) = derive_queue(mint, validator.pubkey());
