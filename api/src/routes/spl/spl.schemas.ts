@@ -1,5 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { PublicKey } from "@solana/web3.js";
+import { boolean } from "zod";
 
 const DEFAULT_DEPOSIT_VALIDATOR = "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57";
 const DEFAULT_DEPOSIT_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
@@ -271,6 +272,10 @@ export const transferRequestSchema = z.object({
   split: z.int().positive().max(15).openapi({
     example: 1,
     description: "Optional. Private transfer only. Defaults to 1. Must be between 1 and 15.",
+  }).optional(),
+  exactOut: z.boolean().openapi({
+    example: boolean,
+    description: "Optional. If true, the fees are deducted from the sender, else from the recipient amount",
   }).optional(),
   gasless: z.boolean().openapi({
     example: true,
