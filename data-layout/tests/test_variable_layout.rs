@@ -316,6 +316,37 @@ fn variable_layout_buffer_offset_one_allows_unaligned_copy_only_views() {
     assert_eq!(view.counter(), 7);
 }
 
+#[variable_offset_layout(buffer_offset = 0)]
+struct BoolArgs {
+    enabled: bool,
+    sponsored: Option<bool>,
+    amount: u16,
+}
+
+#[test]
+fn variable_layout_supports_bool_and_tagged_option_bool() {
+    assert_eq!(BoolArgs::DATA_LENS, [4, 5]);
+
+    let none_bytes = [2, 0, 9, 0].to_vec();
+    let none_view = BoolArgs::decode(&none_bytes).unwrap();
+    assert_eq!(none_view.enabled(), true);
+    assert_eq!(none_view.sponsored(), None);
+    assert_eq!(none_view.amount(), 9);
+
+    let some_bytes = [7, 1, 3, 9, 0].to_vec();
+    let some_view = BoolArgs::decode(&some_bytes).unwrap();
+    assert_eq!(some_view.enabled(), true);
+    assert_eq!(some_view.sponsored(), Some(true));
+    assert_eq!(some_view.amount(), 9);
+
+    let value = BoolArgs {
+        enabled: true,
+        sponsored: Some(true),
+        amount: 9,
+    };
+    assert_eq!(value.encode().unwrap(), vec![1, 1, 1, 9, 0]);
+}
+
 #[variable_offset_layout(buffer_offset = 0, option = implicit)]
 struct ImplicitOptionArgs {
     shuttle_id: u32,
@@ -489,4 +520,36 @@ fn variable_layout_supports_multiple_implicit_options_with_unique_subset_sums() 
     let both_view = MultiImplicitOptionArgs::decode(&both_encoded).unwrap();
     assert_eq!(both_view.flags(), Some(7));
     assert_eq!(both_view.client_ref_id(), Some(99));
+}
+
+#[variable_offset_layout(buffer_offset = 0, option = implicit)]
+struct ImplicitBoolArgs {
+    amount: u16,
+    gasless: Option<bool>,
+    split: u8,
+}
+
+#[test]
+fn variable_layout_supports_implicit_option_bool() {
+    assert_eq!(ImplicitBoolArgs::DATA_LENS, [3, 4]);
+
+    let none_value = ImplicitBoolArgs {
+        amount: 11,
+        gasless: None,
+        split: 2,
+    };
+    let some_value = ImplicitBoolArgs {
+        amount: 11,
+        gasless: Some(true),
+        split: 2,
+    };
+
+    assert_eq!(none_value.encode().unwrap(), vec![11, 0, 2]);
+    assert_eq!(some_value.encode().unwrap(), vec![11, 0, 1, 2]);
+
+    let some_nonzero_bytes = vec![11, 0, 9, 2];
+    let some_view = ImplicitBoolArgs::decode(&some_nonzero_bytes).unwrap();
+    assert_eq!(some_view.amount(), 11);
+    assert_eq!(some_view.gasless(), Some(true));
+    assert_eq!(some_view.split(), 2);
 }
