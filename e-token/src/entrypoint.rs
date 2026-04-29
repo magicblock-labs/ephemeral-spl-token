@@ -273,13 +273,13 @@ fn process_internal_instruction(
             #[cfg(feature = "logging")]
             pinocchio_log::log!("Instruction: ExecuteTransferCallback");
 
-            process_execute_transfer_callback(accounts, instruction_data)
+            process_execute_transfer_callback(accounts, data)
         }
         ESplInternalInstruction::InitializeGroupReceipt => {
             #[cfg(feature = "logging")]
             pinocchio_log::log!("Instruction: InitializeGroupReceipt");
 
-            process_initialize_group_receipt(accounts, instruction_data)
+            process_initialize_group_receipt(accounts, data)
         }
     }
 }

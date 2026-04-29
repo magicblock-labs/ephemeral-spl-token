@@ -85,6 +85,8 @@ impl TryFrom<u8> for ESplInternalInstruction {
             205 => Ok(Self::UndelegateLamportsPda),
             206 => Ok(Self::CloseLamportsPdaIntent),
             207 => Ok(Self::MarkTransferQueueRefillPending),
+            208 => Ok(Self::ExecuteTransferCallback),
+            209 => Ok(Self::InitializeGroupReceipt),
             _ => Err(()),
         }
     }
