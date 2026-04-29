@@ -36,6 +36,8 @@ pub enum TestInternalInstruction {
     UndelegateLamportsPda = 205,
     CloseLamportsPdaIntent = 206,
     MarkTransferQueueRefillPending = 207,
+    ExecuteTransferCallback = 208,
+    InitializeGroupReceipt = 209,
 }
 
 impl TestInternalInstruction {

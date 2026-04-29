@@ -1,4 +1,3 @@
-use ephemeral_spl_api::instruction::internal;
 use ephemeral_spl_api::state::group_receipt::{GroupReceipt, GroupReceiptHeader};
 use ephemeral_spl_api::state::transfer_queue::{HEADER_LEN, QUEUE_SEED, TRANSFER_QUEUE_VERSION};
 use serial_test::serial;
@@ -10,6 +9,7 @@ use solana_program_test::{processor, tokio, ProgramTest};
 use solana_pubkey::{pubkey, Pubkey};
 use solana_signer::Signer;
 use solana_transaction::Transaction;
+use utils::TestInternalInstruction as internal;
 
 mod common;
 mod utils;
@@ -34,7 +34,7 @@ fn callback_ix_data(ok: bool, amount: u64, group_id: u32) -> Vec<u8> {
 
     // MagicResponseView (bincode V1): variant(4) + ok(1) + data_len(8) + data + error_len(8) + sig_tag(1)
     let mut data = Vec::new();
-    data.push(internal::EXECUTE_TRANSFER_CALLBACK);
+    data.push(internal::ExecuteTransferCallback.discriminator());
     data.extend_from_slice(&0u32.to_le_bytes()); // variant = 0
     data.push(ok as u8);
     data.extend_from_slice(&(args.len() as u64).to_le_bytes());
@@ -48,7 +48,7 @@ fn callback_ix_data(ok: bool, amount: u64, group_id: u32) -> Vec<u8> {
 /// Layout: discriminator(1) + group_id(4) + splits(4)
 fn initialize_group_receipt_ix_data(group_id: u32, splits: u32) -> Vec<u8> {
     let mut data = Vec::with_capacity(9);
-    data.push(internal::INITIALIZE_GROUP_RECEIPT);
+    data.push(internal::InitializeGroupReceipt.discriminator());
     data.extend_from_slice(&group_id.to_le_bytes());
     data.extend_from_slice(&splits.to_le_bytes());
     data

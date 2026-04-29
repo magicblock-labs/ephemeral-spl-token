@@ -1,4 +1,8 @@
 use crate::processor::utils::GroupReceiptController;
+use alloc::vec;
+use alloc::vec::Vec;
+use data_layout::variable_offset_layout;
+
 use ephemeral_spl_api::state::group_receipt::TransferReceipt;
 use ephemeral_spl_api::state::transfer_queue::{
     queue_views_checked, TransferQueueHeader, QUEUE_SEED,
@@ -9,28 +13,16 @@ use solana_signature::Signature;
 
 pub const GROUP_RECEIPT_SEED: &[u8] = b"group-receipt";
 
+// buffer_offset = 6: response.data starts at byte 14 of the original 8-byte-aligned
+// instruction buffer (1 disc + 4 variant + 1 ok + 8 data_len), and 14 % 8 = 6.
+#[variable_offset_layout(buffer_offset = 6)]
 pub struct TransferCallbackArgs {
     /// Amount was transferred in action
-    amount: u64,
+    pub amount: u64,
     /// Group ID of a transfer
-    group_id: u32,
+    pub group_id: u32,
     // Flags
-    _flag: u8,
-}
-
-impl TransferCallbackArgs {
-    pub fn try_from_bytes(data: &[u8]) -> Result<Self, ProgramError> {
-        let mut cur = 0;
-        let amount = read_u64_le(data, &mut cur).ok_or(ProgramError::InvalidInstructionData)?;
-        let group_id = read_u32_le(data, &mut cur).ok_or(ProgramError::InvalidAccountData)?;
-        let flag = read_u8(data, &mut cur).ok_or(ProgramError::InvalidInstructionData)?;
-
-        Ok(Self {
-            amount,
-            group_id,
-            _flag: flag,
-        })
-    }
+    pub flag: u8,
 }
 
 pub fn derive_group_receipt_id(queue_address: &Address, group_id: u32) -> (Address, u8) {
@@ -80,7 +72,7 @@ pub fn process_execute_transfer_callback(
     validate_common(validator, queue_info, mint, header)?;
 
     let response = MagicResponseView::deserialize(instruction_data)?;
-    let args = TransferCallbackArgs::try_from_bytes(response.data)?;
+    let args = TransferCallbackArgs::decode(response.data)?;
 
     // Handles group receipt flow
     handle_group_receipt(
@@ -152,12 +144,12 @@ fn handle_group_receipt(
     group_receipt_info: &AccountView,
     magic_vault: &AccountView,
     magic_program: &AccountView,
-    args: &TransferCallbackArgs,
+    args: &TransferCallbackArgsView<'_>,
     response: &MagicResponseView,
 ) -> ProgramResult {
     // Receipt specific validation
     let (group_receipt_id, group_receipt_bump) =
-        derive_group_receipt_id(queue_info.address(), args.group_id);
+        derive_group_receipt_id(queue_info.address(), args.group_id());
     if &group_receipt_id != group_receipt_info.address() {
         return Err(ProgramError::InvalidSeeds);
     }
@@ -175,7 +167,7 @@ fn handle_group_receipt(
             magic_vault,
             magic_program,
             group_receipt_bump,
-            args.group_id,
+            args.group_id(),
             0,
         )?
     } else {
@@ -183,7 +175,7 @@ fn handle_group_receipt(
     };
     group_receipt.record_transfer(TransferReceipt::new(
         response.signature.copied(),
-        args.amount,
+        args.amount(),
         response.ok,
     ))?;
 

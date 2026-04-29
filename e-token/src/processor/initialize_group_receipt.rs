@@ -1,4 +1,8 @@
-use crate::processor::execute_transfer_callback::{derive_group_receipt_id, read_u32_le};
+use alloc::vec;
+use alloc::vec::Vec;
+use data_layout::variable_offset_layout;
+
+use crate::processor::execute_transfer_callback::derive_group_receipt_id;
 use crate::processor::utils::{GroupReceiptController, CRANK_SIGNER};
 use core::num::NonZeroU32;
 use ephemeral_spl_api::state::transfer_queue::{
@@ -29,8 +33,8 @@ pub fn process_initialize_group_receipt(
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
-    let args = InitializeGroupReceiptArgs::try_from_bytes(instruction_data)?;
-    let splits = NonZeroU32::new(args.splits).ok_or(ProgramError::InvalidInstructionData)?;
+    let args = InitializeGroupReceiptArgs::decode(instruction_data)?;
+    let splits = NonZeroU32::new(args.splits()).ok_or(ProgramError::InvalidInstructionData)?;
 
     let data = unsafe { queue_info.borrow_unchecked() };
     let (header, _) = queue_views_checked(data)?;
@@ -45,7 +49,7 @@ pub fn process_initialize_group_receipt(
             group_receipt,
             magic_vault,
             magic_program,
-            args.group_id,
+            args.group_id(),
             splits,
         )
     } else {
@@ -55,7 +59,7 @@ pub fn process_initialize_group_receipt(
             magic_vault,
             magic_program,
             group_receipt_bump,
-            args.group_id,
+            args.group_id(),
             splits.get(),
         )?;
 
@@ -68,7 +72,7 @@ fn validate(
     queue_info: &AccountView,
     group_receipt: &AccountView,
     header: &TransferQueueHeader,
-    args: &InitializeGroupReceiptArgs,
+    args: &InitializeGroupReceiptArgsView<'_>,
 ) -> Result<u8, ProgramError> {
     if !crank_signer.is_signer() {
         return Err(ProgramError::MissingRequiredSignature);
@@ -92,7 +96,7 @@ fn validate(
     }
 
     let (derived_group_receipt_id, bump) =
-        derive_group_receipt_id(queue_info.address(), args.group_id);
+        derive_group_receipt_id(queue_info.address(), args.group_id());
     if group_receipt.address() != &derived_group_receipt_id {
         return Err(ProgramError::InvalidSeeds);
     }
@@ -128,19 +132,10 @@ fn handle_already_initialized_receipt(
     }
 }
 
+#[variable_offset_layout(buffer_offset = 1)]
 pub struct InitializeGroupReceiptArgs {
     /// ID of a group receipt associated with
-    group_id: u32,
+    pub group_id: u32,
     /// Number of splits for transfer
-    splits: u32,
-}
-
-impl InitializeGroupReceiptArgs {
-    pub fn try_from_bytes(bytes: &[u8]) -> Result<Self, ProgramError> {
-        let mut cur = 0;
-        let group_id = read_u32_le(bytes, &mut cur).ok_or(ProgramError::InvalidInstructionData)?;
-        let splits = read_u32_le(bytes, &mut cur).ok_or(ProgramError::InvalidInstructionData)?;
-
-        Ok(Self { group_id, splits })
-    }
+    pub splits: u32,
 }
