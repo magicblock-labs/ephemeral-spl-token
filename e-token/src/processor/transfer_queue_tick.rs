@@ -253,10 +253,6 @@ fn schedule_execute_ready_transfer(
     );
     let standalone_action_callback =
         create_action_callback(&standalone_action_callback_accounts, &callback_data);
-        
-    let vault_token_account = derive_associated_token_address(&vault, &queue_state.mint);
-    let destination_token_account =
-        derive_associated_token_address(&queued_transfer.destination_owner, &queue_state.mint);
 
     let args = ExecuteQueuedTransferArgs {
         amount: queued_transfer.amount,
@@ -270,7 +266,6 @@ fn schedule_execute_ready_transfer(
     };
     let execute_data =
         ESplInternalInstruction::ExecuteReadyQueuedTransfer.with_data(&args.encode().unwrap());
-
 
     let standalone_action_accounts =
         create_action_accounts(queued_transfer, &vault, &queue_state.mint);
@@ -455,7 +450,7 @@ fn create_action_callback<'a>(
 
     ActionCallback {
         destination_program: crate::ID,
-        discriminator: &[EXECUTE_TRANSFER_CALLBACK],
+        discriminator: &[ESplInternalInstruction::ExecuteTransferCallback as u8],
         payload,
         compute_units: CALLBACK_COMPUTE_UNITS,
         accounts,

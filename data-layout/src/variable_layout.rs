@@ -131,8 +131,15 @@ pub(crate) fn expand_variable_offset_layout(
     let implicit_len_validation =
         implicit_len_validation(struct_name, min_datalen, &fields.named, &field_layouts)?;
 
-    let public_len_const = public_len_const(min_datalen_expr.clone(), min_datalen, max_datalen_expr.clone(), max_datalen, &field_layouts)?;
-    let data_len_validation = data_len_validation(struct_name, min_datalen, max_datalen, &field_layouts)?;
+    let public_len_const = public_len_const(
+        min_datalen_expr.clone(),
+        min_datalen,
+        max_datalen_expr.clone(),
+        max_datalen,
+        &field_layouts,
+    )?;
+    let data_len_validation =
+        data_len_validation(struct_name, min_datalen, max_datalen, &field_layouts)?;
 
     Ok(quote! {
         #emitted_input
@@ -499,23 +506,23 @@ impl FieldLayout {
                     OptionalKind::Implicit(bit_index) => {
                         let bit_index = usize_lit(*bit_index);
                         quote! {
-                        if #struct_name::__implicit_option_present_for_len(bytes.len(), #bit_index) {
-                            let data_offset = offset;
-                            #alignment_check
-                            let end = data_offset + #value_size;
-                            if end > bytes.len() {
-                                pinocchio_log::log!(
-                                    "Truncated payload for field {}: need {} bytes, have {}",
-                                    #field_name,
-                                    end,
-                                    bytes.len(),
-                                );
-                                return Err(pinocchio::error::ProgramError::InvalidInstructionData);
+                            if #struct_name::__implicit_option_present_for_len(bytes.len(), #bit_index) {
+                                let data_offset = offset;
+                                #alignment_check
+                                let end = data_offset + #value_size;
+                                if end > bytes.len() {
+                                    pinocchio_log::log!(
+                                        "Truncated payload for field {}: need {} bytes, have {}",
+                                        #field_name,
+                                        end,
+                                        bytes.len(),
+                                    );
+                                    return Err(pinocchio::error::ProgramError::InvalidInstructionData);
+                                }
+                                offset = end;
                             }
-                            offset = end;
                         }
                     }
-                    },
                 }
             }
             Self::Vec { elem, flexible } => {
@@ -916,22 +923,22 @@ impl FieldLayout {
                     (OptionalKind::Implicit(bit_index), AccessMode::Copy) => {
                         let bit_index = usize_lit(bit_index);
                         Ok(quote! {
-                        pub fn #field_ident(&self) -> core::option::Option<#ty> {
-                            let offset = #offset_expr;
-                            #struct_name::__implicit_option_present_for_len(self.bytes.len(), #bit_index)
-                                .then(|| #return_expr)
-                        }
-                    })
+                            pub fn #field_ident(&self) -> core::option::Option<#ty> {
+                                let offset = #offset_expr;
+                                #struct_name::__implicit_option_present_for_len(self.bytes.len(), #bit_index)
+                                    .then(|| #return_expr)
+                            }
+                        })
                     }
                     (OptionalKind::Implicit(bit_index), AccessMode::Ref) => {
                         let bit_index = usize_lit(bit_index);
                         Ok(quote! {
-                        pub fn #field_ident(&self) -> core::option::Option<&#ty> {
-                            let offset = #offset_expr;
-                            #struct_name::__implicit_option_present_for_len(self.bytes.len(), #bit_index)
-                                .then(|| #return_expr)
-                        }
-                    })
+                            pub fn #field_ident(&self) -> core::option::Option<&#ty> {
+                                let offset = #offset_expr;
+                                #struct_name::__implicit_option_present_for_len(self.bytes.len(), #bit_index)
+                                    .then(|| #return_expr)
+                            }
+                        })
                     }
                 }
             }

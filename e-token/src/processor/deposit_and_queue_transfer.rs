@@ -1,3 +1,4 @@
+use crate::instruction::ESplInternalInstruction;
 use crate::processor::ensure_transfer_queue_crank::derive_queue_crank_task_id;
 use crate::processor::execute_transfer_callback::derive_group_receipt_id;
 use crate::processor::internal::token_vault::transfer_to_vault_for_mint;
@@ -5,20 +6,19 @@ use crate::processor::utils::{
     get_associated_token_address, read_mint_decimals, validate_token_account, CRANK_SIGNER,
     MAGIC_VAULT_ID,
 };
-use core::{convert::TryFrom, marker::PhantomData};
-use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
-use ephemeral_rollups_pinocchio::crank::{CrankInstruction, ScheduleCrankArgs, ScheduleCrankCpi};
-use ephemeral_spl_api::instruction::internal::INITIALIZE_GROUP_RECEIPT;
 use alloc::vec;
 use alloc::vec::Vec;
+use core::convert::TryFrom;
 use data_layout::variable_offset_layout;
+use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
+use ephemeral_rollups_pinocchio::crank::{CrankInstruction, ScheduleCrankArgs, ScheduleCrankCpi};
 use ephemeral_spl_api::debug_log;
 #[cfg(feature = "logging")]
 use ephemeral_spl_api::state::transfer_queue::capacity_from_data_len;
 use ephemeral_spl_api::state::transfer_queue::{
-    capacity_from_data_len, queue_allocate_group_id_from_data,
-    queue_len_and_bump_for_mint_with_capacity, queue_push_from_data, queue_views_checked,
-    QueuedTransfer, TransferQueue, QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA, QUEUE_SEED,
+    queue_allocate_group_id_from_data, queue_len_and_bump_for_mint_with_capacity,
+    queue_push_from_data, queue_views_checked, QueuedTransfer, TransferQueue,
+    QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA, QUEUE_SEED,
 };
 use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::address::address_eq;
@@ -267,7 +267,7 @@ fn create_group_receipt(
     // Create argument data for crank target
     let crank_task_id = derive_queue_crank_task_id(&group_receipt);
     let mut tick_data = [0u8; 9];
-    tick_data[0] = INITIALIZE_GROUP_RECEIPT;
+    tick_data[0] = ESplInternalInstruction::InitializeGroupReceipt as u8;
     tick_data[1..5].copy_from_slice(group_id.to_le_bytes().as_ref());
     tick_data[5..9].copy_from_slice(split.to_le_bytes().as_ref());
 

@@ -36,6 +36,13 @@ pub(crate) enum ESplInternalInstruction {
     /// 207 - MarkTransferQueueRefillPending: Magic standalone action that
     ///       sets the per-queue refill-state pending flag.
     MarkTransferQueueRefillPending = 207,
+
+    /// 205 - ExecuteTransferCallback: callback with result of `ExecuteReadyQueuedTransfer`
+    ///       maintains `GroupReceipt`, adds `TransferReceipt`
+    ExecuteTransferCallback = 208,
+
+    /// 206 - InitializeGroupReceipt: crank tick that initializes group receipt
+    InitializeGroupReceipt = 209,
 }
 
 impl ESplInternalInstruction {
