@@ -10,13 +10,11 @@ use ephemeral_rollups_pinocchio::{
     },
     spl::consts::TOKEN_PROGRAM_ID,
 };
-use ephemeral_spl_api::instruction::internal::{
-    EXECUTE_TRANSFER_CALLBACK, MARK_TRANSFER_QUEUE_REFILL_PENDING,
-};
+use ephemeral_spl_api::debug_log;
+use ephemeral_spl_api::require_n_accounts;
 use ephemeral_spl_api::state::transfer_queue::{
     queue_peek_from_data, queue_pop_from_data, queue_views_checked, QueuedTransfer, QUEUE_SEED,
 };
-use ephemeral_spl_api::{instruction::internal::EXECUTE_READY_QUEUED_TRANSFER, require_n_accounts};
 use ephemeral_spl_api::{require, require_eq_keys};
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::{clock::Clock, Sysvar};
@@ -30,6 +28,10 @@ use crate::processor::internal::transfer_queue_refill::{
     MARK_TRANSFER_QUEUE_REFILL_PENDING_ESCROW_INDEX,
 };
 use crate::processor::utils::MAGIC_VAULT_ID;
+use crate::{
+    instruction::ESplInternalInstruction,
+    processor::execute_ready_queued_transfer::ExecuteQueuedTransferArgs,
+};
 
 const EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX: u8 = 0;
 
@@ -159,10 +161,8 @@ fn try_schedule_queue_refill(
         return Ok(false);
     }
 
-    let refill_data = [
-        MARK_TRANSFER_QUEUE_REFILL_PENDING,
-        MARK_TRANSFER_QUEUE_REFILL_PENDING_ESCROW_INDEX,
-    ];
+    let refill_data = ESplInternalInstruction::MarkTransferQueueRefillPending
+        .with_data(&[MARK_TRANSFER_QUEUE_REFILL_PENDING_ESCROW_INDEX]);
     let refill_accounts = [
         ShortAccountMeta {
             pubkey: RENT_PDA,
@@ -194,27 +194,22 @@ fn try_schedule_queue_refill(
 #[inline(always)]
 fn ready_queued_transfer(
     queued_transfer: Option<QueuedTransfer>,
-    queue_len: usize,
+    _queue_len: usize,
     clock: &Clock,
 ) -> Result<Option<QueuedTransfer>, ProgramError> {
     let Some(queued_transfer) = queued_transfer else {
-        #[cfg(feature = "logging")]
-        pinocchio_log::log!("ProcessTransferQueueTick queue length: {}", queue_len);
+        debug_log!("ProcessTransferQueueTick queue length: {}", _queue_len);
         return Ok(None);
     };
-
-    #[cfg(not(feature = "logging"))]
-    let _ = queue_len;
 
     let now = clock
         .unix_timestamp
         .checked_mul(MILLIS_PER_SECOND)
         .ok_or(ProgramError::InvalidInstructionData)?;
     if queued_transfer.ready_at > now {
-        #[cfg(feature = "logging")]
-        pinocchio_log::log!(
+        debug_log!(
             "ProcessTransferQueueTick queue length: {} (next not ready)",
-            queue_len
+            _queue_len
         );
         return Ok(None);
     }
@@ -234,8 +229,7 @@ fn schedule_execute_ready_transfer(
         ProgramError::InvalidAccountOwner
     );
 
-    #[cfg(feature = "logging")]
-    pinocchio_log::log!(
+    debug_log!(
         "ProcessTransferQueueTick queue length before pop: {}",
         queue_state.queue_len
     );
@@ -259,26 +253,31 @@ fn schedule_execute_ready_transfer(
     );
     let standalone_action_callback =
         create_action_callback(&standalone_action_callback_accounts, &callback_data);
+        
+    let vault_token_account = derive_associated_token_address(&vault, &queue_state.mint);
+    let destination_token_account =
+        derive_associated_token_address(&queued_transfer.destination_owner, &queue_state.mint);
 
-    // Create action with callback
-    let mut execute_data = [0_u8; 19];
-    execute_data[0] = EXECUTE_READY_QUEUED_TRANSFER;
-    execute_data[1] = EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX;
-    execute_data[2..10].copy_from_slice(&amount_bytes);
-    execute_data[10] = queued_transfer.flags;
-    let execute_data_len = if queued_transfer.client_ref_id != 0 {
-        execute_data[11..19].copy_from_slice(&queued_transfer.client_ref_id.to_le_bytes());
-        19
-    } else {
-        11
+    let args = ExecuteQueuedTransferArgs {
+        amount: queued_transfer.amount,
+        client_ref_id: if queued_transfer.client_ref_id != 0 {
+            Some(queued_transfer.client_ref_id)
+        } else {
+            None
+        },
+        escrow_index: EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
+        flags: queued_transfer.flags,
     };
+    let execute_data =
+        ESplInternalInstruction::ExecuteReadyQueuedTransfer.with_data(&args.encode().unwrap());
+
 
     let standalone_action_accounts =
         create_action_accounts(queued_transfer, &vault, &queue_state.mint);
     let standalone_actions = [create_callhandler(
         tick_accounts.queue_info,
         &standalone_action_accounts,
-        &execute_data[..execute_data_len],
+        &execute_data,
         standalone_action_callback,
     )];
 
@@ -332,20 +331,15 @@ fn pop_executed_transfer(
         ProgramError::InvalidAccountData
     );
 
-    #[cfg(feature = "logging")]
-    {
-        let sender = popped_transfer.source.to_string();
-        let receiver = popped_transfer.destination_owner.to_string();
-        pinocchio_log::log!(
-            "ProcessTransferQueueTick group_id: {} task_id: {} client_ref_id: {} sender: {} receiver: {} amount: {}",
-            popped_transfer.group_id(),
-            popped_transfer.task_id,
-            popped_transfer.client_ref_id,
-            sender.as_str(),
-            receiver.as_str(),
-            popped_transfer.amount
-        );
-    }
+    debug_log!(
+        "ProcessTransferQueueTick group_id: {} task_id: {} client_ref_id: {} sender: {} receiver: {} amount: {}",
+        popped_transfer.group_id(),
+        popped_transfer.task_id,
+        popped_transfer.client_ref_id,
+        popped_transfer.source.to_string().as_str(),
+        popped_transfer.destination_owner.to_string().as_str(),
+        popped_transfer.amount
+    );
 
     Ok(())
 }

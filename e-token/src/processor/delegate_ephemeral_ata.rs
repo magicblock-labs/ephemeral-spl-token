@@ -1,8 +1,12 @@
+use alloc::vec;
+use alloc::vec::Vec;
+use data_layout::variable_offset_layout;
 use ephemeral_rollups_pinocchio::instruction::DelegateAccountCpiBuilder;
 use ephemeral_rollups_pinocchio::types::DelegateConfig;
+use ephemeral_spl_api::debug_log;
 use ephemeral_spl_api::require_n_accounts;
 use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_initialized};
-use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
+use pinocchio::{AccountView, Address, ProgramResult};
 
 ///
 /// Executes on:
@@ -35,7 +39,7 @@ pub fn process_delegate_ephemeral_ata(
         system_program,
     ] = require_n_accounts!(accounts, 8);
 
-    let args = DelegateArgs::try_from_bytes(instruction_data)?;
+    let args = DelegateArgs::decode(instruction_data)?;
 
     let delegation_program = ephemeral_spl_api::program::DELEGATION_PROGRAM_ID;
     if ephemeral_ata_info.owned_by(&delegation_program) {
@@ -47,7 +51,9 @@ pub fn process_delegate_ephemeral_ata(
         load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
 
     let config = DelegateConfig {
-        validator: args.validator().map(Address::new_from_array),
+        validator: args
+            .validator()
+            .map(|slice| Address::new_from_array(*slice)),
         ..DelegateConfig::default()
     };
 
@@ -57,10 +63,7 @@ pub fn process_delegate_ephemeral_ata(
     let owner = ephemeral_ata.owner.clone();
     let seeds: &[&[u8]] = &[owner.as_ref(), mint.as_ref()];
 
-    #[cfg(feature = "logging")]
-    {
-        pinocchio_log::log!("Delegating eata");
-    }
+    debug_log!("Delegating eata");
 
     DelegateAccountCpiBuilder::new(
         payer_info,
@@ -77,37 +80,9 @@ pub fn process_delegate_ephemeral_ata(
     .invoke()
 }
 
-///
-/// DataLayout:
-///
-///     00..32 : validator (optional [u8; 32])
-///
-/// ValidLength:
-///
-///     00 | 32
-///
+#[variable_offset_layout(buffer_offset = 1, option = implicit)]
 pub struct DelegateArgs {
-    validator: Option<[u8; 32]>,
+    pub validator: Option<[u8; 32]>,
 }
 
-impl DelegateArgs {
-    #[inline]
-    pub fn try_from_bytes(bytes: &[u8]) -> Result<DelegateArgs, ProgramError> {
-        if bytes.is_empty() {
-            Ok(DelegateArgs { validator: None })
-        } else if bytes.len() == 32 {
-            let mut arr = [0u8; 32];
-            arr.copy_from_slice(&bytes[..32]);
-            Ok(DelegateArgs {
-                validator: Some(arr),
-            })
-        } else {
-            Err(ProgramError::InvalidInstructionData)
-        }
-    }
-
-    #[inline]
-    pub fn validator(&self) -> Option<[u8; 32]> {
-        self.validator
-    }
-}
+static_assertions::const_assert!(matches!(DelegateArgs::DATA_LENS, [0, 32]));

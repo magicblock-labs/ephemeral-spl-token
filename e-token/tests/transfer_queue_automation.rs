@@ -15,9 +15,9 @@ use ephemeral_spl_api::state::transfer_queue::{
     QueuedTransfer, TransferQueueHeader, HEADER_LEN, ITEM_LEN, QUEUE_SEED,
 };
 use ephemeral_spl_api::ID as PROGRAM;
-use ephemeral_spl_api::{
-    instruction::{self, internal},
-    state::transfer_queue::TransferQueue,
+use ephemeral_spl_api::{instruction, state::transfer_queue::TransferQueue};
+use ephemeral_token_program::{
+    DepositAndQueueTransferArgs, ExecuteQueuedTransferArgs, InitializeTransferQueueArgs,
 };
 use magicblock_magic_program_api::{Pubkey as MagicPubkey, MAGIC_CONTEXT_PUBKEY};
 use solana_account::Account as SolanaAccount;
@@ -25,6 +25,8 @@ use solana_instruction::{AccountMeta, Instruction};
 use solana_program::{account_info::AccountInfo, entrypoint::ProgramResult};
 use solana_program_pack::Pack;
 use spl_token_interface::state::Account;
+
+use crate::utils::TestInternalInstruction;
 
 use {
     solana_keypair::Keypair,
@@ -181,7 +183,7 @@ async fn setup_fixture() -> Fixture {
             AccountMeta::new(rent_pda, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_RENT_PDA],
+        data: instruction::ESplInstruction::InitializeRentPda.to_vec(),
     };
     let ix_fund_rent =
         solana_system_interface::instruction::transfer(&payer, &rent_pda, 100_000_000);
@@ -197,7 +199,7 @@ async fn setup_fixture() -> Fixture {
             AccountMeta::new_readonly(utils::associated_token_program_id(), false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_GLOBAL_VAULT],
+        data: instruction::ESplInstruction::InitializeGlobalVault.to_vec(),
     };
 
     let ix_init_queue = Instruction {
@@ -211,7 +213,13 @@ async fn setup_fixture() -> Fixture {
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
             AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
         ],
-        data: vec![instruction::INITIALIZE_TRANSFER_QUEUE],
+        data: instruction::ESplInstruction::InitializeTransferQueue.with_data(
+            &InitializeTransferQueueArgs {
+                requested_items: None,
+            }
+            .encode()
+            .unwrap(),
+        ),
     };
 
     let ix_init_destination_ata = Instruction {
@@ -271,14 +279,18 @@ async fn enqueue_transfer_with_client_ref_id(
     client_ref_id: Option<u64>,
     entry_key: &str,
 ) {
-    let mut data = vec![instruction::DEPOSIT_AND_QUEUE_TRANSFER];
-    data.extend_from_slice(&QUEUED_AMOUNT.to_le_bytes());
-    data.extend_from_slice(&min_delay_ms.to_le_bytes());
-    data.extend_from_slice(&min_delay_ms.to_le_bytes());
-    data.extend_from_slice(&1_u32.to_le_bytes());
-    if let Some(client_ref_id) = client_ref_id {
-        data.extend_from_slice(&client_ref_id.to_le_bytes());
-    }
+    let data = instruction::ESplInstruction::DepositAndQueueTransfer.with_data(
+        &DepositAndQueueTransferArgs {
+            amount: QUEUED_AMOUNT,
+            min_delay_ms,
+            max_delay_ms: min_delay_ms,
+            split: 1,
+            flags: None,
+            client_ref_id,
+        }
+        .encode()
+        .unwrap(),
+    );
 
     let ix = Instruction {
         program_id: PROGRAM,
@@ -326,7 +338,7 @@ fn ensure_queue_crank_ix_with_magic_program(
             AccountMeta::new(fixture.magic_context, false),
             AccountMeta::new_readonly(magic_program, false),
         ],
-        data: vec![instruction::ENSURE_TRANSFER_QUEUE_CRANK],
+        data: instruction::ESplInstruction::EnsureTransferQueueCrank.to_vec(),
     }
 }
 
@@ -346,7 +358,7 @@ fn process_queue_tick_ix_with_magic_program(
             AccountMeta::new(fixture.magic_context, false),
             AccountMeta::new_readonly(magic_program, false),
         ],
-        data: vec![internal::PROCESS_TRANSFER_QUEUE_TICK],
+        data: TestInternalInstruction::ProcessTransferQueueTick.to_vec(),
     }
 }
 
@@ -457,7 +469,7 @@ async fn ensure_transfer_queue_crank_schedules_one_recurring_queue_crank() {
     );
     assert_eq!(
         captured[0].args.instructions[0].data,
-        vec![internal::PROCESS_TRANSFER_QUEUE_TICK]
+        TestInternalInstruction::ProcessTransferQueueTick.to_vec()
     );
     let queue_after_first_ensure = queue_account(&mut fixture.context, fixture.queue).await;
     let header_after_first_ensure = read_header_unaligned(&queue_after_first_ensure.data);
@@ -587,7 +599,7 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
                 AccountMeta::new(rent_pda, false),
                 AccountMeta::new_readonly(solana_system_interface::program::ID, false),
             ],
-            data: vec![instruction::INITIALIZE_RENT_PDA],
+            data: instruction::ESplInstruction::InitializeRentPda.to_vec(),
         };
         let ix_fund_rent =
             solana_system_interface::instruction::transfer(&payer, &rent_pda, 100_000_000);
@@ -603,7 +615,7 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
                 AccountMeta::new_readonly(utils::associated_token_program_id(), false),
                 AccountMeta::new_readonly(solana_system_interface::program::ID, false),
             ],
-            data: vec![instruction::INITIALIZE_GLOBAL_VAULT],
+            data: instruction::ESplInstruction::InitializeGlobalVault.to_vec(),
         };
 
         let ix_init_queue = Instruction {
@@ -617,7 +629,13 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
                 AccountMeta::new_readonly(solana_system_interface::program::ID, false),
                 AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
             ],
-            data: vec![instruction::INITIALIZE_TRANSFER_QUEUE],
+            data: instruction::ESplInstruction::InitializeTransferQueue.with_data(
+                &InitializeTransferQueueArgs {
+                    requested_items: None,
+                }
+                .encode()
+                .unwrap(),
+            ),
         };
 
         let ix_init_destination_ata = Instruction {
@@ -810,7 +828,7 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
                 AccountMeta::new(rent_pda, false),
                 AccountMeta::new_readonly(solana_system_interface::program::ID, false),
             ],
-            data: vec![instruction::INITIALIZE_RENT_PDA],
+            data: instruction::ESplInstruction::InitializeRentPda.to_vec(),
         };
         let ix_fund_rent =
             solana_system_interface::instruction::transfer(&payer, &rent_pda, 100_000_000);
@@ -826,7 +844,7 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
                 AccountMeta::new_readonly(utils::associated_token_program_id(), false),
                 AccountMeta::new_readonly(solana_system_interface::program::ID, false),
             ],
-            data: vec![instruction::INITIALIZE_GLOBAL_VAULT],
+            data: instruction::ESplInstruction::InitializeGlobalVault.to_vec(),
         };
 
         let ix_init_queue = Instruction {
@@ -840,7 +858,13 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
                 AccountMeta::new_readonly(solana_system_interface::program::ID, false),
                 AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
             ],
-            data: vec![instruction::INITIALIZE_TRANSFER_QUEUE],
+            data: instruction::ESplInstruction::InitializeTransferQueue.with_data(
+                &InitializeTransferQueueArgs {
+                    requested_items: None,
+                }
+                .encode()
+                .unwrap(),
+            ),
         };
 
         let ix_init_destination_ata = Instruction {
@@ -1040,13 +1064,16 @@ async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
         standalone_action.args.escrow_index,
         EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX
     );
-    let mut expected_action_data = vec![
-        internal::EXECUTE_READY_QUEUED_TRANSFER,
-        EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
-    ];
-    expected_action_data.extend_from_slice(&expected_amount.to_le_bytes());
-    expected_action_data
-        .push(ephemeral_spl_api::state::transfer_queue::QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA);
+
+    let args = ExecuteQueuedTransferArgs {
+        amount: expected_amount,
+        client_ref_id: None,
+        escrow_index: EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
+        flags: ephemeral_spl_api::state::transfer_queue::QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
+    };
+    let expected_action_data =
+        TestInternalInstruction::ExecuteReadyQueuedTransfer.with_data(&args.encode().unwrap());
+
     assert_eq!(standalone_action.args.data, expected_action_data);
     assert_eq!(standalone_action.accounts.len(), 9);
     let rent_pda = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM).0;
@@ -1192,13 +1219,13 @@ async fn recurring_queue_crank_includes_client_ref_id_in_execute_action_when_pre
         transfer_action.destination_program.to_bytes(),
         PROGRAM.to_bytes()
     );
-    let mut expected_action_data = vec![
-        internal::EXECUTE_READY_QUEUED_TRANSFER,
-        EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
-    ];
-    expected_action_data.extend_from_slice(&expected_amount.to_le_bytes());
-    expected_action_data
-        .push(ephemeral_spl_api::state::transfer_queue::QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA);
-    expected_action_data.extend_from_slice(&42_u64.to_le_bytes());
+    let args = ExecuteQueuedTransferArgs {
+        amount: expected_amount,
+        client_ref_id: Some(42),
+        escrow_index: EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
+        flags: ephemeral_spl_api::state::transfer_queue::QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
+    };
+    let expected_action_data =
+        TestInternalInstruction::ExecuteReadyQueuedTransfer.with_data(&args.encode().unwrap());
     assert_eq!(transfer_action.args.data, expected_action_data);
 }

@@ -1,13 +1,14 @@
+#[cfg(feature = "logging")]
+use alloc::string::ToString;
+
 use dlp_api::compact::ClearText;
+use ephemeral_spl_api::debug_log;
 use ephemeral_spl_api::require_n_accounts;
 use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use solana_instruction::{AccountMeta, Instruction};
 
 const TRANSFER_CHECKED_DISCRIMINATOR: u8 = 12;
-
-#[cfg(feature = "logging")]
-use crate::alloc::string::ToString;
 
 use crate::processor::{
     internal::shuttle_delegation::{
@@ -83,7 +84,7 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
         token_program_info,
     ] = require_n_accounts!(accounts, 16);
 
-    let args = DepositAndDelegateShuttleArgs::try_from_bytes(instruction_data)?;
+    let args = DepositAndDelegateShuttleArgs::decode(instruction_data)?;
 
     let accounts = WithdrawThroughDelegatedShuttleAccounts {
         payer_info,
@@ -116,14 +117,19 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
         0,
     )?;
 
-    #[cfg(feature = "logging")]
-    {
-        let shuttle_wallet_ata = accounts.shuttle_wallet_ata_info.address().to_string();
-        pinocchio_log::log!("Shuttle wallet ata: {}", shuttle_wallet_ata.as_str());
+    debug_log!(
+        "Shuttle wallet ata: {}",
+        accounts
+            .shuttle_wallet_ata_info
+            .address()
+            .to_string()
+            .as_str()
+    );
 
-        let shuttle = accounts.shuttle_info.address().to_string();
-        pinocchio_log::log!("Shuttle: {}", shuttle.as_str());
-    }
+    debug_log!(
+        "Shuttle: {}",
+        accounts.shuttle_info.address().to_string().as_str()
+    );
 
     if prepared.already_delegated {
         return Ok(());

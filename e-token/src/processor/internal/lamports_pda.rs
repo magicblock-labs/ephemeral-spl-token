@@ -1,5 +1,8 @@
-use ephemeral_spl_api::require;
-use pinocchio::{error::ProgramError, Address};
+use data_layout::variable_offset_layout;
+use pinocchio::Address;
+
+use alloc::vec;
+use alloc::vec::Vec;
 
 pub(crate) const LAMPORTS_PDA_SEED: &[u8] = b"lamports";
 
@@ -19,20 +22,8 @@ pub(crate) fn derive_lamports_pda(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn parse_amount_and_salt(
-    instruction_data: &[u8],
-) -> Result<(u64, [u8; 32]), ProgramError> {
-    require!(
-        instruction_data.len() == 40,
-        ProgramError::InvalidInstructionData
-    );
-
-    let mut amount = [0u8; 8];
-    amount.copy_from_slice(&instruction_data[..8]);
-
-    let mut salt = [0u8; 32];
-    salt.copy_from_slice(&instruction_data[8..40]);
-
-    Ok((u64::from_le_bytes(amount), salt))
+#[variable_offset_layout(buffer_offset = 1)]
+pub struct AmountAndSaltArgs {
+    pub amount: u64,
+    pub salt: [u8; 32],
 }

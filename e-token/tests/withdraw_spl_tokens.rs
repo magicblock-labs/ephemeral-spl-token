@@ -53,7 +53,7 @@ async fn withdraw_spl_tokens_decrements_ephemeral_amount() {
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_EPHEMERAL_ATA],
+        data: instruction::ESplInstruction::InitializeEphemeralAta.to_vec(),
     };
 
     // Initialize Global Vault
@@ -69,7 +69,7 @@ async fn withdraw_spl_tokens_decrements_ephemeral_amount() {
             AccountMeta::new_readonly(utils::associated_token_program_id(), false), // associated token program
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_GLOBAL_VAULT],
+        data: instruction::ESplInstruction::InitializeGlobalVault.to_vec(),
     };
 
     let tx_init = Transaction::new_signed_with_payer(
@@ -86,7 +86,7 @@ async fn withdraw_spl_tokens_decrements_ephemeral_amount() {
 
     // Deposit first to fund the vault and set ephemeral amount
     let deposit_amount: u64 = 1_000 * 10u64.pow(DECIMALS as u32);
-    let mut deposit_data = vec![instruction::DEPOSIT_SPL_TOKENS];
+    let mut deposit_data = instruction::ESplInstruction::DepositSplTokens.to_vec();
     deposit_data.extend_from_slice(&deposit_amount.to_le_bytes());
     let ix_deposit = Instruction {
         program_id: PROGRAM,
@@ -115,7 +115,7 @@ async fn withdraw_spl_tokens_decrements_ephemeral_amount() {
 
     // Now withdraw a portion
     let withdraw_amount: u64 = 400 * 10u64.pow(DECIMALS as u32);
-    let mut withdraw_data = vec![instruction::WITHDRAW_SPL_TOKENS];
+    let mut withdraw_data = instruction::ESplInstruction::WithdrawSplTokens.to_vec();
     withdraw_data.extend_from_slice(&withdraw_amount.to_le_bytes());
 
     let ix_withdraw = Instruction {

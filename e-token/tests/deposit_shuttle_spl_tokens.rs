@@ -46,7 +46,8 @@ async fn deposit_spl_tokens_increments_shuttle_amount() {
     let (vault_eata, _) = EphemeralAta::find_pda(&vault, &mint);
     let vault_ata = utils::derive_associated_token_address(vault, mint);
 
-    let mut shuttle_init_data = vec![instruction::INITIALIZE_SHUTTLE_EPHEMERAL_ATA];
+    let mut shuttle_init_data =
+        instruction::ESplInstruction::InitializeShuttleEphemeralAta.to_vec();
     shuttle_init_data.extend_from_slice(&shuttle_id.to_le_bytes());
     let ix_init_shuttle = Instruction {
         program_id: PROGRAM,
@@ -76,7 +77,7 @@ async fn deposit_spl_tokens_increments_shuttle_amount() {
             AccountMeta::new_readonly(utils::associated_token_program_id(), false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_GLOBAL_VAULT],
+        data: instruction::ESplInstruction::InitializeGlobalVault.to_vec(),
     };
 
     let tx_init = Transaction::new_signed_with_payer(
@@ -92,7 +93,7 @@ async fn deposit_spl_tokens_increments_shuttle_amount() {
         .unwrap();
 
     let amount: u64 = 100 * 10u64.pow(DECIMALS as u32);
-    let mut data = vec![instruction::DEPOSIT_SPL_TOKENS];
+    let mut data = instruction::ESplInstruction::DepositSplTokens.to_vec();
     data.extend_from_slice(&amount.to_le_bytes());
 
     let ix_deposit = Instruction {

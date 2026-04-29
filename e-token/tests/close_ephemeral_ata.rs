@@ -43,7 +43,7 @@ async fn close_ephemeral_ata_refunds_rent_and_closes_account() {
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_EPHEMERAL_ATA],
+        data: instruction::ESplInstruction::InitializeEphemeralAta.to_vec(),
     };
 
     let tx_init = Transaction::new_signed_with_payer(
@@ -82,7 +82,7 @@ async fn close_ephemeral_ata_refunds_rent_and_closes_account() {
             AccountMeta::new(ephemeral_ata, false),
             AccountMeta::new(recipient, false),
         ],
-        data: vec![instruction::CLOSE_EPHEMERAL_ATA],
+        data: instruction::ESplInstruction::CloseEphemeralAta.to_vec(),
     };
 
     let tx_close = Transaction::new_signed_with_payer(

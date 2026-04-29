@@ -5,9 +5,10 @@ use ephemeral_rollups_pinocchio::pda::{
 };
 use ephemeral_spl_api::{
     consts::SPONSORED_LAMPORTS_TRANSFER_SETUP_LAMPORTS,
-    instruction::{self, internal},
+    instruction::{self, ESplInstruction},
     ID as PROGRAM,
 };
+use ephemeral_token_program::AmountAndSaltArgs;
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::rent::Rent;
@@ -16,6 +17,8 @@ use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use solana_system_interface::instruction::transfer;
 use solana_transaction::Transaction;
+
+use crate::utils::TestInternalInstruction;
 
 mod common;
 mod utils;
@@ -109,7 +112,7 @@ async fn sponsored_lamports_transfer_delegates_zero_data_pda_and_charges_fee() {
             AccountMeta::new(rent_pda, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_RENT_PDA],
+        data: instruction::ESplInstruction::InitializeRentPda.to_vec(),
     };
     let ix_fund_rent = transfer(&payer, &rent_pda, 100_000_000);
     let tx_init = Transaction::new_signed_with_payer(
@@ -131,10 +134,6 @@ async fn sponsored_lamports_transfer_delegates_zero_data_pda_and_charges_fee() {
         .unwrap()
         .expect("rent pda must exist");
 
-    let mut sponsored_transfer_data = vec![instruction::SPONSORED_LAMPORTS_TRANSFER];
-    sponsored_transfer_data.extend_from_slice(&TRANSFER_AMOUNT.to_le_bytes());
-    sponsored_transfer_data.extend_from_slice(&SALT);
-
     let ix_sponsored_transfer = Instruction {
         program_id: PROGRAM,
         accounts: vec![
@@ -150,7 +149,14 @@ async fn sponsored_lamports_transfer_delegates_zero_data_pda_and_charges_fee() {
             AccountMeta::new(destination.pubkey(), false),
             AccountMeta::new_readonly(destination_delegation_record_pda, false),
         ],
-        data: sponsored_transfer_data,
+        data: ESplInstruction::SponsoredLamportsTransfer.with_data(
+            &AmountAndSaltArgs {
+                amount: TRANSFER_AMOUNT,
+                salt: SALT,
+            }
+            .encode()
+            .unwrap(),
+        ),
     };
     let tx_sponsored_transfer = Transaction::new_signed_with_payer(
         &[ix_sponsored_transfer],
@@ -270,7 +276,7 @@ async fn transfer_lamports_pda_moves_requested_lamports_to_destination() {
         .into(),
     );
 
-    let mut transfer_lamports_data = vec![internal::TRANSFER_LAMPORTS_PDA];
+    let mut transfer_lamports_data = TestInternalInstruction::TransferLamportsPda.to_vec();
     transfer_lamports_data.extend_from_slice(&TRANSFER_AMOUNT.to_le_bytes());
     transfer_lamports_data.extend_from_slice(&SALT);
 
@@ -358,7 +364,7 @@ async fn transfer_lamports_pda_allows_extra_lamports_on_source() {
         .into(),
     );
 
-    let mut transfer_lamports_data = vec![internal::TRANSFER_LAMPORTS_PDA];
+    let mut transfer_lamports_data = TestInternalInstruction::TransferLamportsPda.to_vec();
     transfer_lamports_data.extend_from_slice(&TRANSFER_AMOUNT.to_le_bytes());
     transfer_lamports_data.extend_from_slice(&SALT);
 

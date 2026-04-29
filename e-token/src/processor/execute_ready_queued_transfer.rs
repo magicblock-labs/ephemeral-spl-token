@@ -1,5 +1,5 @@
-use core::marker::PhantomData;
-
+use alloc::vec;
+use alloc::vec::Vec;
 use {
     ephemeral_rollups_pinocchio::pda::ephemeral_balance_pda_from_payer,
     ephemeral_spl_api::state::{
@@ -14,6 +14,7 @@ use crate::processor::{
     internal::token_vault::validate_vault_for_mint,
     utils::read_mint_decimals,
 };
+use data_layout::variable_offset_layout;
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
 
@@ -57,7 +58,7 @@ pub fn process_execute_ready_queued_transfer(
         escrow_signer,
     ] = require_n_accounts!(accounts, 12);
 
-    let args = ExecuteQueuedTransferArgs::try_from_bytes(instruction_data)?;
+    let args = ExecuteQueuedTransferArgs::decode(instruction_data)?;
 
     // Note that accounts [source_program, escrow_authority, escrow_signer] are appended by DLP's
     // CallHandlerV2 instruction.
@@ -142,75 +143,18 @@ pub fn process_execute_ready_queued_transfer(
     Ok(())
 }
 
-///
-/// DataLayout:
-///
-///     00..01 : escrow_index (u8)
-///     01..09 : amount (u64)
-///     09..10 : flags (u8)
-///
-/// ValidLength:
-///
-///     10
-///
-pub struct ExecuteQueuedTransferArgs<'a> {
-    raw: *const u8,
-    len: usize,
-    _data: PhantomData<&'a [u8]>,
+#[variable_offset_layout(buffer_offset = 1, option = implicit)]
+pub struct ExecuteQueuedTransferArgs {
+    pub escrow_index: u8,
+    pub amount: u64,
+    pub flags: u8,
+    pub client_ref_id: Option<u64>,
 }
 
-impl ExecuteQueuedTransferArgs<'_> {
-    const LEN: usize = 10;
-    const LEN_WITH_CLIENT_REF_ID: usize = 18;
+static_assertions::const_assert!(matches!(ExecuteQueuedTransferArgs::DATA_LENS, [10, 18]));
 
-    #[inline]
-    pub fn try_from_bytes(bytes: &[u8]) -> Result<ExecuteQueuedTransferArgs<'_>, ProgramError> {
-        require!(
-            bytes.len() == Self::LEN || bytes.len() == Self::LEN_WITH_CLIENT_REF_ID,
-            ProgramError::InvalidInstructionData
-        );
-
-        Ok(ExecuteQueuedTransferArgs {
-            raw: bytes.as_ptr(),
-            len: bytes.len(),
-            _data: PhantomData,
-        })
-    }
-
-    #[inline]
-    pub fn amount(&self) -> u64 {
-        let mut buf = [0u8; 8];
-        unsafe {
-            core::ptr::copy_nonoverlapping(self.raw.add(1), buf.as_mut_ptr(), 8);
-        }
-        u64::from_le_bytes(buf)
-    }
-
-    #[inline]
-    pub fn escrow_index(&self) -> u8 {
-        unsafe { *self.raw }
-    }
-
-    #[inline]
-    pub fn flags(&self) -> u8 {
-        unsafe { *self.raw.add(9) }
-    }
-
-    #[inline]
+impl ExecuteQueuedTransferArgsView<'_> {
     pub fn should_create_destination_ata_idempotent(&self) -> bool {
         self.flags() & QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA != 0
-    }
-
-    #[inline]
-    pub fn client_ref_id(&self) -> Option<u64> {
-        if self.len != Self::LEN_WITH_CLIENT_REF_ID {
-            return None;
-        }
-
-        let mut buf = [0u8; 8];
-        unsafe {
-            core::ptr::copy_nonoverlapping(self.raw.add(10), buf.as_mut_ptr(), 8);
-        }
-        Some(u64::from_le_bytes(buf))
     }
 }

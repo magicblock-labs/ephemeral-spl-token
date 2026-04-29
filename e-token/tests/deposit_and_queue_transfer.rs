@@ -9,6 +9,7 @@ use ephemeral_spl_api::state::transfer_queue::{
     queue_views_checked, QueuedTransfer, TransferQueue, TransferQueueHeader, HEADER_LEN, ITEM_LEN,
 };
 use ephemeral_spl_api::ID as PROGRAM;
+use ephemeral_token_program::{DepositAndQueueTransferArgs, InitializeTransferQueueArgs};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::clock::Clock;
 use solana_program_pack::Pack;
@@ -101,13 +102,17 @@ async fn setup_fixture(items: Option<u32>) -> Fixture {
             AccountMeta::new_readonly(utils::associated_token_program_id(), false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_GLOBAL_VAULT],
+        data: instruction::ESplInstruction::InitializeGlobalVault.to_vec(),
     };
 
-    let mut queue_init_data = vec![instruction::INITIALIZE_TRANSFER_QUEUE];
-    if let Some(items) = items {
-        queue_init_data.extend_from_slice(&items.to_le_bytes());
-    }
+    let queue_init_data = instruction::ESplInstruction::InitializeTransferQueue.with_data(
+        &InitializeTransferQueueArgs {
+            requested_items: items,
+        }
+        .encode()
+        .unwrap(),
+    );
+
     let ix_init_queue = Instruction {
         program_id: PROGRAM,
         accounts: vec![
@@ -209,17 +214,18 @@ fn build_deposit_and_queue_ix_for_destination(
     flags: Option<u8>,
     client_ref_id: Option<u64>,
 ) -> Instruction {
-    let mut data = vec![instruction::DEPOSIT_AND_QUEUE_TRANSFER];
-    data.extend_from_slice(&amount.to_le_bytes());
-    data.extend_from_slice(&min_delay_ms.to_le_bytes());
-    data.extend_from_slice(&max_delay_ms.to_le_bytes());
-    data.extend_from_slice(&split.to_le_bytes());
-    if let Some(flags) = flags {
-        data.push(flags);
-    }
-    if let Some(client_ref_id) = client_ref_id {
-        data.extend_from_slice(&client_ref_id.to_le_bytes());
-    }
+    let data = instruction::ESplInstruction::DepositAndQueueTransfer.with_data(
+        &DepositAndQueueTransferArgs {
+            amount,
+            min_delay_ms,
+            max_delay_ms,
+            split,
+            flags,
+            client_ref_id,
+        }
+        .encode()
+        .unwrap(),
+    );
 
     Instruction {
         program_id: PROGRAM,
@@ -870,11 +876,23 @@ async fn deposit_and_queue_transfer_return_to_shuttle() {
     let amount: u64 = 33_500_000;
     let split: u32 = 1000;
     let ix = {
-        let mut data = vec![instruction::DEPOSIT_AND_QUEUE_TRANSFER];
-        data.extend_from_slice(&amount.to_le_bytes());
-        data.extend_from_slice(&0_u64.to_le_bytes());
-        data.extend_from_slice(&0_u64.to_le_bytes());
-        data.extend_from_slice(&split.to_le_bytes());
+        //let mut data = instruction::ESplInstruction::DepositAndQueueTransfer.to_vec();
+        //data.extend_from_slice(&amount.to_le_bytes());
+        //data.extend_from_slice(&0_u64.to_le_bytes());
+        //data.extend_from_slice(&0_u64.to_le_bytes());
+        //data.extend_from_slice(&split.to_le_bytes());
+        let data = instruction::ESplInstruction::DepositAndQueueTransfer.with_data(
+            &DepositAndQueueTransferArgs {
+                amount,
+                min_delay_ms: 0,
+                max_delay_ms: 0,
+                split,
+                flags: None,
+                client_ref_id: None,
+            }
+            .encode()
+            .unwrap(),
+        );
 
         Instruction {
             program_id: PROGRAM,

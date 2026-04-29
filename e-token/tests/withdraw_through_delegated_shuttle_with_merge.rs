@@ -5,13 +5,14 @@ use std::{
 
 use dlp_api::state::DelegationRecord;
 use ephemeral_spl_api::{
-    instruction::{self, internal},
+    instruction,
     state::{
         ephemeral_ata::EphemeralAta, load, load_mut, shuttle_ephemeral_ata::ShuttleMetadata,
         Initializable, RawType,
     },
 };
 use ephemeral_spl_api::{state::load_initialized, ID as PROGRAM};
+use ephemeral_token_program::DepositAndDelegateShuttleArgs;
 use magicblock_magic_program_api::{
     args::{MagicIntentBundleArgs, UndelegateTypeArgs},
     instruction::MagicBlockInstruction,
@@ -29,6 +30,8 @@ use solana_signer::Signer;
 use solana_system_interface::instruction::transfer;
 use solana_transaction::Transaction;
 use spl_token_interface::state::Account as SplAccount;
+
+use crate::utils::TestInternalInstruction;
 
 mod common;
 mod utils;
@@ -180,7 +183,7 @@ async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_clean
             AccountMeta::new(rent_pda, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: vec![instruction::INITIALIZE_RENT_PDA],
+        data: instruction::ESplInstruction::InitializeRentPda.to_vec(),
     };
     let ix_fund_rent = transfer(&payer, &rent_pda, 100_000_000);
     let rent = context.banks_client.get_rent().await.unwrap();
@@ -248,11 +251,6 @@ async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_clean
         &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,
     );
 
-    let mut withdraw_data = vec![instruction::WITHDRAW_THROUGH_DELEGATED_SHUTTLE_WITH_MERGE];
-    withdraw_data.extend_from_slice(&shuttle_id.to_le_bytes());
-    withdraw_data.extend_from_slice(&TRANSFER_AMOUNT.to_le_bytes());
-    withdraw_data.extend_from_slice(&validator.to_bytes());
-
     let ix_withdraw = Instruction {
         program_id: PROGRAM,
         accounts: vec![
@@ -273,7 +271,15 @@ async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_clean
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new_readonly(spl_token_interface::ID, false),
         ],
-        data: withdraw_data,
+        data: instruction::ESplInstruction::WithdrawThroughDelegatedShuttleWithMerge.with_data(
+            &DepositAndDelegateShuttleArgs {
+                shuttle_id,
+                amount: TRANSFER_AMOUNT,
+                validator: Some(validator.to_bytes()),
+            }
+            .encode()
+            .unwrap(),
+        ),
     };
 
     let tx_withdraw = Transaction::new_signed_with_payer(
@@ -479,7 +485,7 @@ async fn undelegate_and_close_shuttle_ephemeral_ata_schedules_close_action() {
             AccountMeta::new(magic_context, false),
             AccountMeta::new_readonly(magic_program, false),
         ],
-        data: vec![instruction::UNDELEGATE_AND_CLOSE_SHUTTLE_TO_OWNER],
+        data: instruction::ESplInstruction::UndelegateAndCloseShuttleToOwner.to_vec(),
     };
     let tx_undelegate = Transaction::new_signed_with_payer(
         &[ix_undelegate],
@@ -512,7 +518,10 @@ async fn undelegate_and_close_shuttle_ephemeral_ata_schedules_close_action() {
     let close_action = &base_actions[0];
     assert_eq!(
         close_action.args.data,
-        vec![internal::SETTLE_AND_CLOSE_SHUTTLE_INTENT, u8::MAX]
+        vec![
+            TestInternalInstruction::SettleAndCloseShuttleIntent.discriminator(),
+            u8::MAX
+        ]
     );
     assert_eq!(close_action.accounts.len(), 9);
     assert_eq!(

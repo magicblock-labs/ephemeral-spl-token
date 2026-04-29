@@ -24,6 +24,38 @@ use solana_transaction::Transaction;
 use spl_token_interface::instruction::{initialize_account, initialize_account3, initialize_mint};
 use spl_token_interface::state::{Account as SplAccount, Mint};
 
+// this must be same as ESplInternalInstruction
+#[repr(u8)]
+pub enum TestInternalInstruction {
+    UndelegationCallback = 196,
+
+    SettleAndCloseShuttleIntent = 201,
+    ExecuteReadyQueuedTransfer = 202,
+    ProcessTransferQueueTick = 203,
+    TransferLamportsPda = 204,
+    UndelegateLamportsPda = 205,
+    CloseLamportsPdaIntent = 206,
+    MarkTransferQueueRefillPending = 207,
+}
+
+impl TestInternalInstruction {
+    pub const fn discriminator(self) -> u8 {
+        self as u8
+    }
+    pub const fn to_bytes(self) -> [u8; 1] {
+        [self.discriminator()]
+    }
+    pub fn to_vec(self) -> Vec<u8> {
+        self.to_bytes().to_vec()
+    }
+    pub fn with_data(self, instruction_data: &[u8]) -> Vec<u8> {
+        let mut data = Vec::with_capacity(1 + instruction_data.len());
+        data.extend_from_slice(&self.to_bytes());
+        data.extend_from_slice(instruction_data);
+        data
+    }
+}
+
 #[allow(dead_code)]
 pub struct Pdas {
     pub ephemeral_ata: Pubkey,

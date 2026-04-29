@@ -1,0 +1,17 @@
+[package]
+name = "data-layout"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full"] }
+
+[dev-dependencies]
+bytemuck = "1"
+pinocchio = { version = "0.10.1", features = ["cpi"] }
+pinocchio-log = "0.5.1"

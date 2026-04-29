@@ -1,5 +1,9 @@
+use alloc::vec;
+use alloc::vec::Vec;
+use data_layout::variable_offset_layout;
 use ephemeral_rollups_pinocchio::instruction::DelegateAccountCpiBuilder;
 use ephemeral_rollups_pinocchio::types::DelegateConfig;
+use ephemeral_spl_api::debug_log;
 use ephemeral_spl_api::state::{
     ephemeral_ata::EphemeralAta, load_initialized, shuttle_ephemeral_ata::ShuttleMetadata,
 };
@@ -39,7 +43,7 @@ pub fn process_delegate_shuttle_ephemeral_ata(
         system_program,
     ] = require_n_accounts!(accounts, 9);
 
-    let args = DelegateShuttleArgs::try_from_bytes(instruction_data)?;
+    let args = DelegateShuttleArgs::decode(instruction_data)?;
 
     let delegation_program = ephemeral_spl_api::program::DELEGATION_PROGRAM_ID;
     if ephemeral_ata_info.owned_by(&delegation_program) {
@@ -82,14 +86,13 @@ pub fn process_delegate_shuttle_ephemeral_ata(
     let seeds: &[&[u8]] = &[shuttle_info.address().as_ref(), mint.as_ref()];
 
     let config = DelegateConfig {
-        validator: args.validator().map(Address::new_from_array),
+        validator: args
+            .validator()
+            .map(|slice| Address::new_from_array(*slice)),
         ..DelegateConfig::default()
     };
 
-    #[cfg(feature = "logging")]
-    {
-        pinocchio_log::log!("Delegating shuttle");
-    }
+    debug_log!("Delegating shuttle");
 
     DelegateAccountCpiBuilder::new(
         payer_info,
@@ -106,37 +109,9 @@ pub fn process_delegate_shuttle_ephemeral_ata(
     .invoke()
 }
 
-///
-/// DataLayout:
-///
-///     00..32 : validator (optional [u8; 32])
-///
-/// ValidLength:
-///
-///     00 | >= 32
-///
+#[variable_offset_layout(buffer_offset = 1, option = implicit)]
 pub struct DelegateShuttleArgs {
-    validator: Option<[u8; 32]>,
+    pub validator: Option<[u8; 32]>,
 }
 
-impl DelegateShuttleArgs {
-    #[inline]
-    pub fn try_from_bytes(bytes: &[u8]) -> Result<DelegateShuttleArgs, ProgramError> {
-        if bytes.is_empty() {
-            Ok(DelegateShuttleArgs { validator: None })
-        } else if bytes.len() >= 32 {
-            let mut arr = [0u8; 32];
-            arr.copy_from_slice(&bytes[..32]);
-            Ok(DelegateShuttleArgs {
-                validator: Some(arr),
-            })
-        } else {
-            Err(ProgramError::InvalidInstructionData)
-        }
-    }
-
-    #[inline]
-    pub fn validator(&self) -> Option<[u8; 32]> {
-        self.validator
-    }
-}
+static_assertions::const_assert!(matches!(DelegateShuttleArgs::DATA_LENS, [0, 32]));

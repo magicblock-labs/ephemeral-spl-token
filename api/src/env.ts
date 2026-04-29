@@ -17,6 +17,7 @@ const optionalString = z
 const optionalUrl = optionalString.pipe(z.string().url().optional());
 
 export const envSchema = z.object({
+  CLUSTER: z.literal(["mainnet", "devnet", "custom"]),
   BASE_RPC_URL: z.string().url(),
   EPHEMERAL_RPC_URL: z.string().url(),
   BASE_DEVNET_RPC_URL: optionalUrl,
@@ -24,10 +25,12 @@ export const envSchema = z.object({
   METIS_SWAP_API_URL: optionalUrl,
   PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE: optionalString,
   PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE: optionalString,
+  GASLESS_SPONSOR_SECRET_KEY: optionalString,
   CORS_ORIGIN: optionalString,
 });
 
 export type AppBindings = {
+  CLUSTER?: string;
   BASE_RPC_URL?: string;
   EPHEMERAL_RPC_URL?: string;
   BASE_DEVNET_RPC_URL?: string;
@@ -35,6 +38,7 @@ export type AppBindings = {
   METIS_SWAP_API_URL?: string;
   PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE?: string;
   PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE?: string;
+  GASLESS_SPONSOR_SECRET_KEY?: string;
   CORS_ORIGIN?: string;
 };
 
@@ -56,7 +60,7 @@ export function getEnv(bindings: AppBindings): AppEnv {
             ),
             message: issue.message,
           })),
-          hint: "Create .dev.vars from .dev.vars.example and set BASE_RPC_URL and EPHEMERAL_RPC_URL before running wrangler dev. If you want cluster=devnet, also set BASE_DEVNET_RPC_URL and EPHEMERAL_DEVNET_RPC_URL.",
+          hint: "Create .dev.vars from .dev.vars.example and set BASE_RPC_URL and EPHEMERAL_RPC_URL before running wrangler dev. If you want cluster=devnet, also set BASE_DEVNET_RPC_URL and EPHEMERAL_DEVNET_RPC_URL. To enable gasless private transfers, also set GASLESS_SPONSOR_SECRET_KEY to a JSON-encoded secret key array.",
         },
       );
     }
