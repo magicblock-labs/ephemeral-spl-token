@@ -1,22 +1,23 @@
-use crate::common::{callback_mock, magic_mock};
+use crate::common::callback_mock::take_execute_callbacks;
+use crate::common::crank_mock::take_execute_cranks;
+use crate::common::magic_mock::{take_captured_ephemeral_closes, take_captured_ephemeral_creates};
+use crate::common::{callback_mock, crank_mock, magic_mock};
 use ephemeral_spl_api::state::group_receipt::{GroupReceipt, GroupReceiptHeader};
 use ephemeral_spl_api::state::transfer_queue::{HEADER_LEN, QUEUE_SEED, TRANSFER_QUEUE_VERSION};
 use ephemeral_token_program::TransferCallbackArgs;
-use magicblock_magic_program_api::instruction::CallbackInstruction;
-use magicblock_magic_program_api::pda::CALLBACK_SIGNER;
-use magicblock_magic_program_api::CALLBACK_PROGRAM_ID;
+use magicblock_magic_program_api::instruction::{CallbackInstruction, MagicBlockInstruction};
+use magicblock_magic_program_api::pda::{CALLBACK_SIGNER, CRANK_SIGNER};
+use magicblock_magic_program_api::{CALLBACK_PROGRAM_ID, CRANK_PROGRAM_ID};
 use serial_test::serial;
 use solana_account::Account as SolanaAccount;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
 use solana_program::rent::Rent;
-use solana_program_test::{processor, tokio, ProgramTest};
+use solana_program_test::{tokio, ProgramTest};
 use solana_pubkey::{pubkey, Pubkey};
 use solana_signer::Signer;
 use solana_transaction::Transaction;
 use utils::TestInternalInstruction as internal;
-use crate::common::callback_mock::take_execute_callbacks;
-use crate::common::magic_mock::{take_captured_ephemeral_closes, take_captured_ephemeral_creates};
 
 mod common;
 mod utils;
@@ -145,6 +146,7 @@ async fn setup_context(
     pt.add_program("ephemeral_token_program", PROGRAM, None);
     magic_mock::add_mock(&mut pt);
     callback_mock::add_mock(&mut pt);
+    crank_mock::add_mock(&mut pt);
 
     let queue_data = queue_account_data(mint, validator.pubkey(), queue_bump);
     pt.add_account(
@@ -272,6 +274,55 @@ fn callback_ix(
     }
 }
 
+fn initialize_group_receipt_ix(
+    queue: Pubkey,
+    receipt: Pubkey,
+    group_id: u32,
+    splits: u32,
+) -> Instruction {
+    Instruction {
+        program_id: PROGRAM,
+        accounts: vec![
+            AccountMeta::new(CRANK_SIGNER, true),
+            AccountMeta::new(queue, false),
+            AccountMeta::new(receipt, false),
+            AccountMeta::new(MAGIC_VAULT, false),
+            AccountMeta::new_readonly(MAGIC_PROGRAM, false),
+        ],
+        data: initialize_group_receipt_ix_data(group_id, splits),
+    }
+}
+
+fn crank_executor_ix(
+    validator: Pubkey,
+    queue: Pubkey,
+    receipt: Pubkey,
+    group_id: u32,
+    splits: u32,
+) -> Instruction {
+    let inner_ix = initialize_group_receipt_ix(queue, receipt, group_id, splits);
+
+    let mut account_metas = vec![
+        AccountMeta::new_readonly(validator, true),
+        AccountMeta::new_readonly(CRANK_SIGNER, false),
+        AccountMeta::new_readonly(inner_ix.program_id, false),
+    ];
+    account_metas.extend(inner_ix.accounts.clone().into_iter().map(|mut el| {
+        // CRANK_SIGNER may be set to true in inner_instruction
+        // Outer instruction can't have PDA as signer
+        el.is_signer = false;
+        el
+    }));
+
+    Instruction::new_with_bincode(
+        CRANK_PROGRAM_ID,
+        &MagicBlockInstruction::ExecuteCrank {
+            instructions: vec![inner_ix],
+        },
+        account_metas,
+    )
+}
+
 // ── tests ─────────────────────────────────────────────────────────────────────
 
 /// Mid-group callback: receipt already exists (pre-initialized via
@@ -373,8 +424,6 @@ async fn execute_callback_closes_receipt_when_last_transfer_with_pre_initialized
         .unwrap();
     res.result.unwrap();
 
-
-
     // No CreateEphemeralAccount — receipt was pre-initialized.
     let creates = magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
     assert!(creates.is_empty(), "expected no CreateEphemeralAccount CPI");
@@ -416,17 +465,7 @@ async fn initialize_group_receipt_sets_splits_on_existing_receipt() {
     let (ctx, validator, _mint, queue, receipt, _vault, _vault_token) =
         setup_context(receipt_data, group_id).await;
 
-    let ix = Instruction {
-        program_id: PROGRAM,
-        accounts: vec![
-            AccountMeta::new(validator.pubkey(), true),
-            AccountMeta::new(queue, false),
-            AccountMeta::new(receipt, false),
-            AccountMeta::new(MAGIC_VAULT, false),
-            AccountMeta::new_readonly(MAGIC_PROGRAM, false),
-        ],
-        data: initialize_group_receipt_ix_data(group_id, splits),
-    };
+    let ix = crank_executor_ix(validator.pubkey(), queue, receipt, group_id, splits);
 
     let tx = Transaction::new_signed_with_payer(
         &[ix],
@@ -435,6 +474,9 @@ async fn initialize_group_receipt_sets_splits_on_existing_receipt() {
         ctx.last_blockhash,
     );
     ctx.banks_client.process_transaction(tx).await.unwrap();
+
+    let executed_cranks = take_execute_cranks();
+    assert_eq!(executed_cranks.len(), 1);
 
     // No close — no transfers have been recorded.
     let closes = common::magic_mock::take_captured_ephemeral_closes(MAGIC_PROGRAM);
@@ -480,17 +522,7 @@ async fn initialize_group_receipt_closes_when_all_callbacks_already_done() {
     let (ctx, validator, _mint, queue, receipt, _vault, _vault_token) =
         setup_context(receipt_data, group_id).await;
 
-    let ix = Instruction {
-        program_id: PROGRAM,
-        accounts: vec![
-            AccountMeta::new(validator.pubkey(), true),
-            AccountMeta::new(queue, false),
-            AccountMeta::new(receipt, false),
-            AccountMeta::new(MAGIC_VAULT, false),
-            AccountMeta::new_readonly(MAGIC_PROGRAM, false),
-        ],
-        data: initialize_group_receipt_ix_data(group_id, splits),
-    };
+    let ix = crank_executor_ix(validator.pubkey(), queue, receipt, group_id, splits);
 
     let tx = Transaction::new_signed_with_payer(
         &[ix],
@@ -505,6 +537,9 @@ async fn initialize_group_receipt_closes_when_all_callbacks_already_done() {
         .await
         .unwrap();
     res.result.unwrap();
+
+    let executed_cranks = take_execute_cranks();
+    assert_eq!(executed_cranks.len(), 1);
 
     // CloseEphemeralAccount must be called — all callbacks already done.
     let closes = common::magic_mock::take_captured_ephemeral_closes(MAGIC_PROGRAM);
@@ -531,97 +566,35 @@ async fn initialize_group_receipt_closes_when_all_callbacks_already_done() {
 #[tokio::test]
 #[serial]
 async fn execute_callback_records_transfer() {
-    let validator = Keypair::new();
-    let mint = Keypair::new().pubkey();
-    let (queue, queue_bump) = derive_queue(mint, validator.pubkey());
-    let vault = Keypair::new().pubkey();
-    let vault_token = utils::derive_associated_token_address(vault, mint);
     let group_id: u32 = 1;
     let splits: u32 = 2;
-    let (receipt, _) = derive_group_receipt(queue, group_id);
-
-    let rent = Rent::default();
-
-    let mut pt = ProgramTest::default();
-    pt.prefer_bpf(true);
-    pt.add_program("ephemeral_token_program", PROGRAM, None);
-    magic_mock::add_mock(&mut pt);
-    callback_mock::add_mock(&mut pt);
-
-    let queue_data = queue_account_data(mint, validator.pubkey(), queue_bump);
-    pt.add_account(
-        queue,
-        SolanaAccount {
-            lamports: rent.minimum_balance(queue_data.len()),
-            data: queue_data,
-            owner: PROGRAM,
-            executable: false,
-            rent_epoch: 0,
-        },
-    );
 
     let receipt_data = receipt_account_data(group_id, splits, 0);
-    pt.add_account(
-        receipt,
-        SolanaAccount {
-            lamports: rent.minimum_balance(receipt_data.len()),
-            data: receipt_data,
-            owner: PROGRAM,
-            executable: false,
-            rent_epoch: 0,
-        },
-    );
+    let (ctx, validator, mint, queue, receipt, vault, vault_token) =
+        setup_context(receipt_data, group_id).await;
 
-    for pk in [vault, mint, vault_token, MAGIC_VAULT] {
-        pt.add_account(
-            pk,
-            SolanaAccount {
-                lamports: rent.minimum_balance(0).max(1),
-                data: vec![],
-                owner: solana_system_interface::program::ID,
-                executable: false,
-                rent_epoch: 0,
-            },
-        );
-    }
-
-    pt.add_account(
+    let ix = callback_executor_ix(
         validator.pubkey(),
-        SolanaAccount {
-            lamports: 1_000_000,
-            data: vec![],
-            owner: solana_system_interface::program::ID,
-            executable: false,
-            rent_epoch: 0,
-        },
+        receipt,
+        queue,
+        vault,
+        mint,
+        vault_token,
+        true,
+        100,
+        group_id,
     );
-
-    let ctx = pt.start_with_context().await;
-
-    let ix = Instruction {
-        program_id: PROGRAM,
-        accounts: vec![
-            AccountMeta::new(validator.pubkey(), true),
-            AccountMeta::new(receipt, false),
-            AccountMeta::new(queue, false),
-            AccountMeta::new_readonly(vault, false),
-            AccountMeta::new_readonly(mint, false),
-            AccountMeta::new_readonly(vault_token, false),
-            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
-            AccountMeta::new_readonly(spl_token_interface::ID, false),
-            AccountMeta::new(MAGIC_VAULT, false),
-            AccountMeta::new_readonly(MAGIC_PROGRAM, false),
-        ],
-        data: callback_ix_data(true, 100, group_id),
-    };
 
     let tx = Transaction::new_signed_with_payer(
-        &[ix],
+        std::slice::from_ref(&ix),
         Some(&validator.pubkey()),
         &[&validator],
         ctx.last_blockhash,
     );
     ctx.banks_client.process_transaction(tx).await.unwrap();
+
+    let executed_callbacks = take_execute_callbacks();
+    assert_eq!(executed_callbacks.len(), 1);
 
     let account = ctx
         .banks_client
@@ -641,89 +614,24 @@ async fn execute_callback_records_transfer() {
 #[tokio::test]
 #[serial]
 async fn execute_callback_closes_receipt_on_last_transfer() {
-    let validator = Keypair::new();
-    let mint = Keypair::new().pubkey();
-    let (queue, queue_bump) = derive_queue(mint, validator.pubkey());
-    let vault = Keypair::new().pubkey();
-    let vault_token = utils::derive_associated_token_address(vault, mint);
     let group_id: u32 = 1;
     let splits: u32 = 1;
-    let (receipt, _) = derive_group_receipt(queue, group_id);
-
-    let rent = Rent::default();
-
-    let mut pt = ProgramTest::default();
-    pt.prefer_bpf(true);
-    pt.add_program("ephemeral_token_program", PROGRAM, None);
-    magic_mock::add_mock(&mut pt);
-    callback_mock::add_mock(&mut pt);
-
-    let queue_data = queue_account_data(mint, validator.pubkey(), queue_bump);
-    pt.add_account(
-        queue,
-        SolanaAccount {
-            lamports: rent.minimum_balance(queue_data.len()),
-            data: queue_data,
-            owner: PROGRAM,
-            executable: false,
-            rent_epoch: 0,
-        },
-    );
 
     let receipt_data = receipt_account_data(group_id, splits, 0);
-    pt.add_account(
-        receipt,
-        SolanaAccount {
-            lamports: rent.minimum_balance(receipt_data.len()),
-            data: receipt_data,
-            owner: PROGRAM,
-            executable: false,
-            rent_epoch: 0,
-        },
-    );
+    let (ctx, validator, mint, queue, receipt, vault, vault_token) =
+        setup_context(receipt_data, group_id).await;
 
-    for pk in [vault, mint, vault_token, MAGIC_VAULT] {
-        pt.add_account(
-            pk,
-            SolanaAccount {
-                lamports: rent.minimum_balance(0).max(1),
-                data: vec![],
-                owner: solana_system_interface::program::ID,
-                executable: false,
-                rent_epoch: 0,
-            },
-        );
-    }
-
-    pt.add_account(
+    let ix = callback_executor_ix(
         validator.pubkey(),
-        SolanaAccount {
-            lamports: 1_000_000,
-            data: vec![],
-            owner: solana_system_interface::program::ID,
-            executable: false,
-            rent_epoch: 0,
-        },
+        receipt,
+        queue,
+        vault,
+        mint,
+        vault_token,
+        true,
+        200,
+        group_id,
     );
-
-    let ctx = pt.start_with_context().await;
-
-    let ix = Instruction {
-        program_id: PROGRAM,
-        accounts: vec![
-            AccountMeta::new(validator.pubkey(), true),
-            AccountMeta::new(receipt, false),
-            AccountMeta::new(queue, false),
-            AccountMeta::new_readonly(vault, false),
-            AccountMeta::new_readonly(mint, false),
-            AccountMeta::new_readonly(vault_token, false),
-            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
-            AccountMeta::new_readonly(spl_token_interface::ID, false),
-            AccountMeta::new(MAGIC_VAULT, false),
-            AccountMeta::new_readonly(MAGIC_PROGRAM, false),
-        ],
-        data: callback_ix_data(true, 200, group_id),
-    };
 
     let tx = Transaction::new_signed_with_payer(
         &[ix],
@@ -740,6 +648,9 @@ async fn execute_callback_closes_receipt_on_last_transfer() {
 
     // Transaction must succeed.
     res.result.unwrap();
+
+    let executed_callbacks = take_execute_callbacks();
+    assert_eq!(executed_callbacks.len(), 1);
 
     // The program emits "All transfers complete for group id: ..." when it reaches the close
     // path. Verify this log is present — it confirms the right code path was taken.

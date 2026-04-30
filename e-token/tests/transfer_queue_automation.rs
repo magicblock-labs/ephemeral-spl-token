@@ -28,6 +28,7 @@ use spl_token_interface::state::Account;
 
 use crate::utils::TestInternalInstruction;
 
+use crate::common::magic_mock;
 use {
     solana_keypair::Keypair,
     solana_program_test::{processor, tokio, ProgramTest, ProgramTestContext},
@@ -35,7 +36,6 @@ use {
     solana_signer::Signer,
     solana_transaction::Transaction,
 };
-use crate::common::magic_mock;
 
 mod common;
 mod utils;

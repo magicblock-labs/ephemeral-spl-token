@@ -5,6 +5,7 @@ use crate::processor::utils::{
     get_associated_token_address, read_mint_decimals, validate_token_account, CRANK_SIGNER,
     MAGIC_VAULT_ID,
 };
+use crate::InitializeGroupReceiptArgs;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::convert::TryFrom;
@@ -27,7 +28,6 @@ use pinocchio::sysvars::clock::Clock;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_token_2022::instructions::TransferChecked;
-use crate::InitializeGroupReceiptArgs;
 
 const MILLIS_PER_SECOND: u64 = 1_000;
 
@@ -276,8 +276,9 @@ fn create_group_receipt(
     let crank_task_id = derive_queue_crank_task_id(&group_receipt);
     let tick_data = InitializeGroupReceiptArgs {
         group_id,
-        splits: split
-    }.encode()?;
+        splits: split,
+    }
+    .encode()?;
 
     // Prepare data for CPI into magic program for scheduling
     let mut crank_data = [0u8; CRANK_DATA_LEN];
