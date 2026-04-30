@@ -270,14 +270,12 @@ fn process_internal_instruction(
             process_mark_transfer_queue_refill_pending(accounts, data)
         }
         ESplInternalInstruction::ExecuteTransferCallback => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: ExecuteTransferCallback");
+            debug_log!("Instruction: ExecuteTransferCallback");
 
             process_execute_transfer_callback(accounts, data)
         }
         ESplInternalInstruction::InitializeGroupReceipt => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: InitializeGroupReceipt");
+            debug_log!("Instruction: InitializeGroupReceipt");
 
             process_initialize_group_receipt(accounts, data)
         }

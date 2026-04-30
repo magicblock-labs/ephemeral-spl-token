@@ -1,4 +1,3 @@
-use crate::instruction::ESplInternalInstruction;
 use crate::processor::ensure_transfer_queue_crank::derive_queue_crank_task_id;
 use crate::processor::execute_transfer_callback::derive_group_receipt_id;
 use crate::processor::internal::token_vault::transfer_to_vault_for_mint;
@@ -28,6 +27,7 @@ use pinocchio::sysvars::clock::Clock;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_token_2022::instructions::TransferChecked;
+use crate::InitializeGroupReceiptArgs;
 
 const MILLIS_PER_SECOND: u64 = 1_000;
 
@@ -274,10 +274,10 @@ fn create_group_receipt(
 
     // Create argument data for crank target
     let crank_task_id = derive_queue_crank_task_id(&group_receipt);
-    let mut tick_data = [0u8; 9];
-    tick_data[0] = ESplInternalInstruction::InitializeGroupReceipt as u8;
-    tick_data[1..5].copy_from_slice(group_id.to_le_bytes().as_ref());
-    tick_data[5..9].copy_from_slice(split.to_le_bytes().as_ref());
+    let tick_data = InitializeGroupReceiptArgs {
+        group_id,
+        splits: split
+    }.encode()?;
 
     // Prepare data for CPI into magic program for scheduling
     let mut crank_data = [0u8; CRANK_DATA_LEN];

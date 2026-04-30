@@ -35,6 +35,7 @@ use {
     solana_signer::Signer,
     solana_transaction::Transaction,
 };
+use crate::common::magic_mock;
 
 mod common;
 mod utils;
@@ -124,7 +125,7 @@ async fn setup_fixture() -> Fixture {
     clear_all_captured(magic_program);
 
     let mut context = utils::start_program_test_with(PROGRAM, |pt| {
-        add_magic_program_mock(pt, magic_program);
+        magic_mock::add_mock(pt);
         pt.add_account(
             magic_context,
             SolanaAccount {
@@ -533,7 +534,7 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
         clear_captured_intent_bundles(magic_program);
 
         let mut context = utils::start_program_test_with(PROGRAM, |pt| {
-            add_magic_program_mock(pt, magic_program);
+            magic_mock::add_mock(pt);
             add_noop_program_mock(pt, fake_magic_program);
             pt.add_account(
                 magic_context,
@@ -768,7 +769,7 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
         clear_captured_intent_bundles(magic_program);
 
         let mut context = utils::start_program_test_with(PROGRAM, |pt| {
-            add_magic_program_mock(pt, magic_program);
+            magic_mock::add_mock(pt);
             add_noop_program_mock(pt, fake_magic_program);
             pt.add_account(
                 magic_context,

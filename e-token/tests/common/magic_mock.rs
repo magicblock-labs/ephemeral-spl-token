@@ -1,3 +1,4 @@
+use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
 use magicblock_magic_program_api::{
     args::{AddActionCallbackArgs, MagicIntentBundleArgs, ScheduleTaskArgs},
     instruction::MagicBlockInstruction,
@@ -11,7 +12,6 @@ use std::{
     collections::HashMap,
     sync::{Mutex, OnceLock},
 };
-
 // ── Captured types ────────────────────────────────────────────────────────────
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -343,9 +343,9 @@ pub fn process(
 
 // ── ProgramTest registration ──────────────────────────────────────────────────
 
-pub fn add_mock(pt: &mut ProgramTest, magic_program: Pubkey) {
+pub fn add_mock(pt: &mut ProgramTest) {
     use solana_program_test::processor;
     pt.prefer_bpf(false);
-    pt.add_program("magic_program_mock", magic_program, processor!(process));
+    pt.add_program("magic_mock", MAGIC_PROGRAM_ID, processor!(process));
     pt.prefer_bpf(true);
 }

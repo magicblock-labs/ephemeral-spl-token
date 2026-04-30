@@ -1,5 +1,10 @@
+use crate::common::{callback_mock, magic_mock};
 use ephemeral_spl_api::state::group_receipt::{GroupReceipt, GroupReceiptHeader};
 use ephemeral_spl_api::state::transfer_queue::{HEADER_LEN, QUEUE_SEED, TRANSFER_QUEUE_VERSION};
+use ephemeral_token_program::TransferCallbackArgs;
+use magicblock_magic_program_api::instruction::CallbackInstruction;
+use magicblock_magic_program_api::pda::CALLBACK_SIGNER;
+use magicblock_magic_program_api::CALLBACK_PROGRAM_ID;
 use serial_test::serial;
 use solana_account::Account as SolanaAccount;
 use solana_instruction::{AccountMeta, Instruction};
@@ -10,6 +15,8 @@ use solana_pubkey::{pubkey, Pubkey};
 use solana_signer::Signer;
 use solana_transaction::Transaction;
 use utils::TestInternalInstruction as internal;
+use crate::common::callback_mock::take_execute_callbacks;
+use crate::common::magic_mock::{take_captured_ephemeral_closes, take_captured_ephemeral_creates};
 
 mod common;
 mod utils;
@@ -31,6 +38,16 @@ fn callback_ix_data(ok: bool, amount: u64, group_id: u32) -> Vec<u8> {
     args.extend_from_slice(&amount.to_le_bytes());
     args.extend_from_slice(&group_id.to_le_bytes());
     args.push(0u8); // flag
+
+    let args2 = TransferCallbackArgs {
+        amount,
+        group_id,
+        flag: 0,
+    }
+    .encode()
+    .unwrap();
+
+    assert_eq!(args, args2, "Invalid serialization");
 
     // MagicResponseView (bincode V1): variant(4) + ok(1) + data_len(8) + data + error_len(8) + sig_tag(1)
     let mut data = Vec::new();
@@ -100,16 +117,6 @@ fn receipt_account_data_partial(group_id: u32, bump: u8, capacity: u32) -> Vec<u
     data
 }
 
-fn add_mock_program(pt: &mut ProgramTest) {
-    pt.prefer_bpf(false);
-    pt.add_program(
-        "magic_mock",
-        MAGIC_PROGRAM,
-        processor!(common::magic_mock::process),
-    );
-    pt.prefer_bpf(true);
-}
-
 /// Common fixture: a ProgramTest context with queue and receipt accounts
 /// pre-populated. Returns (context, validator keypair, mint, queue, receipt).
 async fn setup_context(
@@ -136,7 +143,8 @@ async fn setup_context(
     let mut pt = ProgramTest::default();
     pt.prefer_bpf(true);
     pt.add_program("ephemeral_token_program", PROGRAM, None);
-    add_mock_program(&mut pt);
+    magic_mock::add_mock(&mut pt);
+    callback_mock::add_mock(&mut pt);
 
     let queue_data = queue_account_data(mint, validator.pubkey(), queue_bump);
     pt.add_account(
@@ -187,13 +195,56 @@ async fn setup_context(
 
     let ctx = pt.start_with_context().await;
 
-    common::magic_mock::clear_all_captured(MAGIC_PROGRAM);
+    magic_mock::clear_all_captured(MAGIC_PROGRAM);
 
     (ctx, validator, mint, queue, receipt, vault, vault_token)
 }
 
-fn callback_ix(
+fn callback_executor_ix(
     validator: Pubkey,
+    receipt: Pubkey,
+    queue: Pubkey,
+    vault: Pubkey,
+    mint: Pubkey,
+    vault_token: Pubkey,
+    ok: bool,
+    amount: u64,
+    group_id: u32,
+) -> Instruction {
+    let callback_ix = callback_ix(
+        receipt,
+        queue,
+        vault,
+        mint,
+        vault_token,
+        ok,
+        amount,
+        group_id,
+    );
+
+    // Mandatory accounts for magic-program
+    let mut account_metas = vec![
+        AccountMeta::new_readonly(validator, true),
+        AccountMeta::new_readonly(CALLBACK_SIGNER, false),
+        AccountMeta::new_readonly(callback_ix.program_id, false),
+    ];
+    account_metas.extend(callback_ix.accounts.clone().into_iter().map(|mut el| {
+        // CALLBACK_SIGNER may be set to true in inner_instruction
+        // Outer instruction can't have PDA as signer
+        el.is_signer = false;
+        el
+    }));
+
+    Instruction::new_with_bincode(
+        CALLBACK_PROGRAM_ID,
+        &CallbackInstruction::ExecuteCallback {
+            instruction: callback_ix,
+        },
+        account_metas,
+    )
+}
+
+fn callback_ix(
     receipt: Pubkey,
     queue: Pubkey,
     vault: Pubkey,
@@ -206,7 +257,7 @@ fn callback_ix(
     Instruction {
         program_id: PROGRAM,
         accounts: vec![
-            AccountMeta::new(validator, true),
+            AccountMeta::new(CALLBACK_SIGNER, true),
             AccountMeta::new(receipt, false),
             AccountMeta::new(queue, false),
             AccountMeta::new_readonly(vault, false),
@@ -240,7 +291,7 @@ async fn execute_callback_with_pre_initialized_receipt_no_magic_cpi() {
 
     // Simulate process_initialize_group_receipt having already run (receipt
     // is owned by PROGRAM with splits set). Now shoot the callback directly.
-    let ix = callback_ix(
+    let ix = callback_executor_ix(
         validator.pubkey(),
         receipt,
         queue,
@@ -253,19 +304,22 @@ async fn execute_callback_with_pre_initialized_receipt_no_magic_cpi() {
     );
 
     let tx = Transaction::new_signed_with_payer(
-        &[ix],
+        std::slice::from_ref(&ix),
         Some(&validator.pubkey()),
         &[&validator],
         ctx.last_blockhash,
     );
     ctx.banks_client.process_transaction(tx).await.unwrap();
 
+    let executed_callbacks = take_execute_callbacks();
+    assert_eq!(executed_callbacks.len(), 1);
+
     // No CreateEphemeralAccount should have been called — receipt already existed.
-    let creates = common::magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
+    let creates = take_captured_ephemeral_creates(MAGIC_PROGRAM);
     assert!(creates.is_empty(), "expected no CreateEphemeralAccount CPI");
 
     // No CloseEphemeralAccount either — this is not the last transfer.
-    let closes = common::magic_mock::take_captured_ephemeral_closes(MAGIC_PROGRAM);
+    let closes = take_captured_ephemeral_closes(MAGIC_PROGRAM);
     assert!(closes.is_empty(), "expected no CloseEphemeralAccount CPI");
 
     // Receipt transfer_completed should be 1.
@@ -293,7 +347,7 @@ async fn execute_callback_closes_receipt_when_last_transfer_with_pre_initialized
     let (ctx, validator, mint, queue, receipt, vault, vault_token) =
         setup_context(receipt_data, group_id).await;
 
-    let ix = callback_ix(
+    let ix = callback_executor_ix(
         validator.pubkey(),
         receipt,
         queue,
@@ -319,12 +373,14 @@ async fn execute_callback_closes_receipt_when_last_transfer_with_pre_initialized
         .unwrap();
     res.result.unwrap();
 
+
+
     // No CreateEphemeralAccount — receipt was pre-initialized.
-    let creates = common::magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
+    let creates = magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
     assert!(creates.is_empty(), "expected no CreateEphemeralAccount CPI");
 
     // CloseEphemeralAccount must have been called once — this was the last transfer.
-    let closes = common::magic_mock::take_captured_ephemeral_closes(MAGIC_PROGRAM);
+    let closes = magic_mock::take_captured_ephemeral_closes(MAGIC_PROGRAM);
     assert_eq!(
         closes.len(),
         1,
@@ -489,7 +545,8 @@ async fn execute_callback_records_transfer() {
     let mut pt = ProgramTest::default();
     pt.prefer_bpf(true);
     pt.add_program("ephemeral_token_program", PROGRAM, None);
-    add_mock_program(&mut pt);
+    magic_mock::add_mock(&mut pt);
+    callback_mock::add_mock(&mut pt);
 
     let queue_data = queue_account_data(mint, validator.pubkey(), queue_bump);
     pt.add_account(
@@ -598,7 +655,8 @@ async fn execute_callback_closes_receipt_on_last_transfer() {
     let mut pt = ProgramTest::default();
     pt.prefer_bpf(true);
     pt.add_program("ephemeral_token_program", PROGRAM, None);
-    add_mock_program(&mut pt);
+    magic_mock::add_mock(&mut pt);
+    callback_mock::add_mock(&mut pt);
 
     let queue_data = queue_account_data(mint, validator.pubkey(), queue_bump);
     pt.add_account(
