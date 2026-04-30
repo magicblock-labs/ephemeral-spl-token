@@ -1,10 +1,9 @@
 use std::sync::{Mutex, OnceLock};
 
 use common::magic_mock::{
-    add_mock as add_magic_program_mock, clear_all_captured, clear_captured_cancels,
-    clear_captured_intent_bundles, clear_captured_schedules, peek_captured_intent_bundles,
-    take_captured_cancels, take_captured_schedules, CapturedCancelTask, CapturedIntentBundle,
-    CapturedScheduleAccount, CapturedScheduleTask,
+    clear_all_captured, clear_captured_cancels, clear_captured_intent_bundles,
+    clear_captured_schedules, peek_captured_intent_bundles, take_captured_cancels,
+    take_captured_schedules, CapturedScheduleAccount,
 };
 use dlp_api::pda::magic_fee_vault_pda_from_validator;
 use ephemeral_rollups_pinocchio::{

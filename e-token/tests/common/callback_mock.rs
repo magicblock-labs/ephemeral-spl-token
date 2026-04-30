@@ -1,8 +1,5 @@
-use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
 use magicblock_magic_program_api::instruction::CallbackInstruction;
-use magicblock_magic_program_api::pda::{
-    CALLBACK_SEED, CALLBACK_SIGNER_BUMP, CRANK_SEED, CRANK_SIGNER_BUMP,
-};
+use magicblock_magic_program_api::pda::{CALLBACK_SEED, CALLBACK_SIGNER_BUMP};
 use magicblock_magic_program_api::CALLBACK_PROGRAM_ID;
 use pinocchio::error::ProgramError;
 use pinocchio::ProgramResult;
@@ -24,7 +21,7 @@ pub fn take_execute_callbacks() -> Vec<Instruction> {
 }
 
 pub fn process(
-    program_id: &Pubkey,
+    _program_id: &Pubkey,
     accounts: &[AccountInfo],
     instruction_data: &[u8],
 ) -> ProgramResult {
