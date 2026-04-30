@@ -227,6 +227,9 @@ fn create_group_receipt(
     group_id: u32,
     split: u32,
 ) -> ProgramResult {
+    #[cfg(feature = "logging")]
+    use alloc::string::ToString;
+
     // 1 means that crank will be executed right away
     const TICK_INTERVAL_MILLIS: i64 = 1;
     const INITIALIZE_GROUP_RECEIPT_CRANK_ACCOUNTS: usize = 5;
@@ -256,6 +259,11 @@ fn create_group_receipt(
 
     // Accounts required on crank tick
     let (group_receipt, _) = derive_group_receipt_id(queue_info.address(), group_id);
+    debug_log!(
+        "Group receipt address: {}",
+        group_receipt.to_string().as_str()
+    );
+
     let tick_accounts = [
         InstructionAccount::readonly_signer(&CRANK_SIGNER),
         InstructionAccount::writable(queue_info.address()),

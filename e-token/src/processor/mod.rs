@@ -65,10 +65,10 @@ pub use ensure_transfer_queue_crank::process_ensure_transfer_queue_crank;
 pub use execute_ready_queued_transfer::{
     process_execute_ready_queued_transfer, ExecuteQueuedTransferArgs,
 };
-pub use execute_transfer_callback::process_execute_transfer_callback;
+pub use execute_transfer_callback::{process_execute_transfer_callback, TransferCallbackArgs};
 pub use initialize_ephemeral_ata::process_initialize_ephemeral_ata;
 pub use initialize_global_vault::process_initialize_global_vault;
-pub use initialize_group_receipt::process_initialize_group_receipt;
+pub use initialize_group_receipt::{process_initialize_group_receipt, InitializeGroupReceiptArgs};
 pub use initialize_rent_pda::process_initialize_rent_pda;
 pub use initialize_shuttle_ephemeral_ata::process_initialize_shuttle_ephemeral_ata;
 pub use initialize_transfer_queue::{

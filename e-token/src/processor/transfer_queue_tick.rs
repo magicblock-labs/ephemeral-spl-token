@@ -27,7 +27,7 @@ use crate::processor::internal::transfer_queue_refill::{
     MARK_TRANSFER_QUEUE_REFILL_PENDING_COMPUTE_UNITS,
     MARK_TRANSFER_QUEUE_REFILL_PENDING_ESCROW_INDEX,
 };
-use crate::processor::utils::MAGIC_VAULT_ID;
+use crate::processor::utils::{CALLBACK_SIGNER, MAGIC_VAULT_ID};
 use crate::{
     instruction::ESplInternalInstruction,
     processor::execute_ready_queued_transfer::ExecuteQueuedTransferArgs,
@@ -397,12 +397,16 @@ fn create_action_callback_accounts(
     queued_transfer: &QueuedTransfer,
     vault: &ephemeral_spl_api::Address,
     mint: &ephemeral_spl_api::Address,
-) -> [ShortAccountMeta; 9] {
+) -> [ShortAccountMeta; 10] {
     let vault_token_account = derive_associated_token_address(vault, mint);
     let source_token_account = derive_associated_token_address(&queued_transfer.source, mint);
     let (group_receipt_account, _) =
         derive_group_receipt_id(queue_address, queued_transfer.group_id());
     [
+        ShortAccountMeta {
+            pubkey: CALLBACK_SIGNER,
+            is_writable: false,
+        },
         ShortAccountMeta {
             pubkey: group_receipt_account,
             is_writable: true,

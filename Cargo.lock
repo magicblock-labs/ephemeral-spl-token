@@ -3166,14 +3166,14 @@ dependencies = [
 
 [[package]]
 name = "magicblock-magic-program-api"
-version = "0.8.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "28feb224a9bd4d9759746c0a292938fe44fe80661ae12d88baf60c09819c5528"
+version = "0.9.0"
+source = "git+https://github.com/magicblock-labs/magicblock-validator.git?rev=69d3381e#69d3381edd0d84415d2ebd7e56bb221c380077aa"
 dependencies = [
  "bincode 1.3.3",
+ "const-crypto",
  "serde",
- "solana-program 2.3.0",
- "solana-signature 2.3.0",
+ "solana-program 3.0.0",
+ "solana-signature 3.1.0",
 ]
 
 [[package]]

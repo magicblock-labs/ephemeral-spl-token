@@ -1,12 +1,11 @@
-use crate::processor::utils::GroupReceiptController;
+use crate::processor::utils::{GroupReceiptController, CALLBACK_SIGNER};
 use alloc::vec;
 use alloc::vec::Vec;
 use data_layout::variable_offset_layout;
 
+use ephemeral_spl_api::debug_log;
 use ephemeral_spl_api::state::group_receipt::TransferReceipt;
-use ephemeral_spl_api::state::transfer_queue::{
-    queue_views_checked, TransferQueueHeader, QUEUE_SEED,
-};
+use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, TransferQueueHeader};
 use pinocchio::error::ProgramError;
 use pinocchio::{AccountView, Address, ProgramResult};
 use solana_signature::Signature;
@@ -60,7 +59,7 @@ pub fn process_execute_transfer_callback(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let [validator, group_receipt, queue_info, _, mint, _, _, _, magic_vault, magic_program] =
+    let [callback_signer, group_receipt, queue_info, _, mint, _, _, _, magic_vault, magic_program] =
         accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
@@ -69,7 +68,7 @@ pub fn process_execute_transfer_callback(
     // Verify validator & queue info
     let data = unsafe { queue_info.borrow_unchecked() };
     let (header, _) = queue_views_checked(data)?;
-    validate_common(validator, queue_info, mint, header)?;
+    validate_common(callback_signer, queue_info, mint, header)?;
 
     let response = MagicResponseView::deserialize(instruction_data)?;
     let args = TransferCallbackArgs::decode(response.data)?;
@@ -98,36 +97,31 @@ pub fn process_execute_transfer_callback(
 }
 
 fn validate_common(
-    validator: &AccountView,
+    callback_signer: &AccountView,
     queue_info: &AccountView,
     mint: &AccountView,
     queue_header: &TransferQueueHeader,
 ) -> ProgramResult {
-    if !validator.is_signer() {
-        #[cfg(feature = "logging")]
-        pinocchio_log::log!("Missing authority to execute callback!");
+    #[cfg(feature = "logging")]
+    use alloc::string::ToString;
 
+    if !callback_signer.is_signer() {
+        debug_log!("Missing authority to execute callback!");
         return Err(ProgramError::MissingRequiredSignature);
     }
-
-    // Under condition that queue creation is authorized
-    // Verifies both validator & queue
-    let (derived_queue, _) = Address::find_program_address(
-        &[
-            QUEUE_SEED,
-            mint.address().as_ref(),
-            validator.address().as_ref(),
-        ],
-        &crate::ID,
-    );
-    if &derived_queue != queue_info.address() {
-        return Err(ProgramError::InvalidSeeds);
+    if callback_signer.address() != &CALLBACK_SIGNER {
+        debug_log!(
+            "Callback expects authority: {}, got: {}",
+            CALLBACK_SIGNER.to_string().as_str(),
+            callback_signer.address().to_string().as_str(),
+        );
+        return Err(ProgramError::IncorrectAuthority);
     }
+
     if !queue_info.owned_by(&crate::ID) {
         return Err(ProgramError::IllegalOwner);
     }
 
-    // Verify mint
     if &queue_header.mint != mint.address() {
         return Err(ProgramError::InvalidAccountData);
     }
