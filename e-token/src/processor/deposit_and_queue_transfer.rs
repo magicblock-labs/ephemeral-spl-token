@@ -78,6 +78,10 @@ pub fn process_deposit_and_queue_transfer(
         queue_info.owned_by(&crate::ID),
         ProgramError::InvalidAccountOwner
     );
+    require!(
+        magic_program.address().eq(&MAGIC_PROGRAM_ID),
+        ProgramError::IncorrectProgramId
+    );
 
     let amount = args.amount();
     validate_deposit_and_queue_transfer_params(

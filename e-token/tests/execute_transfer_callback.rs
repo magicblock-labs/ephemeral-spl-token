@@ -29,9 +29,11 @@ const GROUP_RECEIPT_SEED: &[u8] = b"group-receipt";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-/// Serialise the callback instruction data: discriminator + MagicResponseView + TransferCallbackArgs.
+/// Serialise the callback instruction data for `callback_ix_data`: discriminator
+/// (`internal::EXECUTE_TRANSFER_CALLBACK`) + `MagicResponseView`.
 ///
-/// TransferCallbackArgs layout (13 bytes): amount(8) + group_id(4) + flag(1)
+/// `MagicResponseView.data` contains the serialised `TransferCallbackArgs` payload:
+/// amount(8) + group_id(4) + flag(1).
 fn callback_ix_data(ok: bool, amount: u64, group_id: u32) -> Vec<u8> {
     // TransferCallbackArgs payload
     let mut args = Vec::with_capacity(13);
