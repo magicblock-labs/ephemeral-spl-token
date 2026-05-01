@@ -351,14 +351,17 @@ pub fn process_execute_scheduled_private_transfer(
         &[stash_signer.clone()],
     )?;
 
-    close_empty_stash_accounts(
-        stash_payer_info,
-        rent_pda_info,
-        stash_ata_info,
-        mint_info,
-        token_program_info,
-        &stash_signer,
-    )
+    Ok(())
+
+    // TODO(GabrielePicco): this can't be closed as the merge otherwise does not work
+    // close_empty_stash_accounts(
+    //     stash_payer_info,
+    //     rent_pda_info,
+    //     stash_ata_info,
+    //     mint_info,
+    //     token_program_info,
+    //     &stash_signer,
+    // )
 }
 
 #[variable_offset_layout(buffer_offset = 1)]
