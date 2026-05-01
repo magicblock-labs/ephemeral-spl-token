@@ -10,18 +10,26 @@ use ephemeral_spl_api::state::stash::StashPda;
 use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::cpi::{invoke_signed_with_bounds, Signer};
 use pinocchio::instruction::{InstructionAccount, InstructionView};
+use pinocchio::sysvars::{clock::Clock, Sysvar};
 use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
+use pinocchio_token_2022::instructions::TransferChecked;
 
 use crate::processor::initialize_rent_pda::RENT_PDA;
 use crate::processor::internal::derive_hydra_seed;
-use crate::processor::utils::{is_supported_token_program, read_token_account};
+use crate::processor::utils::{
+    get_associated_token_address, is_supported_token_program, read_mint_decimals,
+    read_token_account, validate_token_account,
+};
 use crate::DepositAndDelegateShuttleWithPrivateTransferArgs;
 
 /// Number of metas forwarded to instruction 25.
 pub(crate) const SCHEDULED_PT_INNER_ACCOUNTS: usize = 19;
 
-/// Total accounts on this top-level instruction (ix 25 layout + Hydra crank).
-pub(crate) const SCHEDULED_PT_ACCOUNTS: usize = SCHEDULED_PT_INNER_ACCOUNTS + 1;
+/// Total accounts on this top-level instruction (ix 25 layout + user ATA + Hydra crank).
+pub(crate) const SCHEDULED_PT_ACCOUNTS: usize = SCHEDULED_PT_INNER_ACCOUNTS + 2;
+
+// Five minutes at an estimated 400 ms/slot.
+const REFUND_TIMEOUT_SLOTS: u64 = 750;
 
 ///
 /// Executes on: BASE only. Top-level, triggered by Hydra.
@@ -31,10 +39,10 @@ pub(crate) const SCHEDULED_PT_ACCOUNTS: usize = SCHEDULED_PT_INNER_ACCOUNTS + 1;
 /// `[b"stash", user, mint]` and `invoke_signed`s into instruction 25 with
 /// the stash PDA covering both the `payer` and `owner` signer slots.
 ///
-/// Accounts: slots 0..19 mirror instruction 25's layout verbatim so the
-/// self-CPI can forward that prefix unchanged. Slot 19 is the Hydra crank
+/// Accounts: slots 0..18 mirror instruction 25's layout verbatim so the
+/// self-CPI can forward that prefix unchanged. Slot 20 is the Hydra crank
 /// PDA, the provenance witness — `crank.authority == RENT_PDA` and
-/// `crank.authority_signer == 1` proves ix 30 created the schedule.
+/// `crank.authority_signer == 1` proves ix 29 created the schedule.
 ///
 ///  0: [writable]          - PDA     : Stash PDA (payer in ix 25).
 ///  1: [writable]          - PDA     : Rent PDA account.
@@ -55,7 +63,8 @@ pub(crate) const SCHEDULED_PT_ACCOUNTS: usize = SCHEDULED_PT_INNER_ACCOUNTS + 1;
 /// 16: [writable]          - SPL     : Stash ATA (owner_source_token in ix 25).
 /// 17: [writable]          - SPL     : Vault token account.
 /// 18: [writable]          - PDA     : Transfer queue account.
-/// 19: [writable]          - PDA     : Hydra crank PDA (provenance witness;
+/// 19: [writable]          - SPL     : User ATA for timeout refund.
+/// 20: [writable]          - PDA     : Hydra crank PDA (provenance witness;
 ///                                     writable in the meta only because
 ///                                     Trigger marks it writable at slot 0,
 ///                                     and Solana's sysvar serializes the
@@ -88,8 +97,9 @@ pub fn process_execute_scheduled_private_transfer(
         stash_ata_info,
         vault_token_info,
         queue_info,
+        user_ata_info,
         hydra_crank_info
-    ] = require_n_accounts!(accounts, 20);
+    ] = require_n_accounts!(accounts, 21);
 
     let args = ExecuteScheduledPrivateTransferArgs::decode(instruction_data)?;
 
@@ -135,10 +145,57 @@ pub fn process_execute_scheduled_private_transfer(
         crank.authority_signer == 1,
         ProgramError::InvalidAccountData
     );
+    let scheduled_slot = if crank.executed() == 0 {
+        crank.next_exec_slot()
+    } else {
+        crank
+            .next_exec_slot()
+            .saturating_sub(crank.interval_slots())
+    };
     drop(crank_data);
 
     // -------- sweep: amount = current stash ATA token balance --------
     let effective_amount = read_token_account(stash_ata_info)?.amount();
+    let stash_bump_seed = [args.stash_bump()];
+    let stash_signer_seeds =
+        StashPda::signer_seeds(args.user_address(), mint_info.address(), &stash_bump_seed);
+    let stash_signer = Signer::from(&stash_signer_seeds);
+
+    if refund_timeout_elapsed(scheduled_slot)? {
+        if effective_amount == 0 {
+            return Ok(());
+        }
+        let expected_user_ata = get_associated_token_address(
+            args.user_address(),
+            mint_info.address(),
+            token_program_info.address(),
+        );
+        require_eq_keys!(
+            &expected_user_ata,
+            user_ata_info.address(),
+            ProgramError::InvalidSeeds
+        );
+        validate_token_account(
+            user_ata_info,
+            mint_info.address(),
+            Some(args.user_address()),
+            Some(token_program_info.address()),
+        )?;
+
+        let decimals = read_mint_decimals(mint_info, token_program_info)?;
+        TransferChecked {
+            mint: mint_info,
+            from: stash_ata_info,
+            to: user_ata_info,
+            authority: stash_payer_info,
+            token_program: token_program_info.address(),
+            amount: effective_amount,
+            decimals,
+        }
+        .invoke_signed(core::slice::from_ref(&stash_signer))?;
+        return Ok(());
+    }
+
     require!(effective_amount != 0, ProgramError::InvalidAccountData);
 
     // -------- build ix 25 instruction data --------
@@ -245,11 +302,6 @@ pub fn process_execute_scheduled_private_transfer(
 
     // Single PDA signer authorizes both slot 0 (payer) and slot 5 (owner)
     // because they reference the same stash PDA.
-    let stash_bump_seed = [args.stash_bump()];
-    let stash_signer_seeds =
-        StashPda::signer_seeds(&args.user_address(), mint_info.address(), &stash_bump_seed);
-    let stash_signer = Signer::from(&stash_signer_seeds);
-
     let account_refs: [&AccountView; SCHEDULED_PT_INNER_ACCOUNTS] = [
         stash_payer_info,
         rent_pda_info,
@@ -294,4 +346,12 @@ impl ExecuteScheduledPrivateTransferArgsView<'_> {
     fn user_address(&self) -> &Address {
         unsafe { &*(self.user().as_ptr() as *const Address) }
     }
+}
+
+#[inline(always)]
+fn refund_timeout_elapsed(scheduled_slot: u64) -> Result<bool, ProgramError> {
+    let refund_slot = scheduled_slot
+        .checked_add(REFUND_TIMEOUT_SLOTS)
+        .ok_or(ProgramError::InvalidInstructionData)?;
+    Ok(Clock::get()?.slot > refund_slot)
 }

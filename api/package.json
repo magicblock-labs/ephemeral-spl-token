@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@hono/zod-openapi": "^1.0.2",
-    "@magicblock-labs/ephemeral-rollups-sdk": "0.12.0",
+    "@magicblock-labs/ephemeral-rollups-sdk": "file:../../../Documents/Solana/ephemeral-rollups-sdk/ts/web3js",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@scalar/hono-api-reference": "^0.9.13",
     "@solana/web3.js": "^1.98.0",
