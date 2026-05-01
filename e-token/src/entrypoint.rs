@@ -199,20 +199,18 @@ fn process_public_instruction(accounts: &[AccountView], instruction_data: &[u8])
 
             process_allocate_transfer_queue(accounts, data)
         }
-        ESplInstruction::ProcessPendingTransferQueueRefill => {
-            debug_log!("Instruction: ProcessPendingTransferQueueRefill");
+        ESplInstruction::ExecutePendingTransferQueueRefill => {
+            debug_log!("Instruction: ExecutePendingTransferQueueRefill");
 
-            process_pending_transfer_queue_refill(accounts, data)
+            process_execute_pending_transfer_queue_refill(accounts, data)
         }
-        ESplInstruction::ProcessScheduledPrivateTransfer => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: ProcessScheduledPrivateTransfer");
+        ESplInstruction::ExecuteScheduledPrivateTransfer => {
+            debug_log!("Instruction: ExecuteScheduledPrivateTransfer");
 
-            process_scheduled_private_transfer(accounts, instruction_data)
+            process_execute_scheduled_private_transfer(accounts, instruction_data)
         }
         ESplInstruction::SchedulePrivateTransfer => {
-            #[cfg(feature = "logging")]
-            pinocchio_log::log!("Instruction: SchedulePrivateTransfer");
+            debug_log!("Instruction: SchedulePrivateTransfer");
 
             process_schedule_private_transfer(accounts, instruction_data)
         }

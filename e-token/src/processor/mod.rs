@@ -12,7 +12,9 @@ pub mod deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transf
 pub mod deposit_and_queue_transfer;
 pub mod deposit_spl_tokens;
 pub mod ensure_transfer_queue_crank;
+pub mod execute_pending_transfer_queue_refill;
 pub mod execute_ready_queued_transfer;
+pub mod execute_scheduled_private_transfer;
 pub mod initialize_ephemeral_ata;
 pub mod initialize_global_vault;
 pub mod initialize_rent_pda;
@@ -21,8 +23,6 @@ pub mod initialize_transfer_queue;
 pub(crate) mod internal;
 pub mod mark_transfer_queue_refill_pending;
 pub mod merge_shuttle_into_ephemeral_ata;
-pub mod pending_transfer_queue_refill;
-pub mod process_scheduled_private_transfer;
 pub mod reset_ephemeral_ata_permission;
 pub mod schedule_private_transfer;
 pub mod sponsored_lamports_transfer;
@@ -60,9 +60,11 @@ pub use deposit_and_queue_transfer::{
 };
 pub use deposit_spl_tokens::process_deposit_spl_tokens;
 pub use ensure_transfer_queue_crank::process_ensure_transfer_queue_crank;
+pub use execute_pending_transfer_queue_refill::process_execute_pending_transfer_queue_refill;
 pub use execute_ready_queued_transfer::{
     process_execute_ready_queued_transfer, ExecuteQueuedTransferArgs,
 };
+pub use execute_scheduled_private_transfer::process_execute_scheduled_private_transfer;
 pub use initialize_ephemeral_ata::process_initialize_ephemeral_ata;
 pub use initialize_global_vault::process_initialize_global_vault;
 pub use initialize_rent_pda::process_initialize_rent_pda;
@@ -72,8 +74,6 @@ pub use initialize_transfer_queue::{
 };
 pub use mark_transfer_queue_refill_pending::process_mark_transfer_queue_refill_pending;
 pub use merge_shuttle_into_ephemeral_ata::process_merge_shuttle_into_ephemeral_ata;
-pub use pending_transfer_queue_refill::process_pending_transfer_queue_refill;
-pub use process_scheduled_private_transfer::process_scheduled_private_transfer;
 pub use reset_ephemeral_ata_permission::process_reset_ephemeral_ata_permission;
 pub use schedule_private_transfer::process_schedule_private_transfer;
 pub use sponsored_lamports_transfer::process_sponsored_lamports_transfer;

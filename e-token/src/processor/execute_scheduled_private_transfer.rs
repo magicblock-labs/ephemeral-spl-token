@@ -1,5 +1,9 @@
+use alloc::borrow::ToOwned;
+use alloc::vec;
 use alloc::vec::Vec;
 use core::mem::MaybeUninit;
+
+use data_layout::variable_offset_layout;
 use ephemeral_spl_api::instruction::ESplInstruction;
 
 use ephemeral_spl_api::state::stash::StashPda;
@@ -9,19 +13,15 @@ use pinocchio::instruction::{InstructionAccount, InstructionView};
 use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
 
 use crate::processor::initialize_rent_pda::RENT_PDA;
-use crate::processor::schedule_private_transfer::derive_hydra_seed;
+use crate::processor::internal::derive_hydra_seed;
 use crate::processor::utils::{is_supported_token_program, read_token_account};
+use crate::DepositAndDelegateShuttleWithPrivateTransferArgs;
 
 /// Number of metas forwarded to instruction 25.
 pub(crate) const SCHEDULED_PT_INNER_ACCOUNTS: usize = 19;
 
 /// Total accounts on this top-level instruction (ix 25 layout + Hydra crank).
 pub(crate) const SCHEDULED_PT_ACCOUNTS: usize = SCHEDULED_PT_INNER_ACCOUNTS + 1;
-
-/// Fixed prefix of `instruction_data` injected by `schedule_private_transfer`
-/// when it baked the Hydra-scheduled payload:
-/// `[user_pubkey: 32][stash_pda_bump: 1][shuttle_id: 4]`.
-const PREFIX_LEN: usize = 32 + 1 + 4;
 
 ///
 /// Executes on: BASE only. Top-level, triggered by Hydra.
@@ -61,52 +61,41 @@ const PREFIX_LEN: usize = 32 + 1 + 4;
 ///                                     and Solana's sysvar serializes the
 ///                                     tx-level writable union).
 ///
-/// Instruction data (after the entrypoint strips the discriminator):
-///
-///   00..32 : user pubkey (stash PDA seed)
-///   32..33 : stash PDA bump
-///   33..37 : shuttle_id (u32 LE)
-///   37.... : [len:u8][bytes] optional validator (0 or 32 bytes)
-///   ...... : [len:u8][bytes] encrypted destination
-///   ...... : [len:u8][bytes] encrypted data suffix
+/// Instruction Data: ExecuteScheduledPrivateTransferArgs
 ///
 #[inline(never)]
-pub fn process_scheduled_private_transfer(
+pub fn process_execute_scheduled_private_transfer(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let [stash_payer_info, rent_pda_info, shuttle_info, shuttle_eata_info, shuttle_wallet_ata_info, stash_owner_info, owner_program_info, buffer_info, delegation_record_info, delegation_metadata_info, delegation_program_info, associated_token_program_info, system_program_info, mint_info, token_program_info, global_vault_info, stash_ata_info, vault_token_info, queue_info, hydra_crank_info] =
-        require_n_accounts!(accounts, 20);
+    let [
+        stash_payer_info, // force multi-line
+        rent_pda_info,
+        shuttle_info,
+        shuttle_eata_info,
+        shuttle_wallet_ata_info,
+        stash_owner_info,
+        owner_program_info,
+        buffer_info,
+        delegation_record_info,
+        delegation_metadata_info,
+        delegation_program_info,
+        associated_token_program_info,
+        system_program_info,
+        mint_info,
+        token_program_info,
+        global_vault_info,
+        stash_ata_info,
+        vault_token_info,
+        queue_info,
+        hydra_crank_info
+    ] = require_n_accounts!(accounts, 20);
 
-    require!(
-        instruction_data.len() >= PREFIX_LEN,
-        ProgramError::InvalidInstructionData
-    );
-
-    // -------- parse prefix --------
-    let user = Address::new_from_array(
-        instruction_data[0..32]
-            .try_into()
-            .map_err(|_| ProgramError::InvalidInstructionData)?,
-    );
-    let stash_bump = instruction_data[32];
-    let shuttle_id_bytes = &instruction_data[33..37];
-    let tail = &instruction_data[37..];
-    let mut tail_cursor = 0;
-    let validator_bytes = read_vardata(tail, &mut tail_cursor)?;
-    read_vardata(tail, &mut tail_cursor)?;
-    read_vardata(tail, &mut tail_cursor)?;
-    require!(
-        tail_cursor == tail.len(),
-        ProgramError::InvalidInstructionData
-    );
-    require!(
-        validator_bytes.is_empty() || validator_bytes.len() == 32,
-        ProgramError::InvalidInstructionData
-    );
+    let args = ExecuteScheduledPrivateTransferArgs::decode(instruction_data)?;
 
     // -------- validate stash PDA derivation --------
-    let derived_stash = StashPda::derive_pda(&user, mint_info.address(), stash_bump)?;
+    let derived_stash =
+        StashPda::derive_pda(args.user_address(), mint_info.address(), args.stash_bump())?;
     require_eq_keys!(
         &derived_stash,
         stash_payer_info.address(),
@@ -131,10 +120,7 @@ pub fn process_scheduled_private_transfer(
         hydra_crank_info.owned_by(&Address::new_from_array(hydra_api::ID.to_bytes())),
         ProgramError::InvalidAccountOwner
     );
-    let shuttle_id_arr: [u8; 4] = shuttle_id_bytes
-        .try_into()
-        .map_err(|_| ProgramError::InvalidInstructionData)?;
-    let hydra_seed = derive_hydra_seed(stash_payer_info.address(), &shuttle_id_arr);
+    let hydra_seed = derive_hydra_seed(stash_payer_info.address(), args.shuttle_id());
     let (expected_crank, _) = hydra_api::state::find_crank_pda(&hydra_seed);
     require_eq_keys!(
         &expected_crank,
@@ -156,14 +142,17 @@ pub fn process_scheduled_private_transfer(
     require!(effective_amount != 0, ProgramError::InvalidAccountData);
 
     // -------- build ix 25 instruction data --------
-    //   [25][shuttle_id:4][amount:8][vardata tail]
-    let mut ix_data: Vec<u8> = Vec::with_capacity(1 + 4 + 8 + tail.len());
-    ix_data.push(
-        ESplInstruction::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer as u8,
-    );
-    ix_data.extend_from_slice(shuttle_id_bytes);
-    ix_data.extend_from_slice(&effective_amount.to_le_bytes());
-    ix_data.extend_from_slice(tail);
+    let ix_data = ESplInstruction::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer
+        .with_data(
+            &DepositAndDelegateShuttleWithPrivateTransferArgs {
+                shuttle_id: args.shuttle_id(),
+                amount: effective_amount,
+                validator: Some(args.validator().to_owned()),
+                encrypted_destination: args.encrypted_destination().to_owned(),
+                encrypted_data_suffix: args.encrypted_data_suffix().to_owned(),
+            }
+            .encode()?,
+        );
 
     // -------- build ix 25 account metas (19) --------
     let mut metas =
@@ -255,8 +244,9 @@ pub fn process_scheduled_private_transfer(
 
     // Single PDA signer authorizes both slot 0 (payer) and slot 5 (owner)
     // because they reference the same stash PDA.
-    let stash_bump_seed = [stash_bump];
-    let stash_signer_seeds = StashPda::signer_seeds(&user, mint_info.address(), &stash_bump_seed);
+    let stash_bump_seed = [args.stash_bump()];
+    let stash_signer_seeds =
+        StashPda::signer_seeds(&args.user_address(), mint_info.address(), &stash_bump_seed);
     let stash_signer = Signer::from(&stash_signer_seeds);
 
     let account_refs: [&AccountView; SCHEDULED_PT_INNER_ACCOUNTS] = [
@@ -288,15 +278,19 @@ pub fn process_scheduled_private_transfer(
     )
 }
 
-#[inline(always)]
-fn read_vardata<'a>(data: &'a [u8], cursor: &mut usize) -> Result<&'a [u8], ProgramError> {
-    require!(*cursor < data.len(), ProgramError::InvalidInstructionData);
-    let len = data[*cursor] as usize;
-    let start = *cursor + 1;
-    let end = start
-        .checked_add(len)
-        .ok_or(ProgramError::InvalidInstructionData)?;
-    require!(end <= data.len(), ProgramError::InvalidInstructionData);
-    *cursor = end;
-    Ok(&data[start..end])
+#[variable_offset_layout(buffer_offset = 1)]
+pub struct ExecuteScheduledPrivateTransferArgs {
+    pub user: [u8; 32],
+    pub stash_bump: u8,
+    pub shuttle_id: u32,
+    pub validator: [u8; 32],
+    pub encrypted_destination: [u8; 80],
+    #[flexible = 1]
+    pub encrypted_data_suffix: Vec<u8>,
+}
+
+impl ExecuteScheduledPrivateTransferArgsView<'_> {
+    fn user_address(&self) -> &Address {
+        unsafe { &*(self.user().as_ptr() as *const Address) }
+    }
 }
