@@ -4,15 +4,12 @@ use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::cpi::Signer;
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
-use pinocchio_system::instructions::{CreateAccount, Transfer};
+use pinocchio_system::instructions::CreateAccount;
 use {
     ephemeral_spl_api::state::global_vault::GlobalVault,
     ephemeral_spl_api::state::load_mut,
     pinocchio::{error::ProgramError, AccountView, ProgramResult},
 };
-
-const LEGACY_GLOBAL_VAULT_LEN: usize = core::mem::size_of::<pinocchio::Address>();
-const GLOBAL_VAULT_V0_LEN: usize = 64;
 
 ///
 /// Executes on:
@@ -65,41 +62,10 @@ pub fn process_initialize_global_vault(
     let required_lamports = Rent::get()?.try_minimum_balance(GlobalVault::LEN)?;
 
     if vault_info.owned_by(&program_id) {
-        let vault_data_len = vault_info.data_len();
         require!(
-            vault_data_len == GlobalVault::LEN
-                || vault_data_len == LEGACY_GLOBAL_VAULT_LEN
-                || vault_data_len == GLOBAL_VAULT_V0_LEN,
+            vault_info.data_len() == GlobalVault::LEN,
             ProgramError::InvalidAccountData
         );
-        if vault_data_len == GlobalVault::LEN {
-            // Already on current layout.
-        } else if vault_data_len == LEGACY_GLOBAL_VAULT_LEN || vault_data_len == GLOBAL_VAULT_V0_LEN
-        {
-            // Migrate legacy vaults from 32-byte layout (mint only) to 64-byte layout.
-            // TODO: Remove this migration path once all deployed vaults are upgraded.
-            let legacy_mint = {
-                let legacy_data = unsafe { vault_info.borrow_unchecked() };
-                unsafe { *(legacy_data.as_ptr() as *const pinocchio::Address) }
-            };
-            require_eq_keys!(
-                &legacy_mint,
-                mint_info.address(),
-                ProgramError::InvalidAccountData
-            );
-
-            let current_lamports = vault_info.lamports();
-            if current_lamports < required_lamports {
-                Transfer {
-                    from: payer_info,
-                    to: vault_info,
-                    lamports: required_lamports - current_lamports,
-                }
-                .invoke()?;
-            }
-
-            vault_info.resize(GlobalVault::LEN)?;
-        }
     } else {
         CreateAccount {
             from: payer_info,

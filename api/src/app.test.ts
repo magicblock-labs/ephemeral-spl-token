@@ -1035,7 +1035,7 @@ describe("app", () => {
     expect(json.error.message).toBe("split must be an integer between 1 and 14 when visibility=private");
   });
 
-  it("visibility=private rejects a mismatched destinationTokenAccount", async () => {
+  it("visibility=private rejects destinationTokenAccount", async () => {
     const metisEnv = {
       ...env,
       METIS_SWAP_API_URL: "https://triton.rpc.test/private-token/metis",
@@ -1072,7 +1072,47 @@ describe("app", () => {
     expect(response.status).toBe(400);
     const json = await response.json() as { error: { code: string; message: string } };
     expect(json.error.code).toBe("INVALID_REQUEST");
-    expect(json.error.message).toMatch(/destinationTokenAccount is controlled/);
+    expect(json.error.message).toMatch(/destinationTokenAccount is not supported/);
+  });
+
+  it("visibility=private rejects asLegacyTransaction=true", async () => {
+    const metisEnv = {
+      ...env,
+      METIS_SWAP_API_URL: "https://triton.rpc.test/private-token/metis",
+    };
+    const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+    const recipient = Keypair.generate().publicKey.toBase58();
+    const quoteResponse = {
+      inputMint: "So11111111111111111111111111111111111111112",
+      inAmount: "1000000",
+      outputMint,
+      outAmount: "999000",
+      otherAmountThreshold: "998000",
+      swapMode: "ExactIn",
+      slippageBps: 50,
+      priceImpactPct: "0.01",
+      routePlan: [],
+    };
+
+    const response = await app.request("/v1/swap/swap", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        userPublicKey: owner,
+        quoteResponse,
+        visibility: "private",
+        destination: recipient,
+        minDelayMs: "0",
+        maxDelayMs: "0",
+        split: 1,
+        asLegacyTransaction: true,
+      }),
+    }, metisEnv);
+
+    expect(response.status).toBe(400);
+    const json = await response.json() as { error: { code: string; message: string } };
+    expect(json.error.code).toBe("INVALID_REQUEST");
+    expect(json.error.message).toMatch(/asLegacyTransaction is not supported/);
   });
 
   it("visibility=private rejects nativeDestinationAccount", async () => {

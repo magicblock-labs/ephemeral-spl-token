@@ -639,12 +639,19 @@ async function handlePrivateSwap(
   const [stashPda] = deriveStashPda(userPubkey, mintPubkey);
   const [stashAta] = deriveStashAta(userPubkey, mintPubkey);
 
-  if (body.destinationTokenAccount && body.destinationTokenAccount !== stashAta.toBase58()) {
+  if (body.destinationTokenAccount) {
     throw new ApiError(
       400,
       "INVALID_REQUEST",
-      "destinationTokenAccount is controlled by the server when visibility=private",
-      { expected: stashAta.toBase58() },
+      "destinationTokenAccount is not supported when visibility=private",
+    );
+  }
+
+  if (body.asLegacyTransaction) {
+    throw new ApiError(
+      400,
+      "INVALID_REQUEST",
+      "asLegacyTransaction is not supported when visibility=private",
     );
   }
 
