@@ -3,8 +3,14 @@ use alloc::vec::Vec;
 use data_layout::variable_offset_layout;
 
 use crate::processor::execute_transfer_callback::derive_group_receipt_id;
-use crate::processor::utils::{GroupReceiptController, CRANK_SIGNER};
+#[cfg(feature = "logging")]
+use crate::processor::utils::group_receipt_log;
+use crate::processor::utils::{
+    group_receipt_close, group_receipt_create, group_receipt_set_splits, GroupReceiptAccounts,
+    CRANK_SIGNER,
+};
 use core::num::NonZeroU32;
+use ephemeral_spl_api::state::group_receipt::GroupReceipt;
 use ephemeral_spl_api::state::transfer_queue::{
     queue_views_checked, TransferQueueHeader, QUEUE_SEED,
 };
@@ -53,11 +59,8 @@ pub fn process_initialize_group_receipt(
             splits,
         )
     } else {
-        GroupReceiptController::create(
-            group_receipt,
-            queue_info,
-            magic_vault,
-            magic_program,
+        group_receipt_create(
+            &GroupReceiptAccounts::new(group_receipt, queue_info, magic_vault, magic_program),
             group_receipt_bump,
             args.group_id(),
             splits.get(),
@@ -113,20 +116,21 @@ fn handle_already_initialized_receipt(
     group_id: u32,
     splits: NonZeroU32,
 ) -> ProgramResult {
-    let mut group_receipt =
-        GroupReceiptController::view(group_receipt_info, queue_info, magic_vault, magic_program)?;
+    let accounts =
+        GroupReceiptAccounts::new(group_receipt_info, queue_info, magic_vault, magic_program);
+    let mut group_receipt = GroupReceipt::new(group_receipt_info)?;
 
     if group_receipt.id() != group_id {
         return Err(ProgramError::InvalidInstructionData);
     }
 
-    group_receipt.set_splits(splits)?;
+    group_receipt_set_splits(&accounts, &mut group_receipt, splits)?;
     if splits.get() as usize <= group_receipt.items_len() {
         // All callbacks executed
         #[cfg(feature = "logging")]
-        group_receipt.log();
+        group_receipt_log(&group_receipt);
 
-        group_receipt.close()
+        group_receipt_close(&accounts, group_receipt)
     } else {
         Ok(())
     }

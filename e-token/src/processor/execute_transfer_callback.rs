@@ -1,10 +1,15 @@
-use crate::processor::utils::{GroupReceiptController, CALLBACK_SIGNER};
+#[cfg(feature = "logging")]
+use crate::processor::utils::group_receipt_log;
+use crate::processor::utils::{
+    group_receipt_close, group_receipt_create, group_receipt_record_transfer, GroupReceiptAccounts,
+    CALLBACK_SIGNER,
+};
 use alloc::vec;
 use alloc::vec::Vec;
 use data_layout::variable_offset_layout;
 
 use ephemeral_spl_api::debug_log;
-use ephemeral_spl_api::state::group_receipt::TransferReceipt;
+use ephemeral_spl_api::state::group_receipt::{GroupReceipt, TransferReceipt};
 use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, TransferQueueHeader};
 use pinocchio::error::ProgramError;
 use pinocchio::{AccountView, Address, ProgramResult};
@@ -148,36 +153,31 @@ fn handle_group_receipt(
         return Err(ProgramError::InvalidSeeds);
     }
 
+    let accounts =
+        GroupReceiptAccounts::new(group_receipt_info, queue_info, magic_vault, magic_program);
+
     // Create receipt
     // This means that callback executed faster than initializing crank
     // As we don't know number of splits, initialize partially with 0
     let mut group_receipt = if !group_receipt_info.owned_by(&crate::ID) {
         debug_log!("TransferCallback: initializing receipt");
 
-        GroupReceiptController::create(
-            group_receipt_info,
-            queue_info,
-            magic_vault,
-            magic_program,
-            group_receipt_bump,
-            args.group_id(),
-            0,
-        )?
+        group_receipt_create(&accounts, group_receipt_bump, args.group_id(), 0)?
     } else {
-        GroupReceiptController::view(group_receipt_info, queue_info, magic_vault, magic_program)?
+        GroupReceipt::new(group_receipt_info)?
     };
-    group_receipt.record_transfer(TransferReceipt::new(
-        response.signature.copied(),
-        args.amount(),
-        response.ok,
-    ))?;
+    group_receipt_record_transfer(
+        &accounts,
+        &mut group_receipt,
+        TransferReceipt::new(response.signature.copied(), args.amount(), response.ok),
+    )?;
 
     // If no transfers left - close account
     if group_receipt.all_transfer_completed() {
         #[cfg(feature = "logging")]
-        group_receipt.log();
+        group_receipt_log(&group_receipt);
 
-        group_receipt.close()
+        group_receipt_close(&accounts, group_receipt)
     } else {
         Ok(())
     }
