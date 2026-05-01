@@ -145,6 +145,8 @@ impl<'a> GroupReceiptController<'a> {
     #[cfg(feature = "logging")]
     #[inline(never)]
     pub(crate) fn log(&self) {
+        use alloc::string::ToString;
+
         pinocchio_log::log!(
             "All transfers complete for group id: {} splits: {}",
             self.group_receipt.id(),
@@ -154,14 +156,14 @@ impl<'a> GroupReceiptController<'a> {
             for (i, item) in items.iter().enumerate() {
                 match item.signature() {
                     Some(sig) => pinocchio_log::log!(
-                        "transfer[{}] ok: {} amount: {} sig: {}",
+                        "transfer[{}], ok: {}, amount: {}, sig: {}",
                         i as u32,
                         item.ok(),
                         item.amount(),
-                        sig.as_array()
+                        sig.to_string().as_str()
                     ),
                     None => pinocchio_log::log!(
-                        "transfer[{}] ok: {} amount: {} sig: None",
+                        "transfer[{}], ok: {}, amount: {}, sig: None",
                         i as u32,
                         item.ok(),
                         item.amount()

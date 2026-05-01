@@ -152,8 +152,7 @@ fn handle_group_receipt(
     // This means that callback executed faster than initializing crank
     // As we don't know number of splits, initialize partially with 0
     let mut group_receipt = if !group_receipt_info.owned_by(&crate::ID) {
-        #[cfg(feature = "logging")]
-        pinocchio_log::log!("TransferCallback: initializing receipt");
+        debug_log!("TransferCallback: initializing receipt");
 
         GroupReceiptController::create(
             group_receipt_info,

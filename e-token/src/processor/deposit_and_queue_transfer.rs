@@ -1,3 +1,4 @@
+use crate::instruction::ESplInternalInstruction;
 use crate::processor::ensure_transfer_queue_crank::derive_queue_crank_task_id;
 use crate::processor::execute_transfer_callback::derive_group_receipt_id;
 use crate::processor::internal::token_vault::transfer_to_vault_for_mint;
@@ -278,11 +279,13 @@ fn create_group_receipt(
 
     // Create argument data for crank target
     let crank_task_id = derive_queue_crank_task_id(&group_receipt);
-    let tick_data = InitializeGroupReceiptArgs {
-        group_id,
-        splits: split,
-    }
-    .encode()?;
+    let tick_data = ESplInternalInstruction::InitializeGroupReceipt.with_data(
+        &InitializeGroupReceiptArgs {
+            group_id,
+            splits: split,
+        }
+        .encode()?,
+    );
 
     // Prepare data for CPI into magic program for scheduling
     let mut crank_data = [0u8; CRANK_DATA_LEN];
