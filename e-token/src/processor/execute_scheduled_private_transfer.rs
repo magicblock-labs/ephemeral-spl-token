@@ -12,13 +12,14 @@ use pinocchio::cpi::{invoke_signed_with_bounds, Signer};
 use pinocchio::instruction::{InstructionAccount, InstructionView};
 use pinocchio::sysvars::{clock::Clock, Sysvar};
 use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
-use pinocchio_token_2022::instructions::TransferChecked;
+use pinocchio_system::instructions::Transfer;
+use pinocchio_token_2022::instructions::{CloseAccount, TransferChecked};
 
 use crate::processor::initialize_rent_pda::RENT_PDA;
 use crate::processor::internal::derive_hydra_seed;
 use crate::processor::utils::{
     get_associated_token_address, is_supported_token_program, read_mint_decimals,
-    read_token_account, validate_token_account,
+    validate_token_account,
 };
 use crate::DepositAndDelegateShuttleWithPrivateTransferArgs;
 
@@ -155,16 +156,30 @@ pub fn process_execute_scheduled_private_transfer(
     drop(crank_data);
 
     // -------- sweep: amount = current stash ATA token balance --------
-    let effective_amount = read_token_account(stash_ata_info)?.amount();
+    let effective_amount = read_stash_ata_amount(
+        stash_payer_info,
+        stash_ata_info,
+        mint_info,
+        token_program_info,
+    )?;
     let stash_bump_seed = [args.stash_bump()];
     let stash_signer_seeds =
         StashPda::signer_seeds(args.user_address(), mint_info.address(), &stash_bump_seed);
     let stash_signer = Signer::from(&stash_signer_seeds);
 
+    if effective_amount == 0 {
+        close_empty_stash_accounts(
+            stash_payer_info,
+            rent_pda_info,
+            stash_ata_info,
+            mint_info,
+            token_program_info,
+            &stash_signer,
+        )?;
+        return Ok(());
+    }
+
     if refund_timeout_elapsed(scheduled_slot)? {
-        if effective_amount == 0 {
-            return Ok(());
-        }
         let expected_user_ata = get_associated_token_address(
             args.user_address(),
             mint_info.address(),
@@ -193,10 +208,16 @@ pub fn process_execute_scheduled_private_transfer(
             decimals,
         }
         .invoke_signed(core::slice::from_ref(&stash_signer))?;
+        close_empty_stash_accounts(
+            stash_payer_info,
+            rent_pda_info,
+            stash_ata_info,
+            mint_info,
+            token_program_info,
+            &stash_signer,
+        )?;
         return Ok(());
     }
-
-    require!(effective_amount != 0, ProgramError::InvalidAccountData);
 
     // -------- build ix 25 instruction data --------
     let ix_data = ESplInstruction::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer
@@ -327,7 +348,16 @@ pub fn process_execute_scheduled_private_transfer(
     invoke_signed_with_bounds::<SCHEDULED_PT_INNER_ACCOUNTS>(
         &instruction,
         &account_refs,
-        &[stash_signer],
+        &[stash_signer.clone()],
+    )?;
+
+    close_empty_stash_accounts(
+        stash_payer_info,
+        rent_pda_info,
+        stash_ata_info,
+        mint_info,
+        token_program_info,
+        &stash_signer,
     )
 }
 
@@ -354,4 +384,75 @@ fn refund_timeout_elapsed(scheduled_slot: u64) -> Result<bool, ProgramError> {
         .checked_add(REFUND_TIMEOUT_SLOTS)
         .ok_or(ProgramError::InvalidInstructionData)?;
     Ok(Clock::get()?.slot > refund_slot)
+}
+
+#[inline(always)]
+fn read_stash_ata_amount(
+    stash_pda_info: &AccountView,
+    stash_ata_info: &AccountView,
+    mint_info: &AccountView,
+    token_program_info: &AccountView,
+) -> Result<u64, ProgramError> {
+    let expected_stash_ata = get_associated_token_address(
+        stash_pda_info.address(),
+        mint_info.address(),
+        token_program_info.address(),
+    );
+    require_eq_keys!(
+        &expected_stash_ata,
+        stash_ata_info.address(),
+        ProgramError::InvalidSeeds
+    );
+
+    if stash_ata_info.lamports() == 0 {
+        return Ok(0);
+    }
+
+    Ok(validate_token_account(
+        stash_ata_info,
+        mint_info.address(),
+        Some(stash_pda_info.address()),
+        Some(token_program_info.address()),
+    )?
+    .amount())
+}
+
+#[inline(always)]
+fn close_empty_stash_accounts<'a, 'b>(
+    stash_pda_info: &AccountView,
+    rent_pda_info: &AccountView,
+    stash_ata_info: &AccountView,
+    mint_info: &AccountView,
+    token_program_info: &AccountView,
+    stash_signer: &Signer<'a, 'b>,
+) -> ProgramResult {
+    let stash_ata_amount = read_stash_ata_amount(
+        stash_pda_info,
+        stash_ata_info,
+        mint_info,
+        token_program_info,
+    )?;
+    require!(stash_ata_amount == 0, ProgramError::InvalidArgument);
+
+    if stash_ata_info.lamports() > 0 {
+        CloseAccount {
+            account: stash_ata_info,
+            destination: rent_pda_info,
+            authority: stash_pda_info,
+            token_program: token_program_info.address(),
+        }
+        .invoke_signed(core::slice::from_ref(stash_signer))?;
+    }
+
+    let stash_lamports = stash_pda_info.lamports();
+    if stash_lamports > 0 {
+        Transfer {
+            from: stash_pda_info,
+            to: rent_pda_info,
+            lamports: stash_lamports,
+        }
+        .invoke_signed(core::slice::from_ref(stash_signer))?;
+    }
+
+    Ok(())
 }

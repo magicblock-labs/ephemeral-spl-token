@@ -556,7 +556,7 @@ describe("app", () => {
     expect(scheduleIx.programId.toBase58()).toBe(
       EPHEMERAL_SPL_TOKEN_PROGRAM_ID.toBase58(),
     );
-    expect(scheduleIx.data[0]).toBe(30);
+    expect(scheduleIx.data[0]).toBe(29);
     expect(scheduleIx.keys).toHaveLength(7);
     expect(scheduleIx.keys[1].pubkey.toBase58()).toBe(stashPda.toBase58());
     expect(scheduleIx.keys[4].pubkey.toBase58()).toBe(HYDRA_PROGRAM_ID.toBase58());
@@ -2016,9 +2016,10 @@ describe("app", () => {
     expect(privateTransferIx.data[0]).toBe(25);
     expect(privateTransferIx.data.readUInt32LE(1)).toBe(7);
     expect(privateTransferIx.data.readBigUInt64LE(5)).toBe(BigInt(amount));
-    expect(privateTransferIx.data[93]).toBe(1);
-    expect(privateTransferIx.data.subarray(94, 126)).toEqual(new PublicKey(resolvedValidator).toBuffer());
-    expect(privateTransferIx.data[126]).toBe(privateTransferIx.data.length - 127);
+    expect(privateTransferIx.data[13]).toBe(1);
+    expect(privateTransferIx.data[94]).toBe(1);
+    expect(privateTransferIx.data.subarray(95, 127)).toEqual(new PublicKey(resolvedValidator).toBuffer());
+    expect(privateTransferIx.data[127]).toBe(privateTransferIx.data.length - 128);
   });
 
   it("builds a gasless public transfer with the sponsor as fee payer", async () => {
