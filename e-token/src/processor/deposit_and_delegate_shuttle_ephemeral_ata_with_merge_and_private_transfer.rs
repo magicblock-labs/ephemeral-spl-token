@@ -1,3 +1,5 @@
+use core::u64;
+
 #[cfg(feature = "logging")]
 use alloc::string::ToString;
 use alloc::vec;
@@ -154,10 +156,23 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
     );
 
     let fee_amount = private_transfer_fee_amount(args.amount())?;
-    let private_transfer_amount = args
-        .amount()
-        .checked_sub(fee_amount)
-        .ok_or(ProgramError::InvalidInstructionData)?;
+    let private_transfer_amount = if args.exact_out() {
+        args.amount()
+    } else {
+        args.amount()
+            .checked_sub(fee_amount)
+            .ok_or(ProgramError::InvalidInstructionData)?
+    };
+
+    let total_amount = private_transfer_amount + fee_amount;
+
+    debug_log!(
+        "exact_out:  {}, fee_amount: {}, private_transfer_amount: {}",
+        args.exact_out(),
+        fee_amount,
+        private_transfer_amount
+    );
+
     let mint_decimals = read_mint_decimals(
         common_accounts.mint_info,
         common_accounts.token_program_info,
@@ -184,7 +199,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
 
     process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions(
         &common_accounts,
-        args.common_args()?,
+        args.common_args(total_amount)?,
         ephemeral_spl_api::consts::SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS,
         actions,
     )
@@ -193,7 +208,19 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
 #[variable_offset_layout(buffer_offset = 1)]
 pub struct DepositAndDelegateShuttleWithPrivateTransferArgs {
     pub shuttle_id: u32,
+    //
+    // The interpretation of amount field depends on the value of exact_out.
+    //
+    // - If exact_out == true:
+    //   Then amount is amount_out, the exact amount received by the recipient and
+    //   fees are deducted from the sender.
+    //
+    // - If exact_out == false:
+    //   Then amount is amount_in, the exact amount deducted from the sender and
+    //   the recipient_amount = amount - fee.
+    //
     pub amount: u64,
+    pub exact_out: bool,
     //
     // [capacity = 80] is because sealed-box encryption adds 48 bytes of overhead
     // irrespective of input bytes. So since encrypted_destination is encrypted
@@ -218,10 +245,13 @@ pub struct DepositAndDelegateShuttleWithPrivateTransferArgs {
 }
 
 impl DepositAndDelegateShuttleWithPrivateTransferArgsView<'_> {
-    fn common_args(&self) -> Result<DepositAndDelegateShuttleCommonArgs<'_>, ProgramError> {
+    fn common_args(
+        &self,
+        total_amount: u64,
+    ) -> Result<DepositAndDelegateShuttleCommonArgs<'_>, ProgramError> {
         Ok(DepositAndDelegateShuttleCommonArgs {
             shuttle_id: self.shuttle_id(),
-            amount: self.amount(),
+            total_amount,
             validator: self.validator(),
         })
     }

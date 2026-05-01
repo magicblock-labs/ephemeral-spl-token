@@ -147,6 +147,7 @@ pub fn process_execute_scheduled_private_transfer(
             &DepositAndDelegateShuttleWithPrivateTransferArgs {
                 shuttle_id: args.shuttle_id(),
                 amount: effective_amount,
+                exact_out: true,
                 validator: Some(args.validator().to_owned()),
                 encrypted_destination: args.encrypted_destination().to_owned(),
                 encrypted_data_suffix: args.encrypted_data_suffix().to_owned(),

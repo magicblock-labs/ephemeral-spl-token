@@ -137,6 +137,7 @@ type TransferInput = {
   maxDelayMs?: string;
   clientRefId?: string;
   split?: number;
+  exactOut?: boolean;
   legacy?: boolean;
   gasless?: boolean;
 };
@@ -927,6 +928,9 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
     const maxDelayMs = parseOptionalAmount(input.maxDelayMs, "maxDelayMs");
     const clientRefId = parseOptionalAmount(input.clientRefId, "clientRefId");
     const split = input.split;
+    const exactOut = input.exactOut;
+
+    console.log("input: ", input);
 
     if (minDelayMs !== undefined && minDelayMs < 0n) {
       throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "minDelayMs must be non-negative");
@@ -1031,6 +1035,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
           maxDelayMs,
           clientRefId,
           split,
+          exactOut,
         }
         : undefined,
     });
