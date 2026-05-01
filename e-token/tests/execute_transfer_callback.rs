@@ -354,12 +354,15 @@ async fn execute_callback_closes_receipt_when_last_transfer_with_pre_initialized
         .unwrap();
     res.result.unwrap();
 
+    let callbacks = take_execute_callbacks();
+    assert_eq!(callbacks.len(), 1);
+
     // No CreateEphemeralAccount — receipt was pre-initialized.
-    let creates = magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM_ID);
+    let creates = take_captured_ephemeral_creates(MAGIC_PROGRAM_ID);
     assert!(creates.is_empty(), "expected no CreateEphemeralAccount CPI");
 
     // CloseEphemeralAccount must have been called once — this was the last transfer.
-    let closes = magic_mock::take_captured_ephemeral_closes(MAGIC_PROGRAM_ID);
+    let closes = take_captured_ephemeral_closes(MAGIC_PROGRAM_ID);
     assert_eq!(
         closes.len(),
         1,
