@@ -498,7 +498,7 @@ async fn deposit_and_queue_transfer_uses_explicit_client_ref_id_for_all_splits()
 }
 
 #[tokio::test]
-async fn deposit_and_queue_transfer_accepts_legacy_destination_ata() {
+async fn deposit_and_queue_transfer_rejects_legacy_destination_ata() {
     let fixture = setup_fixture(None).await;
     let ix = build_deposit_and_queue_ix_for_destination(
         &fixture,
@@ -523,31 +523,19 @@ async fn deposit_and_queue_transfer_accepts_legacy_destination_ata() {
         &[&fixture.payer_kp],
         blockhash,
     );
-    common::metrics::process_transaction_record_cu(
+    let r = common::metrics::process_transaction_with_metadata_recorded(
         &fixture.context.banks_client,
         tx,
-        "dep_queue::accepts_legacy_destination_ata",
+        "dep_queue::rejects_legacy_destination_ata",
     )
     .await
     .unwrap();
-
-    let queue_account = fixture
-        .context
-        .banks_client
-        .get_account(fixture.queue)
-        .await
-        .unwrap()
-        .expect("queue account must exist");
-    let queued = read_item_unaligned(&queue_account.data, 0);
-
     assert_eq!(
-        queued.destination_owner.as_array(),
-        &fixture.payer.to_bytes()
+        r.result.unwrap_err(),
+        TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
     );
-    assert_eq!(
-        queued.flags,
-        ephemeral_spl_api::state::transfer_queue::QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA
-    );
+
+    assert_empty_state(&fixture).await;
 }
 
 #[tokio::test]

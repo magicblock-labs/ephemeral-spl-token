@@ -1,9 +1,7 @@
 use core::convert::TryFrom;
 
 use crate::processor::internal::token_vault::transfer_to_vault_for_mint;
-use crate::processor::utils::{
-    get_associated_token_address, read_mint_decimals, validate_token_account,
-};
+use crate::processor::utils::read_mint_decimals;
 use alloc::vec;
 use alloc::vec::Vec;
 use data_layout::variable_offset_layout;
@@ -34,7 +32,7 @@ const MILLIS_PER_SECOND: u64 = 1_000;
 ///  2: []                  - SPL     : Mint account.
 ///  3: [writable]          - SPL     : User source token account.
 ///  4: [writable]          - SPL     : Vault destination token account.
-///  5: []                  - Any     : Destination owner or legacy destination ATA.
+///  5: []                  - Any     : Destination owner.
 ///  6: [signer]            - Keypair : Sender authority.
 ///  7: []                  - SPL     : Token program.
 ///  8: [writable]          - SPL     : Reimbursement token account.
@@ -114,6 +112,14 @@ pub fn process_deposit_and_queue_transfer(
 
     let now_ms = queue_timestamp_now()?;
 
+    require!(
+        !address_eq(
+            unsafe { destination_info.owner() },
+            token_program_info.address()
+        ),
+        ProgramError::InvalidAccountData
+    );
+
     transfer_to_vault_for_mint(
         vault_info,
         mint_info,
@@ -126,31 +132,7 @@ pub fn process_deposit_and_queue_transfer(
     )?;
 
     let source = *user_authority.address();
-    let destination_owner = if address_eq(
-        unsafe { destination_info.owner() },
-        token_program_info.address(),
-    ) {
-        // TODO: Remove legacy destination-ATA compatibility once SDKs have migrated
-        // to passing destination owner on account 5.
-        let destination_token = validate_token_account(
-            destination_info,
-            mint_info.address(),
-            None,
-            Some(token_program_info.address()),
-        )?;
-        require_eq_keys!(
-            destination_info.address(),
-            &get_associated_token_address(
-                destination_token.owner(),
-                mint_info.address(),
-                token_program_info.address()
-            ),
-            ProgramError::InvalidAccountData
-        );
-        *destination_token.owner()
-    } else {
-        *destination_info.address()
-    };
+    let destination_owner = *destination_info.address();
     let client_ref_id = args.client_ref_id().unwrap_or(0);
     let split_plan = build_split_plan(amount, split, decimals)?;
 

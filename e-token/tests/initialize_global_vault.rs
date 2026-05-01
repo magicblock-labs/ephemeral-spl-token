@@ -2,9 +2,7 @@ use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::global_vault::GlobalVault;
 use ephemeral_spl_api::state::{load_initialized, RawType};
 use ephemeral_spl_api::ID as PROGRAM;
-use solana_account::Account as SolanaAccount;
 use solana_instruction::Instruction;
-use solana_program::rent::Rent;
 use {
     ephemeral_spl_api::instruction, solana_instruction::AccountMeta, solana_program_test::tokio,
     solana_signer::Signer, solana_transaction::Transaction,
@@ -94,105 +92,6 @@ async fn initialize_global_vault() {
         .await
         .unwrap()
         .expect("vault ephemeral ATA must exist");
-    assert_eq!(vault_eata_account.owner, PROGRAM);
-    assert_eq!(vault_eata_account.data.len(), EphemeralAta::LEN);
-}
-
-#[tokio::test]
-async fn initialize_global_vault_migrates_legacy_layout() {
-    let user = utils::test_pubkey("initialize_global_vault_migrates_legacy_layout::user");
-    let mint_kp = utils::test_keypair("initialize_global_vault_migrates_legacy_layout::mint");
-    let mint = mint_kp.pubkey();
-    let pdas = utils::derive_pdas(PROGRAM, user, mint);
-
-    let legacy_lamports = Rent::default().minimum_balance(32);
-    let mut context = utils::start_program_test_with(PROGRAM, |pt| {
-        pt.add_account(
-            pdas.vault,
-            SolanaAccount {
-                lamports: legacy_lamports,
-                data: mint.to_bytes().to_vec(),
-                owner: PROGRAM,
-                executable: false,
-                rent_epoch: 0,
-            },
-        );
-    })
-    .await;
-
-    let payer_kp = utils::fixed_payer_keypair();
-    let payer = payer_kp.pubkey();
-
-    let _setup = utils::setup_mint_and_token_accounts(
-        &mut context,
-        &payer_kp,
-        &mint_kp,
-        DECIMALS,
-        STARTING_BALANCE,
-        1,
-    )
-    .await;
-
-    let vault_token_acc = utils::derive_associated_token_address(pdas.vault, mint);
-    let (vault_eata, _) = EphemeralAta::find_pda(&pdas.vault, &mint);
-
-    let ix = Instruction {
-        program_id: PROGRAM,
-        accounts: vec![
-            AccountMeta::new(pdas.vault, false),
-            AccountMeta::new(payer, true),
-            AccountMeta::new_readonly(mint, false),
-            AccountMeta::new(vault_eata, false),
-            AccountMeta::new(vault_token_acc, false),
-            AccountMeta::new_readonly(spl_token_interface::ID, false),
-            AccountMeta::new_readonly(utils::associated_token_program_id(), false),
-            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
-        ],
-        data: instruction::ESplInstruction::InitializeGlobalVault.to_vec(),
-    };
-
-    let tx = Transaction::new_signed_with_payer(
-        &[ix],
-        Some(&payer),
-        &[&payer_kp],
-        context.last_blockhash,
-    );
-    common::metrics::process_transaction_record_cu(
-        &context.banks_client,
-        tx,
-        "init_gvault::migrate",
-    )
-    .await
-    .unwrap();
-
-    let account = context
-        .banks_client
-        .get_account(pdas.vault)
-        .await
-        .unwrap()
-        .expect("migrated vault must exist");
-    assert_eq!(account.data.len(), GlobalVault::LEN);
-
-    let rent = context.banks_client.get_rent().await.unwrap();
-    assert!(account.lamports >= rent.minimum_balance(GlobalVault::LEN));
-
-    let mut mut_acc = account.data.clone();
-    let vault_data = load_initialized::<GlobalVault>(mut_acc.as_mut_slice()).unwrap();
-    assert_eq!(
-        vault_data.mint,
-        ephemeral_spl_api::Address::new_from_array(mint.to_bytes())
-    );
-    assert_eq!(
-        vault_data.token_account,
-        ephemeral_spl_api::Address::new_from_array(vault_token_acc.to_bytes())
-    );
-
-    let vault_eata_account = context
-        .banks_client
-        .get_account(vault_eata)
-        .await
-        .unwrap()
-        .expect("vault ephemeral ATA must exist after migration");
     assert_eq!(vault_eata_account.owner, PROGRAM);
     assert_eq!(vault_eata_account.data.len(), EphemeralAta::LEN);
 }

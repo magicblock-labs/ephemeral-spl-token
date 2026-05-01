@@ -207,12 +207,12 @@ fn process_public_instruction(accounts: &[AccountView], instruction_data: &[u8])
         ESplInstruction::ExecuteScheduledPrivateTransfer => {
             debug_log!("Instruction: ExecuteScheduledPrivateTransfer");
 
-            process_execute_scheduled_private_transfer(accounts, instruction_data)
+            process_execute_scheduled_private_transfer(accounts, data)
         }
         ESplInstruction::SchedulePrivateTransfer => {
             debug_log!("Instruction: SchedulePrivateTransfer");
 
-            process_schedule_private_transfer(accounts, instruction_data)
+            process_schedule_private_transfer(accounts, data)
         }
     }
 }
