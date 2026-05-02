@@ -23,7 +23,7 @@ use crate::processor::{
     internal::shuttle_delegation::{
         merge_shuttle_into_token_account_action,
         process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions,
-        undelegate_and_close_shuttle_action, DepositAndDelegateShuttleAccounts,
+        undelegate_and_close_shuttle_action, CloseStashArgs, DepositAndDelegateShuttleAccounts,
         DepositAndDelegateShuttleCommonArgs,
     },
     utils::read_mint_decimals,
@@ -64,6 +64,32 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
+    let args = DepositAndDelegateShuttleWithPrivateTransferArgs::decode(instruction_data)?;
+    process_with_merge_and_private_transfer_inner(
+        accounts,
+        args.shuttle_id(),
+        args.amount(),
+        args.exact_out(),
+        args.validator(),
+        args.encrypted_destination(),
+        args.encrypted_data_suffix(),
+        None,
+    )
+}
+
+/// Shared body for ix 25 (`close_stash = None`) and ix 31 (`close_stash = Some`).
+#[inline(always)]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn process_with_merge_and_private_transfer_inner(
+    accounts: &[AccountView],
+    shuttle_id: u32,
+    amount: u64,
+    exact_out: bool,
+    validator: Option<&[u8; 32]>,
+    encrypted_destination: &[u8; 80],
+    encrypted_data_suffix: &[u8],
+    close_stash: Option<CloseStashArgs>,
+) -> ProgramResult {
     let [
         payer_info, // force multi-line
         rent_pda_info,
@@ -86,8 +112,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
         queue_info,
     ] = require_n_accounts!(accounts, 19);
 
-    let args = DepositAndDelegateShuttleWithPrivateTransferArgs::decode(instruction_data)?;
-    require!(args.amount() != 0, ProgramError::InvalidInstructionData);
+    require!(amount != 0, ProgramError::InvalidInstructionData);
 
     let common_accounts = DepositAndDelegateShuttleAccounts {
         payer_info,
@@ -142,24 +167,24 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
         );
     });
 
-    let (bump, validator) = {
+    let (bump, queue_validator) = {
         let data = unsafe { queue_info.borrow_unchecked() };
         let (header, _) = queue_views(data)?;
         (header.bump, header.validator)
     };
     let derived_queue =
-        TransferQueue::derive_pda(common_accounts.mint_info.address(), &validator, bump)?;
+        TransferQueue::derive_pda(common_accounts.mint_info.address(), &queue_validator, bump)?;
     require_eq_keys!(
         &derived_queue,
         queue_info.address(),
         ProgramError::InvalidSeeds
     );
 
-    let fee_amount = private_transfer_fee_amount(args.amount())?;
-    let private_transfer_amount = if args.exact_out() {
-        args.amount()
+    let fee_amount = private_transfer_fee_amount(amount)?;
+    let private_transfer_amount = if exact_out {
+        amount
     } else {
-        args.amount()
+        amount
             .checked_sub(fee_amount)
             .ok_or(ProgramError::InvalidInstructionData)?
     };
@@ -168,7 +193,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
 
     debug_log!(
         "exact_out:  {}, fee_amount: {}, private_transfer_amount: {}",
-        args.exact_out(),
+        exact_out,
         fee_amount,
         private_transfer_amount
     );
@@ -182,7 +207,8 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
         let private_transfer = private_transfer_action_encrypted(
             &common_accounts,
             queue_info,
-            &args,
+            encrypted_destination,
+            encrypted_data_suffix,
             private_transfer_amount,
         )?;
 
@@ -192,14 +218,18 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
                 common_accounts.owner_source_token_info,
             ),
             private_transfer_fee_action(&common_accounts, fee_amount, mint_decimals),
-            undelegate_and_close_shuttle_action(&common_accounts),
+            undelegate_and_close_shuttle_action(&common_accounts, close_stash),
         ]
         .cleartext_with_insertable(private_transfer, 1)
     };
 
     process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions(
         &common_accounts,
-        args.common_args(total_amount)?,
+        DepositAndDelegateShuttleCommonArgs {
+            shuttle_id,
+            total_amount,
+            validator,
+        },
         ephemeral_spl_api::consts::SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS,
         actions,
     )
@@ -244,23 +274,11 @@ pub struct DepositAndDelegateShuttleWithPrivateTransferArgs {
     pub encrypted_data_suffix: Vec<u8>,
 }
 
-impl DepositAndDelegateShuttleWithPrivateTransferArgsView<'_> {
-    fn common_args(
-        &self,
-        total_amount: u64,
-    ) -> Result<DepositAndDelegateShuttleCommonArgs<'_>, ProgramError> {
-        Ok(DepositAndDelegateShuttleCommonArgs {
-            shuttle_id: self.shuttle_id(),
-            total_amount,
-            validator: self.validator(),
-        })
-    }
-}
-
 fn private_transfer_action_encrypted(
     common_accounts: &DepositAndDelegateShuttleAccounts<'_>,
     queue_info: &AccountView,
-    args: &DepositAndDelegateShuttleWithPrivateTransferArgsView<'_>,
+    encrypted_destination: &[u8; 80],
+    encrypted_data_suffix: &[u8],
     amount: u64,
 ) -> Result<PostDelegationActions, ProgramError> {
     Ok(PostDelegationActions {
@@ -276,9 +294,7 @@ fn private_transfer_action_encrypted(
                 common_accounts.owner_source_token_info.address().to_bytes()
             ), // 5
             MaybeEncryptedPubkey::ClearText(common_accounts.vault_token_info.address().to_bytes()), // 6
-            MaybeEncryptedPubkey::Encrypted(EncryptedBuffer::new(
-                args.encrypted_destination().into()
-            )), // 7
+            MaybeEncryptedPubkey::Encrypted(EncryptedBuffer::new(encrypted_destination.into())), // 7
             MaybeEncryptedPubkey::ClearText(
                 common_accounts.token_program_info.address().to_bytes()
             ), // 8
@@ -301,7 +317,7 @@ fn private_transfer_action_encrypted(
             ],
             data: MaybeEncryptedIxData {
                 prefix: ESplInstruction::DepositAndQueueTransfer.with_data(&amount.to_le_bytes()),
-                suffix: EncryptedBuffer::new(args.encrypted_data_suffix().into()),
+                suffix: EncryptedBuffer::new(encrypted_data_suffix.into()),
             },
         }],
     })

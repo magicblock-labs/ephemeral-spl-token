@@ -154,6 +154,15 @@ fn process_public_instruction(accounts: &[AccountView], instruction_data: &[u8])
                 accounts, data,
             )
         }
+        ESplInstruction::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransferAndStashClose => {
+            debug_log!(
+                "Instruction: DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransferAndStashClose"
+            );
+
+            process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer_and_stash_close(
+                accounts, data,
+            )
+        }
         ESplInstruction::WithdrawThroughDelegatedShuttleWithMerge => {
             debug_log!("Instruction: WithdrawThroughDelegatedShuttleWithMerge");
 

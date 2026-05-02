@@ -9,6 +9,7 @@ pub mod delegate_shuttle_ephemeral_ata;
 pub mod delegate_transfer_queue;
 pub mod deposit_and_delegate_shuttle_ephemeral_ata_with_merge;
 pub mod deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer;
+pub mod deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer_and_stash_close;
 pub mod deposit_and_queue_transfer;
 pub mod deposit_spl_tokens;
 pub mod ensure_transfer_queue_crank;
@@ -54,6 +55,10 @@ pub use deposit_and_delegate_shuttle_ephemeral_ata_with_merge::process_deposit_a
 pub use deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer::{
     process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer,
     DepositAndDelegateShuttleWithPrivateTransferArgs,
+};
+pub use deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer_and_stash_close::{
+    process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer_and_stash_close,
+    DepositAndDelegateShuttleWithPrivateTransferAndStashCloseArgs,
 };
 pub use deposit_and_queue_transfer::{
     process_deposit_and_queue_transfer, DepositAndQueueTransferArgs,

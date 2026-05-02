@@ -38,7 +38,7 @@ const SETUP_LAMPORTS: u64 = ephemeral_spl_api::consts::SPONSORED_SHUTTLE_DELEGAT
 /// Executes on: BASE only. User-signed.
 ///
 /// Appended to a swap transaction to schedule a private transfer
-/// (instruction 25 via Hydra) over whatever balance ends up in the stash
+/// (instruction 31 via Hydra) over whatever balance ends up in the stash
 /// ATA when the crank fires. Keeps the outer ix small: every account that
 /// would only be read for its pubkey is derived on-chain using the bumps
 /// supplied in the instruction data; hard-coded program IDs stand in for
@@ -160,7 +160,7 @@ pub fn process_schedule_private_transfer(
         args.queue_bump(),
     )?;
 
-    // Slots 0..18 mirror ix 25's layout. Slot 5 aliases slot 0 (stash PDA).
+    // Slots 0..18 mirror ix 31's layout. Slot 5 aliases slot 0 (stash PDA).
     // Slot 20 aliases Trigger's crank account; the flag must match Solana's
     // tx-level writable union, so it remains writable.
     let sched_metas: [(&Address, bool); SCHEDULED_PT_ACCOUNTS] = [
