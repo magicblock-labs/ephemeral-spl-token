@@ -34,10 +34,8 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
     user.copy_from_slice(&seeds[0..32]);
     let stash_bump = seeds[32];
 
-    // SAFETY: `&[u8; 32]` and `&Address` share the same in-memory layout.
-    let user_address: &Address = unsafe { &*(user.as_ptr() as *const Address) };
-
-    let derived_stash_pda = StashPda::derive_pda(user_address, mint_info.address(), stash_bump)?;
+    let user_address = Address::new_from_array(user);
+    let derived_stash_pda = StashPda::derive_pda(&user_address, mint_info.address(), stash_bump)?;
     require_eq_keys!(
         payer_info.address(),
         &derived_stash_pda,
