@@ -88,7 +88,7 @@ pub(crate) fn process_with_merge_and_private_transfer_inner(
     validator: Option<&[u8; 32]>,
     encrypted_destination: &[u8; 80],
     encrypted_data_suffix: &[u8],
-    close_stash: Option<CloseStashArgs<'_>>,
+    close_stash: Option<CloseStashArgs>,
 ) -> ProgramResult {
     let [
         payer_info, // force multi-line

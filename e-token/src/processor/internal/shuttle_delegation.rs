@@ -365,16 +365,14 @@ pub(crate) fn merge_shuttle_into_token_account_action(
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct CloseStashArgs<'a> {
-    pub(crate) stash_pda: &'a Address,
-    pub(crate) rent_pda: &'a Address,
+pub(crate) struct CloseStashArgs {
     pub(crate) user: [u8; 32],
     pub(crate) stash_bump: u8,
 }
 
 pub(crate) fn undelegate_and_close_shuttle_action(
     accounts: &DepositAndDelegateShuttleAccounts<'_>,
-    close_stash: Option<CloseStashArgs<'_>>,
+    close_stash: Option<CloseStashArgs>,
 ) -> Instruction {
     build_undelegate_and_close_shuttle_instruction(
         accounts.payer_info.address(),
@@ -396,9 +394,9 @@ pub(crate) fn build_undelegate_and_close_shuttle_instruction(
     shuttle_wallet_ata: &Address,
     refund_token: &Address,
     token_program: &Address,
-    close_stash: Option<CloseStashArgs<'_>>,
+    close_stash: Option<CloseStashArgs>,
 ) -> Instruction {
-    let mut accounts = alloc::vec![
+    let accounts = alloc::vec![
         AccountMeta::new(*payer, true),
         AccountMeta::new(*rent_pda, false),
         AccountMeta::new_readonly(*shuttle, false),
@@ -411,8 +409,6 @@ pub(crate) fn build_undelegate_and_close_shuttle_instruction(
     ];
     let mut data = ESplInstruction::UndelegateAndCloseShuttleToOwner.to_vec();
     if let Some(close) = close_stash {
-        accounts.push(AccountMeta::new(*close.stash_pda, false));
-        accounts.push(AccountMeta::new(*close.rent_pda, false));
         // Explicit escrow_index byte: the parser would otherwise consume `user[0]` as it.
         data.push(crate::processor::undelegate_and_close_shuttle_to_owner::DEFAULT_ESCROW_INDEX);
         data.extend_from_slice(&close.user);

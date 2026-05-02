@@ -26,7 +26,6 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
 
     let _ = require_n_accounts!(accounts, 19);
     let payer_info = &accounts[0];
-    let rent_pda_info = &accounts[1];
     let mint_info = &accounts[13];
 
     let seeds = args.stash_close_seeds();
@@ -42,12 +41,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
         ProgramError::InvalidSeeds
     );
 
-    let close_stash = CloseStashArgs {
-        stash_pda: payer_info.address(),
-        rent_pda: rent_pda_info.address(),
-        user,
-        stash_bump,
-    };
+    let close_stash = CloseStashArgs { user, stash_bump };
 
     process_with_merge_and_private_transfer_inner(
         accounts,

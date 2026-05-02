@@ -15,9 +15,7 @@ const INTENT_BUNDLE_DATA_BUF_SIZE: usize = 1536;
 const CLOSE_SHUTTLE_ATA_COMPUTE_UNITS: u32 = 100_000;
 const CLOSE_STASH_DATA_LEN: usize = 33;
 
-struct CloseStashForward<'a> {
-    stash_pda: &'a AccountView,
-    rent_pda: &'a AccountView,
+struct CloseStashForward {
     user: [u8; 32],
     stash_bump: u8,
 }
@@ -37,23 +35,18 @@ struct CloseStashForward<'a> {
 ///  7: [writable]          - Any     : Magic context account.
 ///  8: []                  - Program : Magic program.
 ///
-/// Optional trailing accounts (11-account variant, scheduled flow only):
-///  9: [writable]          - PDA     : Stash PDA (authority of `refund_token_info`).
-/// 10: [writable]          - PDA     : Rent PDA (lamport sink for the closed stash).
-///
 /// Instruction Data: optional escrow_index (u8), optionally followed by
-/// `[user(32) | stash_bump(1)]` for the stash close path.
+/// `[user(32) | stash_bump(1)]` for the stash close path. In that path the
+/// executor is the stash PDA and account 1 is the rent sink.
 ///
 pub fn process_undelegate_and_close_shuttle_to_owner(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let close_stash_accounts = match accounts.len() {
-        9 => None,
-        11 => Some((&accounts[9], &accounts[10])),
+    let head_accounts = match accounts.len() {
+        9 | 11 => &accounts[..9],
         _ => return Err(ProgramError::NotEnoughAccountKeys),
     };
-    let head_accounts = &accounts[..9];
     let [
         executor, // force multi-line
         rent_reimbursement,
@@ -66,16 +59,21 @@ pub fn process_undelegate_and_close_shuttle_to_owner(
         magic_program,
     ] = require_n_accounts!(head_accounts, 9);
 
-    let (escrow_index, close_stash_seeds) =
-        parse_instruction_data(instruction_data, close_stash_accounts.is_some())?;
-    let close_stash = close_stash_accounts.zip(close_stash_seeds).map(
-        |((stash_pda, rent_pda), (user, stash_bump))| CloseStashForward {
-            stash_pda,
-            rent_pda,
-            user,
-            stash_bump,
-        },
-    );
+    let (escrow_index, close_stash_seeds) = parse_instruction_data(instruction_data)?;
+    if close_stash_seeds.is_some() && accounts.len() == 11 {
+        require_eq_keys!(
+            accounts[9].address(),
+            executor.address(),
+            ProgramError::InvalidSeeds
+        );
+        require_eq_keys!(
+            accounts[10].address(),
+            rent_reimbursement.address(),
+            ProgramError::InvalidSeeds
+        );
+    }
+    let close_stash =
+        close_stash_seeds.map(|(user, stash_bump)| CloseStashForward { user, stash_bump });
 
     // TODO (snawaz):  unauthorized third-party cleanup/cancellation is possible.
     //
@@ -161,15 +159,14 @@ pub fn process_undelegate_and_close_shuttle_to_owner(
 #[inline(always)]
 fn parse_instruction_data(
     instruction_data: &[u8],
-    expect_close_stash: bool,
 ) -> Result<(u8, Option<([u8; 32], u8)>), ProgramError> {
     let (escrow_index, tail) = match instruction_data.split_first() {
         None => (DEFAULT_ESCROW_INDEX, &[][..]),
         Some((first, rest)) => (*first, rest),
     };
-    let close_stash = match (expect_close_stash, tail.len()) {
-        (false, 0) => None,
-        (true, n) if n == CLOSE_STASH_DATA_LEN => {
+    let close_stash = match tail.len() {
+        0 => None,
+        n if n == CLOSE_STASH_DATA_LEN => {
             let mut user = [0u8; 32];
             user.copy_from_slice(&tail[0..32]);
             Some((user, tail[32]))
@@ -193,7 +190,7 @@ fn schedule_shuttle_close_after_undelegate(
     magic_context: &AccountView,
     magic_program: &AccountView,
     escrow_index: u8,
-    close_stash: Option<&CloseStashForward<'_>>,
+    close_stash: Option<&CloseStashForward>,
 ) -> ProgramResult {
     let (vault_info, _) =
         ephemeral_spl_api::Address::find_program_address(&[mint.as_ref()], &crate::ID);
@@ -205,7 +202,7 @@ fn schedule_shuttle_close_after_undelegate(
         close_handler_data.extend_from_slice(&close.user);
         close_handler_data.push(close.stash_bump);
     }
-    let mut close_handler_accounts = alloc::vec![
+    let close_handler_accounts = alloc::vec![
         ShortAccountMeta {
             pubkey: *rent_reimbursement.address(),
             is_writable: true,
@@ -243,16 +240,6 @@ fn schedule_shuttle_close_after_undelegate(
             is_writable: false,
         },
     ];
-    if let Some(close) = close_stash {
-        close_handler_accounts.push(ShortAccountMeta {
-            pubkey: *close.stash_pda.address(),
-            is_writable: true,
-        });
-        close_handler_accounts.push(ShortAccountMeta {
-            pubkey: *close.rent_pda.address(),
-            is_writable: true,
-        });
-    }
     let close_handler = [CallHandler {
         destination_program: crate::ID,
         escrow_authority: executor.clone(),

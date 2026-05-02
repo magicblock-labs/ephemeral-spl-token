@@ -34,23 +34,18 @@ const CLOSE_STASH_DATA_LEN: usize = 33;
 /// 10: []                  - Any     : Escrow authority.
 /// 11: [signer]            - PDA     : Escrow signer PDA.
 ///
-/// Optional trailing accounts (14-account variant, scheduled flow only):
-/// 12: [writable]          - PDA     : Stash PDA (authority of `destination_token_info`).
-/// 13: [writable]          - PDA     : Rent PDA (lamport sink for the closed stash).
-///
 /// Instruction Data: escrow_index (u8), optionally followed by
-/// `[user(32) | stash_bump(1)]` for the stash close path.
+/// `[user(32) | stash_bump(1)]` for the stash close path. In that path the
+/// escrow authority is the stash PDA and account 0 is the rent sink.
 ///
 pub fn process_close_shuttle_ata_intent(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let close_stash = match accounts.len() {
-        12 => None,
-        14 => Some((&accounts[12], &accounts[13])),
+    let (head_accounts, source_program, escrow_authority, escrow_signer) = match accounts.len() {
+        12 => (&accounts[..9], &accounts[9], &accounts[10], &accounts[11]),
         _ => return Err(ProgramError::NotEnoughAccountKeys),
     };
-    let head_accounts = &accounts[..12];
     let [
         rent_reimbursement_info, // force multi-line
         shuttle_info,
@@ -61,14 +56,11 @@ pub fn process_close_shuttle_ata_intent(
         vault_info,
         vault_source_token_acc,
         token_program_info,
-        source_program,
-        escrow_authority,
-        escrow_signer,
-    ] = require_n_accounts!(head_accounts, 12);
+    ] = require_n_accounts!(head_accounts, 9);
 
-    let (escrow_index, close_stash_seeds) = match (close_stash, instruction_data.len()) {
-        (None, 1) => (&instruction_data[0], None),
-        (Some(_), n) if n == 1 + CLOSE_STASH_DATA_LEN => (
+    let (escrow_index, close_stash_seeds) = match instruction_data.len() {
+        1 => (&instruction_data[0], None),
+        n if n == 1 + CLOSE_STASH_DATA_LEN => (
             &instruction_data[0],
             Some((
                 <&[u8; 32]>::try_from(&instruction_data[1..33])
@@ -228,26 +220,28 @@ pub fn process_close_shuttle_ata_intent(
             shuttle_ephemeral_ata_info.address(),
             ProgramError::InvalidSeeds
         );
-
-        close_program_account_to_recipient(shuttle_ephemeral_ata_info, rent_reimbursement_info)?;
     }
 
-    if shuttle_present {
-        close_program_account_to_recipient(shuttle_info, rent_reimbursement_info)?;
-    }
-
-    if let (Some((stash_pda_info, rent_pda_info)), Some((user, stash_bump))) =
-        (close_stash, close_stash_seeds)
-    {
+    if let Some((user, stash_bump)) = close_stash_seeds {
         close_empty_stash_after_settlement(
-            stash_pda_info,
-            rent_pda_info,
+            escrow_authority,
+            rent_reimbursement_info,
             destination_token_info,
             mint_info,
             token_program_info,
             user,
             stash_bump,
         )?;
+    }
+
+    // Keep direct lamport/account closes last; the stash close path still needs
+    // token/system CPIs, and those must run before these local lamport edits.
+    if shuttle_ephemeral_present {
+        close_program_account_to_recipient(shuttle_ephemeral_ata_info, rent_reimbursement_info)?;
+    }
+
+    if shuttle_present {
+        close_program_account_to_recipient(shuttle_info, rent_reimbursement_info)?;
     }
 
     Ok(())
