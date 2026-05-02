@@ -12,15 +12,9 @@ use crate::processor::internal::shuttle_delegation::CloseStashArgs;
 ///
 /// Executes on: BASE only. Self-CPI'd by `ExecuteScheduledPrivateTransfer`.
 ///
-/// Identical to `DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer`
-/// (ix 25), with one extra fixed `[u8; 33]` field appended to the args. Slot 0
-/// (`payer`) and slot 5 (`owner`) must be the stash PDA derived from
-/// `[b"stash", user, mint]`. The post-undelegate settlement closes the source
-/// stash ATA and drains the stash PDA back to the rent PDA.
-///
-/// Accounts (19): same layout as ix 25.
-///
-/// Instruction Data: `DepositAndDelegateShuttleWithPrivateTransferAndStashCloseArgs`
+/// Same accounts (19) and semantics as ix 25, with a fixed `[u8; 33]`
+/// `stash_close_seeds` appended to the args. The post-undelegate settlement
+/// closes the source stash ATA and refunds the stash PDA to the rent PDA.
 ///
 #[inline(never)]
 pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer_and_stash_close(
@@ -30,9 +24,6 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
     let args =
         DepositAndDelegateShuttleWithPrivateTransferAndStashCloseArgs::decode(instruction_data)?;
 
-    // Need slot 0 (payer = stash PDA) and slot 1 (rent_pda) up-front to validate the
-    // stash close seeds. The shared inner helper re-validates the rest of the account
-    // list after this guard runs.
     let _ = require_n_accounts!(accounts, 19);
     let payer_info = &accounts[0];
     let rent_pda_info = &accounts[1];
@@ -72,11 +63,6 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
     )
 }
 
-/// Wire-identical to `DepositAndDelegateShuttleWithPrivateTransferArgs` plus a
-/// fixed `stash_close_seeds: [u8; 33]` field inserted before
-/// `encrypted_data_suffix`. Layout of the new field:
-///   bytes [0..32] = user pubkey (the stash PDA seed)
-///   byte  [32]    = stash bump
 #[variable_offset_layout(buffer_offset = 1)]
 pub struct DepositAndDelegateShuttleWithPrivateTransferAndStashCloseArgs {
     pub shuttle_id: u32,

@@ -207,12 +207,9 @@ pub enum ESplInstruction {
     ExecuteScheduledPrivateTransfer = 30,
 
     /// 31 - DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransferAndStashClose:
-    ///      identical wire to ix 25 with an extra fixed `stash_close_seeds: [u8; 33]`
-    ///      appended just before `encrypted_data_suffix`. Only emitted from inside
-    ///      the program by `ExecuteScheduledPrivateTransfer` (self-CPI). Signals that
-    ///      the source token account (a stash ATA) and its authority PDA must be
-    ///      closed and refunded to the rent PDA after the post-undelegate settlement
-    ///      runs. Layout of `stash_close_seeds`: `[user(32) | stash_bump(1)]`.
+    ///      ix 25 + a fixed `stash_close_seeds: [user(32) | stash_bump(1)]` appended
+    ///      before `encrypted_data_suffix`. Self-CPI'd by `ExecuteScheduledPrivateTransfer`.
+    ///      Triggers stash ATA + stash PDA refund to the rent PDA after settlement.
     DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransferAndStashClose = 31,
 }
 

@@ -364,13 +364,6 @@ pub(crate) fn merge_shuttle_into_token_account_action(
     }
 }
 
-/// Optional payload telling `UndelegateAndCloseShuttleToOwner` to also close the
-/// source token account and refund its authority PDA after settlement.
-///
-/// `stash_pda` must be the authority of the source token account; `rent_pda` must
-/// be the canonical `RENT_PDA`. `(user, stash_bump)` are the seeds needed to sign
-/// `[b"stash", user, mint, bump]` for the SPL `CloseAccount` and the system
-/// `Transfer` that drains the stash PDA.
 #[derive(Clone, Copy)]
 pub(crate) struct CloseStashArgs<'a> {
     pub(crate) stash_pda: &'a Address,
@@ -420,6 +413,8 @@ pub(crate) fn build_undelegate_and_close_shuttle_instruction(
     if let Some(close) = close_stash {
         accounts.push(AccountMeta::new(*close.stash_pda, false));
         accounts.push(AccountMeta::new(*close.rent_pda, false));
+        // Explicit escrow_index byte: the parser would otherwise consume `user[0]` as it.
+        data.push(crate::processor::undelegate_and_close_shuttle_to_owner::DEFAULT_ESCROW_INDEX);
         data.extend_from_slice(&close.user);
         data.push(close.stash_bump);
     }

@@ -77,11 +77,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
     )
 }
 
-/// Shared body for both the public ix 25 (`…WithMergeAndPrivateTransfer`) and the
-/// internal scheduled ix 31 (`…WithMergeAndPrivateTransferAndStashClose`).
-///
-/// `close_stash` is `Some` only on the scheduled path: it instructs the post-undelegate
-/// settlement to close the source stash ATA + drain the stash PDA back to the rent PDA.
+/// Shared body for ix 25 (`close_stash = None`) and ix 31 (`close_stash = Some`).
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn process_with_merge_and_private_transfer_inner(

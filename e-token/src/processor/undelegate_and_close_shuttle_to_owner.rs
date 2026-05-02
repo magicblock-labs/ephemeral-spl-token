@@ -10,16 +10,11 @@ use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
 
 use crate::instruction::ESplInternalInstruction;
 
-const DEFAULT_ESCROW_INDEX: u8 = u8::MAX;
+pub(crate) const DEFAULT_ESCROW_INDEX: u8 = u8::MAX;
 const INTENT_BUNDLE_DATA_BUF_SIZE: usize = 1536;
 const CLOSE_SHUTTLE_ATA_COMPUTE_UNITS: u32 = 100_000;
-
-/// Length of the optional close-stash payload appended to the ix data:
-/// 32 bytes user pubkey + 1 byte stash bump.
 const CLOSE_STASH_DATA_LEN: usize = 33;
 
-/// Optional accounts/data forwarded into the post-undelegate close handler when the
-/// scheduled flow needs the source stash ATA + stash PDA refunded to the rent PDA.
 struct CloseStashForward<'a> {
     stash_pda: &'a AccountView,
     rent_pda: &'a AccountView,
@@ -42,13 +37,11 @@ struct CloseStashForward<'a> {
 ///  7: [writable]          - Any     : Magic context account.
 ///  8: []                  - Program : Magic program.
 ///
-/// Optional trailing accounts (only when the source token account is a stash ATA
-/// scheduled for cleanup; signaled by 11-account variant + extended ix data):
-///
+/// Optional trailing accounts (11-account variant, scheduled flow only):
 ///  9: [writable]          - PDA     : Stash PDA (authority of `refund_token_info`).
 /// 10: [writable]          - PDA     : Rent PDA (lamport sink for the closed stash).
 ///
-/// Instruction Data: optional escrow_index (u8) optionally followed by 33 bytes
+/// Instruction Data: optional escrow_index (u8), optionally followed by
 /// `[user(32) | stash_bump(1)]` for the stash close path.
 ///
 pub fn process_undelegate_and_close_shuttle_to_owner(

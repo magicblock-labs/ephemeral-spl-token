@@ -220,9 +220,6 @@ pub fn process_execute_scheduled_private_transfer(
     }
 
     // -------- build ix 31 instruction data --------
-    // Pack [user(32) | stash_bump(1)] so the post-undelegate handler can sign
-    // `[b"stash", user, mint, bump]` to close the stash ATA + drain the stash
-    // PDA back to the rent PDA after the merge + private-transfer actions.
     let mut stash_close_seeds = [0u8; 33];
     stash_close_seeds[0..32].copy_from_slice(args.user_address().as_ref());
     stash_close_seeds[32] = args.stash_bump();

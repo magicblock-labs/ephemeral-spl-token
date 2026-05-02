@@ -14,8 +14,6 @@ use pinocchio_system::instructions::Transfer;
 use pinocchio_token_2022::instructions::CloseAccount;
 const DLP_EPHEMERAL_BALANCE_TAG: &[u8] = b"balance";
 
-/// Length of the optional close-stash payload appended to the ix data:
-/// 32 bytes user pubkey + 1 byte stash bump.
 const CLOSE_STASH_DATA_LEN: usize = 33;
 
 ///
@@ -36,13 +34,11 @@ const CLOSE_STASH_DATA_LEN: usize = 33;
 /// 10: []                  - Any     : Escrow authority.
 /// 11: [signer]            - PDA     : Escrow signer PDA.
 ///
-/// Optional trailing accounts (only present when the source token account is a stash
-/// ATA scheduled for cleanup; signaled by 14-account variant + 34-byte ix data):
-///
+/// Optional trailing accounts (14-account variant, scheduled flow only):
 /// 12: [writable]          - PDA     : Stash PDA (authority of `destination_token_info`).
 /// 13: [writable]          - PDA     : Rent PDA (lamport sink for the closed stash).
 ///
-/// Instruction Data: escrow_index (u8) optionally followed by 33 bytes
+/// Instruction Data: escrow_index (u8), optionally followed by
 /// `[user(32) | stash_bump(1)]` for the stash close path.
 ///
 pub fn process_close_shuttle_ata_intent(
@@ -274,7 +270,7 @@ fn close_empty_stash_after_settlement(
         ProgramError::InvalidSeeds
     );
 
-    // SAFETY: `&[u8; 32]` and `&Address` share the same in-memory layout (32-byte array).
+    // SAFETY: `&[u8; 32]` and `&Address` share the same in-memory layout.
     let user_address: &Address = unsafe { &*(user.as_ptr() as *const Address) };
 
     let derived_stash_pda = StashPda::derive_pda(user_address, mint_info.address(), stash_bump)?;
@@ -295,7 +291,6 @@ fn close_empty_stash_after_settlement(
         ProgramError::InvalidSeeds
     );
 
-    // Stash ATA must be drained by the preceding merge + private-transfer actions.
     let token_account = validate_token_account(
         destination_token_info,
         mint_info.address(),
