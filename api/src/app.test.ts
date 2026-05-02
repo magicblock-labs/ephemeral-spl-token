@@ -2806,9 +2806,20 @@ describe("app", () => {
     vi.spyOn(Date, "now").mockReturnValue(nowMs);
     vi.spyOn(Connection.prototype, "getAccountInfo").mockResolvedValue(createQueueAccountInfo(DELEGATION_PROGRAM_ID));
     vi.spyOn(Connection.prototype, "getSignaturesForAddress").mockResolvedValue([]);
-    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
-      blockhash: "11111111111111111111111111111111",
-      lastValidBlockHeight: 123,
+    vi.spyOn(Connection.prototype, "getLatestBlockhashAndContext").mockResolvedValue({
+      context: { slot: 1 },
+      value: {
+        blockhash: "11111111111111111111111111111111",
+        lastValidBlockHeight: 123,
+      },
+    });
+    vi.spyOn(Connection.prototype, "getEpochInfo").mockResolvedValue({
+      absoluteSlot: 1,
+      blockHeight: 1,
+      epoch: 1,
+      slotIndex: 1,
+      slotsInEpoch: 1,
+      transactionCount: 1,
     });
     vi.spyOn(Connection.prototype, "sendRawTransaction").mockImplementation(async function sendRawTransaction(this: Connection & { _rpcEndpoint: string }, raw) {
       expect((this as Connection & { _rpcEndpoint: string })._rpcEndpoint).toBe(env.EPHEMERAL_RPC_URL);
@@ -2862,9 +2873,20 @@ describe("app", () => {
         slot: 1,
       }];
     });
-    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
-      blockhash: "11111111111111111111111111111111",
-      lastValidBlockHeight: 123,
+    vi.spyOn(Connection.prototype, "getLatestBlockhashAndContext").mockResolvedValue({
+      context: { slot: 1 },
+      value: {
+        blockhash: "11111111111111111111111111111111",
+        lastValidBlockHeight: 123,
+      },
+    });
+    vi.spyOn(Connection.prototype, "getEpochInfo").mockResolvedValue({
+      absoluteSlot: 1,
+      blockHeight: 1,
+      epoch: 1,
+      slotIndex: 1,
+      slotsInEpoch: 1,
+      transactionCount: 1,
     });
     vi.spyOn(Connection.prototype, "confirmTransaction").mockResolvedValue({
       context: { slot: 1 },
