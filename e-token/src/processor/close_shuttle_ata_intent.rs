@@ -264,10 +264,9 @@ fn close_empty_stash_after_settlement(
         ProgramError::InvalidSeeds
     );
 
-    // SAFETY: `&[u8; 32]` and `&Address` share the same in-memory layout.
-    let user_address: &Address = unsafe { &*(user.as_ptr() as *const Address) };
+    let user_address = Address::new_from_array(*user);
 
-    let derived_stash_pda = StashPda::derive_pda(user_address, mint_info.address(), stash_bump)?;
+    let derived_stash_pda = StashPda::derive_pda(&user_address, mint_info.address(), stash_bump)?;
     require_eq_keys!(
         &derived_stash_pda,
         stash_pda_info.address(),
@@ -294,7 +293,7 @@ fn close_empty_stash_after_settlement(
     require!(token_account.amount() == 0, ProgramError::InvalidArgument);
 
     let bump_seed = [stash_bump];
-    let stash_signer_seeds = StashPda::signer_seeds(user_address, mint_info.address(), &bump_seed);
+    let stash_signer_seeds = StashPda::signer_seeds(&user_address, mint_info.address(), &bump_seed);
     let stash_signer = Signer::from(&stash_signer_seeds);
 
     CloseAccount {
