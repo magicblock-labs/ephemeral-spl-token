@@ -364,8 +364,24 @@ pub(crate) fn merge_shuttle_into_token_account_action(
     }
 }
 
+/// Optional payload telling `UndelegateAndCloseShuttleToOwner` to also close the
+/// source token account and refund its authority PDA after settlement.
+///
+/// `stash_pda` must be the authority of the source token account; `rent_pda` must
+/// be the canonical `RENT_PDA`. `(user, stash_bump)` are the seeds needed to sign
+/// `[b"stash", user, mint, bump]` for the SPL `CloseAccount` and the system
+/// `Transfer` that drains the stash PDA.
+#[derive(Clone, Copy)]
+pub(crate) struct CloseStashArgs<'a> {
+    pub(crate) stash_pda: &'a Address,
+    pub(crate) rent_pda: &'a Address,
+    pub(crate) user: [u8; 32],
+    pub(crate) stash_bump: u8,
+}
+
 pub(crate) fn undelegate_and_close_shuttle_action(
     accounts: &DepositAndDelegateShuttleAccounts<'_>,
+    close_stash: Option<CloseStashArgs<'_>>,
 ) -> Instruction {
     build_undelegate_and_close_shuttle_instruction(
         accounts.payer_info.address(),
@@ -375,6 +391,7 @@ pub(crate) fn undelegate_and_close_shuttle_action(
         accounts.shuttle_wallet_ata_info.address(),
         accounts.owner_source_token_info.address(),
         accounts.token_program_info.address(),
+        close_stash,
     )
 }
 
@@ -386,21 +403,30 @@ pub(crate) fn build_undelegate_and_close_shuttle_instruction(
     shuttle_wallet_ata: &Address,
     refund_token: &Address,
     token_program: &Address,
+    close_stash: Option<CloseStashArgs<'_>>,
 ) -> Instruction {
+    let mut accounts = alloc::vec![
+        AccountMeta::new(*payer, true),
+        AccountMeta::new(*rent_pda, false),
+        AccountMeta::new_readonly(*shuttle, false),
+        AccountMeta::new_readonly(*shuttle_eata, false),
+        AccountMeta::new(*shuttle_wallet_ata, false),
+        AccountMeta::new(*refund_token, false),
+        AccountMeta::new_readonly(*token_program, false),
+        AccountMeta::new(Pubkey::from(MAGIC_CONTEXT_ID.to_bytes()), false),
+        AccountMeta::new_readonly(Pubkey::from(MAGIC_PROGRAM_ID.to_bytes()), false),
+    ];
+    let mut data = ESplInstruction::UndelegateAndCloseShuttleToOwner.to_vec();
+    if let Some(close) = close_stash {
+        accounts.push(AccountMeta::new(*close.stash_pda, false));
+        accounts.push(AccountMeta::new(*close.rent_pda, false));
+        data.extend_from_slice(&close.user);
+        data.push(close.stash_bump);
+    }
     Instruction {
         program_id: crate::ID,
-        accounts: alloc::vec![
-            AccountMeta::new(*payer, true),
-            AccountMeta::new(*rent_pda, false),
-            AccountMeta::new_readonly(*shuttle, false),
-            AccountMeta::new_readonly(*shuttle_eata, false),
-            AccountMeta::new(*shuttle_wallet_ata, false),
-            AccountMeta::new(*refund_token, false),
-            AccountMeta::new_readonly(*token_program, false),
-            AccountMeta::new(Pubkey::from(MAGIC_CONTEXT_ID.to_bytes()), false),
-            AccountMeta::new_readonly(Pubkey::from(MAGIC_PROGRAM_ID.to_bytes()), false),
-        ],
-        data: ESplInstruction::UndelegateAndCloseShuttleToOwner.to_vec(),
+        accounts,
+        data,
     }
 }
 

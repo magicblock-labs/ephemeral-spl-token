@@ -159,6 +159,7 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
             accounts.shuttle_wallet_ata_info.address(),
             accounts.owner_token_info.address(),
             accounts.token_program_info.address(),
+            None,
         ),
     ];
 
