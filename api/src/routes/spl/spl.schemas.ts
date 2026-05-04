@@ -322,7 +322,6 @@ export const challengeQuerySchema = z.object({
     example: BALANCE_EXAMPLE_ADDRESS,
     description: "The public key of the wallet that will read private data",
   }),
-  mock: optionalBoolean,
 });
 
 export const challengeResponseSchema = z.object({
@@ -346,7 +345,6 @@ export const loginQuerySchema = z.object({
     example: "1234567890",
     description: "The signature of the challenge by the wallet",
   }),
-  mock: optionalBoolean,
 });
 
 export const loginResponseSchema = z.object({
