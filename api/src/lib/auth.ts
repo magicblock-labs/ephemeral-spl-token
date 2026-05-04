@@ -2,8 +2,10 @@ import { AppEnv } from "../env";
 import { ApiError } from "./errors";
 import { resolveRpcConfig } from "./solana";
 
-export const MOCK_AUTH_TOKEN =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJwdWJrZXkiOiJER3dlQUc5UktRVE5TV1M3ckZham16Tld1U1JFMnlLNnhyWTZnVHp6bWVwTiIsImV4cCI6MTc3NzkxNzYwMCwiaWF0IjoxNzc3OTE0MDAwfQ.dummy_signature_replace_with_real_one";
+export const MOCK_AUTH_TOKEN = "mock-auth-token";
+export function mockChallenge(timestamp: string, pubkey: string) {
+  return `Login to Query Filtering Service\nTimestamp: ${timestamp}\nUser: ${pubkey}`;
+}
 const AUTH_FETCH_TIMEOUT_MS = 5000;
 
 export type ChallengeInput = {
@@ -79,7 +81,7 @@ export async function getChallenge(
 ): Promise<ChallengeResponse> {
   if (input.mock) {
     return {
-      challenge: `Login to Query Filtering Service\nTimestamp: ${new Date().toISOString()}\nUser: ${input.pubkey}`,
+      challenge: mockChallenge(new Date().toISOString(), input.pubkey),
     };
   }
 

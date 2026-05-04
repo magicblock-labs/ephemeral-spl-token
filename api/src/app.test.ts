@@ -33,7 +33,7 @@ import {
 
 import app from "./app";
 import { TOKEN_PROGRAM_ID } from "./lib/solana";
-import { MOCK_AUTH_TOKEN, MOCK_CHALLENGE } from "./lib/auth";
+import { MOCK_AUTH_TOKEN } from "./lib/auth";
 
 const env = {
   BASE_RPC_URL: "https://base.rpc.test",
@@ -2492,7 +2492,8 @@ describe("app", () => {
     expect(response.status).toBe(200);
 
     const json = await response.json() as { challenge: string };
-    expect(json.challenge).toBe(MOCK_CHALLENGE);
+    expect(json.challenge).toMatch(/Login to Query Filtering Service/);
+    expect(json.challenge).toContain(owner);
   });
 
   it("returns a token from the ephemeral rollup login endpoint", async () => {
