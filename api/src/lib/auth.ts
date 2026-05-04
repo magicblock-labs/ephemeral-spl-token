@@ -1,42 +1,11 @@
 import { AppEnv } from "../env";
+import { ChallengeRequest, ChallengeResponse, LoginRequest, LoginResponse } from "../routes/spl/spl.schemas";
 import { ApiError } from "./errors";
 import { resolveRpcConfig } from "./solana";
 
 export const MOCK_AUTH_TOKEN = "mock-auth-token";
 export const MOCK_CHALLENGE = "mock-challenge";
 const AUTH_FETCH_TIMEOUT_MS = 5000;
-
-export type ChallengeInput = {
-    pubkey: string;
-    cluster?: string;
-    mock?: boolean;
-};
-
-export type ChallengeResponse = {
-    challenge: string;
-};
-
-export type LoginInput = {
-    pubkey: string;
-    challenge: string;
-    signature: string;
-    cluster?: string;
-    mock?: boolean;
-};
-
-export type LoginResponse = {
-    token: string;
-};
-
-export type AuthChallengeResponse = {
-    challenge: string;
-    error?: string;
-};
-
-type AuthLoginResponse = {
-    token?: string;
-    error?: string;
-};
 
 function buildAuthUrl(ephemeralRpcUrl: string, path: string) {
     const url = new URL(ephemeralRpcUrl);
@@ -73,7 +42,7 @@ export function parseAuthToken(headers: Record<string, string>): string | undefi
     return parts[1];
 }
 
-export async function getChallenge(env: AppEnv, input: ChallengeInput): Promise<ChallengeResponse> {
+export async function getChallenge(env: AppEnv, input: ChallengeRequest): Promise<ChallengeResponse> {
     if (input.mock) {
         return {
             challenge: MOCK_CHALLENGE,
@@ -89,7 +58,7 @@ export async function getChallenge(env: AppEnv, input: ChallengeInput): Promise<
         throw new ApiError(challengeResponse.status, "RPC_ERROR", `Failed to get challenge: ${challengeResponse.statusText}`);
     }
 
-    const { challenge, error }: AuthChallengeResponse =
+    const { challenge, error }: ChallengeResponse =
         await challengeResponse.json();
 
     if (typeof error === "string" && error.length > 0) {
@@ -104,7 +73,7 @@ export async function getChallenge(env: AppEnv, input: ChallengeInput): Promise<
     };
 }
 
-export async function login(env: AppEnv, input: LoginInput): Promise<LoginResponse> {
+export async function login(env: AppEnv, input: LoginRequest): Promise<LoginResponse> {
     if (input.mock) {
         return {
             token: MOCK_AUTH_TOKEN,
@@ -126,7 +95,7 @@ export async function login(env: AppEnv, input: LoginInput): Promise<LoginRespon
         throw new ApiError(loginResponse.status, "RPC_ERROR", `Failed to login: ${loginResponse.statusText}`);
     }
 
-    const { token, error } = await loginResponse.json() as AuthLoginResponse;
+    const { token, error } = await loginResponse.json() as LoginResponse;
     if (typeof error === "string" && error.length > 0) {
         throw new ApiError(loginResponse.status === 403 ? 403 : 502, "RPC_ERROR", `Failed to login: ${error}`);
     }

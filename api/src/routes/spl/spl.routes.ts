@@ -9,26 +9,31 @@ import {
   jsonContentRequired,
 } from "../../lib/openapi";
 import {
-  optionalAuthTokenSchema,
-  requiredAuthTokenSchema,
-  balanceQuerySchema,
+  balanceRequestSchema,
+  BalanceResponse,
   balanceResponseSchema,
-  challengeQuerySchema,
+  challengeRequestSchema,
+  ChallengeResponse,
   challengeResponseSchema,
   depositRequestSchema,
   initializeMintRequestSchema,
+  InitializeMintResponse,
   initializeMintResponseSchema,
-  loginQuerySchema,
+  loginRequestSchema,
+  LoginResponse,
   loginResponseSchema,
-  mintInitializationQuerySchema,
+  mintInitializationRequestSchema,
+  MintInitializationResponse,
   mintInitializationResponseSchema,
+  TransactionResponse,
   transactionResponseSchema,
   transferRequestSchema,
   withdrawRequestSchema,
 } from "./spl.schemas";
+import { optionalAuthTokenSchema, requiredAuthTokenSchema } from "../../schema";
 
 const tags = ["SPL"];
-const depositResponseExample = {
+const depositResponseExample: TransactionResponse = {
   kind: "deposit" as const,
   version: "legacy" as const,
   transactionBase64: "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAIDKmcfsS5XfSOLaLlaBHJry50iH2Ufk2TMz4STC2fHzIcFKkerg3q2DD3Yn8TISmGeKoxSLz+BiP7iQ4pYqXYXsgu8D8C7R8ovdMQRLpSrE8+jxjTl3BfqywPNGiPNfnh8eS+smowIxqKDcCjw5liNXQkkCbBSDCBDFwtrgCKqoQ0DAgEBBAECAwQCAQEEAgIDBAIBAQQDAgME",
@@ -39,7 +44,7 @@ const depositResponseExample = {
   requiredSigners: ["3rXKwQ1kpjBd5tdcco32qsvqUh1BnZjcYnS5kYrP7AYE"],
   validator: "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57",
 };
-const withdrawResponseExample = {
+const withdrawResponseExample: TransactionResponse = {
   kind: "withdraw" as const,
   version: "legacy" as const,
   transactionBase64: "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAIDKmcfsS5XfSOLaLlaBHJry50iH2Ufk2TMz4STC2fHzIcFKkerg3q2DD3Yn8TISmGeKoxSLz+BiP7iQ4pYqXYXsgu8D8C7R8ovdMQRLpSrE8+jxjTl3BfqywPNGiPNfnh8AazZ0ixOauLjpxaRgDCv6MChaoMAZAJg8BnPbZl31jECAgEBBAECAwQCAQEEAgIDBA==",
@@ -50,27 +55,27 @@ const withdrawResponseExample = {
   requiredSigners: ["3rXKwQ1kpjBd5tdcco32qsvqUh1BnZjcYnS5kYrP7AYE"],
   validator: "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57",
 };
-const baseBalanceResponseExample = {
+const baseBalanceResponseExample: BalanceResponse = {
   address: "Bt9oNR5cCtnfuMmXgWELd6q5i974PdEMQDUE55nBC57L",
   mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
   ata: "3rXKwQ1kpjBd5tdcco32qsvqUh1BnZjcYnS5kYrP7AYE",
   location: "base" as const,
   balance: "1000000",
 };
-const privateBalanceResponseExample = {
+const privateBalanceResponseExample: BalanceResponse = {
   address: "Bt9oNR5cCtnfuMmXgWELd6q5i974PdEMQDUE55nBC57L",
   mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
   ata: "3rXKwQ1kpjBd5tdcco32qsvqUh1BnZjcYnS5kYrP7AYE",
   location: "ephemeral" as const,
   balance: "1000000",
 };
-const mintInitializationResponseExample = {
+const mintInitializationResponseExample: MintInitializationResponse = {
   mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
   validator: "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57",
   transferQueue: "BuBHLbaPmYmgvMiZ8uZb96RjBtmWzJY52u7Di5urNf6M",
   initialized: true,
 };
-const initializeMintResponseExample = {
+const initializeMintResponseExample: InitializeMintResponse = {
   kind: "initializeMint" as const,
   version: "legacy" as const,
   transactionBase64: "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAIDKmcfsS5XfSOLaLlaBHJry50iH2Ufk2TMz4STC2fHzIcFKkerg3q2DD3Yn8TISmGeKoxSLz+BiP7iQ4pYqXYXsgu8D8C7R8ovdMQRLpSrE8+jxjTl3BfqywPNGiPNfnh8eS+smowIxqKDcCjw5liNXQkkCbBSDCBDFwtrgCKqoQ0DAgEBBAECAwQCAQEEAgIDBAIBAQQDAgME",
@@ -83,10 +88,10 @@ const initializeMintResponseExample = {
   transferQueue: "BuBHLbaPmYmgvMiZ8uZb96RjBtmWzJY52u7Di5urNf6M",
   rentPda: "Bt9oNR5cCtnfuMmXgWELd6q5i974PdEMQDUE55nBC57L",
 };
-const challengeResponseExample = {
+const challengeResponseExample: ChallengeResponse = {
   challenge: "1234567890",
 };
-const loginResponseExample = {
+const loginResponseExample: LoginResponse = {
   token: "1234567890",
 };
 
@@ -157,7 +162,7 @@ export const balanceRoute = createRoute({
   tags,
   description: "Get the balance for the owner's ATA on the base RPC.",
   request: {
-    query: balanceQuerySchema,
+    query: balanceRequestSchema,
   },
   responses: {
     200: jsonContent(balanceResponseSchema, "Base-chain token balance", baseBalanceResponseExample),
@@ -172,7 +177,7 @@ export const privateBalanceRoute = createRoute({
   tags,
   description: "Get the balance for the owner's ATA on the ephemeral RPC.",
   request: {
-    query: balanceQuerySchema,
+    query: balanceRequestSchema,
     headers: requiredAuthTokenSchema
   },
   responses: {
@@ -188,7 +193,7 @@ export const mintInitializationRoute = createRoute({
   tags,
   description: "Check whether the validator-scoped transfer queue exists for a mint on the ephemeral RPC.",
   request: {
-    query: mintInitializationQuerySchema,
+    query: mintInitializationRequestSchema,
   },
   responses: {
     200: jsonContent(mintInitializationResponseSchema, "Mint transfer queue initialization status", mintInitializationResponseExample),
@@ -203,7 +208,7 @@ export const challengeRoute = createRoute({
   tags,
   description: "Generate a challenge string for the wallet to sign.",
   request: {
-    query: challengeQuerySchema,
+    query: challengeRequestSchema,
   },
   responses: {
     200: jsonContent(challengeResponseSchema, "Challenge string", challengeResponseExample),
@@ -218,7 +223,7 @@ export const loginRoute = createRoute({
   tags,
   description: "Login the wallet to the Private Ephemeral Rollup.",
   request: {
-    body: jsonContentRequired(loginQuerySchema, "Login request"),
+    body: jsonContentRequired(loginRequestSchema, "Login request"),
   },
   responses: {
     200: jsonContent(loginResponseSchema, "Login response", loginResponseExample),

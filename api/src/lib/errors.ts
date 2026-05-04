@@ -1,5 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import type { ZodError, ZodIssue } from "zod";
+import { errorPayloadSchema, validationIssueSchema } from "../schema";
 
 export class ApiError extends Error {
   status: number;
@@ -15,21 +16,10 @@ export class ApiError extends Error {
   }
 }
 
-const validationIssueSchema = z.object({
-  code: z.string(),
-  message: z.string(),
-  path: z.array(z.union([z.string(), z.number()])),
-});
-
-const errorPayloadSchema = z.object({
-  code: z.string(),
-  message: z.string(),
-  details: z.unknown().optional(),
-});
-
 export const errorResponseSchema = z.object({
   error: errorPayloadSchema,
 }).openapi("ErrorResponse");
+export type ErrorResponse = z.infer<typeof errorResponseSchema>;
 
 export const validationErrorResponseSchema = z.object({
   error: z.object({
@@ -38,6 +28,7 @@ export const validationErrorResponseSchema = z.object({
     issues: z.array(validationIssueSchema),
   }),
 }).openapi("ValidationErrorResponse");
+export type ValidationErrorResponse = z.infer<typeof validationErrorResponseSchema>;
 
 export const notFoundResponseSchema = z.object({
   error: z.object({
@@ -45,12 +36,13 @@ export const notFoundResponseSchema = z.object({
     message: z.string(),
   }),
 }).openapi("NotFoundResponse");
+export type NotFoundResponse = z.infer<typeof notFoundResponseSchema>;
 
 export function errorBody(
   code: string,
   message: string,
   details?: unknown,
-): z.infer<typeof errorResponseSchema> {
+): ErrorResponse {
   return details === undefined
     ? { error: { code, message } }
     : { error: { code, message, details } };
@@ -66,7 +58,7 @@ function isMissingRequiredIssue(issue: ZodIssue) {
   return issue.code === "invalid_type" && issue.message.includes("received undefined");
 }
 
-export function validationErrorBody(error: ZodError): z.infer<typeof validationErrorResponseSchema> {
+export function validationErrorBody(error: ZodError): ValidationErrorResponse {
   const issues = error.issues.map((issue: ZodIssue) => {
     const path = issue.path.map((segment: string | number | symbol) => typeof segment === "number" ? segment : String(segment));
     const pathLabel = stringifyIssuePath(issue.path);
