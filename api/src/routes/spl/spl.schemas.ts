@@ -13,8 +13,7 @@ const isPublicKey = (value: string) => {
   try {
     new PublicKey(value);
     return true;
-  }
-  catch {
+  } catch {
     return false;
   }
 };
@@ -27,8 +26,7 @@ const isNonNegativeBigIntString = (value: string) => {
   try {
     BigInt(value);
     return true;
-  }
-  catch {
+  } catch {
     return false;
   }
 };
@@ -88,7 +86,7 @@ export const optionalBoolean = z.preprocess((value) => {
 
 export const clusterSchema = z.union([
   z.enum(["mainnet", "devnet"]),
-  z.string().refine((value) => /^https?:\/\//.test(value), {
+  z.string().refine(value => /^https?:\/\//.test(value), {
     message: "must be a http(s) URL",
   }),
 ]).openapi({
@@ -102,13 +100,13 @@ export const optionalAuthTokenSchema = z.object({
   authorization: z.string().openapi({
     example: "Bearer 1234567890",
     description: "Optional. Authentication token for requests that need to connect to the Private Ephemeral Rollup.",
-  }).optional()
+  }).optional(),
 });
 export const requiredAuthTokenSchema = z.object({
   authorization: z.string().openapi({
     example: "Bearer 1234567890",
     description: "Required. Authentication token for private-balance requests.",
-  })
+  }),
 });
 
 export const transactionResponseSchema = z.object({

@@ -8,6 +8,7 @@
     "deploy": "wrangler deploy --keep-vars --secrets-file .prod.vars",
     "create:private-transfer-lut": "node scripts/create-private-transfer-lut.js",
     "build": "tsc --noEmit",
+    "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
@@ -22,8 +23,11 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "4.20260317.1",
+    "@stylistic/eslint-plugin": "^5.10.0",
     "@types/node": "^24.2.0",
+    "eslint": "^10.3.0",
     "typescript": "^5.8.3",
+    "typescript-eslint": "^8.59.1",
     "vitest": "^3.2.1",
     "wrangler": "4.76.0"
   },

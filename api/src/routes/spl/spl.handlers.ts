@@ -42,8 +42,7 @@ type BackgroundScheduler = {
 function getBackgroundScheduler(c: { executionCtx: BackgroundScheduler }) {
   try {
     return c.executionCtx;
-  }
-  catch {
+  } catch {
     return undefined;
   }
 }

@@ -23,8 +23,8 @@ const app = new OpenAPIHono<{ Bindings: AppBindings }>({
   defaultHook: openApiDefaultHook,
 });
 
-app.get("/", (c) => c.redirect("/reference"));
+app.get("/", c => c.redirect("/reference"));
 
-app.openapi(healthRoute, (c) => c.json({ status: "ok" }));
+app.openapi(healthRoute, c => c.json({ status: "ok" }));
 
 export default app;

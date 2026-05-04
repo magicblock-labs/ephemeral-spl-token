@@ -35,9 +35,6 @@ export const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey(
   "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
 );
 
-const NOOP_PROGRAM_ID = new PublicKey(
-  "noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV",
-);
 const MEMO_PROGRAM_ID = new PublicKey(
   "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
 );
@@ -220,7 +217,7 @@ function createClusterConfigError(missingVars: Array<"BASE_DEVNET_RPC_URL" | "EP
     "CONFIG_ERROR",
     "Missing worker environment variables for cluster=devnet",
     {
-      issues: missingVars.map((name) => ({
+      issues: missingVars.map(name => ({
         path: [name],
         message: "Required for cluster=devnet",
       })),
@@ -241,8 +238,7 @@ function getGaslessSponsorKeypair(env: AppEnv) {
   let secretKey: unknown;
   try {
     secretKey = JSON.parse(env.GASLESS_SPONSOR_SECRET_KEY);
-  }
-  catch {
+  } catch {
     throw new ApiError(
       500,
       "CONFIG_ERROR",
@@ -250,7 +246,7 @@ function getGaslessSponsorKeypair(env: AppEnv) {
     );
   }
 
-  if (!Array.isArray(secretKey) || secretKey.some((value) => !Number.isInteger(value))) {
+  if (!Array.isArray(secretKey) || secretKey.some(value => !Number.isInteger(value))) {
     throw new ApiError(
       500,
       "CONFIG_ERROR",
@@ -260,8 +256,7 @@ function getGaslessSponsorKeypair(env: AppEnv) {
 
   try {
     return Keypair.fromSecretKey(Uint8Array.from(secretKey));
-  }
-  catch {
+  } catch {
     throw new ApiError(
       500,
       "CONFIG_ERROR",
@@ -317,8 +312,7 @@ export function resolveRpcConfig(env: AppEnv, cluster?: string): RpcConfig {
       ephemeralRpcUrl: env.EPHEMERAL_RPC_URL,
       cluster: "custom",
     };
-  }
-  catch {
+  } catch {
     throw new ApiError(400, "INVALID_CLUSTER", "cluster must be \"mainnet\", \"devnet\", or a valid http(s) URL");
   }
 }
@@ -326,13 +320,13 @@ export function resolveRpcConfig(env: AppEnv, cluster?: string): RpcConfig {
 function resolvePrivateBaseToBaseTransferLookupTableAddress(env: AppEnv, cluster: "mainnet" | "devnet") {
   const configuredAddress = cluster === "mainnet"
     ? parseConfigPublicKey(
-      env.PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE,
-      "PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE",
-    )
+        env.PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE,
+        "PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE",
+      )
     : parseConfigPublicKey(
-      env.PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE,
-      "PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE",
-    );
+        env.PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE,
+        "PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE",
+      );
 
   return configuredAddress ?? PRIVATE_BASE_TO_BASE_TRANSFER_LOOKUP_TABLES[cluster];
 }
@@ -340,8 +334,7 @@ function resolvePrivateBaseToBaseTransferLookupTableAddress(env: AppEnv, cluster
 function parsePublicKey(value: string, fieldName: string) {
   try {
     return new PublicKey(value);
-  }
-  catch {
+  } catch {
     throw new ApiError(400, "INVALID_PUBLIC_KEY", `Invalid ${fieldName}`);
   }
 }
@@ -350,20 +343,19 @@ function parseAmount(value: string | number, fieldName: string) {
   try {
     const amount = typeof value === "number"
       ? (() => {
-        if (!Number.isSafeInteger(value) || value <= 0) {
-          throw new Error("non-positive");
-        }
+          if (!Number.isSafeInteger(value) || value <= 0) {
+            throw new Error("non-positive");
+          }
 
-        return BigInt(value);
-      })()
+          return BigInt(value);
+        })()
       : BigInt(value);
 
     if (amount <= 0n) {
       throw new Error("non-positive");
     }
     return amount;
-  }
-  catch {
+  } catch {
     throw new ApiError(400, "INVALID_AMOUNT", `${fieldName} must be a positive integer string`);
   }
 }
@@ -375,14 +367,9 @@ function parseOptionalAmount(value: string | undefined, fieldName: string) {
 
   try {
     return BigInt(value);
-  }
-  catch {
+  } catch {
     throw new ApiError(400, "INVALID_AMOUNT", `${fieldName} must be an integer string`);
   }
-}
-
-function parseOptionalPublicKey(value: string | undefined, fieldName: string) {
-  return value ? parsePublicKey(value, fieldName) : undefined;
 }
 
 function parseConfigPublicKey(value: string | undefined, fieldName: string) {
@@ -392,8 +379,7 @@ function parseConfigPublicKey(value: string | undefined, fieldName: string) {
 
   try {
     return new PublicKey(value);
-  }
-  catch {
+  } catch {
     throw new ApiError(500, "CONFIG_ERROR", `${fieldName} must be a valid public key`);
   }
 }
@@ -533,8 +519,7 @@ async function resolveValidator(config: RpcConfig, explicitValidator?: string) {
 
   try {
     return await getValidatorFromRpc(config.ephemeralRpcUrl) ?? DEFAULT_FALLBACK_VALIDATOR;
-  }
-  catch {
+  } catch {
     return DEFAULT_FALLBACK_VALIDATOR;
   }
 }
@@ -563,8 +548,7 @@ async function getBlockhash(config: RpcConfig, source: SendTarget, authToken?: s
   try {
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
     return { blockhash, lastValidBlockHeight };
-  }
-  catch (error) {
+  } catch (error) {
     throw new ApiError(502, "RPC_ERROR", "Failed to fetch recent blockhash", {
       source,
       message: getSanitizedErrorMessage(error),
@@ -722,7 +706,7 @@ async function trySerializePrivateBaseToBaseTransferTransactionWithLookupTable(
     }
 
     const lookupTableAddresses = new Set(
-      lookupTable.state.addresses.map((address) => address.toBase58()),
+      lookupTable.state.addresses.map(address => address.toBase58()),
     );
     const candidateAddresses = collectLookupTableCandidateAddresses(instructions);
     let hasExpectedAddress = false;
@@ -759,8 +743,7 @@ async function trySerializePrivateBaseToBaseTransferTransactionWithLookupTable(
       requiredSigners: getRequiredSigners(feePayer, instructions),
       validator: validator?.toBase58(),
     };
-  }
-  catch (error) {
+  } catch (error) {
     console.warn("LUT v0 compilation failed, falling back to legacy", {
       cluster: config.cluster,
       lookupTable: lookupTableAddress.toBase58(),
@@ -803,8 +786,7 @@ export async function buildDepositTransaction(env: AppEnv, input: DepositInput) 
       blockhash,
       validator,
     );
-  }
-  catch (error) {
+  } catch (error) {
     throwTransactionBuildError(error);
   }
 }
@@ -838,8 +820,7 @@ export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawInput
       blockhash,
       validator,
     );
-  }
-  catch (error) {
+  } catch (error) {
     throwTransactionBuildError(error);
   }
 }
@@ -909,8 +890,7 @@ export async function buildInitializeMintTransaction(
       transferQueue: transferQueue.toBase58(),
       rentPda: rentPda.toBase58(),
     };
-  }
-  catch (error) {
+  } catch (error) {
     throwTransactionBuildError(error);
   }
 }
@@ -995,13 +975,13 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
     const feePayer = sponsor?.publicKey ?? from;
     const gaslessFeeInstructions = sponsor
       ? [
-        createTokenTransferInstruction(
-          getAssociatedTokenAddressSync(mint, from, false, TOKEN_PROGRAM_ID),
-          getAssociatedTokenAddressSync(mint, sponsor.publicKey, false, TOKEN_PROGRAM_ID),
-          from,
-          GASLESS_RELAY_FEE_MICRO_USDC,
-        ),
-      ]
+          createTokenTransferInstruction(
+            getAssociatedTokenAddressSync(mint, from, false, TOKEN_PROGRAM_ID),
+            getAssociatedTokenAddressSync(mint, sponsor.publicKey, false, TOKEN_PROGRAM_ID),
+            from,
+            GASLESS_RELAY_FEE_MICRO_USDC,
+          ),
+        ]
       : [];
 
     const shouldResolveValidator = input.validator
@@ -1031,12 +1011,12 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
         || input.clientRefId !== undefined
         || input.split !== undefined
         ? {
-          minDelayMs,
-          maxDelayMs,
-          clientRefId,
-          split,
-          exactOut,
-        }
+            minDelayMs,
+            maxDelayMs,
+            clientRefId,
+            split,
+            exactOut,
+          }
         : undefined,
     });
     // Gasless private base->base already adds a relay-fee token transfer. Dropping
@@ -1086,8 +1066,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
       validator,
       sponsor ? [sponsor] : [],
     );
-  }
-  catch (error) {
+  } catch (error) {
     throwTransactionBuildError(error);
   }
 }
@@ -1117,8 +1096,7 @@ async function getBalanceInternal(
       location,
       balance: balance.toString(),
     };
-  }
-  catch (error) {
+  } catch (error) {
     throw new ApiError(502, "RPC_ERROR", "Failed to fetch token balance", {
       location,
       message: getSanitizedErrorMessage(error),
@@ -1284,8 +1262,7 @@ export async function getMintInitializationStatus(
       transferQueue: transferQueue.toBase58(),
       initialized,
     };
-  }
-  catch (error) {
+  } catch (error) {
     throw new ApiError(502, "RPC_ERROR", "Failed to fetch transfer queue account", {
       message: getSanitizedErrorMessage(error),
     });

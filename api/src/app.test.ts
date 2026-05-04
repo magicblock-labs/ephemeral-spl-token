@@ -186,15 +186,6 @@ describe("app", () => {
             name?: string;
             required?: boolean;
           }>;
-        };
-        post?: {
-          requestBody?: {
-            content?: Record<string, {
-              schema?: {
-                properties?: Record<string, unknown>;
-              };
-            }>;
-          };
           responses?: Record<string, {
             content?: Record<string, {
               example?: {
@@ -204,7 +195,36 @@ describe("app", () => {
             }>;
           }>;
         };
+        post?: {
+          requestBody?: {
+            content?: Record<string, {
+              schema?: {
+                properties?: Record<string, unknown>;
+              };
+              examples?: Record<string, {
+                value?: {
+                  kind?: string;
+                  instructionCount?: number;
+                };
+              }>;
+            }>;
+          };
+          responses?: Record<string, {
+            content?: Record<string, {
+              example?: {
+                kind?: string;
+                instructionCount?: number;
+              };
+              examples?: Record<string, {
+                value?: any;
+              }>;
+            }>;
+          }>;
+        };
       }>;
+      components?: {
+        schemas?: Record<string, unknown>;
+      };
     };
     expect(json.paths["/v1/spl/deposit"]).toBeDefined();
     expect(json.paths["/mcp"]?.post).toBeDefined();
@@ -541,7 +561,7 @@ describe("app", () => {
     );
     // No SetComputeUnitLimit was prepended.
     expect(
-      decompiled.instructions.some((ix) => ix.programId.equals(computeBudgetProgram)),
+      decompiled.instructions.some(ix => ix.programId.equals(computeBudgetProgram)),
     ).toBe(false);
 
     const [createIx, memoRebuilt, scheduleIx] = decompiled.instructions;
@@ -737,12 +757,12 @@ describe("app", () => {
     // Same 4 ixs (no new SetComputeUnitLimit prepended), but the existing
     // one has been rewritten with a bumped value.
     expect(decompiled.instructions).toHaveLength(4);
-    const cbCount = decompiled.instructions.filter((ix) =>
+    const cbCount = decompiled.instructions.filter(ix =>
       ix.programId.equals(computeBudgetProgram),
     ).length;
     expect(cbCount).toBe(1);
 
-    const cbIx = decompiled.instructions.find((ix) =>
+    const cbIx = decompiled.instructions.find(ix =>
       ix.programId.equals(computeBudgetProgram),
     )!;
     const bumped = Buffer.from(cbIx.data).readUInt32LE(1);
@@ -868,7 +888,7 @@ describe("app", () => {
 
     const originalSerialize = VersionedTransaction.prototype.serialize;
     let serializeCalls = 0;
-    vi.spyOn(VersionedTransaction.prototype, "serialize").mockImplementation(function(
+    vi.spyOn(VersionedTransaction.prototype, "serialize").mockImplementation(function (
       this: VersionedTransaction,
     ) {
       serializeCalls += 1;
@@ -1174,11 +1194,11 @@ describe("app", () => {
 
     expect(mcpJson.endpoint).toBe("http://localhost/mcp");
     expect(mcpJson.discovery).toBe("http://localhost/.well-known/mcp.json");
-    expect(mcpJson.tools.some((tool) => tool.name === "spl.transfer")).toBe(true);
+    expect(mcpJson.tools.some(tool => tool.name === "spl.transfer")).toBe(true);
 
     expect(discoveryJson.transport.type).toBe("streamable-http");
     expect(discoveryJson.transport.endpoint).toBe("http://localhost/mcp");
-    expect(discoveryJson.tools.some((tool) => tool.name === "spl.getPrivateBalance")).toBe(true);
+    expect(discoveryJson.tools.some(tool => tool.name === "spl.getPrivateBalance")).toBe(true);
   });
 
   it("accepts MCP initialize requests from doc clients that do not send a JSON content type", async () => {
@@ -1334,13 +1354,13 @@ describe("app", () => {
       const endpoint = (this as Connection & { _rpcEndpoint: string })._rpcEndpoint;
       return endpoint.includes("base.devnet.rpc.test")
         ? {
-          blockhash: "So11111111111111111111111111111111111111112",
-          lastValidBlockHeight: 321,
-        }
+            blockhash: "So11111111111111111111111111111111111111112",
+            lastValidBlockHeight: 321,
+          }
         : {
-          blockhash: "11111111111111111111111111111111",
-          lastValidBlockHeight: 123,
-        };
+            blockhash: "11111111111111111111111111111111",
+            lastValidBlockHeight: 123,
+          };
     });
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       expect(String(input)).toBe(devnetEnv.EPHEMERAL_DEVNET_RPC_URL);
@@ -1371,8 +1391,8 @@ describe("app", () => {
     expect(json.validator).toBe(resolvedValidator);
 
     const transaction = Transaction.from(Buffer.from(json.transactionBase64, "base64"));
-    expect(transaction.instructions.some((instruction) =>
-      instruction.keys.some((key) => key.pubkey.toBase58() === DEVNET_USDC_MINT)
+    expect(transaction.instructions.some(instruction =>
+      instruction.keys.some(key => key.pubkey.toBase58() === DEVNET_USDC_MINT),
     )).toBe(true);
   });
 
@@ -1439,13 +1459,13 @@ describe("app", () => {
       const endpoint = (this as Connection & { _rpcEndpoint: string })._rpcEndpoint;
       return endpoint.includes("base")
         ? {
-          blockhash: "So11111111111111111111111111111111111111112",
-          lastValidBlockHeight: 321,
-        }
+            blockhash: "So11111111111111111111111111111111111111112",
+            lastValidBlockHeight: 321,
+          }
         : {
-          blockhash: "11111111111111111111111111111111",
-          lastValidBlockHeight: 123,
-        };
+            blockhash: "11111111111111111111111111111111",
+            lastValidBlockHeight: 123,
+          };
     });
 
     const response = await app.request("/v1/spl/initialize-mint", {
@@ -1491,12 +1511,12 @@ describe("app", () => {
     expect(decodedTransfer.toPubkey.toBase58()).toBe(rentPda.toBase58());
     expect(decodedTransfer.lamports).toBe(BigInt(LAMPORTS_PER_SOL / 50));
 
-    expect(transaction.instructions[0]?.keys.some((key) => key.pubkey.toBase58() === transferQueue.toBase58())).toBe(true);
-    expect(transaction.instructions[1]?.keys.some((key) => key.pubkey.toBase58() === rentPda.toBase58())).toBe(true);
-    expect(transaction.instructions[3]?.keys.some((key) => key.pubkey.toBase58() === transferQueue.toBase58())).toBe(true);
-    expect(transaction.instructions[4]?.keys.some((key) => key.pubkey.toBase58() === vault.toBase58())).toBe(true);
-    expect(transaction.instructions[5]?.keys.some((key) => key.pubkey.toBase58() === vaultAta.toBase58())).toBe(true);
-    expect(transaction.instructions[6]?.keys.some((key) => key.pubkey.toBase58() === vaultEphemeralAta.toBase58())).toBe(true);
+    expect(transaction.instructions[0]?.keys.some(key => key.pubkey.toBase58() === transferQueue.toBase58())).toBe(true);
+    expect(transaction.instructions[1]?.keys.some(key => key.pubkey.toBase58() === rentPda.toBase58())).toBe(true);
+    expect(transaction.instructions[3]?.keys.some(key => key.pubkey.toBase58() === transferQueue.toBase58())).toBe(true);
+    expect(transaction.instructions[4]?.keys.some(key => key.pubkey.toBase58() === vault.toBase58())).toBe(true);
+    expect(transaction.instructions[5]?.keys.some(key => key.pubkey.toBase58() === vaultAta.toBase58())).toBe(true);
+    expect(transaction.instructions[6]?.keys.some(key => key.pubkey.toBase58() === vaultEphemeralAta.toBase58())).toBe(true);
     expect(Array.from(transaction.instructions[0]!.data)).toEqual([12]);
     expect(Array.from(transaction.instructions[1]!.data)).toEqual([23]);
     expect(Array.from(transaction.instructions[3]!.data)).toEqual([19]);
@@ -1624,8 +1644,8 @@ describe("app", () => {
     await client.connect(transport);
 
     const tools = await client.listTools();
-    expect(tools.tools.some((tool) => tool.name === "spl.deposit")).toBe(true);
-    expect(tools.tools.some((tool) => tool.name === "spl.getPrivateBalance")).toBe(true);
+    expect(tools.tools.some(tool => tool.name === "spl.deposit")).toBe(true);
+    expect(tools.tools.some(tool => tool.name === "spl.getPrivateBalance")).toBe(true);
 
     const result = await client.callTool({
       name: "spl.deposit",
@@ -1651,13 +1671,13 @@ describe("app", () => {
       const endpoint = (this as Connection & { _rpcEndpoint: string })._rpcEndpoint;
       return endpoint.includes("ephemeral")
         ? {
-          blockhash: "11111111111111111111111111111111",
-          lastValidBlockHeight: 456,
-        }
+            blockhash: "11111111111111111111111111111111",
+            lastValidBlockHeight: 456,
+          }
         : {
-          blockhash: "So11111111111111111111111111111111111111112",
-          lastValidBlockHeight: 123,
-        };
+            blockhash: "So11111111111111111111111111111111111111112",
+            lastValidBlockHeight: 123,
+          };
     });
 
     const response = await app.request("/v1/spl/transfer", {
@@ -1996,14 +2016,14 @@ describe("app", () => {
     expect(transaction.feePayer?.toBase58()).toBe(sponsor.publicKey.toBase58());
     expect(transaction.instructions).toHaveLength(2);
 
-    const sponsorSignature = transaction.signatures.find((signature) =>
+    const sponsorSignature = transaction.signatures.find(signature =>
       signature.publicKey.toBase58() === sponsor.publicKey.toBase58(),
     );
     expect(sponsorSignature?.signature).not.toBeNull();
 
     const relayFeeIx = transaction.instructions[0]!;
     expect(relayFeeIx.programId.toBase58()).toBe(TOKEN_PROGRAM_ID.toBase58());
-    expect(relayFeeIx.keys.map((key) => key.pubkey.toBase58())).toEqual([
+    expect(relayFeeIx.keys.map(key => key.pubkey.toBase58())).toEqual([
       ownerAta,
       sponsorAta,
       owner,
@@ -2080,7 +2100,7 @@ describe("app", () => {
 
     const relayFeeIx = transaction.instructions[0]!;
     expect(relayFeeIx.programId.toBase58()).toBe(TOKEN_PROGRAM_ID.toBase58());
-    expect(relayFeeIx.keys.map((key) => key.pubkey.toBase58())).toEqual([
+    expect(relayFeeIx.keys.map(key => key.pubkey.toBase58())).toEqual([
       ownerAta,
       sponsorAta,
       owner,
@@ -2090,7 +2110,7 @@ describe("app", () => {
 
     const publicTransferIx = transaction.instructions[1]!;
     expect(publicTransferIx.programId.toBase58()).toBe(TOKEN_PROGRAM_ID.toBase58());
-    expect(publicTransferIx.keys.map((key) => key.pubkey.toBase58())).toEqual([
+    expect(publicTransferIx.keys.map(key => key.pubkey.toBase58())).toEqual([
       ownerAta,
       destinationAta,
       owner,
@@ -2210,8 +2230,8 @@ describe("app", () => {
     const withClientRefTx = Transaction.from(Buffer.from(withClientRefJson.transactionBase64, "base64"));
 
     expect(withClientRefTx.instructions).toHaveLength(withoutClientRefTx.instructions.length);
-    expect(withClientRefTx.instructions.map((instruction) => Buffer.from(instruction.data).toString("base64"))).not.toEqual(
-      withoutClientRefTx.instructions.map((instruction) => Buffer.from(instruction.data).toString("base64")),
+    expect(withClientRefTx.instructions.map(instruction => Buffer.from(instruction.data).toString("base64"))).not.toEqual(
+      withoutClientRefTx.instructions.map(instruction => Buffer.from(instruction.data).toString("base64")),
     );
   });
 

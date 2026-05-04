@@ -47,43 +47,6 @@ const mcpTools = [
   },
 ] as const;
 
-const mcpInfoExample = {
-  name: "spl-private-payments-api",
-  version: "0.1.0",
-  transport: "streamable-http",
-  mode: "stateless-json-response",
-  endpoint: "http://localhost/mcp",
-  discovery: "http://localhost/.well-known/mcp.json",
-  methods: ["POST"],
-  inspector: {
-    transport: "Streamable HTTP",
-    url: "http://localhost/mcp",
-  },
-  tools: mcpTools,
-};
-
-const mcpDiscoveryExample = {
-  name: "spl-private-payments-api",
-  version: "0.1.0",
-  description: "Stateless MCP server for building SPL token transactions and reading base or private balances.",
-  websiteUrl: "https://www.magicblock.xyz/",
-  documentationUrl: "http://localhost/reference",
-  openApiUrl: "http://localhost/doc",
-  transport: {
-    type: "streamable-http",
-    endpoint: "http://localhost/mcp",
-    stateless: true,
-    jsonResponse: true,
-    methods: ["POST"],
-  },
-  capabilities: {
-    tools: true,
-    resources: false,
-    prompts: false,
-  },
-  tools: mcpTools,
-};
-
 const mcpInitializeRequestExample = {
   jsonrpc: "2.0",
   id: 1,
@@ -183,52 +146,6 @@ const mcpInternalErrorExample = {
   id: null,
 };
 
-const mcpToolSchema = z.object({
-  name: z.string(),
-  description: z.string(),
-}).openapi("McpTool");
-
-const mcpInfoResponseSchema = z.object({
-  name: z.string(),
-  version: z.string(),
-  transport: z.literal("streamable-http"),
-  mode: z.literal("stateless-json-response"),
-  endpoint: z.string(),
-  discovery: z.string(),
-  methods: z.array(z.literal("POST")),
-  inspector: z.object({
-    transport: z.literal("Streamable HTTP"),
-    url: z.string(),
-  }),
-  tools: z.array(mcpToolSchema),
-}).openapi("McpInfoDocument", {
-  example: mcpInfoExample,
-});
-
-const mcpDiscoveryResponseSchema = z.object({
-  name: z.string(),
-  version: z.string(),
-  description: z.string(),
-  websiteUrl: z.string(),
-  documentationUrl: z.string(),
-  openApiUrl: z.string(),
-  transport: z.object({
-    type: z.literal("streamable-http"),
-    endpoint: z.string(),
-    stateless: z.boolean(),
-    jsonResponse: z.boolean(),
-    methods: z.array(z.literal("POST")),
-  }),
-  capabilities: z.object({
-    tools: z.boolean(),
-    resources: z.boolean(),
-    prompts: z.boolean(),
-  }),
-  tools: z.array(mcpToolSchema),
-}).openapi("McpDiscoveryDocument", {
-  example: mcpDiscoveryExample,
-});
-
 const mcpResponseSchema = z.object({
   jsonrpc: z.literal("2.0"),
   id: z.union([z.string(), z.number(), z.null()]).optional(),
@@ -239,16 +156,6 @@ const mcpResponseSchema = z.object({
   }).passthrough().optional(),
 }).passthrough().openapi("McpResponse", {
   example: mcpToolCallResponseExample,
-});
-
-const mcpInfoRoute = createRoute({
-  path: "/mcp",
-  method: "get",
-  tags,
-  description: "Human-readable MCP info document for browsers, manual inspection, and connector setup. If the request `Accept` header includes `text/event-stream`, this endpoint returns `405 Method Not Allowed` and clients should use `POST /mcp` instead.",
-  responses: {
-    200: jsonContent(mcpInfoResponseSchema, "MCP info document", mcpInfoExample),
-  },
 });
 
 const mcpRoute = createRoute({
@@ -295,16 +202,6 @@ const mcpRoute = createRoute({
   },
 });
 
-const mcpDiscoveryRoute = createRoute({
-  path: "/.well-known/mcp.json",
-  method: "get",
-  tags,
-  description: "MCP discovery document for clients and tooling that want a transport description plus the exposed tool list.",
-  responses: {
-    200: jsonContent(mcpDiscoveryResponseSchema, "MCP discovery document", mcpDiscoveryExample),
-  },
-});
-
 function getMcpTools() {
   return mcpTools;
 }
@@ -328,7 +225,7 @@ function normalizeMcpRequest(request: Request) {
   const acceptedTypes = new Set(
     accept
       .split(",")
-      .map((value) => value.trim())
+      .map(value => value.trim())
       .filter(Boolean),
   );
 
@@ -486,8 +383,7 @@ app.openapi(mcpRoute, async (c) => {
     const response = await transport.handleRequest(normalizeMcpRequest(c.req.raw));
     await server.close();
     return response;
-  }
-  catch (error) {
+  } catch (error) {
     console.error("Error handling MCP request:", error);
     await server.close().catch(() => undefined);
 
@@ -502,9 +398,9 @@ app.openapi(mcpRoute, async (c) => {
   }
 });
 
-app.get("/.well-known/mcp.json", (c) => c.json(buildMcpDiscoveryDocument(c.req.url)));
+app.get("/.well-known/mcp.json", c => c.json(buildMcpDiscoveryDocument(c.req.url)));
 
-app.delete("/mcp", (c) => c.text("Method Not Allowed", 405, {
+app.delete("/mcp", c => c.text("Method Not Allowed", 405, {
   Allow: "POST",
 }));
 

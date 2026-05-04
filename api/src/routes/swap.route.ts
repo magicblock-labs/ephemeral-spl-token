@@ -109,8 +109,8 @@ const USDC_TO_USDT_QUOTE_EXAMPLE = {
   swapUsdValue: "1",
   mostReliableAmmsQuoteReport: {
     info: {
-      BZtgQEyS6eXUXicYPHecYQ7PybqodXQMvkjUbP4R8mUU: "999357",
-      Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE: "11681475",
+      "BZtgQEyS6eXUXicYPHecYQ7PybqodXQMvkjUbP4R8mUU": "999357",
+      "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE": "11681475",
       "8sjV1AqBFvFuADBCQHhotaRq5DFFYSjjg1jMyVWMqXvZ": "999504",
     },
   },
@@ -538,8 +538,7 @@ async function proxyGet(c: Context<{ Bindings: AppBindings }>, upstreamPath: str
       status: upstreamResponse.status,
       headers: upstreamResponse.headers,
     });
-  }
-  catch (error) {
+  } catch (error) {
     throw new ApiError(502, "SWAP_UPSTREAM_ERROR", "Failed to reach the swap upstream", {
       message: error instanceof Error ? error.message : String(error),
     });
@@ -573,8 +572,7 @@ async function proxyPost(
       status: upstreamResponse.status,
       headers: upstreamResponse.headers,
     });
-  }
-  catch (error) {
+  } catch (error) {
     throw new ApiError(502, "SWAP_UPSTREAM_ERROR", "Failed to reach the swap upstream", {
       message: error instanceof Error ? error.message : String(error),
     });
@@ -629,8 +627,7 @@ async function handlePrivateSwap(
     validatorPubkey = validator
       ? new PublicKey(validator)
       : DEFAULT_FALLBACK_VALIDATOR;
-  }
-  catch (error) {
+  } catch (error) {
     throw new ApiError(400, "INVALID_REQUEST", "Invalid public key", {
       message: error instanceof Error ? error.message : String(error),
     });
@@ -720,8 +717,7 @@ async function handlePrivateSwap(
     if (firstAttempt.kind === "success") {
       metisJson = firstAttempt.metisJson;
       rebuilt = firstAttempt.rebuilt;
-    }
-    else {
+    } else {
       for (
         let maxAccounts = PRIVATE_SWAP_DEFAULT_MAX_ACCOUNTS;
         maxAccounts >= PRIVATE_SWAP_MIN_MAX_ACCOUNTS;
@@ -759,14 +755,13 @@ async function handlePrivateSwap(
         break;
       }
     }
-  }
-  catch (error) {
+  } catch (error) {
     if (error instanceof PrivateSwapUpstreamError) {
       throw new ApiError(502, "SWAP_UPSTREAM_ERROR", error.message, error.causeValue === undefined
         ? undefined
         : {
-          message: error.causeValue instanceof Error ? error.causeValue.message : String(error.causeValue),
-        });
+            message: error.causeValue instanceof Error ? error.causeValue.message : String(error.causeValue),
+          });
     }
 
     if (error instanceof SyntaxError) {
@@ -841,8 +836,8 @@ type UpstreamSwapResponse = {
   [k: string]: unknown;
 };
 
-type PrivateSwapAttemptResult =
-  | {
+type PrivateSwapAttemptResult
+  = | {
     kind: "success";
     metisJson: UpstreamSwapResponse;
     rebuilt: string;
@@ -883,8 +878,7 @@ async function fetchUpstreamSwap(
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });
-  }
-  catch (error) {
+  } catch (error) {
     throw new ApiError(502, "SWAP_UPSTREAM_ERROR", "Failed to reach the swap upstream", {
       message: error instanceof Error ? error.message : String(error),
     });
@@ -931,8 +925,7 @@ async function requotePrivateSwap(
       method: "GET",
       headers: { accept: "application/json" },
     });
-  }
-  catch (error) {
+  } catch (error) {
     throw new ApiError(502, "SWAP_UPSTREAM_ERROR", "Failed to reach the swap upstream", {
       message: error instanceof Error ? error.message : String(error),
     });
@@ -945,8 +938,7 @@ async function requotePrivateSwap(
   let parsed: unknown;
   try {
     parsed = await upstreamResponse.json();
-  }
-  catch (error) {
+  } catch (error) {
     throw new PrivateSwapUpstreamError("Invalid JSON in upstream quote response", error);
   }
 
@@ -1029,8 +1021,7 @@ async function tryBuildPrivateSwapAttempt(
       metisJson,
       rebuilt,
     };
-  }
-  catch (error) {
+  } catch (error) {
     if (error instanceof PrivateSwapTooLargeError) {
       return { kind: "too_large" };
     }
@@ -1073,29 +1064,26 @@ async function rebuildSwapTransaction(input: RebuildInput): Promise<string> {
 
   let txBytes: Uint8Array;
   try {
-    txBytes = Uint8Array.from(atob(base64Tx), (c) => c.charCodeAt(0));
-  }
-  catch (error) {
+    txBytes = Uint8Array.from(atob(base64Tx), c => c.charCodeAt(0));
+  } catch (error) {
     throw new PrivateSwapUpstreamError("Invalid upstream swap transaction encoding", error);
   }
 
   let versionedTx: VersionedTransaction;
   try {
     versionedTx = VersionedTransaction.deserialize(txBytes);
-  }
-  catch (error) {
+  } catch (error) {
     throw new PrivateSwapUpstreamError("Invalid upstream swap transaction", error);
   }
 
-  const altKeys = versionedTx.message.addressTableLookups.map((l) => l.accountKey);
+  const altKeys = versionedTx.message.addressTableLookups.map(l => l.accountKey);
   const lookupTables: AddressLookupTableAccount[] = [];
   let lookupTableResponses: Awaited<ReturnType<Connection["getAddressLookupTable"]>>[];
   try {
     lookupTableResponses = await Promise.all(
-      altKeys.map((key) => connection.getAddressLookupTable(key)),
+      altKeys.map(key => connection.getAddressLookupTable(key)),
     );
-  }
-  catch (error) {
+  } catch (error) {
     throw new PrivateSwapUpstreamError("Failed to fetch swap address lookup table", error);
   }
   for (const resp of lookupTableResponses) {
@@ -1109,8 +1097,7 @@ async function rebuildSwapTransaction(input: RebuildInput): Promise<string> {
     message = TransactionMessage.decompile(versionedTx.message, {
       addressLookupTableAccounts: lookupTables,
     });
-  }
-  catch (error) {
+  } catch (error) {
     throw new PrivateSwapUpstreamError("Failed to decompile upstream swap transaction", error);
   }
 
@@ -1150,8 +1137,7 @@ async function rebuildSwapTransaction(input: RebuildInput): Promise<string> {
   let serialized: Uint8Array;
   try {
     serialized = rebuilt.serialize();
-  }
-  catch (error) {
+  } catch (error) {
     if (error instanceof RangeError) {
       throw new PrivateSwapTooLargeError(
         `Rebuilt private swap transaction exceeds ${SOLANA_WIRE_TRANSACTION_SIZE_LIMIT} bytes`,
