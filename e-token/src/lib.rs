@@ -11,6 +11,5 @@ pub use ephemeral_spl_api::ID;
 pub use processor::{
     AmountAndSaltArgs, DelegateArgs, DelegateShuttleArgs, DepositAndDelegateShuttleArgs,
     DepositAndDelegateShuttleWithPrivateTransferArgs, DepositAndQueueTransferArgs,
-    ExecuteQueuedTransferArgs, InitializeGroupReceiptArgs, InitializeTransferQueueArgs,
-    TransferCallbackArgs,
+    ExecuteQueuedTransferArgs, InitializeTransferQueueArgs, TransferCallbackArgs,
 };

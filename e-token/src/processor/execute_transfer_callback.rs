@@ -9,6 +9,7 @@ use alloc::vec::Vec;
 use data_layout::variable_offset_layout;
 
 use ephemeral_spl_api::debug_log;
+use ephemeral_spl_api::state::group_receipt;
 use ephemeral_spl_api::state::group_receipt::{GroupReceipt, TransferReceipt};
 use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, TransferQueueHeader};
 use pinocchio::error::ProgramError;
@@ -29,14 +30,17 @@ pub struct TransferCallbackArgs {
     pub flag: u8,
 }
 
-pub fn derive_group_receipt_id(queue_address: &Address, group_id: u32) -> (Address, u8) {
+pub fn derive_group_receipt_id(
+    queue_address: &Address,
+    destination_address: &Address,
+) -> (Address, u8) {
     // TODO(edwin): maybe derive from sender too
     // Otherwise if group_ids circle to 1 there could be info leaks
     Address::find_program_address(
         &[
             GROUP_RECEIPT_SEED,
             queue_address.as_ref(),
-            group_id.to_le_bytes().as_ref(),
+            destination_address.as_ref(),
         ],
         &crate::ID,
     )
@@ -146,26 +150,16 @@ fn handle_group_receipt(
     args: &TransferCallbackArgsView<'_>,
     response: &MagicResponseView,
 ) -> ProgramResult {
-    // Receipt specific validation
-    let (group_receipt_id, group_receipt_bump) =
-        derive_group_receipt_id(queue_info.address(), args.group_id());
-    if &group_receipt_id != group_receipt_info.address() {
-        return Err(ProgramError::InvalidSeeds);
+    if !group_receipt_info.owned_by(&crate::ID) {
+        debug_log!("Group receipt expected to be initialized");
+        return Err(ProgramError::InvalidAccountOwner);
     }
 
     let accounts =
         GroupReceiptAccounts::new(group_receipt_info, queue_info, magic_vault, magic_program);
+    let mut group_receipt = GroupReceipt::new(group_receipt_info)?;
 
-    // Create receipt
-    // This means that callback executed faster than initializing crank
-    // As we don't know number of splits, initialize partially with 0
-    let mut group_receipt = if !group_receipt_info.owned_by(&crate::ID) {
-        debug_log!("TransferCallback: initializing receipt");
-
-        group_receipt_create(&accounts, group_receipt_bump, args.group_id(), 0)?
-    } else {
-        GroupReceipt::new(group_receipt_info)?
-    };
+    // Update receipt with new TransferReceipt
     group_receipt_record_transfer(
         &accounts,
         &mut group_receipt,

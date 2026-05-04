@@ -87,7 +87,7 @@ pub fn process_transfer_queue_tick(
 
     require_eq_keys!(
         magic_program_info.address(),
-        &ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID,
+        &MAGIC_PROGRAM_ID,
         ProgramError::IncorrectProgramId
     );
 

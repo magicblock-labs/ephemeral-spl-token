@@ -41,6 +41,7 @@ pub struct TransferQueueHeader {
 pub struct QueuedTransfer {
     pub source: Address,
     pub destination_owner: Address,
+    pub destination_owner_encrypted: Address,
     pub amount: u64,
     pub ready_at: i64,
     pub client_ref_id: u64,
@@ -527,6 +528,7 @@ mod tests {
         QueuedTransfer {
             source: addr(source),
             destination_owner: addr(destination),
+            destination_owner_encrypted: addr(255),
             amount,
             ready_at,
             client_ref_id,

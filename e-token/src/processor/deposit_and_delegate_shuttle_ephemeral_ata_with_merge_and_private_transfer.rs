@@ -17,6 +17,8 @@ use ephemeral_spl_api::{consts, require, require_eq_keys, require_n_accounts};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use solana_instruction::{AccountMeta, Instruction};
 
+use crate::processor::execute_transfer_callback::derive_group_receipt_id;
+use crate::processor::utils::MAGIC_VAULT_ID;
 use crate::processor::{
     internal::shuttle_delegation::{
         merge_shuttle_into_token_account_action,
@@ -226,6 +228,12 @@ impl DepositAndDelegateShuttleWithPrivateTransferArgsView<'_> {
             validator: self.validator(),
         })
     }
+
+    fn encrypted_destination_address(&self) -> ephemeral_spl_api::Address {
+        let mut address_raw = [0u8; 32];
+        address_raw.copy_from_slice(&self.encrypted_destination()[..32]);
+        address_raw.into()
+    }
 }
 
 fn private_transfer_action_encrypted(
@@ -234,6 +242,10 @@ fn private_transfer_action_encrypted(
     args: &DepositAndDelegateShuttleWithPrivateTransferArgsView<'_>,
     amount: u64,
 ) -> Result<PostDelegationActions, ProgramError> {
+    let encrypted_destination_address = args.encrypted_destination_address();
+    let group_receipt_info =
+        derive_group_receipt_id(queue_info.address(), &encrypted_destination_address)
+            .0;
     Ok(PostDelegationActions {
         inserted_signers: 0,
         inserted_non_signers: 0,
@@ -256,7 +268,10 @@ fn private_transfer_action_encrypted(
             MaybeEncryptedPubkey::ClearText(
                 common_accounts.shuttle_wallet_ata_info.address().to_bytes()
             ), // 9
-            MaybeEncryptedPubkey::ClearText(MAGIC_PROGRAM_ID.to_bytes(),), // 10
+            MaybeEncryptedPubkey::ClearText(encrypted_destination_address.to_bytes()), // 10
+            MaybeEncryptedPubkey::ClearText(group_receipt_info.to_bytes()), // 11
+            MaybeEncryptedPubkey::ClearText(MAGIC_VAULT_ID.to_bytes(),), // 12
+            MaybeEncryptedPubkey::ClearText(MAGIC_PROGRAM_ID.to_bytes(),), // 13
         ],
         instructions: alloc::vec![MaybeEncryptedInstruction {
             program_id: 1,
@@ -270,7 +285,10 @@ fn private_transfer_action_encrypted(
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(0, true)), // owner_info
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(8, false)), // token_program_info
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(9, false)), // shuttle_wallet_ata_info
-                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(10, false)), // magic_program
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(10, false)), // encrypted_destination_address
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(11, false)), // group_receipt
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(12, false)), // magic_vault
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(13, false)), // magic_program
             ],
             data: MaybeEncryptedIxData {
                 prefix: ESplInstruction::DepositAndQueueTransfer.with_data(&amount.to_le_bytes()),

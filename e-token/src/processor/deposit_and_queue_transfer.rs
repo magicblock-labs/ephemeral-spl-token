@@ -1,18 +1,16 @@
 use crate::instruction::ESplInternalInstruction;
 use crate::processor::ensure_transfer_queue_crank::derive_queue_crank_task_id;
-use crate::processor::execute_transfer_callback::derive_group_receipt_id;
+use crate::processor::execute_transfer_callback::{derive_group_receipt_id, GROUP_RECEIPT_SEED};
 use crate::processor::internal::token_vault::transfer_to_vault_for_mint;
 use crate::processor::utils::{
-    get_associated_token_address, read_mint_decimals, validate_token_account, CRANK_SIGNER,
-    MAGIC_VAULT_ID,
+    get_associated_token_address, group_receipt_create, read_mint_decimals, validate_token_account,
+    GroupReceiptAccounts,
 };
-use crate::InitializeGroupReceiptArgs;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::convert::TryFrom;
 use data_layout::variable_offset_layout;
 use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
-use ephemeral_rollups_pinocchio::crank::{CrankInstruction, ScheduleCrankArgs, ScheduleCrankCpi};
 use ephemeral_spl_api::debug_log;
 #[cfg(feature = "logging")]
 use ephemeral_spl_api::state::transfer_queue::capacity_from_data_len;
@@ -65,8 +63,11 @@ pub fn process_deposit_and_queue_transfer(
         user_authority,
         token_program_info,
         reimbursement_token_info,
+        encrypted_destination_address,
+        group_receipt_info,
+        magic_vault,
         magic_program,
-    ] = require_n_accounts!(accounts, 10);
+    ] = require_n_accounts!(accounts, 13);
 
     pinocchio_log::log!("instruction_data: {}", instruction_data.len());
     let args = DepositAndQueueTransferArgs::decode(instruction_data)?;
@@ -221,110 +222,19 @@ pub fn process_deposit_and_queue_transfer(
         args.max_delay_ms()
     );
 
-    create_group_receipt(queue_info, magic_program, group_id, args.split())?;
+    group_receipt_create(
+        &GroupReceiptAccounts {
+            queue_info,
+            group_receipt_info,
+            magic_vault,
+            _magic_program: magic_program,
+        },
+        bump,
+        group_id,
+        args.split(),
+    )?;
 
     Ok(())
-}
-
-fn create_group_receipt(
-    queue_info: &AccountView,
-    magic_program: &AccountView,
-    group_id: u32,
-    split: u32,
-) -> ProgramResult {
-    #[cfg(feature = "logging")]
-    use alloc::string::ToString;
-
-    // 1 means that crank will be executed right away
-    const TICK_INTERVAL_MILLIS: i64 = 1;
-    const INITIALIZE_GROUP_RECEIPT_CRANK_ACCOUNTS: usize = 5;
-    // ScheduleCrankArgs bincode layout:
-    //   variant            (u32) =  4
-    //   crank_task_id      (u64) =  8
-    //   interval_millis    (i64) =  8
-    //   iterations         (i64) =  8
-    //   instructions count (u64) =  8
-    //   program_id         (Pubkey)  = 32
-    //   accounts count     (u64) =  8
-    //   accounts    (5 × 34 bytes)   = 170 — validator, queue, group_receipt, magic_vault, magic_program
-    //                                         each: pubkey(32) + is_signer(1) + is_writable(1)
-    //   data length        (u64) =  8
-    //   data               (9 bytes)=  9  — discriminator(1) + group_id(4) + splits(4)
-    const CRANK_DATA_LEN: usize =
-        4 + 8 + 8 + 8 + 8 + 32 + 8 + (INITIALIZE_GROUP_RECEIPT_CRANK_ACCOUNTS * 34) + 8 + 9;
-    const CRANK_ITERATION: i64 = 1;
-    const SCHEDULE_CRANK_CPI_ACCOUNTS: usize = 1;
-
-    // Extract necessary info for crank scheduling
-    let (mint, bump, validator) = {
-        let data = unsafe { queue_info.borrow_unchecked() };
-        let (header, _) = queue_views_checked(data)?;
-        (header.mint, header.bump, header.validator)
-    };
-
-    // Accounts required on crank tick
-    let (group_receipt, _) = derive_group_receipt_id(queue_info.address(), group_id);
-    debug_log!(
-        "Group receipt address: {}",
-        group_receipt.to_string().as_str()
-    );
-
-    let tick_accounts = [
-        InstructionAccount::readonly_signer(&CRANK_SIGNER),
-        InstructionAccount::writable(queue_info.address()),
-        InstructionAccount::writable(&group_receipt),
-        InstructionAccount::writable(&MAGIC_VAULT_ID),
-        InstructionAccount::readonly(&MAGIC_PROGRAM_ID),
-    ];
-
-    // Create argument data for crank target
-    let crank_task_id = derive_queue_crank_task_id(&group_receipt);
-    let tick_data = ESplInternalInstruction::InitializeGroupReceipt.with_data(
-        &InitializeGroupReceiptArgs {
-            group_id,
-            splits: split,
-        }
-        .encode()?,
-    );
-
-    // Prepare data for CPI into magic program for scheduling
-    let mut crank_data = [0u8; CRANK_DATA_LEN];
-    let data_len = {
-        let crank_instruction = CrankInstruction::new(crate::ID, &tick_accounts, &tick_data);
-        let cranks_instructions = [crank_instruction];
-        let schedule_cpi = ScheduleCrankCpi::new(
-            queue_info.clone(),
-            magic_program.clone(),
-            &[],
-            ScheduleCrankArgs::new(crank_task_id, &cranks_instructions)
-                .execution_interval_millis(TICK_INTERVAL_MILLIS)
-                .iterations(CRANK_ITERATION),
-        );
-        schedule_cpi.serialize_into(&mut crank_data)?
-    };
-
-    // Construct scheduling instruction
-    let schedule_instruction = InstructionView {
-        program_id: magic_program.address(),
-        data: &crank_data[..data_len],
-        accounts: &[InstructionAccount::writable_signer(queue_info.address())],
-    };
-
-    // Create signer for CPI
-    let bump_seed = [bump];
-    let queue_signer_seeds = [
-        Seed::from(QUEUE_SEED),
-        Seed::from(mint.as_ref()),
-        Seed::from(validator.as_ref()),
-        Seed::from(&bump_seed),
-    ];
-    let queue_signers = [Signer::from(&queue_signer_seeds)];
-
-    invoke_signed_with_bounds::<SCHEDULE_CRANK_CPI_ACCOUNTS>(
-        &schedule_instruction,
-        &[queue_info],
-        &queue_signers,
-    )
 }
 
 #[variable_offset_layout(buffer_offset = 1, option = implicit)]

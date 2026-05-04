@@ -40,9 +40,6 @@ pub(crate) enum ESplInternalInstruction {
     /// 205 - ExecuteTransferCallback: callback with result of `ExecuteReadyQueuedTransfer`
     ///       maintains `GroupReceipt`, adds `TransferReceipt`
     ExecuteTransferCallback = 208,
-
-    /// 206 - InitializeGroupReceipt: crank tick that initializes group receipt
-    InitializeGroupReceipt = 209,
 }
 
 impl ESplInternalInstruction {
@@ -86,7 +83,6 @@ impl TryFrom<u8> for ESplInternalInstruction {
             206 => Ok(Self::CloseLamportsPdaIntent),
             207 => Ok(Self::MarkTransferQueueRefillPending),
             208 => Ok(Self::ExecuteTransferCallback),
-            209 => Ok(Self::InitializeGroupReceipt),
             _ => Err(()),
         }
     }

@@ -274,10 +274,5 @@ fn process_internal_instruction(
 
             process_execute_transfer_callback(accounts, data)
         }
-        ESplInternalInstruction::InitializeGroupReceipt => {
-            debug_log!("Instruction: InitializeGroupReceipt");
-
-            process_initialize_group_receipt(accounts, data)
-        }
     }
 }

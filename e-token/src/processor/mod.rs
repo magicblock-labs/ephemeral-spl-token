@@ -16,7 +16,6 @@ pub mod execute_ready_queued_transfer;
 pub mod execute_transfer_callback;
 pub mod initialize_ephemeral_ata;
 pub mod initialize_global_vault;
-pub mod initialize_group_receipt;
 pub mod initialize_rent_pda;
 pub mod initialize_shuttle_ephemeral_ata;
 pub mod initialize_transfer_queue;
@@ -68,7 +67,6 @@ pub use execute_ready_queued_transfer::{
 pub use execute_transfer_callback::{process_execute_transfer_callback, TransferCallbackArgs};
 pub use initialize_ephemeral_ata::process_initialize_ephemeral_ata;
 pub use initialize_global_vault::process_initialize_global_vault;
-pub use initialize_group_receipt::{process_initialize_group_receipt, InitializeGroupReceiptArgs};
 pub use initialize_rent_pda::process_initialize_rent_pda;
 pub use initialize_shuttle_ephemeral_ata::process_initialize_shuttle_ephemeral_ata;
 pub use initialize_transfer_queue::{
