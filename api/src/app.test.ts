@@ -33,7 +33,7 @@ import {
 
 import app from "./app";
 import { TOKEN_PROGRAM_ID } from "./lib/solana";
-import { MOCK_AUTH_TOKEN, MOCK_CHALLENGE } from "./lib/auth";
+import { MOCK_AUTH_TOKEN } from "./lib/auth";
 
 const env = {
   BASE_RPC_URL: "https://base.rpc.test",
@@ -2483,16 +2483,34 @@ describe("app", () => {
   });
 
   it("returns the mock challenge", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(`${env.EPHEMERAL_RPC_URL}/auth/challenge?pubkey=${owner}`);
+      return new Response(JSON.stringify({
+        "jsonrpc": "2.0",
+        "error": {
+          "code": -32600,
+          "message": "invalid request: missing request body"
+        }
+      }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+        },
+      });
+    });
+
     const response = await app.request(
-      `/v1/spl/challenge?pubkey=${owner}&mock=true`,
+      `/v1/spl/challenge?pubkey=${owner}`,
       {},
       env,
     );
 
+    console.log(response);
     expect(response.status).toBe(200);
 
     const json = await response.json() as { challenge: string };
-    expect(json.challenge).toBe(MOCK_CHALLENGE);
+    expect(json.challenge).toMatch(/Login to Query Filtering Service/);
+    expect(json.challenge).toContain(owner);
   });
 
   it("returns a token from the ephemeral rollup login endpoint", async () => {
@@ -2534,6 +2552,22 @@ describe("app", () => {
   });
 
   it("returns the mock token", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(`${env.EPHEMERAL_RPC_URL}/auth/login`);
+      return new Response(JSON.stringify({
+        "jsonrpc": "2.0",
+        "error": {
+          "code": -32700,
+          "message": "error parsing request body: missing field `id` at line 1 column 91\n\n\tre\":\"s1\"}\n\t........^\n"
+        }
+      }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+        },
+      });
+    });
+
     const response = await app.request("/v1/spl/login", {
       method: "POST",
       headers: {
@@ -2543,7 +2577,6 @@ describe("app", () => {
         pubkey: owner,
         challenge: "c1",
         signature: "s1",
-        mock: true,
       }),
     }, env);
 

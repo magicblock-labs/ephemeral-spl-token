@@ -3,13 +3,12 @@ import { ApiError } from "./errors";
 import { resolveRpcConfig } from "./solana";
 
 export const MOCK_AUTH_TOKEN = "mock-auth-token";
-export const MOCK_CHALLENGE = "mock-challenge";
+export const mockChallenge = (timestamp: string, pubkey: string) => `MOCK: Login to Query Filtering Service\nTimestamp: ${timestamp}\nUser: ${pubkey}`;
 const AUTH_FETCH_TIMEOUT_MS = 5000;
 
 export type ChallengeInput = {
     pubkey: string;
     cluster?: string;
-    mock?: boolean;
 };
 
 export type ChallengeResponse = {
@@ -21,7 +20,6 @@ export type LoginInput = {
     challenge: string;
     signature: string;
     cluster?: string;
-    mock?: boolean;
 };
 
 export type LoginResponse = {
@@ -74,12 +72,6 @@ export function parseAuthToken(headers: Record<string, string>): string | undefi
 }
 
 export async function getChallenge(env: AppEnv, input: ChallengeInput): Promise<ChallengeResponse> {
-    if (input.mock) {
-        return {
-            challenge: MOCK_CHALLENGE,
-        };
-    }
-
     const config = resolveRpcConfig(env, input.cluster);
     const url = buildAuthUrl(config.ephemeralRpcUrl, "auth/challenge");
     url.searchParams.set("pubkey", input.pubkey);
@@ -89,8 +81,15 @@ export async function getChallenge(env: AppEnv, input: ChallengeInput): Promise<
         throw new ApiError(challengeResponse.status, "RPC_ERROR", `Failed to get challenge: ${challengeResponse.statusText}`);
     }
 
-    const { challenge, error }: AuthChallengeResponse =
-        await challengeResponse.json();
+    const response: { jsonrpc: string, error: { code: number, message: string } } | AuthChallengeResponse = await challengeResponse.json();
+    if ("jsonrpc" in response) {
+        // Received a regular RPC error, return a mock challenge
+        return {
+            challenge: mockChallenge(new Date().toISOString(), input.pubkey),
+        };
+    }
+
+    const { challenge, error } = response;
 
     if (typeof error === "string" && error.length > 0) {
         throw new ApiError(502, "RPC_ERROR", `Failed to get challenge: ${error}`);
@@ -105,12 +104,6 @@ export async function getChallenge(env: AppEnv, input: ChallengeInput): Promise<
 }
 
 export async function login(env: AppEnv, input: LoginInput): Promise<LoginResponse> {
-    if (input.mock) {
-        return {
-            token: MOCK_AUTH_TOKEN,
-        };
-    }
-
     const config = resolveRpcConfig(env, input.cluster);
     const { pubkey, challenge, signature } = input;
     const url = buildAuthUrl(config.ephemeralRpcUrl, "auth/login");
@@ -126,7 +119,17 @@ export async function login(env: AppEnv, input: LoginInput): Promise<LoginRespon
         throw new ApiError(loginResponse.status, "RPC_ERROR", `Failed to login: ${loginResponse.statusText}`);
     }
 
-    const { token, error } = await loginResponse.json() as AuthLoginResponse;
+    const response: { jsonrpc: string, error: { code: number, message: string } } | AuthLoginResponse = await loginResponse.json() as AuthLoginResponse;
+    
+    if ("jsonrpc" in response) {
+        // Received a regular RPC error, return a mock token
+        return {
+            token: MOCK_AUTH_TOKEN,
+        };
+    }
+
+    const { token, error } = response;
+
     if (typeof error === "string" && error.length > 0) {
         throw new ApiError(loginResponse.status === 403 ? 403 : 502, "RPC_ERROR", `Failed to login: ${error}`);
     }
