@@ -1,5 +1,5 @@
 import { PublicKey } from "@solana/web3.js";
-import z from "zod";
+import { z } from "@hono/zod-openapi";
 
 const isPublicKey = (value: string) => {
   try {
