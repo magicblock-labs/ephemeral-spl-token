@@ -88,9 +88,16 @@ export const optionalBooleanSchema = z.preprocess((value) => {
 export const clusterSchema = z
   .union([
     z.enum(["mainnet", "devnet"]),
-    z.string().refine((value) => /^https?:\/\//.test(value), {
-      message: "must be a http(s) URL",
-    }),
+    z
+      .string()
+      .url()
+      .refine(
+        (value) => {
+          const protocol = new URL(value).protocol;
+          return protocol === "http:" || protocol === "https:";
+        },
+        { message: "must be a http(s) URL" },
+      ),
   ])
   .openapi({
     example: "mainnet",
