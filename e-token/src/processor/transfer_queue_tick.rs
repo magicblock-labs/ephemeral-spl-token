@@ -403,7 +403,7 @@ fn create_action_callback_accounts(
     let (group_receipt_account, _) = derive_group_receipt_id(
         queue_address,
         &queued_transfer.source,
-        &queued_transfer.group_id,
+        queued_transfer.group_id(),
     );
     [
         ShortAccountMeta {

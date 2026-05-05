@@ -3,8 +3,8 @@ use crate::processor::ensure_transfer_queue_crank::derive_queue_crank_task_id;
 use crate::processor::execute_transfer_callback::{derive_group_receipt_id, GROUP_RECEIPT_SEED};
 use crate::processor::internal::token_vault::transfer_to_vault_for_mint;
 use crate::processor::utils::{
-    get_associated_token_address, group_receipt_create, print_id, read_mint_decimals,
-    validate_token_account, GroupReceiptAccounts,
+    get_associated_token_address, group_receipt_create, read_mint_decimals, validate_token_account,
+    GroupReceiptAccounts,
 };
 use alloc::vec;
 use alloc::vec::Vec;
@@ -71,27 +71,11 @@ pub fn process_deposit_and_queue_transfer(
     pinocchio_log::log!("instruction_data: {}", instruction_data.len());
     let args = DepositAndQueueTransferArgs::decode(instruction_data)?;
 
-    let encrypted_id = args.encrypted_id();
-    debug_log!(
-        "encrypted_id: {}, {}, {}, {}",
-        encrypted_id[0],
-        encrypted_id[1],
-        encrypted_id[2],
-        encrypted_id[3],
-    );
-
-    let asd = { unsafe { &*(encrypted_id[..3].as_ptr() as *const [u8; 3]) } };
-    print_id(asd);
+    let group_id = args.group_id();
     let (group_receipt, _) =
-        derive_group_receipt_id(queue_info.address(), user_authority.address(), &asd);
+        derive_group_receipt_id(queue_info.address(), user_authority.address(), group_id);
 
     if &group_receipt != group_receipt_info.address() {
-        debug_log!(
-            "incorrect lol: {}, {}, {}",
-            args.amount(),
-            args.min_delay_ms(),
-            args.max_delay_ms()
-        );
         return Err(ProgramError::InvalidAccountData);
     }
 
@@ -108,7 +92,6 @@ pub fn process_deposit_and_queue_transfer(
         ProgramError::IncorrectProgramId
     );
 
-    debug_log!("1");
     let amount = args.amount();
     validate_deposit_and_queue_transfer_params(
         amount,
@@ -127,7 +110,6 @@ pub fn process_deposit_and_queue_transfer(
             Err(ProgramError::AccountDataTooSmall) => {
                 debug_log!("Queue is full");
                 if !address_eq(reimbursement_token_info.address(), &crate::ID) {
-                    debug_log!("2");
                     TransferChecked {
                         mint: mint_info,
                         from: user_source_token_acc,
@@ -153,7 +135,6 @@ pub fn process_deposit_and_queue_transfer(
     );
 
     let now_ms = queue_timestamp_now()?;
-    debug_log!("3");
 
     transfer_to_vault_for_mint(
         vault_info,
@@ -165,7 +146,6 @@ pub fn process_deposit_and_queue_transfer(
         mint_info.address(),
         amount,
     )?;
-    debug_log!("4");
 
     let source = *user_authority.address();
     let destination_owner = if address_eq(
@@ -197,9 +177,6 @@ pub fn process_deposit_and_queue_transfer(
     let split_plan = build_split_plan(amount, split, decimals)?;
 
     let data = unsafe { queue_info.borrow_unchecked_mut() };
-    let group_id = u32::from_le_bytes(args.encrypted_id());
-    debug_log!("group_id11: {}", group_id);
-    // let group_id = queue_allocate_group_id_from_data(data)?;
     for index in 0..split {
         let queued_amount = split_plan.amount_for_index(index);
         let queue_position = queue_len_before
@@ -270,7 +247,7 @@ pub fn process_deposit_and_queue_transfer(
 #[variable_offset_layout(buffer_offset = 1, option = implicit)]
 pub struct DepositAndQueueTransferArgs {
     pub amount: u64,
-    pub encrypted_id: [u8; 4],
+    pub encrypted_id: [u8; 3],
     pub min_delay_ms: u64,
     pub max_delay_ms: u64,
     pub split: u32,
@@ -280,8 +257,15 @@ pub struct DepositAndQueueTransferArgs {
 
 static_assertions::const_assert!(matches!(
     DepositAndQueueTransferArgs::DATA_LENS,
-    [32, 33, 40, 41]
+    [31, 32, 39, 40]
 ));
+
+impl DepositAndQueueTransferArgsView<'_> {
+    pub fn group_id(&self) -> u32 {
+        let id = self.encrypted_id();
+        u32::from(id[0]) | (u32::from(id[1]) << 8) | (u32::from(id[2]) << 16)
+    }
+}
 
 #[inline(always)]
 fn validate_deposit_and_queue_transfer_params(

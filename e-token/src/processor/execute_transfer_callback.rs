@@ -33,16 +33,14 @@ pub struct TransferCallbackArgs {
 pub fn derive_group_receipt_id(
     queue_address: &Address,
     source: &Address,
-    id: &[u8; 3],
+    group_id: u32,
 ) -> (Address, u8) {
-    // TODO(edwin): maybe derive from sender too
-    // Otherwise if group_ids circle to 1 there could be info leaks
     Address::find_program_address(
         &[
             GROUP_RECEIPT_SEED,
             queue_address.as_ref(),
             source.as_ref(),
-            id.as_slice(),
+            &group_id.to_le_bytes(),
         ],
         &crate::ID,
     )

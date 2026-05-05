@@ -18,7 +18,7 @@ use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use solana_instruction::{AccountMeta, Instruction};
 
 use crate::processor::execute_transfer_callback::derive_group_receipt_id;
-use crate::processor::utils::{print_id, MAGIC_VAULT_ID};
+use crate::processor::utils::MAGIC_VAULT_ID;
 use crate::processor::{
     internal::shuttle_delegation::{
         merge_shuttle_into_token_account_action,
@@ -235,6 +235,16 @@ impl DepositAndDelegateShuttleWithPrivateTransferArgsView<'_> {
         address_raw.copy_from_slice(&self.encrypted_destination()[..32]);
         address_raw.into()
     }
+
+    fn group_id_raw(&self) -> [u8; 3] {
+        let dst = self.encrypted_destination();
+        [dst[0], dst[1], dst[2]]
+    }
+
+    fn group_id(&self) -> u32 {
+        let id = self.group_id_raw();
+        u32::from(id[0]) | (u32::from(id[1]) << 8) | (u32::from(id[2]) << 16)
+    }
 }
 
 fn private_transfer_action_encrypted(
@@ -243,26 +253,11 @@ fn private_transfer_action_encrypted(
     args: &DepositAndDelegateShuttleWithPrivateTransferArgsView<'_>,
     amount: u64,
 ) -> Result<PostDelegationActions, ProgramError> {
-    let encrypted_id = {
-        let mut res = [0; 4];
-        res[..3].copy_from_slice(&args.encrypted_destination()[..3]);
-        res
-    };
-    let asd = unsafe { &*(encrypted_id[..3].as_ptr() as *const [u8; 3]) };
-    print_id(asd);
-    debug_log!("amount: {}", amount);
-    debug_log!(
-        "encrypted_id: {}, {}, {}, {}",
-        encrypted_id[0],
-        encrypted_id[1],
-        encrypted_id[2],
-        encrypted_id[3],
-    );
-
+    let group_id = args.group_id();
     let group_receipt_info = derive_group_receipt_id(
         queue_info.address(),
         common_accounts.owner_info.address(),
-        asd,
+        group_id,
     )
     .0;
     Ok(PostDelegationActions {
@@ -309,7 +304,11 @@ fn private_transfer_action_encrypted(
             ],
             data: MaybeEncryptedIxData {
                 prefix: ESplInstruction::DepositAndQueueTransfer.with_data(
-                    &[amount.to_le_bytes().as_slice(), encrypted_id.as_slice()].concat()
+                    &[
+                        amount.to_le_bytes().as_slice(),
+                        args.group_id_raw().as_slice()
+                    ]
+                    .concat()
                 ),
                 suffix: EncryptedBuffer::new(args.encrypted_data_suffix().into()),
             },
