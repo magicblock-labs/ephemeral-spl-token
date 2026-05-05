@@ -1,4 +1,4 @@
-use crate::processor::execute_transfer_callback::GROUP_RECEIPT_SEED;
+use crate::processor::execute_transfer_callback::{derive_group_receipt_id, GROUP_RECEIPT_SEED};
 use crate::processor::utils::ephemeral_account::{
     close_ephemeral_account, create_ephemeral_account, resize_ephemeral_account,
 };
@@ -9,11 +9,14 @@ use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, QUEUE_SEED};
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::error::ProgramError;
 use pinocchio::{AccountView, ProgramResult};
+use ephemeral_spl_api::debug_log;
+use crate::processor::utils::print_id;
 
 /// Required accounts for control over receipt
 pub struct GroupReceiptAccounts<'a> {
     pub group_receipt_info: &'a AccountView,
     pub queue_info: &'a AccountView,
+    pub source: &'a AccountView,
     pub magic_vault: &'a AccountView,
     pub _magic_program: &'a AccountView,
 }
@@ -22,12 +25,14 @@ impl<'a> GroupReceiptAccounts<'a> {
     pub fn new(
         group_receipt_info: &'a AccountView,
         queue_info: &'a AccountView,
+        source: &'a AccountView,
         magic_vault: &'a AccountView,
         magic_program: &'a AccountView,
     ) -> Self {
         Self {
             group_receipt_info,
             queue_info,
+            source,
             magic_vault,
             _magic_program: magic_program,
         }
@@ -53,16 +58,30 @@ pub fn group_receipt_create<'a>(
     let queue_signer = Signer::from(&queue_signer_seeds);
 
     let group_id_bytes = group_id.to_le_bytes();
-    let receipt_bump_seed = [group_receipt_bump];
+    let asd = { unsafe { &*(group_id_bytes[..3].as_ptr() as *const [u8; 3]) } };
+    print_id(asd);
+
+    let (_, receipt_bump) =
+        derive_group_receipt_id(
+            accounts.queue_info.address(),
+            accounts.source.address(),
+            &asd
+        );
+    debug_log!("queue_bump: {}, receipt_bump: {}", header.bump, receipt_bump);
+
+    let receipt_bump_seed = [receipt_bump];
+    // let receipt_bump_seed = [group_receipt_bump];
     let receipt_signer_seeds = [
         Seed::from(GROUP_RECEIPT_SEED),
         Seed::from(accounts.queue_info.address().as_ref()),
-        Seed::from(group_id_bytes.as_ref()),
+        Seed::from(accounts.source.address().as_ref()),
+        Seed::from(asd.as_ref()),
         Seed::from(&receipt_bump_seed),
     ];
     let receipt_signer = Signer::from(&receipt_signer_seeds);
 
     let space = GroupReceipt::required_size(splits as usize);
+    debug_log!("trtr");
     create_ephemeral_account(
         accounts.queue_info,
         accounts.group_receipt_info,
@@ -70,6 +89,7 @@ pub fn group_receipt_create<'a>(
         space as u32,
         &[queue_signer, receipt_signer],
     )?;
+    debug_log!("trtr_succ");
     group_receipt::initialize_group_receipt(
         accounts.group_receipt_info,
         group_id,

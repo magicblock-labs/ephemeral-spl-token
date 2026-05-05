@@ -397,11 +397,14 @@ fn create_action_callback_accounts(
     queued_transfer: &QueuedTransfer,
     vault: &ephemeral_spl_api::Address,
     mint: &ephemeral_spl_api::Address,
-) -> [ShortAccountMeta; 10] {
+) -> [ShortAccountMeta; 11] {
     let vault_token_account = derive_associated_token_address(vault, mint);
     let source_token_account = derive_associated_token_address(&queued_transfer.source, mint);
-    let (group_receipt_account, _) =
-        derive_group_receipt_id(queue_address, queued_transfer.group_id());
+    let (group_receipt_account, _) = derive_group_receipt_id(
+        queue_address,
+        &queued_transfer.source,
+        &queued_transfer.group_id,
+    );
     [
         ShortAccountMeta {
             pubkey: CALLBACK_SIGNER,
@@ -425,6 +428,10 @@ fn create_action_callback_accounts(
         },
         ShortAccountMeta {
             pubkey: vault_token_account,
+            is_writable: true,
+        },
+        ShortAccountMeta {
+            pubkey: queued_transfer.source,
             is_writable: true,
         },
         ShortAccountMeta {

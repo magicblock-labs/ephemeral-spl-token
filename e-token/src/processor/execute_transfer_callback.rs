@@ -8,10 +8,10 @@ use alloc::vec;
 use alloc::vec::Vec;
 use data_layout::variable_offset_layout;
 
-use ephemeral_spl_api::debug_log;
 use ephemeral_spl_api::state::group_receipt;
 use ephemeral_spl_api::state::group_receipt::{GroupReceipt, TransferReceipt};
 use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, TransferQueueHeader};
+use ephemeral_spl_api::{debug_log, require_n_accounts};
 use pinocchio::error::ProgramError;
 use pinocchio::{AccountView, Address, ProgramResult};
 use solana_signature::Signature;
@@ -32,7 +32,8 @@ pub struct TransferCallbackArgs {
 
 pub fn derive_group_receipt_id(
     queue_address: &Address,
-    destination_address: &Address,
+    source: &Address,
+    id: &[u8; 3],
 ) -> (Address, u8) {
     // TODO(edwin): maybe derive from sender too
     // Otherwise if group_ids circle to 1 there could be info leaks
@@ -40,7 +41,8 @@ pub fn derive_group_receipt_id(
         &[
             GROUP_RECEIPT_SEED,
             queue_address.as_ref(),
-            destination_address.as_ref(),
+            source.as_ref(),
+            id.as_slice(),
         ],
         &crate::ID,
     )
@@ -68,11 +70,19 @@ pub fn process_execute_transfer_callback(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let [callback_signer, group_receipt, queue_info, _, mint, _, _, _, magic_vault, magic_program] =
-        accounts
-    else {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    };
+    let [
+        callback_signer,
+        group_receipt,
+        queue_info,
+        _, // vault
+        mint,
+        _, // vault token account
+        source,
+        _, // source token account
+        _, // token program
+        magic_vault,
+        magic_program
+    ] = require_n_accounts!(accounts, 11);
 
     // Verify validator & queue info
     let data = unsafe { queue_info.borrow_unchecked() };
@@ -86,6 +96,7 @@ pub fn process_execute_transfer_callback(
     handle_group_receipt(
         queue_info,
         group_receipt,
+        source,
         magic_vault,
         magic_program,
         &args,
@@ -145,6 +156,7 @@ fn validate_common(
 fn handle_group_receipt(
     queue_info: &AccountView,
     group_receipt_info: &AccountView,
+    source: &AccountView,
     magic_vault: &AccountView,
     magic_program: &AccountView,
     args: &TransferCallbackArgsView<'_>,
@@ -155,10 +167,15 @@ fn handle_group_receipt(
         return Err(ProgramError::InvalidAccountOwner);
     }
 
-    let accounts =
-        GroupReceiptAccounts::new(group_receipt_info, queue_info, magic_vault, magic_program);
     let mut group_receipt = GroupReceipt::new(group_receipt_info)?;
 
+    let accounts = GroupReceiptAccounts::new(
+        group_receipt_info,
+        queue_info,
+        source,
+        magic_vault,
+        magic_program,
+    );
     // Update receipt with new TransferReceipt
     group_receipt_record_transfer(
         &accounts,
