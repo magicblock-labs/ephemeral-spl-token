@@ -179,33 +179,7 @@ describe("app", () => {
 
     expect(response.status).toBe(200);
 
-    const json = await response.json() as {
-      paths: Record<string, {
-        get?: {
-          parameters?: Array<{
-            name?: string;
-            required?: boolean;
-          }>;
-        };
-        post?: {
-          requestBody?: {
-            content?: Record<string, {
-              schema?: {
-                properties?: Record<string, unknown>;
-              };
-            }>;
-          };
-          responses?: Record<string, {
-            content?: Record<string, {
-              example?: {
-                kind?: string;
-                instructionCount?: number;
-              };
-            }>;
-          }>;
-        };
-      }>;
-    };
+    const json = await response.json() as any;
     expect(json.paths["/v1/spl/deposit"]).toBeDefined();
     expect(json.paths["/mcp"]?.post).toBeDefined();
     expect(json.paths["/mcp"]?.get).toBeUndefined();
@@ -282,6 +256,19 @@ describe("app", () => {
       kind: "deposit",
       instructionCount: 3,
     });
+    const transferRequestSchema = (json.components?.schemas as Record<string, any>)?.TransferRequest;
+    expect(transferRequestSchema?.properties?.gasless).toMatchObject({
+      type: "boolean",
+      example: true,
+    });
+    expect(transferRequestSchema?.example).toMatchObject({
+      amount: 5000000,
+      gasless: true,
+    });
+    expect(transferRequestSchema?.example).not.toHaveProperty("initIfMissing");
+    expect(transferRequestSchema?.example).not.toHaveProperty("initAtasIfMissing");
+    expect(transferRequestSchema?.example).not.toHaveProperty("initVaultIfMissing");
+    expect(transferRequestSchema?.example).not.toHaveProperty("split");
     expect(json.paths["/v1/spl/withdraw"]?.post?.responses?.["200"]?.content?.["application/json"]?.example).toMatchObject({
       kind: "withdraw",
       instructionCount: 2,
@@ -1374,6 +1361,28 @@ describe("app", () => {
     expect(transaction.instructions.some((instruction) =>
       instruction.keys.some((key) => key.pubkey.toBase58() === DEVNET_USDC_MINT)
     )).toBe(true);
+  });
+
+  it("defaults the worker cluster binding to mainnet when it is omitted", async () => {
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockResolvedValue(createAccountInfo(3n));
+
+    const response = await app.request(
+      `/v1/spl/balance?address=${owner}&mint=So11111111111111111111111111111111111111112`,
+      {},
+      {
+        ...env,
+        CLUSTER: undefined,
+      },
+    );
+
+    expect(response.status).toBe(200);
+
+    const json = await response.json() as {
+      location: string;
+      balance: string;
+    };
+    expect(json.location).toBe("base");
+    expect(json.balance).toBe("3");
   });
 
   it("builds an unsigned withdraw transaction with integer amount", async () => {

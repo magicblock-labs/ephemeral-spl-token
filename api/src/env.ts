@@ -17,7 +17,7 @@ const optionalString = z
 const optionalUrl = optionalString.pipe(z.string().url().optional());
 
 export const envSchema = z.object({
-  CLUSTER: z.literal(["mainnet", "devnet", "custom"]),
+  CLUSTER: z.literal(["mainnet", "devnet", "custom"]).default("mainnet"),
   BASE_RPC_URL: z.string().url(),
   EPHEMERAL_RPC_URL: z.string().url(),
   BASE_DEVNET_RPC_URL: optionalUrl,
