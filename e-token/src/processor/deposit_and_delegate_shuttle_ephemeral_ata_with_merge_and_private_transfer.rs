@@ -28,7 +28,6 @@ use crate::processor::{
     },
     utils::read_mint_decimals,
 };
-use dlp_api::pod_view::PodView;
 use dlp_api::{args::PostDelegationActions, compact::ClearTextWithInsertable};
 use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
 
@@ -228,12 +227,6 @@ impl DepositAndDelegateShuttleWithPrivateTransferArgsView<'_> {
             amount: self.amount(),
             validator: self.validator(),
         })
-    }
-
-    fn encrypted_destination_address(&self) -> ephemeral_spl_api::Address {
-        let mut address_raw = [0u8; 32];
-        address_raw.copy_from_slice(&self.encrypted_destination()[..32]);
-        address_raw.into()
     }
 
     fn group_id_raw(&self) -> [u8; 3] {

@@ -12,9 +12,6 @@ pub const MAGIC_VAULT_ID: Address = pubkey!("MagicVau1t9999999999999999999999999
 /// Bincode variant index for `MagicBlockInstruction::CreateEphemeralAccount` (variant 12).
 const CREATE_EPHEMERAL_VARIANT: [u8; 4] = [12, 0, 0, 0];
 
-/// Bincode variant index for `MagicBlockInstruction::ResizeEphemeralAccount` (variant 13).
-const RESIZE_EPHEMERAL_VARIANT: [u8; 4] = [13, 0, 0, 0];
-
 /// Bincode variant index for `MagicBlockInstruction::CloseEphemeralAccount` (variant 14).
 const CLOSE_EPHEMERAL_VARIANT: [u8; 4] = [14, 0, 0, 0];
 
@@ -38,40 +35,6 @@ pub fn create_ephemeral_account(
     let ix_accounts = [
         InstructionAccount::writable_signer(sponsor.address()),
         InstructionAccount::writable_signer(account.address()),
-        InstructionAccount::writable(vault.address()),
-    ];
-
-    invoke_signed_with_bounds::<3>(
-        &InstructionView {
-            program_id: &MAGIC_PROGRAM_ID,
-            accounts: &ix_accounts,
-            data: &data,
-        },
-        &[sponsor, account, vault],
-        signers,
-    )
-}
-
-/// Resizes an ephemeral account via the magic program.
-///
-/// # Account references
-/// - `sponsor`       `[WRITE, SIGNER]` Pays additional rent if growing (can be a PDA)
-/// - `account`       `[WRITE]`         Existing ephemeral account to resize
-/// - `vault`         `[WRITE]`         Magic vault account (`EPHEMERAL_VAULT_ID`)
-pub fn resize_ephemeral_account(
-    sponsor: &AccountView,
-    account: &AccountView,
-    vault: &AccountView,
-    new_data_len: u32,
-    signers: &[Signer<'_, '_>],
-) -> ProgramResult {
-    let mut data = [0u8; 8];
-    data[..4].copy_from_slice(&RESIZE_EPHEMERAL_VARIANT);
-    data[4..].copy_from_slice(&new_data_len.to_le_bytes());
-
-    let ix_accounts = [
-        InstructionAccount::writable_signer(sponsor.address()),
-        InstructionAccount::writable(account.address()),
         InstructionAccount::writable(vault.address()),
     ];
 

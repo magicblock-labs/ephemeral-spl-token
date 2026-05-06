@@ -1,10 +1,9 @@
 use crate::processor::execute_transfer_callback::{derive_group_receipt_id, GROUP_RECEIPT_SEED};
 use crate::processor::utils::ephemeral_account::{
-    close_ephemeral_account, create_ephemeral_account, resize_ephemeral_account,
+    close_ephemeral_account, create_ephemeral_account,
 };
-use core::num::NonZeroU32;
 use ephemeral_spl_api::state::group_receipt;
-use ephemeral_spl_api::state::group_receipt::{GroupReceipt, TransferReceipt};
+use ephemeral_spl_api::state::group_receipt::GroupReceipt;
 use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, QUEUE_SEED};
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::error::ProgramError;
@@ -55,14 +54,8 @@ pub fn group_receipt_create<'a>(
     ];
     let queue_signer = Signer::from(&queue_signer_seeds);
 
-    let (_, receipt_bump) = derive_group_receipt_id(
-        accounts.queue_info.address(),
-        accounts.source.address(),
-        group_id,
-    );
-
     let group_id_bytes = group_id.to_le_bytes();
-    let receipt_bump_seed = [receipt_bump];
+    let receipt_bump_seed = [group_receipt_bump];
     let receipt_signer_seeds = [
         Seed::from(GROUP_RECEIPT_SEED),
         Seed::from(accounts.queue_info.address().as_ref()),
@@ -88,23 +81,6 @@ pub fn group_receipt_create<'a>(
     )?;
 
     GroupReceipt::new(accounts.group_receipt_info)
-}
-
-/// Fully initialized `GroupReceipt` with number of splits
-pub fn group_receipt_set_splits<'a>(
-    accounts: &GroupReceiptAccounts<'a>,
-    group_receipt: &mut GroupReceipt<'a>,
-    splits: NonZeroU32,
-) -> ProgramResult {
-    group_receipt.set_splits(splits);
-
-    let current_capacity = group_receipt.items_capacity();
-    let final_capacity = splits.get() as usize;
-    if current_capacity < final_capacity {
-        group_receipt_allocate_items(accounts, group_receipt, final_capacity - current_capacity)
-    } else {
-        Ok(())
-    }
 }
 
 /// Closes the group receipt account, refunding rent to the queue PDA.
@@ -159,69 +135,4 @@ pub(crate) fn group_receipt_log(group_receipt: &GroupReceipt<'_>) {
             }
         }
     }
-}
-
-pub fn group_receipt_record_transfer<'a>(
-    accounts: &GroupReceiptAccounts<'a>,
-    group_receipt: &mut GroupReceipt<'a>,
-    item: TransferReceipt,
-) -> ProgramResult {
-    let Err(item) = group_receipt.record_transfer(item) else {
-        return Ok(());
-    };
-
-    if group_receipt.is_fully_initialized() {
-        // More results than splits :)
-        Err(ProgramError::InvalidInstructionData)
-    } else {
-        Ok(())
-    }?;
-
-    // Account not fully initialized, but we got callback result - record
-    group_receipt_allocate_items(accounts, group_receipt, 1)?;
-    // Now there's capacity to record the transfer
-    group_receipt
-        .record_transfer(item)
-        .map_err(|_| ProgramError::InvalidAccountData)?;
-    Ok(())
-}
-
-/// Resizes account to hold `num` extra accounts
-pub fn group_receipt_allocate_items<'a>(
-    accounts: &GroupReceiptAccounts<'a>,
-    group_receipt: &mut GroupReceipt<'a>,
-    num: usize,
-) -> ProgramResult {
-    let current_len = group_receipt.items_len();
-
-    let new_len = GroupReceipt::required_size(
-        current_len
-            .checked_add(num)
-            .ok_or(ProgramError::ArithmeticOverflow)?,
-    );
-
-    // Create signer for resize
-    let data = unsafe { accounts.queue_info.borrow_unchecked() };
-    let (header, _) = queue_views_checked(data)?;
-    let queue_bump_seed = [header.bump];
-    let seeds = [
-        Seed::from(QUEUE_SEED),
-        Seed::from(header.mint.as_ref()),
-        Seed::from(header.validator.as_ref()),
-        Seed::from(&queue_bump_seed),
-    ];
-    let signer = Signer::from(&seeds);
-
-    resize_ephemeral_account(
-        accounts.queue_info,
-        accounts.group_receipt_info,
-        accounts.magic_vault,
-        new_len
-            .try_into()
-            .map_err(|_| ProgramError::ArithmeticOverflow)?,
-        &[signer],
-    )?;
-
-    *group_receipt = GroupReceipt::new(accounts.group_receipt_info)?;
-    Ok(())
 }

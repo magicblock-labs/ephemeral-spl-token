@@ -1,6 +1,4 @@
-use crate::instruction::ESplInternalInstruction;
-use crate::processor::ensure_transfer_queue_crank::derive_queue_crank_task_id;
-use crate::processor::execute_transfer_callback::{derive_group_receipt_id, GROUP_RECEIPT_SEED};
+use crate::processor::execute_transfer_callback::derive_group_receipt_id;
 use crate::processor::internal::token_vault::transfer_to_vault_for_mint;
 use crate::processor::utils::{
     get_associated_token_address, group_receipt_create, read_mint_decimals, validate_token_account,
@@ -15,14 +13,11 @@ use ephemeral_spl_api::debug_log;
 #[cfg(feature = "logging")]
 use ephemeral_spl_api::state::transfer_queue::capacity_from_data_len;
 use ephemeral_spl_api::state::transfer_queue::{
-    queue_allocate_group_id_from_data, queue_len_and_bump_for_mint_with_capacity,
-    queue_push_from_data, queue_views_checked, QueuedTransfer, TransferQueue,
-    QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA, QUEUE_SEED,
+    queue_len_and_bump_for_mint_with_capacity, queue_push_from_data, QueuedTransfer, TransferQueue,
+    QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
 };
 use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::address::address_eq;
-use pinocchio::cpi::{invoke_signed_with_bounds, Seed, Signer};
-use pinocchio::instruction::{InstructionAccount, InstructionView};
 use pinocchio::sysvars::clock::Clock;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
@@ -71,14 +66,14 @@ pub fn process_deposit_and_queue_transfer(
     pinocchio_log::log!("instruction_data: {}", instruction_data.len());
     let args = DepositAndQueueTransferArgs::decode(instruction_data)?;
 
-    let group_id = args.group_id();
-    let (group_receipt, _) =
+    let group_id = args.group_id_u32();
+    let (group_receipt, group_receipt_bump) =
         derive_group_receipt_id(queue_info.address(), user_authority.address(), group_id);
 
-    if &group_receipt != group_receipt_info.address() {
-        return Err(ProgramError::InvalidAccountData);
-    }
-
+    require!(
+        group_receipt.eq(group_receipt_info.address()),
+        ProgramError::InvalidInstructionData
+    );
     require!(
         user_authority.is_signer(),
         ProgramError::MissingRequiredSignature
@@ -236,7 +231,7 @@ pub fn process_deposit_and_queue_transfer(
             magic_vault,
             _magic_program: magic_program,
         },
-        bump,
+        group_receipt_bump,
         group_id,
         args.split(),
     )?;
@@ -247,7 +242,7 @@ pub fn process_deposit_and_queue_transfer(
 #[variable_offset_layout(buffer_offset = 1, option = implicit)]
 pub struct DepositAndQueueTransferArgs {
     pub amount: u64,
-    pub encrypted_id: [u8; 3],
+    pub group_id: [u8; 3],
     pub min_delay_ms: u64,
     pub max_delay_ms: u64,
     pub split: u32,
@@ -261,8 +256,8 @@ static_assertions::const_assert!(matches!(
 ));
 
 impl DepositAndQueueTransferArgsView<'_> {
-    pub fn group_id(&self) -> u32 {
-        let id = self.encrypted_id();
+    pub fn group_id_u32(&self) -> u32 {
+        let id = self.group_id();
         u32::from(id[0]) | (u32::from(id[1]) << 8) | (u32::from(id[2]) << 16)
     }
 }

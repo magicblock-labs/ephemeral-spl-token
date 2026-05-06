@@ -1,5 +1,4 @@
 use bytemuck::{Pod, Zeroable};
-use core::num::NonZeroU32;
 use pinocchio::error::ProgramError;
 use pinocchio::{AccountView, ProgramResult};
 use solana_signature::Signature;
@@ -15,23 +14,9 @@ impl<'a> GroupReceipt<'a> {
         Ok(unsafe { Self::from_data_mut(data)? })
     }
 
-    /// Returns `true` if splits are set and not 0
-    pub fn is_fully_initialized(&self) -> bool {
-        self.splits() != 0
-    }
-
     /// Returns `true` if all transfers are completed
     pub fn all_transfer_completed(&self) -> bool {
-        if !self.is_fully_initialized() {
-            false
-        } else {
-            self.items_len() == self.splits() as usize
-        }
-    }
-
-    /// Fully initialized `GroupReceipt` by setting splits
-    pub fn set_splits(&mut self, value: NonZeroU32) {
-        self.header.splits = value.get();
+        self.items_len() == self.splits() as usize
     }
 
     /// Creates a view on initialized `GroupReceipt`
@@ -68,21 +53,12 @@ impl<'a> GroupReceipt<'a> {
         self.header.transfers_completed as usize
     }
 
-    /// Returns how much items current account can store
-    pub fn items_capacity(&self) -> usize {
-        self.items_data.len() / TransferReceipt::size()
-    }
-
     /// Records transfer, adding item and updating state accordingly
-    /// `Err(item)` - if account size unsufficient for 1 more el-t
+    /// `Err(item)` - if capacity exceeded
     pub fn record_transfer(&mut self, item: TransferReceipt) -> Result<(), TransferReceipt> {
         let length = self.header.transfers_completed as usize;
-        let capacity = if self.is_fully_initialized() {
-            self.splits() as usize
-        } else {
-            self.items_capacity()
-        };
-        if length < capacity { Ok(()) } else { Err(item) }?;
+        let capacity = self.splits() as usize;
+        if length >= capacity  { return Err(item); }
 
         let item_start = self.initialized_items_bytes();
         let item_range = item_start..item_start + TransferReceipt::size();
@@ -100,8 +76,6 @@ impl<'a> GroupReceipt<'a> {
         self.header.id
     }
 
-    /// Returns number of `splits`
-    /// Maybe 0 if not fully initialized
     #[inline(always)]
     pub fn splits(&self) -> u32 {
         self.header.splits()
@@ -110,8 +84,6 @@ impl<'a> GroupReceipt<'a> {
 
 /// Header for group receipts
 /// It contains information in how many "sub-transfers" user split his transfer
-/// Note: this is plain data representation, `splits` may be 0(None),
-/// while `transfers_completed` can be > 0.Partialz initializationbacks
 #[repr(C)]
 #[derive(Copy, Clone, Pod, Zeroable)]
 pub struct GroupReceiptHeader {
@@ -149,11 +121,6 @@ impl GroupReceiptHeader {
             .map_err(|_| ProgramError::InvalidAccountData)
     }
 
-    /// Returns if `GroupReceipt` is fully initialized
-    pub fn is_fully_initialized(&self) -> bool {
-        self.splits != 0
-    }
-
     pub fn id(&self) -> u32 {
         self.id
     }
@@ -166,9 +133,6 @@ impl GroupReceiptHeader {
         self.transfers_completed
     }
 
-    /// Returns number of `splits` that current receipt can contain
-    /// Note: if receipt wasn't fully initialized this value can change
-    /// when initialization tick occurs
     pub fn splits(&self) -> u32 {
         self.splits
     }
@@ -229,12 +193,9 @@ pub fn initialize_group_receipt(
 ) -> ProgramResult {
     let data = unsafe { account.borrow_unchecked_mut() };
     let required_data = GroupReceipt::required_size(splits as usize);
-
     if data.len() != required_data {
-        Err(ProgramError::InvalidInstructionData)
-    } else {
-        Ok(())
-    }?;
+        return Err(ProgramError::InvalidInstructionData);
+    }
 
     let header = GroupReceiptHeader::new(group_id, bump, splits);
     data[..GroupReceiptHeader::size()].copy_from_slice(bytemuck::bytes_of(&header));

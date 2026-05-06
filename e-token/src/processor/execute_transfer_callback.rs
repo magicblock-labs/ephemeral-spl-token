@@ -1,50 +1,18 @@
 #[cfg(feature = "logging")]
 use crate::processor::utils::group_receipt_log;
-use crate::processor::utils::{
-    group_receipt_close, group_receipt_create, group_receipt_record_transfer, GroupReceiptAccounts,
-    CALLBACK_SIGNER,
-};
+use crate::processor::utils::{group_receipt_close, GroupReceiptAccounts, CALLBACK_SIGNER};
 use alloc::vec;
 use alloc::vec::Vec;
 use data_layout::variable_offset_layout;
 
-use ephemeral_spl_api::state::group_receipt;
 use ephemeral_spl_api::state::group_receipt::{GroupReceipt, TransferReceipt};
 use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, TransferQueueHeader};
-use ephemeral_spl_api::{debug_log, require_n_accounts};
+use ephemeral_spl_api::{debug_log, require, require_n_accounts};
 use pinocchio::error::ProgramError;
 use pinocchio::{AccountView, Address, ProgramResult};
 use solana_signature::Signature;
 
 pub const GROUP_RECEIPT_SEED: &[u8] = b"group-receipt";
-
-// buffer_offset = 6: response.data starts at byte 14 of the original 8-byte-aligned
-// instruction buffer (1 disc + 4 variant + 1 ok + 8 data_len), and 14 % 8 = 6.
-#[variable_offset_layout(buffer_offset = 6)]
-pub struct TransferCallbackArgs {
-    /// Amount was transferred in action
-    pub amount: u64,
-    /// Group ID of a transfer
-    pub group_id: u32,
-    // Flags
-    pub flag: u8,
-}
-
-pub fn derive_group_receipt_id(
-    queue_address: &Address,
-    source: &Address,
-    group_id: u32,
-) -> (Address, u8) {
-    Address::find_program_address(
-        &[
-            GROUP_RECEIPT_SEED,
-            queue_address.as_ref(),
-            source.as_ref(),
-            &group_id.to_le_bytes(),
-        ],
-        &crate::ID,
-    )
-}
 
 ///
 /// Executes on: ER only.
@@ -166,27 +134,39 @@ fn handle_group_receipt(
     }
 
     let mut group_receipt = GroupReceipt::new(group_receipt_info)?;
-
-    let accounts = GroupReceiptAccounts::new(
-        group_receipt_info,
-        queue_info,
-        source,
-        magic_vault,
-        magic_program,
+    let (expected_group_receipt, _) = derive_group_receipt_id(
+        queue_info.address(),
+        source.address(),
+        group_receipt.id()
     );
-    // Update receipt with new TransferReceipt
-    group_receipt_record_transfer(
-        &accounts,
-        &mut group_receipt,
-        TransferReceipt::new(response.signature.copied(), args.amount(), response.ok),
-    )?;
+    require!(
+        expected_group_receipt.eq(group_receipt_info.address()),
+        ProgramError::InvalidAccountData
+    );
+
+    group_receipt
+        .record_transfer(TransferReceipt::new(
+            response.signature.copied(),
+            args.amount(),
+            response.ok,
+        ))
+        .map_err(|_| ProgramError::InvalidInstructionData)?;
 
     // If no transfers left - close account
     if group_receipt.all_transfer_completed() {
         #[cfg(feature = "logging")]
         group_receipt_log(&group_receipt);
 
-        group_receipt_close(&accounts, group_receipt)
+        group_receipt_close(
+            &GroupReceiptAccounts::new(
+                group_receipt_info,
+                queue_info,
+                source,
+                magic_vault,
+                magic_program,
+            ),
+            group_receipt,
+        )
     } else {
         Ok(())
     }
@@ -258,6 +238,34 @@ impl<'a> MagicResponseView<'a> {
             signature,
         })
     }
+}
+
+// buffer_offset = 6: response.data starts at byte 14 of the original 8-byte-aligned
+// instruction buffer (1 disc + 4 variant + 1 ok + 8 data_len), and 14 % 8 = 6.
+#[variable_offset_layout(buffer_offset = 6)]
+pub struct TransferCallbackArgs {
+    /// Amount was transferred in action
+    pub amount: u64,
+    /// Group ID of a transfer
+    pub group_id: u32,
+    // Flags
+    pub flag: u8,
+}
+
+pub fn derive_group_receipt_id(
+    queue_address: &Address,
+    source: &Address,
+    group_id: u32,
+) -> (Address, u8) {
+    Address::find_program_address(
+        &[
+            GROUP_RECEIPT_SEED,
+            queue_address.as_ref(),
+            source.as_ref(),
+            &group_id.to_le_bytes(),
+        ],
+        &crate::ID,
+    )
 }
 
 #[inline(always)]
