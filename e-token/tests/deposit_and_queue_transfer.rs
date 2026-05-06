@@ -626,9 +626,13 @@ async fn deposit_and_queue_transfer_uses_explicit_client_ref_id_for_all_splits()
         assert_eq!(queued.client_ref_id, client_ref_id);
     }
 
-    // Two enqueues = two CreateEphemeralAccount CPIs (accumulated across both transactions).
+    // One enqueue = one CreateEphemeralAccount CPI.
     let creates = common::magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
-    assert_eq!(creates.len(), 1, "expected two CreateEphemeralAccount CPIs");
+    assert_eq!(
+        creates.len(),
+        1,
+        "expected exactly one CreateEphemeralAccount CPI"
+    );
 }
 
 #[tokio::test]
@@ -680,9 +684,9 @@ async fn deposit_and_queue_transfer_accepts_legacy_destination_ata() {
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
     );
 
-    // Two enqueues = two CreateEphemeralAccount CPIs (accumulated across both transactions).
+    // Transaction rejected before CPI — no CreateEphemeralAccount CPIs expected.
     let creates = common::magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
-    assert_eq!(creates.len(), 0, "expected two CreateEphemeralAccount CPIs");
+    assert_eq!(creates.len(), 0, "expected no CreateEphemeralAccount CPIs");
 
     assert_empty_state(&fixture).await;
 }
@@ -720,13 +724,9 @@ async fn deposit_and_queue_transfer_rejects_zero_split() {
 
     assert_empty_state(&fixture).await;
 
-    // One CreateEphemeralAccount CPI must have been sent to the magic program.
+    // Transaction rejected before CPI — no CreateEphemeralAccount CPIs expected.
     let creates = common::magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
-    assert_eq!(
-        creates.len(),
-        0,
-        "expected exactly one CreateEphemeralAccount CPI"
-    );
+    assert_eq!(creates.len(), 0, "expected no CreateEphemeralAccount CPIs");
 }
 
 #[tokio::test]
@@ -762,13 +762,9 @@ async fn deposit_and_queue_transfer_rejects_split_greater_than_amount() {
 
     assert_empty_state(&fixture).await;
 
-    // One CreateEphemeralAccount CPI must have been sent to the magic program.
+    // Transaction rejected before CPI — no CreateEphemeralAccount CPIs expected.
     let creates = common::magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
-    assert_eq!(
-        creates.len(),
-        0,
-        "expected exactly one CreateEphemeralAccount CPI"
-    );
+    assert_eq!(creates.len(), 0, "expected no CreateEphemeralAccount CPIs");
 }
 
 #[tokio::test]
@@ -803,13 +799,9 @@ async fn deposit_and_queue_transfer_rejects_when_queue_is_full() {
 
     assert_empty_state(&fixture).await;
 
-    // One CreateEphemeralAccount CPI must have been sent to the magic program.
+    // Queue full — rejected before group-receipt CPI, no CreateEphemeralAccount CPIs expected.
     let creates = common::magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
-    assert_eq!(
-        creates.len(),
-        0,
-        "expected exactly one CreateEphemeralAccount CPI"
-    );
+    assert_eq!(creates.len(), 0, "expected no CreateEphemeralAccount CPIs");
 }
 
 #[tokio::test]
@@ -845,13 +837,9 @@ async fn deposit_and_queue_transfer_rejects_invalid_delay_range() {
 
     assert_empty_state(&fixture).await;
 
-    // One CreateEphemeralAccount CPI must have been sent to the magic program.
+    // Transaction rejected before CPI — no CreateEphemeralAccount CPIs expected.
     let creates = common::magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
-    assert_eq!(
-        creates.len(),
-        0,
-        "expected exactly one CreateEphemeralAccount CPI"
-    );
+    assert_eq!(creates.len(), 0, "expected no CreateEphemeralAccount CPIs");
 }
 
 #[tokio::test]
@@ -1180,11 +1168,7 @@ async fn deposit_and_queue_transfer_return_to_shuttle() {
     let shuttle_token_state = Account::unpack(&shuttle_token_acc.data).unwrap();
     assert_eq!(shuttle_token_state.amount, amount);
 
-    // One CreateEphemeralAccount CPI must have been sent to the magic program.
+    // return_to_shuttle takes a different code path — no group-receipt CPI expected.
     let creates = common::magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
-    assert_eq!(
-        creates.len(),
-        0,
-        "expected exactly one CreateEphemeralAccount CPI"
-    );
+    assert_eq!(creates.len(), 0, "expected no CreateEphemeralAccount CPIs");
 }

@@ -134,6 +134,11 @@ fn handle_group_receipt(
     }
 
     let mut group_receipt = GroupReceipt::new(group_receipt_info)?;
+    if group_receipt.id() != args.group_id() {
+        debug_log!("Callback with wrong group id");
+        return Err(ProgramError::InvalidArgument);
+    }
+
     let (expected_group_receipt, _) =
         derive_group_receipt_id(queue_info.address(), source.address(), group_receipt.id());
     require!(

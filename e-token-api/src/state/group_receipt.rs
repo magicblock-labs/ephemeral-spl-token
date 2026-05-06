@@ -93,7 +93,7 @@ pub struct GroupReceiptHeader {
     id: u32,
     /// Number of splits
     splits: u32,
-    /// How many transfers in this group are still outstanding.
+    /// Number of transfers in this group that have completed.
     transfers_completed: u32,
     /// PDA bump for receipt.
     bump: u8,
@@ -156,6 +156,9 @@ pub struct TransferReceipt {
     _reserved: [u8; 7],
 }
 
+const _: () = assert!(core::mem::size_of::<Signature>() == 64);
+const _: () = assert!(core::mem::size_of::<TransferReceipt>() == 80);
+
 impl TransferReceipt {
     pub fn new(signature: Option<Signature>, amount: u64, ok: bool) -> Self {
         Self {
@@ -196,7 +199,7 @@ pub fn initialize_group_receipt(
     let data = unsafe { account.borrow_unchecked_mut() };
     let required_data = GroupReceipt::required_size(splits as usize);
     if data.len() != required_data {
-        return Err(ProgramError::InvalidInstructionData);
+        return Err(ProgramError::InvalidAccountData);
     }
 
     let header = GroupReceiptHeader::new(group_id, bump, splits);

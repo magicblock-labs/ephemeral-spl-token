@@ -37,7 +37,7 @@ pub(crate) enum ESplInternalInstruction {
     ///       sets the per-queue refill-state pending flag.
     MarkTransferQueueRefillPending = 207,
 
-    /// 205 - ExecuteTransferCallback: callback with result of `ExecuteReadyQueuedTransfer`
+    /// 208 - ExecuteTransferCallback: callback with result of `ExecuteReadyQueuedTransfer`
     ///       maintains `GroupReceipt`, adds `TransferReceipt`
     ExecuteTransferCallback = 208,
 }
