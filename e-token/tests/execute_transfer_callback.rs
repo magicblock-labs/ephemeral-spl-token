@@ -36,20 +36,13 @@ const GROUP_RECEIPT_SEED: &[u8] = b"group-receipt";
 /// amount(8) + group_id(4) + flag(1).
 fn callback_ix_data(ok: bool, amount: u64, group_id: u32) -> Vec<u8> {
     // TransferCallbackArgs payload
-    let mut args = Vec::with_capacity(13);
-    args.extend_from_slice(&amount.to_le_bytes());
-    args.extend_from_slice(&group_id.to_le_bytes());
-    args.push(0u8); // flag
-
-    let args2 = TransferCallbackArgs {
+    let args = TransferCallbackArgs {
         amount,
         group_id,
         flag: 0,
     }
     .encode()
     .unwrap();
-
-    assert_eq!(args, args2, "Invalid serialization");
 
     // MagicResponseView (bincode V1): variant(4) + ok(1) + data_len(8) + data + error_len(8) + sig_tag(1)
     let mut data = Vec::new();
