@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
 use magicblock_magic_program_api::{
     args::{AddActionCallbackArgs, MagicIntentBundleArgs, ScheduleTaskArgs},

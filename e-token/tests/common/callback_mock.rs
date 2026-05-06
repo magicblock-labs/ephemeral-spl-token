@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use magicblock_magic_program_api::instruction::CallbackInstruction;
 use magicblock_magic_program_api::pda::{CALLBACK_SEED, CALLBACK_SIGNER_BUMP};
 use magicblock_magic_program_api::CALLBACK_PROGRAM_ID;
