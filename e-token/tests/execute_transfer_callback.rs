@@ -67,11 +67,12 @@ fn derive_queue(mint: Pubkey, validator: Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref(), validator.as_ref()], &PROGRAM)
 }
 
-fn derive_group_receipt(queue: Pubkey, group_id: u32) -> (Pubkey, u8) {
+fn derive_group_receipt(queue: Pubkey, source: Pubkey, group_id: u32) -> (Pubkey, u8) {
     Pubkey::find_program_address(
         &[
             GROUP_RECEIPT_SEED,
             queue.as_ref(),
+            source.as_ref(),
             group_id.to_le_bytes().as_ref(),
         ],
         &PROGRAM,
@@ -99,7 +100,7 @@ fn receipt_account_data(group_id: u32, splits: u32, bump: u8) -> Vec<u8> {
 }
 
 /// Common fixture: a ProgramTest context with queue and receipt accounts
-/// pre-populated. Returns (context, validator keypair, mint, queue, receipt).
+/// pre-populated. Returns (context, validator keypair, mint, queue, receipt, vault, vault_token, source).
 async fn setup_context(
     receipt_data: Vec<u8>,
     group_id: u32,
@@ -111,11 +112,13 @@ async fn setup_context(
     Pubkey,
     Pubkey,
     Pubkey,
+    Pubkey,
 ) {
     let validator = Keypair::new();
     let mint = Keypair::new().pubkey();
+    let source = Keypair::new().pubkey();
     let (queue, queue_bump) = derive_queue(mint, validator.pubkey());
-    let (receipt, _) = derive_group_receipt(queue, group_id);
+    let (receipt, _) = derive_group_receipt(queue, source, group_id);
     let vault = Keypair::new().pubkey();
     let vault_token = utils::derive_associated_token_address(vault, mint);
 
@@ -150,7 +153,7 @@ async fn setup_context(
         },
     );
 
-    for pk in [vault, mint, vault_token, MAGIC_VAULT] {
+    for pk in [vault, mint, vault_token, MAGIC_VAULT, source] {
         pt.add_account(
             pk,
             SolanaAccount {
@@ -178,7 +181,16 @@ async fn setup_context(
 
     magic_mock::clear_all_captured(MAGIC_PROGRAM_ID);
 
-    (ctx, validator, mint, queue, receipt, vault, vault_token)
+    (
+        ctx,
+        validator,
+        mint,
+        queue,
+        receipt,
+        vault,
+        vault_token,
+        source,
+    )
 }
 
 fn callback_executor_ix(
@@ -188,6 +200,7 @@ fn callback_executor_ix(
     vault: Pubkey,
     mint: Pubkey,
     vault_token: Pubkey,
+    source: Pubkey,
     ok: bool,
     amount: u64,
     group_id: u32,
@@ -198,6 +211,7 @@ fn callback_executor_ix(
         vault,
         mint,
         vault_token,
+        source,
         ok,
         amount,
         group_id,
@@ -231,6 +245,7 @@ fn callback_ix(
     vault: Pubkey,
     mint: Pubkey,
     vault_token: Pubkey,
+    source: Pubkey,
     ok: bool,
     amount: u64,
     group_id: u32,
@@ -238,16 +253,17 @@ fn callback_ix(
     Instruction {
         program_id: PROGRAM,
         accounts: vec![
-            AccountMeta::new(CALLBACK_SIGNER, true),
-            AccountMeta::new(receipt, false),
-            AccountMeta::new(queue, false),
-            AccountMeta::new_readonly(vault, false),
-            AccountMeta::new_readonly(mint, false),
-            AccountMeta::new_readonly(vault_token, false),
-            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
-            AccountMeta::new_readonly(spl_token_interface::ID, false),
-            AccountMeta::new(MAGIC_VAULT, false),
-            AccountMeta::new_readonly(MAGIC_PROGRAM_ID, false),
+            AccountMeta::new(CALLBACK_SIGNER, true), // 0: callback_signer
+            AccountMeta::new(receipt, false),        // 1: group_receipt
+            AccountMeta::new(queue, false),          // 2: queue_info
+            AccountMeta::new_readonly(vault, false), // 3: vault
+            AccountMeta::new_readonly(mint, false),  // 4: mint
+            AccountMeta::new_readonly(vault_token, false), // 5: vault_token_account
+            AccountMeta::new_readonly(source, false), // 6: source
+            AccountMeta::new_readonly(solana_system_interface::program::ID, false), // 7: source_token_account (unused)
+            AccountMeta::new_readonly(spl_token_interface::ID, false), // 8: token_program (unused)
+            AccountMeta::new(MAGIC_VAULT, false),                      // 9: magic_vault
+            AccountMeta::new_readonly(MAGIC_PROGRAM_ID, false),        // 10: magic_program
         ],
         data: callback_ix_data(ok, amount, group_id),
     }
@@ -267,11 +283,11 @@ async fn execute_callback_with_pre_initialized_receipt_no_magic_cpi() {
     // Pre-create receipt as if magic program already created it and
     // process_initialize_group_receipt ran.
     let receipt_data = receipt_account_data(group_id, splits, 0);
-    let (ctx, validator, mint, queue, receipt, vault, vault_token) =
+    let (ctx, validator, mint, queue, receipt, vault, vault_token, source) =
         setup_context(receipt_data, group_id).await;
 
-    // Simulate process_initialize_group_receipt having already run (receipt
-    // is owned by PROGRAM with splits set). Now shoot the callback directly.
+    // Simulate deposit_and_queue_transfer having already run (receipt is owned
+    // by PROGRAM with splits set). Now shoot the callback directly.
     let ix = callback_executor_ix(
         validator.pubkey(),
         receipt,
@@ -279,6 +295,7 @@ async fn execute_callback_with_pre_initialized_receipt_no_magic_cpi() {
         vault,
         mint,
         vault_token,
+        source,
         true,
         100,
         group_id,
@@ -325,7 +342,7 @@ async fn execute_callback_closes_receipt_when_last_transfer_with_pre_initialized
     let splits: u32 = 1;
 
     let receipt_data = receipt_account_data(group_id, splits, 0);
-    let (ctx, validator, mint, queue, receipt, vault, vault_token) =
+    let (ctx, validator, mint, queue, receipt, vault, vault_token, source) =
         setup_context(receipt_data, group_id).await;
 
     let ix = callback_executor_ix(
@@ -335,6 +352,7 @@ async fn execute_callback_closes_receipt_when_last_transfer_with_pre_initialized
         vault,
         mint,
         vault_token,
+        source,
         true,
         200,
         group_id,
@@ -357,7 +375,7 @@ async fn execute_callback_closes_receipt_when_last_transfer_with_pre_initialized
     let callbacks = take_execute_callbacks();
     assert_eq!(callbacks.len(), 1);
 
-    // No CreateEphemeralAccount — receipt was pre-initialized.
+    // No CreateEphemeralAccount — receipt was pre-initialized by deposit_and_queue_transfer.
     let creates = take_captured_ephemeral_creates(MAGIC_PROGRAM_ID);
     assert!(creates.is_empty(), "expected no CreateEphemeralAccount CPI");
 
@@ -379,7 +397,7 @@ async fn execute_callback_records_transfer() {
     let splits: u32 = 2;
 
     let receipt_data = receipt_account_data(group_id, splits, 0);
-    let (ctx, validator, mint, queue, receipt, vault, vault_token) =
+    let (ctx, validator, mint, queue, receipt, vault, vault_token, source) =
         setup_context(receipt_data, group_id).await;
 
     let ix = callback_executor_ix(
@@ -389,6 +407,7 @@ async fn execute_callback_records_transfer() {
         vault,
         mint,
         vault_token,
+        source,
         true,
         100,
         group_id,
@@ -417,9 +436,8 @@ async fn execute_callback_records_transfer() {
     assert_eq!(header.transfer_completed(), 1);
 }
 
-/// Last-transfer callback: all splits complete. The program logs "All transfers complete…"
-/// confirming it reached the close path. The mock's CloseEphemeralAccount is a no-op (see
-/// `common::magic_mock` limitations), so we verify via the program log rather than lamports.
+/// Last-transfer callback: all splits complete. The mock's CloseEphemeralAccount is a no-op
+/// (see `common::magic_mock` limitations), so we verify via the captured close count.
 #[tokio::test]
 #[serial]
 async fn execute_callback_closes_receipt_on_last_transfer() {
@@ -427,7 +445,7 @@ async fn execute_callback_closes_receipt_on_last_transfer() {
     let splits: u32 = 1;
 
     let receipt_data = receipt_account_data(group_id, splits, 0);
-    let (ctx, validator, mint, queue, receipt, vault, vault_token) =
+    let (ctx, validator, mint, queue, receipt, vault, vault_token, source) =
         setup_context(receipt_data, group_id).await;
 
     let ix = callback_executor_ix(
@@ -437,6 +455,7 @@ async fn execute_callback_closes_receipt_on_last_transfer() {
         vault,
         mint,
         vault_token,
+        source,
         true,
         200,
         group_id,

@@ -134,11 +134,8 @@ fn handle_group_receipt(
     }
 
     let mut group_receipt = GroupReceipt::new(group_receipt_info)?;
-    let (expected_group_receipt, _) = derive_group_receipt_id(
-        queue_info.address(),
-        source.address(),
-        group_receipt.id()
-    );
+    let (expected_group_receipt, _) =
+        derive_group_receipt_id(queue_info.address(), source.address(), group_receipt.id());
     require!(
         expected_group_receipt.eq(group_receipt_info.address()),
         ProgramError::InvalidAccountData
