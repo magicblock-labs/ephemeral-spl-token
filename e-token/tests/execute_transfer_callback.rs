@@ -15,17 +15,13 @@ use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
 use solana_program::rent::Rent;
 use solana_program_test::{tokio, ProgramTest};
-use solana_pubkey::{pubkey, Pubkey};
+use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use solana_transaction::Transaction;
 use utils::TestInternalInstruction as internal;
 
 mod common;
 mod utils;
-
-const MAGIC_VAULT: Pubkey = pubkey!("MagicVau1t999999999999999999999999999999999");
-
-const GROUP_RECEIPT_SEED: &[u8] = b"group-receipt";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -58,18 +54,6 @@ fn callback_ix_data(ok: bool, amount: u64, group_id: u32) -> Vec<u8> {
 
 fn derive_queue(mint: Pubkey, validator: Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref(), validator.as_ref()], &PROGRAM)
-}
-
-fn derive_group_receipt(queue: Pubkey, source: Pubkey, group_id: u32) -> (Pubkey, u8) {
-    Pubkey::find_program_address(
-        &[
-            GROUP_RECEIPT_SEED,
-            queue.as_ref(),
-            source.as_ref(),
-            group_id.to_le_bytes().as_ref(),
-        ],
-        &PROGRAM,
-    )
 }
 
 /// Build a minimal queue account buffer with the fields validated by the program.
@@ -111,7 +95,7 @@ async fn setup_context(
     let mint = Keypair::new().pubkey();
     let source = Keypair::new().pubkey();
     let (queue, queue_bump) = derive_queue(mint, validator.pubkey());
-    let (receipt, _) = derive_group_receipt(queue, source, group_id);
+    let (receipt, _) = utils::derive_group_receipt(queue, source, group_id);
     let vault = Keypair::new().pubkey();
     let vault_token = utils::derive_associated_token_address(vault, mint);
 
@@ -146,7 +130,7 @@ async fn setup_context(
         },
     );
 
-    for pk in [vault, mint, vault_token, MAGIC_VAULT, source] {
+    for pk in [vault, mint, vault_token, utils::MAGIC_VAULT, source] {
         pt.add_account(
             pk,
             SolanaAccount {
@@ -255,7 +239,7 @@ fn callback_ix(
             AccountMeta::new_readonly(source, false), // 6: source
             AccountMeta::new_readonly(solana_system_interface::program::ID, false), // 7: source_token_account (unused)
             AccountMeta::new_readonly(spl_token_interface::ID, false), // 8: token_program (unused)
-            AccountMeta::new(MAGIC_VAULT, false),                      // 9: magic_vault
+            AccountMeta::new(utils::MAGIC_VAULT, false),               // 9: magic_vault
             AccountMeta::new_readonly(MAGIC_PROGRAM_ID, false),        // 10: magic_program
         ],
         data: callback_ix_data(ok, amount, group_id),

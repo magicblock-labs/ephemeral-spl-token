@@ -52,7 +52,9 @@ pub fn group_receipt_create<'a>(
         accounts.queue_info,
         accounts.group_receipt_info,
         accounts.magic_vault,
-        space as u32,
+        space
+            .try_into()
+            .map_err(|_| ProgramError::ArithmeticOverflow)?,
         &[queue_signer, receipt_signer],
     )?;
     group_receipt::initialize_group_receipt(

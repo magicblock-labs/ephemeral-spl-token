@@ -19,16 +19,17 @@ pub const GROUP_RECEIPT_SEED: &[u8] = b"group-receipt";
 ///
 /// Accounts:
 ///
-///  0: [signer]             - Keypair : Validator authority
+///  0: [signer]             - PDA     : Callback signer (CALLBACK_SIGNER).
 ///  1: [writable]           - PDA     : Group receipt account.
 ///  2: [writable]           - PDA     : Transfer queue account.
-///  3: []                   - SPL     : Vault account (unused).
+///  3: []                   - PDA     : Vault account (unused).
 ///  4: []                   - SPL     : Mint account.
 ///  5: []                   - SPL     : Vault token account (unused).
-///  6: []                   - Builtin : System program (unused).
-///  7: []                   - SPL     : Token program (unused).
-///  8: [writable]           - PDA     : Magic vault account.
-///  9: []                   - Program : Magic program.
+///  6: []                   - Any     : Source owner account.
+///  7: []                   - SPL     : Source token account (unused).
+///  8: []                   - Builtin : Token program (unused).
+///  9: [writable]           - PDA     : Magic vault account.
+/// 10: []                   - Program : Magic program.
 ///
 /// Instruction Data: MagicResponse
 ///

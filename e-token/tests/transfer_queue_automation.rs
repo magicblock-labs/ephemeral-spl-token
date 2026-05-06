@@ -279,10 +279,22 @@ async fn enqueue_transfer_with_client_ref_id(
     client_ref_id: Option<u64>,
     entry_key: &str,
 ) {
+    let group_id_bytes = [2u8, 1u8, 1u8];
+    let group_id = u32::from(group_id_bytes[0])
+        | (u32::from(group_id_bytes[1]) << 8)
+        | (u32::from(group_id_bytes[2]) << 16);
+    let group_receipt = utils::pre_create_group_receipt(
+        &mut fixture.context,
+        fixture.queue,
+        fixture.payer,
+        group_id,
+        1,
+    );
+
     let data = instruction::ESplInstruction::DepositAndQueueTransfer.with_data(
         &DepositAndQueueTransferArgs {
             amount: QUEUED_AMOUNT,
-            group_id: [2, 1, 1],
+            group_id: group_id_bytes,
             min_delay_ms,
             max_delay_ms: min_delay_ms,
             split: 1,
@@ -296,16 +308,18 @@ async fn enqueue_transfer_with_client_ref_id(
     let ix = Instruction {
         program_id: PROGRAM,
         accounts: vec![
-            AccountMeta::new(fixture.queue, false),
-            AccountMeta::new_readonly(fixture.vault, false),
-            AccountMeta::new_readonly(fixture.mint, false),
-            AccountMeta::new(fixture.source_ata, false),
-            AccountMeta::new(fixture.vault_ata, false),
-            AccountMeta::new_readonly(fixture.payer, false),
-            AccountMeta::new_readonly(fixture.payer, true),
-            AccountMeta::new_readonly(spl_token_interface::ID, false),
-            AccountMeta::new_readonly(PROGRAM, false),
-            AccountMeta::new_readonly(fixture.magic_program, false),
+            AccountMeta::new(fixture.queue, false),          // 0: queue
+            AccountMeta::new_readonly(fixture.vault, false), // 1: vault
+            AccountMeta::new_readonly(fixture.mint, false),  // 2: mint
+            AccountMeta::new(fixture.source_ata, false),     // 3: user_source_token
+            AccountMeta::new(fixture.vault_ata, false),      // 4: vault_token
+            AccountMeta::new_readonly(fixture.payer, false), // 5: destination
+            AccountMeta::new_readonly(fixture.payer, true),  // 6: user_authority
+            AccountMeta::new_readonly(spl_token_interface::ID, false), // 7: token_program
+            AccountMeta::new_readonly(PROGRAM, false),       // 8: reimbursement
+            AccountMeta::new(group_receipt, false),          // 9: group_receipt
+            AccountMeta::new(utils::MAGIC_VAULT, false),     // 10: magic_vault
+            AccountMeta::new_readonly(fixture.magic_program, false), // 11: magic_program
         ],
         data,
     };
@@ -1005,11 +1019,11 @@ async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
     .unwrap();
 
     let captured = take_captured_schedules(fixture.magic_program);
-    assert_eq!(captured.len(), 2);
+    assert_eq!(captured.len(), 1);
 
     let scheduled_ix = Instruction {
-        program_id: convert_magic_pubkey(captured[1].args.instructions[0].program_id),
-        accounts: captured[1].args.instructions[0]
+        program_id: convert_magic_pubkey(captured[0].args.instructions[0].program_id),
+        accounts: captured[0].args.instructions[0]
             .accounts
             .iter()
             .map(|meta| AccountMeta {
@@ -1018,7 +1032,7 @@ async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
                 is_writable: meta.is_writable,
             })
             .collect(),
-        data: captured[1].args.instructions[0].data.clone(),
+        data: captured[0].args.instructions[0].data.clone(),
     };
     let blockhash = latest_blockhash(&mut fixture.context).await;
     let tx = Transaction::new_signed_with_payer(
@@ -1181,11 +1195,11 @@ async fn recurring_queue_crank_includes_client_ref_id_in_execute_action_when_pre
 
     // Scheduled receipt creation and queue cranks
     let captured = take_captured_schedules(fixture.magic_program);
-    assert_eq!(captured.len(), 2);
+    assert_eq!(captured.len(), 1);
 
     let scheduled_ix = Instruction {
-        program_id: convert_magic_pubkey(captured[1].args.instructions[0].program_id),
-        accounts: captured[1].args.instructions[0]
+        program_id: convert_magic_pubkey(captured[0].args.instructions[0].program_id),
+        accounts: captured[0].args.instructions[0]
             .accounts
             .iter()
             .map(|meta| AccountMeta {
@@ -1194,7 +1208,7 @@ async fn recurring_queue_crank_includes_client_ref_id_in_execute_action_when_pre
                 is_writable: meta.is_writable,
             })
             .collect(),
-        data: captured[1].args.instructions[0].data.clone(),
+        data: captured[0].args.instructions[0].data.clone(),
     };
     let blockhash = latest_blockhash(&mut fixture.context).await;
     let tx = Transaction::new_signed_with_payer(

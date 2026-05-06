@@ -1,10 +1,11 @@
+use crate::utils::pre_create_group_receipt;
 use bytemuck::Zeroable;
 use ephemeral_rollups_pinocchio::acl::{
     permission_pda_from_permissioned_account, PERMISSION_PROGRAM_ID,
 };
 use ephemeral_rollups_pinocchio::spl::EphemeralAta;
 use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::state::group_receipt::{GroupReceipt, GroupReceiptHeader};
+use ephemeral_spl_api::state::group_receipt::GroupReceiptHeader;
 use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
 use ephemeral_spl_api::state::transfer_queue::{
     queue_views_checked, QueuedTransfer, TransferQueue, TransferQueueHeader, HEADER_LEN, ITEM_LEN,
@@ -12,10 +13,8 @@ use ephemeral_spl_api::state::transfer_queue::{
 use ephemeral_spl_api::ID as PROGRAM;
 use ephemeral_token_program::{DepositAndQueueTransferArgs, InitializeTransferQueueArgs};
 use serial_test::serial;
-use solana_account::{Account as SolanaAccount, AccountSharedData};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::clock::Clock;
-use solana_program::rent::Rent;
 use solana_program_pack::Pack;
 use spl_token_interface::state::Account;
 use {
@@ -27,8 +26,6 @@ use {
 };
 
 const MAGIC_PROGRAM: Pubkey = pubkey!("Magic11111111111111111111111111111111111111");
-const MAGIC_VAULT: Pubkey = pubkey!("MagicVau1t999999999999999999999999999999999");
-const GROUP_RECEIPT_SEED: &[u8] = b"group-receipt";
 
 mod common;
 mod utils;
@@ -166,46 +163,11 @@ async fn setup_fixture(items: Option<u32>) -> Fixture {
         mint,
         queue,
         vault,
-        magic_vault: MAGIC_VAULT,
+        magic_vault: utils::MAGIC_VAULT,
         user_source_ata,
         destination_ata,
         vault_ata,
     }
-}
-
-fn derive_group_receipt(queue: Pubkey, source: Pubkey, group_id: u32) -> (Pubkey, u8) {
-    Pubkey::find_program_address(
-        &[
-            GROUP_RECEIPT_SEED,
-            queue.as_ref(),
-            source.as_ref(),
-            &group_id.to_le_bytes(),
-        ],
-        &PROGRAM,
-    )
-}
-
-fn pre_create_group_receipt(
-    context: &mut ProgramTestContext,
-    queue: Pubkey,
-    source: Pubkey,
-    group_id: u32,
-    splits: u32,
-) -> Pubkey {
-    let (receipt, _) = derive_group_receipt(queue, source, group_id);
-    let data = vec![0u8; GroupReceipt::required_size(splits as usize)];
-    let rent = Rent::default();
-    context.set_account(
-        &receipt,
-        &AccountSharedData::from(SolanaAccount {
-            lamports: rent.minimum_balance(data.len()),
-            data,
-            owner: PROGRAM,
-            executable: false,
-            rent_epoch: 0,
-        }),
-    );
-    receipt
 }
 
 fn build_deposit_and_queue_ix(
@@ -514,9 +476,9 @@ async fn deposit_and_queue_transfer_transfers_once_and_enqueues_split_items() {
 async fn deposit_and_queue_transfer_assigns_distinct_group_ids_per_enqueue() {
     let mut fixture = setup_fixture(None).await;
     let receipt1 =
-        pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, 1, 2);
+        utils::pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, 1, 2);
     let receipt2 =
-        pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, 2, 3);
+        utils::pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, 2, 3);
     let first_ix = build_deposit_and_queue_ix(&fixture, 10, 0, 0, 2, 1, receipt1);
     let second_ix = build_deposit_and_queue_ix(&fixture, 12, 0, 0, 3, 2, receipt2);
 
@@ -695,7 +657,7 @@ async fn deposit_and_queue_transfer_accepts_legacy_destination_ata() {
 #[serial]
 async fn deposit_and_queue_transfer_rejects_zero_split() {
     let fixture = setup_fixture(None).await;
-    let (group_receipt, _) = derive_group_receipt(fixture.queue, fixture.payer, 1);
+    let (group_receipt, _) = utils::derive_group_receipt(fixture.queue, fixture.payer, 1);
     let ix = build_deposit_and_queue_ix(&fixture, 10, 0, 0, 0, 1, group_receipt);
     let blockhash = fixture
         .context
@@ -733,7 +695,7 @@ async fn deposit_and_queue_transfer_rejects_zero_split() {
 #[serial]
 async fn deposit_and_queue_transfer_rejects_split_greater_than_amount() {
     let fixture = setup_fixture(None).await;
-    let (group_receipt, _) = derive_group_receipt(fixture.queue, fixture.payer, 1);
+    let (group_receipt, _) = utils::derive_group_receipt(fixture.queue, fixture.payer, 1);
     let ix = build_deposit_and_queue_ix(&fixture, 2, 0, 0, 3, 1, group_receipt);
     let blockhash = fixture
         .context
@@ -772,7 +734,7 @@ async fn deposit_and_queue_transfer_rejects_split_greater_than_amount() {
 async fn deposit_and_queue_transfer_rejects_when_queue_is_full() {
     let items = 2;
     let fixture = setup_fixture(Some(items)).await;
-    let (group_receipt, _) = derive_group_receipt(fixture.queue, fixture.payer, 1);
+    let (group_receipt, _) = utils::derive_group_receipt(fixture.queue, fixture.payer, 1);
     let ix = build_deposit_and_queue_ix(&fixture, 6, 0, 0, 3, 1, group_receipt);
     let blockhash = fixture
         .context
@@ -808,7 +770,7 @@ async fn deposit_and_queue_transfer_rejects_when_queue_is_full() {
 #[serial]
 async fn deposit_and_queue_transfer_rejects_invalid_delay_range() {
     let fixture = setup_fixture(None).await;
-    let (group_receipt, _) = derive_group_receipt(fixture.queue, fixture.payer, 1);
+    let (group_receipt, _) = utils::derive_group_receipt(fixture.queue, fixture.payer, 1);
     let ix = build_deposit_and_queue_ix(&fixture, 10, 10, 9, 1, 1, group_receipt);
     let blockhash = fixture
         .context
@@ -1089,7 +1051,8 @@ async fn deposit_and_queue_transfer_return_to_shuttle() {
     let amount: u64 = 33_500_000;
     let split: u32 = 1000;
     let group_id: u32 = 1;
-    let (group_receipt_pda, _) = derive_group_receipt(fixture.queue, fixture.payer, group_id);
+    let (group_receipt_pda, _) =
+        utils::derive_group_receipt(fixture.queue, fixture.payer, group_id);
     let ix = {
         let g = group_id.to_le_bytes();
         let data = instruction::ESplInstruction::DepositAndQueueTransfer.with_data(
