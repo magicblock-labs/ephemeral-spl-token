@@ -155,13 +155,13 @@ fn handle_group_receipt(
         group_receipt_log(&group_receipt);
 
         group_receipt_close(
-            &GroupReceiptAccounts::new(
+            &GroupReceiptAccounts {
                 group_receipt_info,
                 queue_info,
                 source,
                 magic_vault,
-                magic_program,
-            ),
+                _magic_program: magic_program,
+            },
             group_receipt,
         )
     } else {

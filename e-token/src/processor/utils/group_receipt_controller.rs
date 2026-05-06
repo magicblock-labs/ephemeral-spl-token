@@ -18,24 +18,6 @@ pub struct GroupReceiptAccounts<'a> {
     pub _magic_program: &'a AccountView,
 }
 
-impl<'a> GroupReceiptAccounts<'a> {
-    pub fn new(
-        group_receipt_info: &'a AccountView,
-        queue_info: &'a AccountView,
-        source: &'a AccountView,
-        magic_vault: &'a AccountView,
-        magic_program: &'a AccountView,
-    ) -> Self {
-        Self {
-            group_receipt_info,
-            queue_info,
-            source,
-            magic_vault,
-            _magic_program: magic_program,
-        }
-    }
-}
-
 /// Creates `GroupReceipt` and initializes it.
 /// Use this when the receipt account does not yet exist.
 pub fn group_receipt_create<'a>(

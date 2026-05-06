@@ -36,7 +36,9 @@ const MILLIS_PER_SECOND: u64 = 1_000;
 ///  6: [signer]            - Keypair : Sender authority.
 ///  7: []                  - SPL     : Token program.
 ///  8: [writable]          - SPL     : Reimbursement token account.
-///  9: []                  - Magic   : Magic program
+///  9: [writable]          - SPL     : Group receipt.
+///  10: [writable]         - SPL     : Magic vault
+///  11: []                 - Magic   : Magic program
 ///
 /// Instruction Data: DepositAndQueueTransferArgs
 ///
