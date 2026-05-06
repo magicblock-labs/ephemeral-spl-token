@@ -107,7 +107,7 @@ fn default_post_delegation_actions(
 ) -> Vec<Instruction> {
     alloc::vec![
         merge_shuttle_into_destination_action(accounts),
-        undelegate_and_close_shuttle_action(&accounts.common),
+        undelegate_and_close_shuttle_action(&accounts.common, None),
     ]
 }
 

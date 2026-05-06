@@ -58,7 +58,9 @@ impl<'a> GroupReceipt<'a> {
     pub fn record_transfer(&mut self, item: TransferReceipt) -> Result<(), TransferReceipt> {
         let length = self.header.transfers_completed as usize;
         let capacity = self.splits() as usize;
-        if length >= capacity  { return Err(item); }
+        if length >= capacity {
+            return Err(item);
+        }
 
         let item_start = self.initialized_items_bytes();
         let item_range = item_start..item_start + TransferReceipt::size();

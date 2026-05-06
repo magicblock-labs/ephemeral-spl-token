@@ -37,7 +37,7 @@ const SPONSORED_LAMPORTS_TRANSFER_CPI_ACCOUNTS: usize = 11;
 /// Instruction Data: None
 ///
 #[inline(never)]
-pub fn process_pending_transfer_queue_refill(
+pub fn process_execute_pending_transfer_queue_refill(
     accounts: &[AccountView],
     _instruction_data: &[u8],
 ) -> ProgramResult {

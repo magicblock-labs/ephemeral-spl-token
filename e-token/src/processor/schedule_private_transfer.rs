@@ -1,5 +1,8 @@
+use alloc::borrow::ToOwned;
+use alloc::vec;
 use alloc::vec::Vec;
 
+use data_layout::variable_offset_layout;
 use ephemeral_rollups_pinocchio::consts::{
     BUFFER, DELEGATION_METADATA, DELEGATION_PROGRAM_ID, DELEGATION_RECORD,
 };
@@ -21,11 +24,12 @@ use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
 use pinocchio_system::instructions::Transfer;
 use solana_pubkey::Pubkey;
 
+use crate::processor::execute_scheduled_private_transfer::{
+    ExecuteScheduledPrivateTransferArgs, SCHEDULED_PT_ACCOUNTS,
+};
 use crate::processor::initialize_rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED};
-use crate::processor::process_scheduled_private_transfer::SCHEDULED_PT_ACCOUNTS;
-use crate::processor::utils::is_supported_token_program;
-
-const FIXED_PREFIX_LEN: usize = 4 + 1 + 32 + 10;
+use crate::processor::internal::{derive_ata, derive_hydra_seed};
+use crate::processor::utils::{get_associated_token_address, is_supported_token_program};
 
 const SETUP_LAMPORTS: u64 = ephemeral_spl_api::consts::SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS
     + ephemeral_spl_api::consts::SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS;
@@ -34,7 +38,7 @@ const SETUP_LAMPORTS: u64 = ephemeral_spl_api::consts::SPONSORED_SHUTTLE_DELEGAT
 /// Executes on: BASE only. User-signed.
 ///
 /// Appended to a swap transaction to schedule a private transfer
-/// (instruction 25 via Hydra) over whatever balance ends up in the stash
+/// (instruction 31 via Hydra) over whatever balance ends up in the stash
 /// ATA when the crank fires. Keeps the outer ix small: every account that
 /// would only be read for its pubkey is derived on-chain using the bumps
 /// supplied in the instruction data; hard-coded program IDs stand in for
@@ -52,17 +56,7 @@ const SETUP_LAMPORTS: u64 = ephemeral_spl_api::consts::SPONSORED_SHUTTLE_DELEGAT
 ///  5: []                  - Builtin : System program.
 ///  6: []                  - SPL     : Token program (Token / Token-2022) used as an ATA seed.
 ///
-/// Instruction data (47 B fixed prefix + 3 vardata):
-///
-///   00..04  shuttle_id (u32 LE)
-///   04      stash_pda_bump
-///   05..37  mint (32 B)
-///   37..47  10 bumps: shuttle, shuttle_eata, shuttle_wallet_ata, buffer,
-///           delegation_record, delegation_metadata, global_vault,
-///           vault_token, stash_ata, queue.
-///   47..    [len:u8] validator pubkey (0 or 32 bytes)
-///   ....    [len:u8] encrypted destination (pass-through to ix 25)
-///   ....    [len:u8] encrypted data suffix (pass-through to ix 25)
+/// Instruction Data: SchedulePrivateTransferArgs
 ///
 #[inline(never)]
 pub fn process_schedule_private_transfer(
@@ -79,55 +73,10 @@ pub fn process_schedule_private_transfer(
         token_program_info,
     ] = require_n_accounts!(accounts, 7);
 
-    require!(
-        instruction_data.len() >= FIXED_PREFIX_LEN,
-        ProgramError::InvalidInstructionData
-    );
+    let args = SchedulePrivateTransferArgs::decode(instruction_data)?;
 
-    let shuttle_id_bytes: [u8; 4] = instruction_data[0..4]
-        .try_into()
-        .map_err(|_| ProgramError::InvalidInstructionData)?;
-    let stash_bump = instruction_data[4];
-    let mint = Address::new_from_array(
-        instruction_data[5..37]
-            .try_into()
-            .map_err(|_| ProgramError::InvalidInstructionData)?,
-    );
-    let shuttle_bump = instruction_data[37];
-    let shuttle_eata_bump = instruction_data[38];
-    let shuttle_wallet_ata_bump = instruction_data[39];
-    let buffer_bump = instruction_data[40];
-    let delegation_record_bump = instruction_data[41];
-    let delegation_metadata_bump = instruction_data[42];
-    let global_vault_bump = instruction_data[43];
-    let vault_token_bump = instruction_data[44];
-    let stash_ata_bump = instruction_data[45];
-    let queue_bump = instruction_data[46];
-
-    let mut cursor = FIXED_PREFIX_LEN;
-    let validator_bytes = read_vardata(instruction_data, &mut cursor)?;
-    read_vardata(instruction_data, &mut cursor)?;
-    read_vardata(instruction_data, &mut cursor)?;
-    require!(
-        cursor == instruction_data.len(),
-        ProgramError::InvalidInstructionData
-    );
-
-    require!(
-        validator_bytes.is_empty() || validator_bytes.len() == 32,
-        ProgramError::InvalidInstructionData
-    );
-    let validator = if validator_bytes.is_empty() {
-        Address::default()
-    } else {
-        Address::new_from_array(
-            validator_bytes
-                .try_into()
-                .map_err(|_| ProgramError::InvalidInstructionData)?,
-        )
-    };
-
-    let derived_stash = StashPda::derive_pda(user_info.address(), &mint, stash_bump)?;
+    let derived_stash =
+        StashPda::derive_pda(user_info.address(), args.mint_address(), args.stash_bump())?;
     require_eq_keys!(
         &derived_stash,
         stash_pda_info.address(),
@@ -158,22 +107,27 @@ pub fn process_schedule_private_transfer(
 
     let shuttle = ShuttleMetadata::derive_pda(
         stash_pda_info.address(),
-        &mint,
-        u32::from_le_bytes(shuttle_id_bytes),
-        shuttle_bump,
+        args.mint_address(),
+        args.shuttle_id(),
+        args.shuttle_bump(),
     )?;
-    let shuttle_eata = EphemeralAta::derive_pda(&shuttle, &mint, shuttle_eata_bump)?;
-    let shuttle_wallet_ata =
-        derive_ata(&shuttle, &token_program_id, &mint, shuttle_wallet_ata_bump)?;
+    let shuttle_eata =
+        EphemeralAta::derive_pda(&shuttle, args.mint_address(), args.shuttle_eata_bump())?;
+    let shuttle_wallet_ata = derive_ata(
+        &shuttle,
+        &token_program_id,
+        args.mint_address(),
+        args.shuttle_wallet_ata_bump(),
+    )?;
     let buffer = Address::create_program_address(
-        &[BUFFER, shuttle_eata.as_ref(), &[buffer_bump]],
+        &[BUFFER, shuttle_eata.as_ref(), &[args.buffer_bump()]],
         &crate::ID,
     )?;
     let delegation_record = Address::create_program_address(
         &[
             DELEGATION_RECORD,
             shuttle_eata.as_ref(),
-            &[delegation_record_bump],
+            &[args.delegation_record_bump()],
         ],
         &DELEGATION_PROGRAM_ID,
     )?;
@@ -181,23 +135,34 @@ pub fn process_schedule_private_transfer(
         &[
             DELEGATION_METADATA,
             shuttle_eata.as_ref(),
-            &[delegation_metadata_bump],
+            &[args.delegation_metadata_bump()],
         ],
         &DELEGATION_PROGRAM_ID,
     )?;
-    let global_vault = GlobalVault::derive_pda(&mint, global_vault_bump)?;
-    let vault_token = derive_ata(&global_vault, &token_program_id, &mint, vault_token_bump)?;
+    let global_vault = GlobalVault::derive_pda(args.mint_address(), args.global_vault_bump())?;
+    let vault_token = derive_ata(
+        &global_vault,
+        &token_program_id,
+        args.mint_address(),
+        args.vault_token_bump(),
+    )?;
     let stash_ata = derive_ata(
         stash_pda_info.address(),
         &token_program_id,
-        &mint,
-        stash_ata_bump,
+        args.mint_address(),
+        args.stash_ata_bump(),
     )?;
-    let queue = TransferQueue::derive_pda(&mint, &validator, queue_bump)?;
+    let user_ata =
+        get_associated_token_address(user_info.address(), args.mint_address(), &token_program_id);
+    let queue = TransferQueue::derive_pda(
+        &args.mint_address(),
+        args.validator_address(),
+        args.queue_bump(),
+    )?;
 
-    // Slots 0..19 mirror ix 25's layout. Slot 5 aliases slot 0 (stash PDA)
-    // and slot 19 aliases Trigger's crank account; the flag must match
-    // Solana's tx-level writable union, so all three are writable.
+    // Slots 0..18 mirror ix 31's layout. Slot 5 aliases slot 0 (stash PDA).
+    // Slot 20 aliases Trigger's crank account; the flag must match Solana's
+    // tx-level writable union, so it remains writable.
     let sched_metas: [(&Address, bool); SCHEDULED_PT_ACCOUNTS] = [
         (stash_pda_info.address(), true),
         (rent_pda_info.address(), true),
@@ -212,26 +177,18 @@ pub fn process_schedule_private_transfer(
         (&DELEGATION_PROGRAM_ID, false),
         (&pinocchio_associated_token_account::ID, false),
         (system_program_info.address(), false),
-        (&mint, false),
+        (&args.mint_address(), false),
         (&token_program_id, false),
         (&global_vault, false),
         (&stash_ata, true),
         (&vault_token, true),
         (&queue, true),
+        (&user_ata, true),
         (hydra_crank_pda_info.address(), true),
     ];
 
-    let vardata_tail = &instruction_data[FIXED_PREFIX_LEN..cursor];
-    let scheduled_data_len = 1 + 32 + 1 + 4 + vardata_tail.len();
-    let mut scheduled_data: Vec<u8> = Vec::with_capacity(scheduled_data_len);
-    scheduled_data.push(ESplInstruction::ProcessScheduledPrivateTransfer as u8);
-    scheduled_data.extend_from_slice(user_info.address().as_ref());
-    scheduled_data.push(stash_bump);
-    scheduled_data.extend_from_slice(&shuttle_id_bytes);
-    scheduled_data.extend_from_slice(vardata_tail);
-
     let hydra_program_id = Address::new_from_array(hydra_api::ID.to_bytes());
-    let hydra_seed = derive_hydra_seed(stash_pda_info.address(), &shuttle_id_bytes);
+    let hydra_seed = derive_hydra_seed(stash_pda_info.address(), args.shuttle_id());
     let (derived_crank_pda, _) = hydra_api::state::find_crank_pda(&hydra_seed);
     require_eq_keys!(
         &derived_crank_pda,
@@ -263,7 +220,17 @@ pub fn process_schedule_private_transfer(
             cu_limit: 0,
             scheduled_program_id: Pubkey::new_from_array(*crate::ID.as_array()),
             scheduled_metas: &sched_metas_vec,
-            scheduled_data: &scheduled_data,
+            scheduled_data: &ESplInstruction::ExecuteScheduledPrivateTransfer.with_data(
+                &ExecuteScheduledPrivateTransferArgs {
+                    user: user_info.address().to_bytes(),
+                    stash_bump: args.stash_bump(),
+                    shuttle_id: args.shuttle_id(),
+                    validator: args.validator().to_owned(),
+                    encrypted_destination: args.encrypted_destination().to_owned(),
+                    encrypted_data_suffix: args.encrypted_data_suffix().to_owned(),
+                }
+                .encode()?,
+            ),
         },
     );
 
@@ -292,41 +259,32 @@ pub fn process_schedule_private_transfer(
     Ok(())
 }
 
-#[inline(always)]
-pub(crate) fn derive_hydra_seed(stash_pda: &Address, shuttle_id_bytes: &[u8; 4]) -> [u8; 32] {
-    let mut seed = *stash_pda.as_array();
-    seed[..4].copy_from_slice(shuttle_id_bytes);
-    seed
+#[variable_offset_layout(buffer_offset = 1)]
+pub struct SchedulePrivateTransferArgs {
+    pub shuttle_id: u32,
+    pub stash_bump: u8,
+    pub mint: [u8; 32],
+    pub shuttle_bump: u8,
+    pub shuttle_eata_bump: u8,
+    pub shuttle_wallet_ata_bump: u8,
+    pub buffer_bump: u8,
+    pub delegation_record_bump: u8,
+    pub delegation_metadata_bump: u8,
+    pub global_vault_bump: u8,
+    pub vault_token_bump: u8,
+    pub stash_ata_bump: u8,
+    pub queue_bump: u8,
+    pub validator: [u8; 32],
+    pub encrypted_destination: [u8; 80],
+    #[flexible = 1]
+    pub encrypted_data_suffix: Vec<u8>,
 }
 
-#[inline(always)]
-fn derive_ata(
-    wallet: &Address,
-    token_program: &Address,
-    mint: &Address,
-    bump_seed: u8,
-) -> Result<Address, ProgramError> {
-    let pda = Address::create_program_address(
-        &[
-            wallet.as_ref(),
-            token_program.as_ref(),
-            mint.as_ref(),
-            &[bump_seed],
-        ],
-        &pinocchio_associated_token_account::ID,
-    )?;
-    Ok(pda)
-}
-
-#[inline(always)]
-fn read_vardata<'a>(data: &'a [u8], cursor: &mut usize) -> Result<&'a [u8], ProgramError> {
-    require!(*cursor < data.len(), ProgramError::InvalidInstructionData);
-    let len = data[*cursor] as usize;
-    let start = *cursor + 1;
-    let end = start
-        .checked_add(len)
-        .ok_or(ProgramError::InvalidInstructionData)?;
-    require!(end <= data.len(), ProgramError::InvalidInstructionData);
-    *cursor = end;
-    Ok(&data[start..end])
+impl SchedulePrivateTransferArgsView<'_> {
+    fn validator_address(&self) -> &Address {
+        unsafe { &*(self.validator().as_ptr() as *const Address) }
+    }
+    fn mint_address(&self) -> &Address {
+        unsafe { &*(self.mint().as_ptr() as *const Address) }
+    }
 }

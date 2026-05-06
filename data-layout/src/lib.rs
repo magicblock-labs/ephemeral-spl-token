@@ -192,6 +192,14 @@ pub fn fixed_offset_layout(attr: TokenStream, item: TokenStream) -> TokenStream 
 ///         more implicit options later may force the layout to stop being
 ///         representable as `option = implicit`.
 ///
+/// Supported field kinds:
+///
+///   - Plain `bool` and `Option<bool>` are supported.
+///     They are encoded as a single backing `u8` byte where `0` means
+///     `false` and any non-zero byte decodes as `true`.
+///   - `Vec<bool>` is intentionally not supported by `variable_offset_layout`
+///     because its current view API exposes borrowed slices for Vec fields.
+///
 /// Field attributes:
 ///   - #[flexible = 1|2]
 ///

@@ -668,35 +668,23 @@ async fn deposit_and_queue_transfer_accepts_legacy_destination_ata() {
         &[&fixture.payer_kp],
         blockhash,
     );
-    common::metrics::process_transaction_record_cu(
+    let r = common::metrics::process_transaction_with_metadata_recorded(
         &fixture.context.banks_client,
         tx,
-        "dep_queue::accepts_legacy_destination_ata",
+        "dep_queue::rejects_legacy_destination_ata",
     )
     .await
     .unwrap();
-
-    let queue_account = fixture
-        .context
-        .banks_client
-        .get_account(fixture.queue)
-        .await
-        .unwrap()
-        .expect("queue account must exist");
-    let queued = read_item_unaligned(&queue_account.data, 0);
-
     assert_eq!(
-        queued.destination_owner.as_array(),
-        &fixture.payer.to_bytes()
-    );
-    assert_eq!(
-        queued.flags,
-        ephemeral_spl_api::state::transfer_queue::QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA
+        r.result.unwrap_err(),
+        TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
     );
 
     // Two enqueues = two CreateEphemeralAccount CPIs (accumulated across both transactions).
     let creates = common::magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
-    assert_eq!(creates.len(), 1, "expected two CreateEphemeralAccount CPIs");
+    assert_eq!(creates.len(), 0, "expected two CreateEphemeralAccount CPIs");
+
+    assert_empty_state(&fixture).await;
 }
 
 #[tokio::test]

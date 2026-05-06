@@ -65,7 +65,7 @@ pub(crate) struct PreparedShuttleDelegation {
 #[derive(Clone, Copy)]
 pub(crate) struct DepositAndDelegateShuttleCommonArgs<'a> {
     pub(crate) shuttle_id: u32,
-    pub(crate) amount: u64,
+    pub(crate) total_amount: u64,
     pub(crate) validator: Option<&'a [u8; 32]>,
 }
 
@@ -83,7 +83,7 @@ impl DepositAndDelegateShuttleArgsView<'_> {
     pub(crate) fn common_args(&self) -> DepositAndDelegateShuttleCommonArgs<'_> {
         DepositAndDelegateShuttleCommonArgs {
             shuttle_id: self.shuttle_id(),
-            amount: self.amount(),
+            total_amount: self.amount(),
             validator: self.validator(),
         }
     }
@@ -123,7 +123,7 @@ pub(crate) fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actio
         accounts.owner_info,
         accounts.token_program_info,
         &prepared.mint,
-        args.amount,
+        args.total_amount,
     )?;
 
     let shuttle_eata = load_mut_initialized::<EphemeralAta>(unsafe {
@@ -131,7 +131,7 @@ pub(crate) fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actio
     })?;
     shuttle_eata.amount = shuttle_eata
         .amount
-        .checked_add(args.amount)
+        .checked_add(args.total_amount)
         .ok_or(ProgramError::InvalidArgument)?;
 
     // TODO (snawaz): passs structs to functions which take too many arguments.
@@ -364,8 +364,15 @@ pub(crate) fn merge_shuttle_into_token_account_action(
     }
 }
 
+#[derive(Clone, Copy)]
+pub(crate) struct CloseStashArgs {
+    pub(crate) user: [u8; 32],
+    pub(crate) stash_bump: u8,
+}
+
 pub(crate) fn undelegate_and_close_shuttle_action(
     accounts: &DepositAndDelegateShuttleAccounts<'_>,
+    close_stash: Option<CloseStashArgs>,
 ) -> Instruction {
     build_undelegate_and_close_shuttle_instruction(
         accounts.payer_info.address(),
@@ -375,6 +382,7 @@ pub(crate) fn undelegate_and_close_shuttle_action(
         accounts.shuttle_wallet_ata_info.address(),
         accounts.owner_source_token_info.address(),
         accounts.token_program_info.address(),
+        close_stash,
     )
 }
 
@@ -386,21 +394,30 @@ pub(crate) fn build_undelegate_and_close_shuttle_instruction(
     shuttle_wallet_ata: &Address,
     refund_token: &Address,
     token_program: &Address,
+    close_stash: Option<CloseStashArgs>,
 ) -> Instruction {
+    let accounts = alloc::vec![
+        AccountMeta::new(*payer, true),
+        AccountMeta::new(*rent_pda, false),
+        AccountMeta::new_readonly(*shuttle, false),
+        AccountMeta::new_readonly(*shuttle_eata, false),
+        AccountMeta::new(*shuttle_wallet_ata, false),
+        AccountMeta::new(*refund_token, false),
+        AccountMeta::new_readonly(*token_program, false),
+        AccountMeta::new(Pubkey::from(MAGIC_CONTEXT_ID.to_bytes()), false),
+        AccountMeta::new_readonly(Pubkey::from(MAGIC_PROGRAM_ID.to_bytes()), false),
+    ];
+    let mut data = ESplInstruction::UndelegateAndCloseShuttleToOwner.to_vec();
+    if let Some(close) = close_stash {
+        // Explicit escrow_index byte: the parser would otherwise consume `user[0]` as it.
+        data.push(crate::processor::undelegate_and_close_shuttle_to_owner::DEFAULT_ESCROW_INDEX);
+        data.extend_from_slice(&close.user);
+        data.push(close.stash_bump);
+    }
     Instruction {
         program_id: crate::ID,
-        accounts: alloc::vec![
-            AccountMeta::new(*payer, true),
-            AccountMeta::new(*rent_pda, false),
-            AccountMeta::new_readonly(*shuttle, false),
-            AccountMeta::new_readonly(*shuttle_eata, false),
-            AccountMeta::new(*shuttle_wallet_ata, false),
-            AccountMeta::new(*refund_token, false),
-            AccountMeta::new_readonly(*token_program, false),
-            AccountMeta::new(Pubkey::from(MAGIC_CONTEXT_ID.to_bytes()), false),
-            AccountMeta::new_readonly(Pubkey::from(MAGIC_PROGRAM_ID.to_bytes()), false),
-        ],
-        data: ESplInstruction::UndelegateAndCloseShuttleToOwner.to_vec(),
+        accounts,
+        data,
     }
 }
 

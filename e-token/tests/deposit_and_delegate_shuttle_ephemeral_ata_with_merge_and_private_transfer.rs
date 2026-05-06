@@ -1,3 +1,5 @@
+use std::u64;
+
 use dlp_api::state::DelegationRecord;
 use ephemeral_rollups_pinocchio::acl::{
     permission_pda_from_permissioned_account, PERMISSION_PROGRAM_ID,
@@ -38,6 +40,8 @@ const RENT_PDA_SEED: &[u8] = b"rent";
 const DECIMALS: u8 = 6;
 const STARTING_BALANCE: u64 = 1_000 * 10u64.pow(DECIMALS as u32);
 const DEPOSIT_AMOUNT: u64 = 100 * 10u64.pow(DECIMALS as u32);
+const FEE_AMOUNT: u64 =
+    DEPOSIT_AMOUNT * PRIVATE_TRANSFER_FEE_BASIS_POINTS / (BASIS_POINTS_FACTOR as u64);
 const MIN_DELAY_MS: u64 = 5_000;
 const MAX_DELAY_MS: u64 = 15_000;
 const SPLIT: u32 = 4;
@@ -49,7 +53,25 @@ fn read_header_unaligned(data: &[u8]) -> TransferQueueHeader {
 }
 
 #[tokio::test]
+async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer_stores_third_action_exact_in(
+) {
+    deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer_stores_third_action(
+        false,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer_stores_third_action_exact_out(
+) {
+    deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer_stores_third_action(
+        true,
+    )
+    .await;
+}
+
 async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer_stores_third_action(
+    exact_out: bool,
 ) {
     let owner = utils::test_keypair(
         "deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer::owner",
@@ -216,6 +238,7 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
     let args = DepositAndDelegateShuttleWithPrivateTransferArgs {
         shuttle_id,
         amount: DEPOSIT_AMOUNT,
+        exact_out,
         validator: Some(validator.as_array().to_owned()),
         encrypted_destination: dlp_api::encryption::encrypt_ed25519_recipient(
             destination_owner.as_array(),
@@ -227,6 +250,7 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
         encrypted_data_suffix: dlp_api::encryption::encrypt_ed25519_recipient(
             &DepositAndQueueTransferArgs {
                 amount: 0, // dont care its value
+                group_id: [2, 1, 3],
                 min_delay_ms: MIN_DELAY_MS,
                 max_delay_ms: MAX_DELAY_MS,
                 split: SPLIT,
@@ -336,7 +360,15 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
     );
     let mut shuttle_eata_data = shuttle_eata_account.data.clone();
     let shuttle_eata_state = load::<EphemeralAta>(shuttle_eata_data.as_mut_slice()).unwrap();
-    assert_eq!(shuttle_eata_state.amount, DEPOSIT_AMOUNT);
+
+    assert_eq!(
+        shuttle_eata_state.amount,
+        if exact_out {
+            DEPOSIT_AMOUNT + FEE_AMOUNT
+        } else {
+            DEPOSIT_AMOUNT
+        }
+    );
 
     let owner_source_account = context
         .banks_client
@@ -346,7 +378,14 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
         .expect("owner source token account must exist");
     let owner_source_state = SplAccount::unpack(&owner_source_account.data).unwrap();
     assert_eq!(owner_source_state.owner, owner.pubkey());
-    assert_eq!(owner_source_state.amount, STARTING_BALANCE - DEPOSIT_AMOUNT);
+    assert_eq!(
+        owner_source_state.amount,
+        if exact_out {
+            STARTING_BALANCE - DEPOSIT_AMOUNT - FEE_AMOUNT
+        } else {
+            STARTING_BALANCE - DEPOSIT_AMOUNT
+        }
+    );
 
     let queue_account = context
         .banks_client
@@ -398,9 +437,11 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
         "expected stored post-delegation payload bytes"
     );
     let action_payload = &delegation_record_account.data[record_len..];
-    let fee_amount =
-        DEPOSIT_AMOUNT * PRIVATE_TRANSFER_FEE_BASIS_POINTS / (BASIS_POINTS_FACTOR as u64);
-    let private_transfer_amount = DEPOSIT_AMOUNT - fee_amount;
+    let private_transfer_amount = if exact_out {
+        DEPOSIT_AMOUNT
+    } else {
+        DEPOSIT_AMOUNT - FEE_AMOUNT
+    };
 
     let mut private_transfer_prefix =
         instruction::ESplInstruction::DepositAndQueueTransfer.to_vec();
@@ -413,7 +454,7 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
     );
 
     let mut fee_transfer_data = vec![TRANSFER_CHECKED_DISCRIMINATOR];
-    fee_transfer_data.extend_from_slice(&fee_amount.to_le_bytes());
+    fee_transfer_data.extend_from_slice(&FEE_AMOUNT.to_le_bytes());
     fee_transfer_data.push(DECIMALS);
     assert!(
         action_payload

@@ -1,5 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { PublicKey } from "@solana/web3.js";
+import { boolean } from "zod";
 
 const DEFAULT_DEPOSIT_VALIDATOR = "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57";
 const DEFAULT_DEPOSIT_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
@@ -272,6 +273,10 @@ export const transferRequestSchema = z.object({
     example: 1,
     description: "Optional. Private transfer only. Defaults to 1. Must be between 1 and 15.",
   }).optional(),
+  exactOut: z.boolean().openapi({
+    example: boolean,
+    description: "Optional. If true, the fees are deducted from the sender, else from the recipient amount",
+  }).optional(),
   gasless: z.boolean().openapi({
     example: true,
     description: "Optional. When true, the API uses the configured sponsor as transaction fee payer and prepends a relay-fee token transfer to the sponsor ATA.",
@@ -317,7 +322,6 @@ export const challengeQuerySchema = z.object({
     example: BALANCE_EXAMPLE_ADDRESS,
     description: "The public key of the wallet that will read private data",
   }),
-  mock: optionalBoolean,
 });
 
 export const challengeResponseSchema = z.object({
@@ -341,7 +345,6 @@ export const loginQuerySchema = z.object({
     example: "1234567890",
     description: "The signature of the challenge by the wallet",
   }),
-  mock: optionalBoolean,
 });
 
 export const loginResponseSchema = z.object({

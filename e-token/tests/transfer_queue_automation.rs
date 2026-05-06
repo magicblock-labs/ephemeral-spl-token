@@ -282,6 +282,7 @@ async fn enqueue_transfer_with_client_ref_id(
     let data = instruction::ESplInstruction::DepositAndQueueTransfer.with_data(
         &DepositAndQueueTransferArgs {
             amount: QUEUED_AMOUNT,
+            group_id: [2, 1, 1],
             min_delay_ms,
             max_delay_ms: min_delay_ms,
             split: 1,

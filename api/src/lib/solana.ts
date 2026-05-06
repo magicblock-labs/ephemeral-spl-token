@@ -137,6 +137,7 @@ type TransferInput = {
   maxDelayMs?: string;
   clientRefId?: string;
   split?: number;
+  exactOut?: boolean;
   legacy?: boolean;
   gasless?: boolean;
 };
@@ -927,6 +928,9 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
     const maxDelayMs = parseOptionalAmount(input.maxDelayMs, "maxDelayMs");
     const clientRefId = parseOptionalAmount(input.clientRefId, "clientRefId");
     const split = input.split;
+    const exactOut = input.exactOut;
+
+    console.log("input: ", input);
 
     if (minDelayMs !== undefined && minDelayMs < 0n) {
       throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "minDelayMs must be non-negative");
@@ -1031,6 +1035,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
           maxDelayMs,
           clientRefId,
           split,
+          exactOut,
         }
         : undefined,
     });
@@ -1178,7 +1183,32 @@ async function ensureTransferQueueCrankRunning(
   );
   transaction.feePayer = payer.publicKey;
 
-  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
+  const {
+    context: blockhashContext,
+    value: { blockhash, lastValidBlockHeight },
+  } = await connection.getLatestBlockhashAndContext("confirmed");
+  const epochInfo = await connection.getEpochInfo({
+    commitment: "confirmed",
+    minContextSlot: blockhashContext.slot,
+  });
+  const currentBlockHeight = epochInfo.blockHeight;
+  if (currentBlockHeight === undefined) {
+    throw new Error("Transfer queue crank failed to fetch current block height");
+  }
+
+  if (currentBlockHeight > lastValidBlockHeight) {
+    throw new Error(`Transfer queue crank blockhash expired before send: currentBlockHeight=${currentBlockHeight}, lastValidBlockHeight=${lastValidBlockHeight}`);
+  }
+
+  console.log("Preparing transfer queue crank", {
+    transferQueue: transferQueue.toBase58(),
+    validator: validator.toBase58(),
+    blockhash,
+    blockhashContextSlot: blockhashContext.slot,
+    currentBlockHeight,
+    lastValidBlockHeight,
+  });
+
   transaction.recentBlockhash = blockhash;
   transaction.lastValidBlockHeight = lastValidBlockHeight;
   transaction.sign(payer);
@@ -1186,6 +1216,15 @@ async function ensureTransferQueueCrankRunning(
   const signature = await connection.sendRawTransaction(transaction.serialize(), {
     skipPreflight: true,
     preflightCommitment: "confirmed",
+  });
+  console.log("Sent transfer queue crank", {
+    transferQueue: transferQueue.toBase58(),
+    validator: validator.toBase58(),
+    signature,
+    blockhash,
+    blockhashContextSlot: blockhashContext.slot,
+    currentBlockHeight,
+    lastValidBlockHeight,
   });
   const confirmation = await connection.confirmTransaction({
     signature,

@@ -33,7 +33,7 @@ import {
 
 import app from "./app";
 import { TOKEN_PROGRAM_ID } from "./lib/solana";
-import { MOCK_AUTH_TOKEN, MOCK_CHALLENGE } from "./lib/auth";
+import { MOCK_AUTH_TOKEN } from "./lib/auth";
 
 const env = {
   BASE_RPC_URL: "https://base.rpc.test",
@@ -556,7 +556,7 @@ describe("app", () => {
     expect(scheduleIx.programId.toBase58()).toBe(
       EPHEMERAL_SPL_TOKEN_PROGRAM_ID.toBase58(),
     );
-    expect(scheduleIx.data[0]).toBe(30);
+    expect(scheduleIx.data[0]).toBe(29);
     expect(scheduleIx.keys).toHaveLength(7);
     expect(scheduleIx.keys[1].pubkey.toBase58()).toBe(stashPda.toBase58());
     expect(scheduleIx.keys[4].pubkey.toBase58()).toBe(HYDRA_PROGRAM_ID.toBase58());
@@ -1035,7 +1035,7 @@ describe("app", () => {
     expect(json.error.message).toBe("split must be an integer between 1 and 14 when visibility=private");
   });
 
-  it("visibility=private rejects a mismatched destinationTokenAccount", async () => {
+  it("visibility=private rejects destinationTokenAccount", async () => {
     const metisEnv = {
       ...env,
       METIS_SWAP_API_URL: "https://triton.rpc.test/private-token/metis",
@@ -1072,7 +1072,47 @@ describe("app", () => {
     expect(response.status).toBe(400);
     const json = await response.json() as { error: { code: string; message: string } };
     expect(json.error.code).toBe("INVALID_REQUEST");
-    expect(json.error.message).toMatch(/destinationTokenAccount is controlled/);
+    expect(json.error.message).toMatch(/destinationTokenAccount is not supported/);
+  });
+
+  it("visibility=private rejects asLegacyTransaction=true", async () => {
+    const metisEnv = {
+      ...env,
+      METIS_SWAP_API_URL: "https://triton.rpc.test/private-token/metis",
+    };
+    const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+    const recipient = Keypair.generate().publicKey.toBase58();
+    const quoteResponse = {
+      inputMint: "So11111111111111111111111111111111111111112",
+      inAmount: "1000000",
+      outputMint,
+      outAmount: "999000",
+      otherAmountThreshold: "998000",
+      swapMode: "ExactIn",
+      slippageBps: 50,
+      priceImpactPct: "0.01",
+      routePlan: [],
+    };
+
+    const response = await app.request("/v1/swap/swap", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        userPublicKey: owner,
+        quoteResponse,
+        visibility: "private",
+        destination: recipient,
+        minDelayMs: "0",
+        maxDelayMs: "0",
+        split: 1,
+        asLegacyTransaction: true,
+      }),
+    }, metisEnv);
+
+    expect(response.status).toBe(400);
+    const json = await response.json() as { error: { code: string; message: string } };
+    expect(json.error.code).toBe("INVALID_REQUEST");
+    expect(json.error.message).toMatch(/asLegacyTransaction is not supported/);
   });
 
   it("visibility=private rejects nativeDestinationAccount", async () => {
@@ -1976,9 +2016,10 @@ describe("app", () => {
     expect(privateTransferIx.data[0]).toBe(25);
     expect(privateTransferIx.data.readUInt32LE(1)).toBe(7);
     expect(privateTransferIx.data.readBigUInt64LE(5)).toBe(BigInt(amount));
-    expect(privateTransferIx.data[93]).toBe(1);
-    expect(privateTransferIx.data.subarray(94, 126)).toEqual(new PublicKey(resolvedValidator).toBuffer());
-    expect(privateTransferIx.data[126]).toBe(privateTransferIx.data.length - 127);
+    expect(privateTransferIx.data[13]).toBe(1);
+    expect(privateTransferIx.data[94]).toBe(1);
+    expect(privateTransferIx.data.subarray(95, 127)).toEqual(new PublicKey(resolvedValidator).toBuffer());
+    expect(privateTransferIx.data[127]).toBe(privateTransferIx.data.length - 128);
   });
 
   it("builds a gasless public transfer with the sponsor as fee payer", async () => {
@@ -2442,16 +2483,34 @@ describe("app", () => {
   });
 
   it("returns the mock challenge", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(`${env.EPHEMERAL_RPC_URL}/auth/challenge?pubkey=${owner}`);
+      return new Response(JSON.stringify({
+        "jsonrpc": "2.0",
+        "error": {
+          "code": -32600,
+          "message": "invalid request: missing request body"
+        }
+      }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+        },
+      });
+    });
+
     const response = await app.request(
-      `/v1/spl/challenge?pubkey=${owner}&mock=true`,
+      `/v1/spl/challenge?pubkey=${owner}`,
       {},
       env,
     );
 
+    console.log(response);
     expect(response.status).toBe(200);
 
     const json = await response.json() as { challenge: string };
-    expect(json.challenge).toBe(MOCK_CHALLENGE);
+    expect(json.challenge).toMatch(/Login to Query Filtering Service/);
+    expect(json.challenge).toContain(owner);
   });
 
   it("returns a token from the ephemeral rollup login endpoint", async () => {
@@ -2493,6 +2552,22 @@ describe("app", () => {
   });
 
   it("returns the mock token", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(`${env.EPHEMERAL_RPC_URL}/auth/login`);
+      return new Response(JSON.stringify({
+        "jsonrpc": "2.0",
+        "error": {
+          "code": -32700,
+          "message": "error parsing request body: missing field `id` at line 1 column 91\n\n\tre\":\"s1\"}\n\t........^\n"
+        }
+      }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+        },
+      });
+    });
+
     const response = await app.request("/v1/spl/login", {
       method: "POST",
       headers: {
@@ -2502,7 +2577,6 @@ describe("app", () => {
         pubkey: owner,
         challenge: "c1",
         signature: "s1",
-        mock: true,
       }),
     }, env);
 
@@ -2765,9 +2839,20 @@ describe("app", () => {
     vi.spyOn(Date, "now").mockReturnValue(nowMs);
     vi.spyOn(Connection.prototype, "getAccountInfo").mockResolvedValue(createQueueAccountInfo(DELEGATION_PROGRAM_ID));
     vi.spyOn(Connection.prototype, "getSignaturesForAddress").mockResolvedValue([]);
-    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
-      blockhash: "11111111111111111111111111111111",
-      lastValidBlockHeight: 123,
+    vi.spyOn(Connection.prototype, "getLatestBlockhashAndContext").mockResolvedValue({
+      context: { slot: 1 },
+      value: {
+        blockhash: "11111111111111111111111111111111",
+        lastValidBlockHeight: 123,
+      },
+    });
+    vi.spyOn(Connection.prototype, "getEpochInfo").mockResolvedValue({
+      absoluteSlot: 1,
+      blockHeight: 1,
+      epoch: 1,
+      slotIndex: 1,
+      slotsInEpoch: 1,
+      transactionCount: 1,
     });
     vi.spyOn(Connection.prototype, "sendRawTransaction").mockImplementation(async function sendRawTransaction(this: Connection & { _rpcEndpoint: string }, raw) {
       expect((this as Connection & { _rpcEndpoint: string })._rpcEndpoint).toBe(env.EPHEMERAL_RPC_URL);
@@ -2821,9 +2906,20 @@ describe("app", () => {
         slot: 1,
       }];
     });
-    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
-      blockhash: "11111111111111111111111111111111",
-      lastValidBlockHeight: 123,
+    vi.spyOn(Connection.prototype, "getLatestBlockhashAndContext").mockResolvedValue({
+      context: { slot: 1 },
+      value: {
+        blockhash: "11111111111111111111111111111111",
+        lastValidBlockHeight: 123,
+      },
+    });
+    vi.spyOn(Connection.prototype, "getEpochInfo").mockResolvedValue({
+      absoluteSlot: 1,
+      blockHeight: 1,
+      epoch: 1,
+      slotIndex: 1,
+      slotsInEpoch: 1,
+      transactionCount: 1,
     });
     vi.spyOn(Connection.prototype, "confirmTransaction").mockResolvedValue({
       context: { slot: 1 },

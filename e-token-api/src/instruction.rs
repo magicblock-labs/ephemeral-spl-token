@@ -155,32 +155,18 @@ pub enum ESplInstruction {
     ///      lamports from the global rent PDA.
     ///      Instruction data:
     ///      []        no instruction args
-    ProcessPendingTransferQueueRefill = 28,
+    ExecutePendingTransferQueueRefill = 28,
 
-    /// 29 - ProcessScheduledPrivateTransfer: top-level callback fired by the
-    ///      Hydra scheduler. Permissionless, no signer metas (Hydra forbids
-    ///      them). Re-derives the stash PDA from [b"stash", user, mint] and
-    ///      self-CPIs into instruction 25 using `invoke_signed` so the PDA
-    ///      signs for both the `payer` and `owner` slots.
-    ///      Instruction data:
-    ///      [0..32]  user pubkey (stash PDA seed)
-    ///      [32]     stash PDA bump
-    ///      [33..37] shuttle_id (u32 LE)
-    ///      [37..]   len-prefixed optional validator pubkey
-    ///      [...]    len-prefixed encrypted destination owner pubkey
-    ///      [...]    len-prefixed encrypted packed suffix (same format as ix 25)
-    ProcessScheduledPrivateTransfer = 29,
-
-    /// 30 - SchedulePrivateTransfer: small user-signed ix that creates the
+    /// 29 - SchedulePrivateTransfer: small user-signed ix that creates the
     ///      stash PDA on first use, funds it + a Hydra crank from the global
     ///      rent PDA, and CPIs into `hydra::Create` with a one-shot crank that
-    ///      will fire `PROCESS_SCHEDULED_PRIVATE_TRANSFER` as soon as possible.
+    ///      will fire `ExecuteScheduledPrivateTransfer` as soon as possible.
     ///      Designed to be appended to a swap tx where the swap's
     ///      `destinationTokenAccount` is the stash ATA of `(user, mint)`.
-    ///      Keeps the outer-tx footprint tight: the 14 pubkeys that ix 25
-    ///      will need at trigger time are derived on-chain from client-
-    ///      supplied bumps + hard-coded program IDs, so the caller passes
-    ///      only 7 accounts.
+    ///      Keeps the outer-tx footprint tight: the pubkeys that ix 25 and
+    ///      the timeout-refund path need at trigger time are derived on-chain
+    ///      from client-supplied bumps + hard-coded program IDs, so the caller
+    ///      passes only 7 accounts.
     ///      Accounts:
     ///      [0] user (signer), [1] stash_pda (w), [2] rent_pda (w),
     ///      [3] hydra_crank_pda (w), [4] hydra_program,
@@ -202,7 +188,29 @@ pub enum ESplInstruction {
     ///      [47..]   len-prefixed optional validator pubkey (0 or 32)
     ///      [...]    len-prefixed encrypted destination owner pubkey
     ///      [...]    len-prefixed encrypted packed suffix (same format as ix 25)
-    SchedulePrivateTransfer = 30,
+    SchedulePrivateTransfer = 29,
+
+    /// 30 - ExecuteScheduledPrivateTransfer: top-level callback fired by the
+    ///      Hydra scheduler. Permissionless, no signer metas (Hydra forbids
+    ///      them). Re-derives the stash PDA from [b"stash", user, mint] and
+    ///      self-CPIs into instruction 25 using `invoke_signed` so the PDA
+    ///      signs for both the `payer` and `owner` slots. If the callback is
+    ///      triggered after the timeout window, it refunds the stash ATA balance
+    ///      to the user's ATA instead.
+    ///      Instruction data:
+    ///      [0..32]  user pubkey (stash PDA seed)
+    ///      [32]     stash PDA bump
+    ///      [33..37] shuttle_id (u32 LE)
+    ///      [37..]   len-prefixed optional validator pubkey
+    ///      [...]    len-prefixed encrypted destination owner pubkey
+    ///      [...]    len-prefixed encrypted packed suffix (same format as ix 25)
+    ExecuteScheduledPrivateTransfer = 30,
+
+    /// 31 - DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransferAndStashClose:
+    ///      ix 25 + a fixed `stash_close_seeds: [user(32) | stash_bump(1)]` appended
+    ///      before `encrypted_data_suffix`. Self-CPI'd by `ExecuteScheduledPrivateTransfer`.
+    ///      Triggers stash ATA + stash PDA refund to the rent PDA after settlement.
+    DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransferAndStashClose = 31,
 }
 
 impl ESplInstruction {
@@ -261,9 +269,12 @@ impl TryFrom<u8> for ESplInstruction {
             25 => Ok(Self::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer),
             26 => Ok(Self::WithdrawThroughDelegatedShuttleWithMerge),
             27 => Ok(Self::AllocateTransferQueue),
-            28 => Ok(Self::ProcessPendingTransferQueueRefill),
-            29 => Ok(Self::ProcessScheduledPrivateTransfer),
-            30 => Ok(Self::SchedulePrivateTransfer),
+            28 => Ok(Self::ExecutePendingTransferQueueRefill),
+            29 => Ok(Self::SchedulePrivateTransfer),
+            30 => Ok(Self::ExecuteScheduledPrivateTransfer),
+            31 => Ok(
+                Self::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransferAndStashClose,
+            ),
             _ => Err(()),
         }
     }

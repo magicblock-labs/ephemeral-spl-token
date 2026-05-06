@@ -280,6 +280,7 @@ enum AccessMode {
 
 #[derive(Clone)]
 enum FixedValueKind {
+    Bool { ty: Type },
     Integer { ty: Type, size: usize, align: usize },
     Array { ty: Type, size: usize, align: usize },
 }
@@ -287,18 +288,20 @@ enum FixedValueKind {
 impl FixedValueKind {
     fn ty(&self) -> &Type {
         match self {
-            Self::Integer { ty, .. } | Self::Array { ty, .. } => ty,
+            Self::Bool { ty } | Self::Integer { ty, .. } | Self::Array { ty, .. } => ty,
         }
     }
 
     fn size(&self) -> usize {
         match self {
+            Self::Bool { .. } => 1,
             Self::Integer { size, .. } | Self::Array { size, .. } => *size,
         }
     }
 
     fn align(&self) -> usize {
         match self {
+            Self::Bool { .. } => 1,
             Self::Integer { align, .. } | Self::Array { align, .. } => *align,
         }
     }
@@ -591,28 +594,54 @@ impl FieldLayout {
             Self::Value { value, optional } => {
                 let value_size = usize_lit(value.size());
                 match optional {
-                    OptionalKind::No => quote! {
-                        bytes[offset..offset + #value_size]
-                            .copy_from_slice(bytemuck::bytes_of(&self.#field_ident));
-                        offset += #value_size;
-                    },
-                    OptionalKind::Tagged => quote! {
-                        if let core::option::Option::Some(value) = &self.#field_ident {
-                            bytes[offset] = 1;
-                            bytes[offset + 1..offset + 1 + #value_size]
-                                .copy_from_slice(bytemuck::bytes_of(value));
-                            offset += 1 + #value_size;
-                        } else {
-                            bytes[offset] = 0;
+                    OptionalKind::No => match value {
+                        FixedValueKind::Bool { .. } => quote! {
+                            bytes[offset] = u8::from(self.#field_ident);
                             offset += 1;
-                        }
-                    },
-                    OptionalKind::Implicit(_) => quote! {
-                        if let core::option::Option::Some(value) = &self.#field_ident {
+                        },
+                        _ => quote! {
                             bytes[offset..offset + #value_size]
-                                .copy_from_slice(bytemuck::bytes_of(value));
+                                .copy_from_slice(bytemuck::bytes_of(&self.#field_ident));
                             offset += #value_size;
-                        }
+                        },
+                    },
+                    OptionalKind::Tagged => match value {
+                        FixedValueKind::Bool { .. } => quote! {
+                            if let core::option::Option::Some(value) = &self.#field_ident {
+                                bytes[offset] = 1;
+                                bytes[offset + 1] = u8::from(*value);
+                                offset += 2;
+                            } else {
+                                bytes[offset] = 0;
+                                offset += 1;
+                            }
+                        },
+                        _ => quote! {
+                            if let core::option::Option::Some(value) = &self.#field_ident {
+                                bytes[offset] = 1;
+                                bytes[offset + 1..offset + 1 + #value_size]
+                                    .copy_from_slice(bytemuck::bytes_of(value));
+                                offset += 1 + #value_size;
+                            } else {
+                                bytes[offset] = 0;
+                                offset += 1;
+                            }
+                        },
+                    },
+                    OptionalKind::Implicit(_) => match value {
+                        FixedValueKind::Bool { .. } => quote! {
+                            if let core::option::Option::Some(value) = &self.#field_ident {
+                                bytes[offset] = u8::from(*value);
+                                offset += 1;
+                            }
+                        },
+                        _ => quote! {
+                            if let core::option::Option::Some(value) = &self.#field_ident {
+                                bytes[offset..offset + #value_size]
+                                    .copy_from_slice(bytemuck::bytes_of(value));
+                                offset += #value_size;
+                            }
+                        },
                     },
                 }
             }
@@ -986,6 +1015,12 @@ fn parse_field_layout(
     let attribute = parse_field_attr(field)?;
 
     if let Some(elem_ty) = vec_inner(ty)? {
+        if is_bool(elem_ty) {
+            return Err(syn::Error::new_spanned(
+                field,
+                "Vec<bool> is not supported by variable_offset_layout",
+            ));
+        }
         let attribute = attribute.ok_or_else(|| {
             syn::Error::new_spanned(
                 field,
@@ -1056,6 +1091,10 @@ fn parse_field_layout(
 }
 
 fn parse_value_kind(ty: &Type) -> syn::Result<FixedValueKind> {
+    if is_bool(ty) {
+        return Ok(FixedValueKind::Bool { ty: ty.clone() });
+    }
+
     if let Some((size, align)) = integer_size_and_align(ty) {
         return Ok(FixedValueKind::Integer {
             ty: ty.clone(),
@@ -1899,6 +1938,15 @@ fn is_string(ty: &Type) -> bool {
         && type_path.path.segments[0].ident == "String"
 }
 
+fn is_bool(ty: &Type) -> bool {
+    let Type::Path(type_path) = ty else {
+        return false;
+    };
+    type_path.qself.is_none()
+        && type_path.path.segments.len() == 1
+        && type_path.path.segments[0].ident == "bool"
+}
+
 fn usize_lit(value: usize) -> LitInt {
     LitInt::new(&value.to_string(), Span::call_site())
 }
@@ -1922,7 +1970,7 @@ fn fixed_array_size_and_align(ty: &Type) -> syn::Result<(usize, usize)> {
     let Type::Array(array) = ty else {
         return Err(syn::Error::new_spanned(
             ty,
-            "variable_offset_layout fields must be integer primitives or fixed-size arrays",
+            "variable_offset_layout fields must be bool, integer primitives, or fixed-size arrays of integer primitives",
         ));
     };
 
@@ -1951,6 +1999,7 @@ fn read_copy_expr(
     bytes_expr: proc_macro2::TokenStream,
 ) -> syn::Result<proc_macro2::TokenStream> {
     match value {
+        FixedValueKind::Bool { .. } => Ok(quote!((#bytes_expr)[0] != 0)),
         FixedValueKind::Integer { ty, .. } => parse_integer_expr(ty, bytes_expr),
         FixedValueKind::Array { ty, .. } => Ok(quote! {
             unsafe { core::ptr::read_unaligned((#bytes_expr).as_ptr().cast::<#ty>()) }
@@ -1965,7 +2014,7 @@ fn parse_integer_expr(
     let Some(name) = integer_primitive_name(ty) else {
         return Err(syn::Error::new_spanned(
             ty,
-            "field must be an integer primitive",
+            "field must be an integer primitive or bool",
         ));
     };
     let ty_tokens = ty.to_token_stream();
@@ -2339,6 +2388,21 @@ mod tests {
             .to_string();
         assert!(error.contains("field `values` cannot expose a slice view"));
         assert!(error.contains("element 0 would start at offset 2"));
+    }
+
+    #[test]
+    fn variable_offset_layout_rejects_vec_bool() {
+        let item: syn::ItemStruct = parse_quote! {
+            struct Args {
+                #[flexible = 1]
+                values: Vec<bool>,
+            }
+        };
+
+        let error = expand_variable_offset_layout("buffer_offset = 0", &item)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("Vec<bool> is not supported by variable_offset_layout"));
     }
 
     #[test]
