@@ -94,6 +94,7 @@ Variables:
 - `METIS_SWAP_API_URL`: optional Triton Metis Swap API base URL, including your private token and the `/metis` suffix
 - `PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE`: optional mainnet LUT override for private `base -> base` transfers
 - `PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE`: optional devnet LUT override for private `base -> base` transfers
+- `GASLESS_SPONSOR_SECRET_KEY`: optional JSON-encoded sponsor secret key array for gasless transfers
 - `CORS_ORIGIN`: CORS origin, `*` by default
 
 Example:
@@ -106,6 +107,7 @@ EPHEMERAL_DEVNET_RPC_URL=https://devnet.magicblock.app
 METIS_SWAP_API_URL=https://<endpoint>.rpcpool.com/<private_token>/metis
 # PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE=
 # PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE=
+# GASLESS_SPONSOR_SECRET_KEY=
 CORS_ORIGIN=*
 ```
 
@@ -589,17 +591,14 @@ curl -X POST http://127.0.0.1:8787/v1/spl/transfer \
     "from": "FROM_OWNER_PUBKEY",
     "to": "TO_OWNER_PUBKEY",
     "mint": "MINT_PUBKEY",
-    "amount": 1000000,
+    "amount": 5000000,
     "visibility": "private",
     "fromBalance": "base",
     "toBalance": "base",
-    "initIfMissing": true,
-    "initAtasIfMissing": true,
-    "initVaultIfMissing": false,
     "memo": "Order #1042",
     "minDelayMs": "0",
     "maxDelayMs": "0",
-    "split": 1
+    "gasless": true
   }'
 ```
 
@@ -627,6 +626,15 @@ Private transfer validation:
 - `split` cannot exceed `amount`
 - if both delays are present, `maxDelayMs >= minDelayMs`
 
+Gasless transfer validation:
+
+- `gasless` is optional and defaults to `false`
+- when `gasless` is `true`, `GASLESS_SPONSOR_SECRET_KEY` must be configured
+- the configured sponsor becomes the transaction fee payer and signs the transaction
+- the API prepends a 0.2 USDC/USDT relay-fee token transfer from the sender to the sponsor ATA
+- gasless transfers require an approved stablecoin mint: mainnet USDC, mainnet USDT, or devnet USDC
+- gasless transfers must be at least 5 USDC/USDT
+
 Relevant fields:
 
 - `from`
@@ -645,6 +653,7 @@ Relevant fields:
 - `minDelayMs`
 - `maxDelayMs`
 - `split`
+- `gasless`
 - `legacy`
 
 ### `GET /v1/spl/balance`

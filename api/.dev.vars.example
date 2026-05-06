@@ -6,4 +6,6 @@ EPHEMERAL_DEVNET_RPC_URL=https://devnet.magicblock.app
 # Optional: override the built-in private base -> base transfer LUT addresses.
 # PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE=
 # PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE=
+# Optional: JSON-encoded sponsor secret key array for gasless transfers.
+# GASLESS_SPONSOR_SECRET_KEY=
 CORS_ORIGIN=*
