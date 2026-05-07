@@ -120,9 +120,9 @@ function createLookupTableResponse(value: AddressLookupTableAccount | null): Awa
   };
 }
 
-function createLookupTableAccount(addresses: PublicKey[]) {
+function createLookupTableAccount(addresses: PublicKey[], key = Keypair.generate().publicKey) {
   return new AddressLookupTableAccount({
-    key: Keypair.generate().publicKey,
+    key,
     state: {
       deactivationSlot: 18446744073709551615n,
       lastExtendedSlot: 0,
@@ -633,6 +633,95 @@ describe("app", () => {
     expect(returned.message.staticAccountKeys[0]?.toBase58()).toBe(sponsor.toBase58());
     expect(createIx?.keys[0]?.pubkey.toBase58()).toBe(sponsor.toBase58());
     expect(scheduleIx?.keys[0]?.pubkey.toBase58()).toBe(sponsor.toBase58());
+  });
+
+  it("visibility=private caches upstream swap lookup tables across rebuilds", async () => {
+    const metisEnv = {
+      ...env,
+      BASE_RPC_URL: "https://base.swap.cached-lut.rpc.test",
+      METIS_SWAP_API_URL: "https://triton.rpc.test/private-token/metis",
+    };
+    const outputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+    const recipient = Keypair.generate().publicKey.toBase58();
+    const validator = Keypair.generate().publicKey.toBase58();
+    const quoteResponse = {
+      inputMint: "So11111111111111111111111111111111111111112",
+      inAmount: "1000000",
+      outputMint,
+      outAmount: "999000",
+      otherAmountThreshold: "998000",
+      swapMode: "ExactIn",
+      slippageBps: 50,
+      priceImpactPct: "0.01",
+      routePlan: [],
+    };
+
+    const ownerPk = new PublicKey(owner);
+    const lookupKey = Keypair.generate().publicKey;
+    const lookedUpAccount = Keypair.generate().publicKey;
+    const lookupTable = createLookupTableAccount([lookedUpAccount], lookupKey);
+    const memoIx = new TransactionInstruction({
+      programId: new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"),
+      keys: [{ pubkey: lookedUpAccount, isSigner: false, isWritable: false }],
+      data: Buffer.from("jupiter-mock"),
+    });
+    const jupiterV0 = new VersionedTransaction(
+      new TransactionMessage({
+        payerKey: ownerPk,
+        recentBlockhash: "11111111111111111111111111111111",
+        instructions: [memoIx],
+      }).compileToV0Message([lookupTable]),
+    );
+    expect(jupiterV0.message.addressTableLookups).toHaveLength(1);
+    const jupiterBase64 = Buffer.from(jupiterV0.serialize()).toString("base64");
+
+    const getAddressLookupTableSpy = vi
+      .spyOn(Connection.prototype, "getAddressLookupTable")
+      .mockResolvedValue(createLookupTableResponse(lookupTable));
+    const getAccountInfoSpy = vi
+      .spyOn(Connection.prototype, "getAccountInfo")
+      .mockResolvedValue(createLookupTableAccountInfo());
+
+    let swapCalls = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.startsWith("https://triton.rpc.test") && url.endsWith("/swap")) {
+        swapCalls += 1;
+        return new Response(
+          JSON.stringify({ swapTransaction: jupiterBase64 }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+    });
+
+    const body = {
+      userPublicKey: owner,
+      quoteResponse,
+      visibility: "private",
+      destination: recipient,
+      minDelayMs: "0",
+      maxDelayMs: "0",
+      split: 1,
+      validator,
+    };
+
+    const firstResponse = await app.request("/v1/swap/swap", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }, metisEnv);
+    const secondResponse = await app.request("/v1/swap/swap", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }, metisEnv);
+
+    expect(firstResponse.status).toBe(200);
+    expect(secondResponse.status).toBe(200);
+    expect(swapCalls).toBe(2);
+    expect(getAddressLookupTableSpy).toHaveBeenCalledOnce();
+    expect(getAccountInfoSpy).not.toHaveBeenCalled();
   });
 
   it("visibility=private bumps an existing SetComputeUnitLimit in place rather than prepending", async () => {
@@ -1751,6 +1840,7 @@ describe("app", () => {
   it("builds a v0 private base transfer when the LUT is useful", async () => {
     const transferEnv = {
       ...env,
+      BASE_RPC_URL: "https://base.transfer.v0.rpc.test",
       EPHEMERAL_RPC_URL: "https://ephemeral.transfer.v0.rpc.test",
     };
     const mint = new PublicKey("So11111111111111111111111111111111111111112");
@@ -1809,6 +1899,76 @@ describe("app", () => {
 
     expect(json.version).toBe("v0");
     expect(() => VersionedTransaction.deserialize(Buffer.from(json.transactionBase64, "base64"))).not.toThrow();
+  });
+
+  it("caches the private transfer lookup table across transfer builds", async () => {
+    const transferEnv = {
+      ...env,
+      BASE_RPC_URL: "https://base.transfer.cached-lut.rpc.test",
+      EPHEMERAL_RPC_URL: "https://ephemeral.transfer.cached-lut.rpc.test",
+    };
+    const mint = new PublicKey("So11111111111111111111111111111111111111112");
+    const validator = new PublicKey(resolvedValidator);
+    const [transferQueue] = deriveTransferQueue(mint, validator);
+    const [rentPda] = deriveRentPda();
+    const [vault] = deriveVault(mint);
+    const vaultAta = deriveVaultAta(mint, vault);
+
+    const getLatestBlockhashSpy = vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123,
+    });
+    const getAddressLookupTableSpy = vi
+      .spyOn(Connection.prototype, "getAddressLookupTable")
+      .mockResolvedValue(createLookupTableResponse(
+        createLookupTableAccount([
+          mint,
+          transferQueue,
+          rentPda,
+          vault,
+          vaultAta,
+          TOKEN_PROGRAM_ID,
+          SystemProgram.programId,
+        ]),
+      ));
+    const getAccountInfoSpy = vi
+      .spyOn(Connection.prototype, "getAccountInfo")
+      .mockResolvedValue(createLookupTableAccountInfo());
+
+    const body = {
+      from: owner,
+      to: destination,
+      mint: mint.toBase58(),
+      amount: 2,
+      visibility: "private",
+      fromBalance: "base",
+      toBalance: "base",
+      validator: resolvedValidator,
+      minDelayMs: "0",
+      maxDelayMs: "0",
+      split: 1,
+    };
+
+    const firstResponse = await app.request("/v1/spl/transfer", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(body),
+    }, transferEnv);
+    const secondResponse = await app.request("/v1/spl/transfer", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(body),
+    }, transferEnv);
+
+    expect(firstResponse.status).toBe(200);
+    expect(secondResponse.status).toBe(200);
+    expect(getLatestBlockhashSpy).toHaveBeenCalledTimes(2);
+    expect(getAddressLookupTableSpy).toHaveBeenCalledOnce();
+    expect(getAccountInfoSpy).toHaveBeenCalledOnce();
   });
 
   it("returns a legacy private base transfer when legacy=true even if the LUT is useful", async () => {
