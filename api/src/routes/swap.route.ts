@@ -1,9 +1,7 @@
 import type { Context } from "hono";
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import {
-  AddressLookupTableAccount,
   ComputeBudgetProgram,
-  Connection,
   PublicKey,
   SystemProgram,
   TransactionInstruction,
@@ -22,6 +20,7 @@ import { openApiDefaultHook } from "../lib/create-app";
 import { ApiError, errorResponseSchema } from "../lib/errors";
 import { jsonContent, jsonContentRequired } from "../lib/openapi";
 import { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID } from "../lib/solana";
+import { getCachedAddressLookupTables, type AddressLookupTable } from "../lib/rpc-cache";
 
 const DEFAULT_FALLBACK_VALIDATOR = new PublicKey(
   "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57",
@@ -1009,7 +1008,7 @@ async function tryBuildPrivateSwapAttempt(
 
   try {
     const rebuilt = await rebuildSwapTransaction({
-      connection: new Connection(baseRpcUrl, "confirmed"),
+      baseRpcUrl,
       base64Tx: metisJson.swapTransaction,
       payer,
       mint,
@@ -1039,7 +1038,7 @@ async function tryBuildPrivateSwapAttempt(
 }
 
 type RebuildInput = {
-  connection: Connection;
+  baseRpcUrl: string;
   base64Tx: string;
   payer: PublicKey;
   mint: PublicKey;
@@ -1056,7 +1055,7 @@ type RebuildInput = {
 
 async function rebuildSwapTransaction(input: RebuildInput): Promise<string> {
   const {
-    connection,
+    baseRpcUrl,
     base64Tx,
     payer,
     mint,
@@ -1088,20 +1087,12 @@ async function rebuildSwapTransaction(input: RebuildInput): Promise<string> {
   }
 
   const altKeys = versionedTx.message.addressTableLookups.map((l) => l.accountKey);
-  const lookupTables: AddressLookupTableAccount[] = [];
-  let lookupTableResponses: Awaited<ReturnType<Connection["getAddressLookupTable"]>>[];
+  let lookupTables: AddressLookupTable[];
   try {
-    lookupTableResponses = await Promise.all(
-      altKeys.map((key) => connection.getAddressLookupTable(key)),
-    );
+    lookupTables = await getCachedAddressLookupTables(baseRpcUrl, altKeys);
   }
   catch (error) {
     throw new PrivateSwapUpstreamError("Failed to fetch swap address lookup table", error);
-  }
-  for (const resp of lookupTableResponses) {
-    if (resp.value) {
-      lookupTables.push(resp.value);
-    }
   }
 
   let message: TransactionMessage;
