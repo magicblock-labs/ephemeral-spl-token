@@ -5,10 +5,16 @@ import {
 } from "@solana/web3.js";
 
 export type AddressLookupTable = NonNullable<Awaited<ReturnType<Connection["getAddressLookupTable"]>>["value"]>;
+export const ADDRESS_LOOKUP_TABLE_CACHE_TTL_MS = 3 * 60 * 60 * 1000;
 
 const connectionCache = new Map<string, Connection>();
-const lookupTableCache = new Map<string, Promise<AddressLookupTable>>();
-const lookupTableOwnerValidationCache = new Map<string, Promise<void>>();
+const lookupTableCache = new Map<string, CacheEntry<AddressLookupTable>>();
+const lookupTableOwnerValidationCache = new Map<string, CacheEntry<void>>();
+
+type CacheEntry<T> = {
+  expiresAt: number;
+  request: Promise<T>;
+};
 
 type LookupTableCacheOptions = {
   validateOwner?: boolean;
@@ -31,11 +37,12 @@ export async function getCachedAddressLookupTable(
   options: LookupTableCacheOptions = {},
 ) {
   const cacheKey = `${endpoint}:${lookupTableAddress.toBase58()}`;
-  let request = lookupTableCache.get(cacheKey);
+  const now = Date.now();
+  let entry = lookupTableCache.get(cacheKey);
 
-  if (!request) {
+  if (!entry || entry.expiresAt <= now) {
     const connection = getConnection(endpoint);
-    request = (async () => {
+    const request = (async () => {
       const lookupTableResponse = await connection.getAddressLookupTable(lookupTableAddress);
       const lookupTable = lookupTableResponse.value;
 
@@ -45,17 +52,21 @@ export async function getCachedAddressLookupTable(
 
       return lookupTable;
     })().catch((error) => {
-      if (lookupTableCache.get(cacheKey) === request) {
+      if (lookupTableCache.get(cacheKey)?.request === request) {
         lookupTableCache.delete(cacheKey);
       }
 
       throw error;
     });
 
-    lookupTableCache.set(cacheKey, request);
+    entry = {
+      expiresAt: now + ADDRESS_LOOKUP_TABLE_CACHE_TTL_MS,
+      request,
+    };
+    lookupTableCache.set(cacheKey, entry);
   }
 
-  const lookupTable = await request;
+  const lookupTable = await entry.request;
 
   if (options.validateOwner) {
     await validateCachedAddressLookupTableOwner(endpoint, lookupTableAddress);
@@ -69,11 +80,12 @@ async function validateCachedAddressLookupTableOwner(
   lookupTableAddress: PublicKey,
 ) {
   const cacheKey = `${endpoint}:${lookupTableAddress.toBase58()}`;
-  let request = lookupTableOwnerValidationCache.get(cacheKey);
+  const now = Date.now();
+  let entry = lookupTableOwnerValidationCache.get(cacheKey);
 
-  if (!request) {
+  if (!entry || entry.expiresAt <= now) {
     const connection = getConnection(endpoint);
-    request = (async () => {
+    const request = (async () => {
       const lookupTableAccountInfo = await connection.getAccountInfo(lookupTableAddress, "confirmed");
 
       if (!lookupTableAccountInfo) {
@@ -84,17 +96,21 @@ async function validateCachedAddressLookupTableOwner(
         throw new Error("lookup table account has unexpected owner");
       }
     })().catch((error) => {
-      if (lookupTableOwnerValidationCache.get(cacheKey) === request) {
+      if (lookupTableOwnerValidationCache.get(cacheKey)?.request === request) {
         lookupTableOwnerValidationCache.delete(cacheKey);
       }
 
       throw error;
     });
 
-    lookupTableOwnerValidationCache.set(cacheKey, request);
+    entry = {
+      expiresAt: now + ADDRESS_LOOKUP_TABLE_CACHE_TTL_MS,
+      request,
+    };
+    lookupTableOwnerValidationCache.set(cacheKey, entry);
   }
 
-  return request;
+  return entry.request;
 }
 
 export function getCachedAddressLookupTables(
