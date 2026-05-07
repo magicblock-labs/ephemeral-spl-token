@@ -683,6 +683,7 @@ async function trySerializePrivateBaseToBaseTransferTransactionWithLookupTable(
   feePayer: PublicKey,
   blockhash: BlockhashResult,
   validator?: PublicKey,
+  partialSigners: Keypair[] = [],
 ): Promise<TransactionResponse | undefined> {
   if (config.cluster === "custom") {
     return undefined;
@@ -720,6 +721,10 @@ async function trySerializePrivateBaseToBaseTransferTransactionWithLookupTable(
 
     if (compiled.usedLookupTables.length === 0 || compiled.bytesSaved <= 0) {
       return undefined;
+    }
+
+    if (partialSigners.length > 0) {
+      compiled.transaction.sign(partialSigners);
     }
 
     return {
@@ -1043,6 +1048,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
         feePayer,
         blockhash,
         validator,
+        sponsor ? [sponsor] : [],
       );
 
       if (versionedResponse) {

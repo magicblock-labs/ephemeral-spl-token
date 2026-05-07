@@ -2191,6 +2191,88 @@ describe("app", () => {
     expect(privateTransferIx.data[127]).toBe(privateTransferIx.data.length - 128);
   });
 
+  it("builds a gasless v0 private transfer with the sponsor signature", async () => {
+    const sponsor = Keypair.generate();
+    const mint = new PublicKey(DEVNET_USDC_MINT);
+    const validator = new PublicKey(resolvedValidator);
+    const [transferQueue] = deriveTransferQueue(mint, validator);
+    const [rentPda] = deriveRentPda();
+    const [vault] = deriveVault(mint);
+    const vaultAta = deriveVaultAta(mint, vault);
+    const transferEnv = {
+      ...env,
+      BASE_DEVNET_RPC_URL: "https://base.devnet.gasless-transfer.v0.rpc.test",
+      EPHEMERAL_DEVNET_RPC_URL: "https://ephemeral.devnet.gasless-transfer.v0.rpc.test",
+      GASLESS_SPONSOR_SECRET_KEY: JSON.stringify(Array.from(sponsor.secretKey)),
+    };
+
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123,
+    });
+    vi.spyOn(Connection.prototype, "getAddressLookupTable").mockResolvedValue(createLookupTableResponse(
+      createLookupTableAccount([
+        mint,
+        transferQueue,
+        rentPda,
+        vault,
+        vaultAta,
+        TOKEN_PROGRAM_ID,
+        EPHEMERAL_SPL_TOKEN_PROGRAM_ID,
+        SystemProgram.programId,
+      ], new PublicKey("HFmj4QbofPjhXP2vdnDARDQFw1AucSQTKVAs8df4tkUy")),
+    ));
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockResolvedValue(createLookupTableAccountInfo());
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(transferEnv.EPHEMERAL_DEVNET_RPC_URL);
+      return createIdentityResponse(resolvedValidator);
+    });
+
+    const response = await app.request("/v1/spl/transfer", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        from: owner,
+        to: destination,
+        mint: mint.toBase58(),
+        amount: 5_000_000,
+        cluster: "devnet",
+        visibility: "private",
+        fromBalance: "base",
+        toBalance: "base",
+        minDelayMs: "0",
+        maxDelayMs: "0",
+        split: 1,
+        gasless: true,
+      }),
+    }, transferEnv);
+
+    expect(response.status).toBe(200);
+
+    const json = await response.json() as {
+      requiredSigners: string[];
+      transactionBase64: string;
+      version: string;
+    };
+    expect(json.version).toBe("v0");
+    expect(json.requiredSigners).toEqual(expect.arrayContaining([
+      owner,
+      sponsor.publicKey.toBase58(),
+    ]));
+
+    const transaction = VersionedTransaction.deserialize(Buffer.from(json.transactionBase64, "base64"));
+    const requiredSigners = transaction.message.staticAccountKeys.slice(0, transaction.message.header.numRequiredSignatures);
+    const sponsorSignatureIndex = requiredSigners.findIndex((key) => key.equals(sponsor.publicKey));
+    const ownerSignatureIndex = requiredSigners.findIndex((key) => key.toBase58() === owner);
+
+    expect(sponsorSignatureIndex).toBeGreaterThanOrEqual(0);
+    expect(ownerSignatureIndex).toBeGreaterThanOrEqual(0);
+    expect(transaction.signatures[sponsorSignatureIndex]?.every((byte) => byte === 0)).toBe(false);
+    expect(transaction.signatures[ownerSignatureIndex]?.every((byte) => byte === 0)).toBe(true);
+  });
+
   it("builds a gasless public transfer with the sponsor as fee payer", async () => {
     const sponsor = Keypair.generate();
     const mint = DEVNET_USDC_MINT;
