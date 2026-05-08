@@ -73,8 +73,8 @@ export function validationErrorBody(error: ZodError): ValidationErrorResponse {
   });
 
   const missingRequiredPaths = issues
-    .filter((issue) => issue.code === "invalid_type" && issue.message.endsWith("is required") && issue.path.length > 0)
-    .map((issue) => issue.path.join("."));
+    .filter(issue => issue.code === "invalid_type" && issue.message.endsWith("is required") && issue.path.length > 0)
+    .map(issue => issue.path.join("."));
 
   return {
     error: {

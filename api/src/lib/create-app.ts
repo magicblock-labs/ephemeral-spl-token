@@ -25,7 +25,7 @@ export default function createApp() {
     return cors({ origin })(c, next);
   });
 
-  app.notFound((c) => c.json(errorBody("NOT_FOUND", "Route not found"), 404));
+  app.notFound(c => c.json(errorBody("NOT_FOUND", "Route not found"), 404));
 
   app.onError((error, c) => {
     if (error instanceof ZodError) {

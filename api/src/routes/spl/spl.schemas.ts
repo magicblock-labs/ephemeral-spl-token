@@ -185,7 +185,7 @@ export const transferRequestSchema = z.object({
   }).optional(),
   gasless: z.boolean().openapi({
     example: true,
-    description: "Optional. When true, the API uses the configured sponsor as transaction fee payer and prepends a relay-fee token transfer to the sponsor ATA.",
+    description: "Optional. When true, the API uses the configured sponsor as transaction fee payer and prepends a 0.2 USDC/USDT relay-fee token transfer to the sponsor ATA. Requires GASLESS_SPONSOR_SECRET_KEY, an approved stablecoin mint (mainnet USDC/USDT or devnet USDC), and at least 5 USDC/USDT.",
   }).optional(),
   legacy: z.boolean().openapi({
     description: "Optional. Defaults to false. When true, skips lookup-table compilation and returns a legacy transaction.",
@@ -195,18 +195,14 @@ export const transferRequestSchema = z.object({
     from: DEPOSIT_EXAMPLE_OWNER,
     to: TRANSFER_EXAMPLE_TO,
     mint: DEFAULT_DEPOSIT_MINT,
-    amount: 1000000,
+    amount: 5000000,
     visibility: "private",
     fromBalance: "base",
     toBalance: "base",
-    initIfMissing: true,
-    initAtasIfMissing: true,
-    initVaultIfMissing: false,
     memo: "Order #1042",
     minDelayMs: "0",
     maxDelayMs: "0",
     clientRefId: "42",
-    split: 1,
     gasless: true,
   },
 });
@@ -221,7 +217,7 @@ export const balanceRequestSchema = z.object({
     address: BALANCE_EXAMPLE_ADDRESS,
     mint: DEFAULT_DEPOSIT_MINT,
   },
-}); 
+});
 export type BalanceRequest = z.infer<typeof balanceRequestSchema>;
 
 export const challengeRequestSchema = z.object({
@@ -230,7 +226,6 @@ export const challengeRequestSchema = z.object({
     example: BALANCE_EXAMPLE_ADDRESS,
     description: "The public key of the wallet that will read private data",
   }),
-  mock: optionalBooleanSchema,
 });
 export type ChallengeRequest = z.infer<typeof challengeRequestSchema>;
 
@@ -257,7 +252,6 @@ export const loginRequestSchema = z.object({
     example: "1234567890",
     description: "The signature of the challenge by the wallet",
   }),
-  mock: optionalBooleanSchema,
 });
 export type LoginRequest = z.infer<typeof loginRequestSchema>;
 
