@@ -14,7 +14,6 @@ import {
   withdrawSpl, initVaultIx, initVaultAtaIx, delegateEphemeralAtaIx, deriveVault, deriveEphemeralAta, deriveVaultAta,
 } from "@magicblock-labs/ephemeral-rollups-sdk";
 import {
-  AddressLookupTableProgram,
   Connection,
   Keypair,
   LAMPORTS_PER_SOL,
@@ -26,6 +25,7 @@ import {
 
 import type { AppEnv } from "../env";
 import { ApiError } from "./errors";
+import { getCachedAddressLookupTable, getConnection } from "./rpc-cache";
 
 export const TOKEN_PROGRAM_ID = new PublicKey(
   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -57,7 +57,6 @@ const PRIVATE_BASE_TO_BASE_TRANSFER_LOOKUP_TABLES = {
 const GASLESS_RELAY_FEE_MICRO_USDC = 200_000n; // 0.2 USDC/USDT
 const GASLESS_STABLECOIN_MIN_AMOUNT = BigInt(5 * 1_000_000); // 5 USDC/USDT
 
-const connectionCache = new Map<string, Connection>();
 const validatorCache = new Map<string, Promise<PublicKey | undefined>>();
 
 type SendTarget = "base" | "ephemeral";
@@ -185,17 +184,6 @@ type RpcIdentityResponse = {
 type BackgroundTaskScheduler = {
   waitUntil: (promise: Promise<unknown>) => void;
 };
-
-function getConnection(endpoint: string) {
-  let connection = connectionCache.get(endpoint);
-
-  if (!connection) {
-    connection = new Connection(endpoint, "confirmed");
-    connectionCache.set(endpoint, connection);
-  }
-
-  return connection;
-}
 
 function getBaseConnection(config: RpcConfig) {
   return getConnection(config.baseRpcUrl);
@@ -679,31 +667,18 @@ async function trySerializePrivateBaseToBaseTransferTransactionWithLookupTable(
   feePayer: PublicKey,
   blockhash: BlockhashResult,
   validator?: PublicKey,
+  partialSigners: Keypair[] = [],
 ): Promise<TransactionResponse | undefined> {
   if (config.cluster === "custom") {
     return undefined;
   }
 
   const lookupTableAddress = resolvePrivateBaseToBaseTransferLookupTableAddress(env, config.cluster);
-  const connection = getBaseConnection(config);
 
   try {
-    const lookupTableResponse = await connection.getAddressLookupTable(lookupTableAddress);
-    const lookupTable = lookupTableResponse.value;
-
-    if (!lookupTable) {
-      throw new Error("lookup table account was not found");
-    }
-
-    const lookupTableAccountInfo = await connection.getAccountInfo(lookupTableAddress, "confirmed");
-
-    if (!lookupTableAccountInfo) {
-      throw new Error("lookup table account info was not found");
-    }
-
-    if (!lookupTableAccountInfo.owner.equals(AddressLookupTableProgram.programId)) {
-      throw new Error("lookup table account has unexpected owner");
-    }
+    const lookupTable = await getCachedAddressLookupTable(config.baseRpcUrl, lookupTableAddress, {
+      validateOwner: true,
+    });
 
     const lookupTableAddresses = new Set(
       lookupTable.state.addresses.map(address => address.toBase58()),
@@ -730,6 +705,10 @@ async function trySerializePrivateBaseToBaseTransferTransactionWithLookupTable(
 
     if (compiled.usedLookupTables.length === 0 || compiled.bytesSaved <= 0) {
       return undefined;
+    }
+
+    if (partialSigners.length > 0) {
+      compiled.transaction.sign(partialSigners);
     }
 
     return {
@@ -1049,6 +1028,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
         feePayer,
         blockhash,
         validator,
+        sponsor ? [sponsor] : [],
       );
 
       if (versionedResponse) {
