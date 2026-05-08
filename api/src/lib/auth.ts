@@ -138,7 +138,7 @@ export async function login(
 
   const response:
     | { jsonrpc: string; error: { code: number; message: string } }
-    | AuthLoginResponse = (await loginResponse.json()) as AuthLoginResponse;
+    | AuthLoginResponse = await loginResponse.json();
 
   if ("jsonrpc" in response) {
     // Received a regular RPC error, return a mock token
