@@ -119,8 +119,8 @@ export function getCachedAddressLookupTables(
   options: LookupTableCacheOptions = {},
 ) {
   return Promise.all(
-    lookupTableAddresses.map((lookupTableAddress) =>
-      getCachedAddressLookupTable(endpoint, lookupTableAddress, options)
+    lookupTableAddresses.map(lookupTableAddress =>
+      getCachedAddressLookupTable(endpoint, lookupTableAddress, options),
     ),
   );
 }

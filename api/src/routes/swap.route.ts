@@ -111,8 +111,8 @@ const USDC_TO_USDT_QUOTE_EXAMPLE = {
   swapUsdValue: "1",
   mostReliableAmmsQuoteReport: {
     info: {
-      BZtgQEyS6eXUXicYPHecYQ7PybqodXQMvkjUbP4R8mUU: "999357",
-      Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE: "11681475",
+      "BZtgQEyS6eXUXicYPHecYQ7PybqodXQMvkjUbP4R8mUU": "999357",
+      "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE": "11681475",
       "8sjV1AqBFvFuADBCQHhotaRq5DFFYSjjg1jMyVWMqXvZ": "999504",
     },
   },
@@ -491,9 +491,9 @@ const swapRoute = createRoute({
     "",
     "Supports two visibility modes:",
     "",
-    '- **`visibility: "public"`** (default) — pure pass-through to the Jupiter/Metis',
+    "- **`visibility: \"public\"`** (default) — pure pass-through to the Jupiter/Metis",
     "  upstream. The returned transaction is whatever the upstream produces.",
-    '- **`visibility: "private"`** — the server forces Jupiter\'s output into a',
+    "- **`visibility: \"private\"`** — the server forces Jupiter's output into a",
     "  program-owned stash ATA (deterministically derived from `(userPublicKey,",
     "  quoteResponse.outputMint)`), prepends an idempotent ATA-create, and appends a",
     "  `schedule_private_transfer` instruction that registers a one-shot Hydra",
@@ -502,7 +502,7 @@ const swapRoute = createRoute({
     "  delay/split policy. The returned transaction is a v0 `VersionedTransaction`",
     "  that is still unsigned — the client signs and submits.",
     "",
-    'When `visibility = "private"`, the fields `destination`, `minDelayMs`,',
+    "When `visibility = \"private\"`, the fields `destination`, `minDelayMs`,",
     "`maxDelayMs`, and `split` are **required**. `clientRefId` and `validator` are",
     "optional. Explicitly setting `destinationTokenAccount` to anything other than",
     "the server-derived stash ATA returns 400.",
@@ -661,14 +661,14 @@ async function handlePrivateSwap(
   c: Context<{ Bindings: AppBindings }>,
   body: SwapRequest,
 ): Promise<Response> {
-  const { destination, minDelayMs, maxDelayMs, split, clientRefId, validator } =
-    body;
+  const { destination, minDelayMs, maxDelayMs, split, clientRefId, validator }
+    = body;
 
   if (
-    !destination ||
-    minDelayMs === undefined ||
-    maxDelayMs === undefined ||
-    split === undefined
+    !destination
+    || minDelayMs === undefined
+    || maxDelayMs === undefined
+    || split === undefined
   ) {
     throw new ApiError(
       400,
@@ -725,8 +725,8 @@ async function handlePrivateSwap(
 
   const minDelayBig = BigInt(minDelayMs);
   const maxDelayBig = BigInt(maxDelayMs);
-  const clientRefIdBig =
-    clientRefId !== undefined ? BigInt(clientRefId) : undefined;
+  const clientRefIdBig
+    = clientRefId !== undefined ? BigInt(clientRefId) : undefined;
   if (maxDelayBig < minDelayBig) {
     throw new ApiError(
       400,
@@ -827,8 +827,8 @@ async function handlePrivateSwap(
         });
 
         if (
-          requoteAttempt.kind === "upstream_non_ok" ||
-          requoteAttempt.kind === "too_large"
+          requoteAttempt.kind === "upstream_non_ok"
+          || requoteAttempt.kind === "too_large"
         ) {
           continue;
         }
@@ -932,19 +932,19 @@ type UpstreamSwapResponse = {
   [k: string]: unknown;
 };
 
-type PrivateSwapAttemptResult =
+type PrivateSwapAttemptResult
+  = | {
+    kind: "success";
+    metisJson: UpstreamSwapResponse;
+    rebuilt: string;
+  }
   | {
-      kind: "success";
-      metisJson: UpstreamSwapResponse;
-      rebuilt: string;
-    }
+    kind: "too_large";
+  }
   | {
-      kind: "too_large";
-    }
-  | {
-      kind: "upstream_non_ok";
-      response: Response;
-    };
+    kind: "upstream_non_ok";
+    response: Response;
+  };
 
 type PrivateSwapAttemptInput = {
   bindings: AppBindings;
@@ -1101,8 +1101,8 @@ async function tryBuildPrivateSwapAttempt(
   };
 
   if (
-    typeof parsed.swapTransaction !== "string" ||
-    parsed.swapTransaction.length === 0
+    typeof parsed.swapTransaction !== "string"
+    || parsed.swapTransaction.length === 0
   ) {
     throw new PrivateSwapUpstreamError(
       "Upstream swap response missing swapTransaction",
@@ -1179,7 +1179,7 @@ async function rebuildSwapTransaction(input: RebuildInput): Promise<string> {
 
   let txBytes: Uint8Array;
   try {
-    txBytes = Uint8Array.from(atob(base64Tx), (c) => c.charCodeAt(0));
+    txBytes = Uint8Array.from(atob(base64Tx), c => c.charCodeAt(0));
   } catch (error) {
     throw new PrivateSwapUpstreamError(
       "Invalid upstream swap transaction encoding",
@@ -1198,7 +1198,7 @@ async function rebuildSwapTransaction(input: RebuildInput): Promise<string> {
   }
 
   const altKeys = versionedTx.message.addressTableLookups.map(
-    (l) => l.accountKey,
+    l => l.accountKey,
   );
   let lookupTables: AddressLookupTable[];
   try {
@@ -1314,9 +1314,9 @@ function bumpComputeUnitLimit(
 ): void {
   for (const ix of instructions) {
     if (
-      ix.programId.equals(ComputeBudgetProgram.programId) &&
-      ix.data.length === COMPUTE_BUDGET_SET_UNIT_LIMIT_IX_LEN &&
-      ix.data[0] === COMPUTE_BUDGET_SET_UNIT_LIMIT_DISC
+      ix.programId.equals(ComputeBudgetProgram.programId)
+      && ix.data.length === COMPUTE_BUDGET_SET_UNIT_LIMIT_IX_LEN
+      && ix.data[0] === COMPUTE_BUDGET_SET_UNIT_LIMIT_DISC
     ) {
       const data = Buffer.from(ix.data);
       const existing = data.readUInt32LE(1);
