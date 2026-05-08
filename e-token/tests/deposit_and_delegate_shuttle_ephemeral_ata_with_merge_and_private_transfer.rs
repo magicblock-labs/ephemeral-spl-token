@@ -314,7 +314,10 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
     common::metrics::process_transaction_record_cu(
         &context.banks_client,
         tx_delegate_queue,
-        "del_shuttle_priv::queue",
+        &format!(
+            "del_shuttle_priv::queue::{}",
+            if exact_out { "exact_out" } else { "exact_in" }
+        ),
     )
     .await
     .unwrap();
@@ -328,7 +331,10 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
     common::metrics::process_transaction_record_cu(
         &context.banks_client,
         tx_delegate,
-        "del_shuttle_priv::shuttle",
+        &format!(
+            "del_shuttle_priv::shuttle::{}",
+            if exact_out { "exact_out" } else { "exact_in" }
+        ),
     )
     .await
     .unwrap();

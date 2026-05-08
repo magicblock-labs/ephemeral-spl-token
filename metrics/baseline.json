@@ -1,200 +1,203 @@
 {
   "close_eata::close": {
-    "compute_units_consumed": 1711
+    "compute_units_consumed": 1743
   },
   "create_eata_perm::default": {
-    "compute_units_consumed": 13679
+    "compute_units_consumed": 13736
   },
   "create_eata_perm::permissionless": {
-    "compute_units_consumed": 24168
+    "compute_units_consumed": 24225
   },
   "del_eata::delegate": {
-    "compute_units_consumed": 42848
+    "compute_units_consumed": 43951
   },
   "del_eata::non_owner": {
-    "compute_units_consumed": 29348
+    "compute_units_consumed": 30451
   },
   "del_eata::redelegate": {
-    "compute_units_consumed": 145
+    "compute_units_consumed": 175
   },
   "del_eata::reinit": {
-    "compute_units_consumed": 7699
+    "compute_units_consumed": 7726
   },
   "del_eata_perm::delegate": {
-    "compute_units_consumed": 48475
+    "compute_units_consumed": 48499
   },
   "del_eata_perm::non_owner": {
-    "compute_units_consumed": 52975
+    "compute_units_consumed": 52999
   },
   "del_eata_perm::redelegate": {
-    "compute_units_consumed": 165
+    "compute_units_consumed": 189
   },
   "del_shuttle_eata::delegate": {
-    "compute_units_consumed": 24945
+    "compute_units_consumed": 26051
   },
   "del_shuttle_eata::redelegate": {
-    "compute_units_consumed": 152
+    "compute_units_consumed": 182
   },
   "del_shuttle_merge::delegate": {
-    "compute_units_consumed": 79797
+    "compute_units_consumed": 80961
   },
-  "del_shuttle_priv::queue": {
-    "compute_units_consumed": 27399
+  "del_shuttle_priv::queue::exact_in": {
+    "compute_units_consumed": 28490
   },
-  "del_shuttle_priv::shuttle": {
-    "compute_units_consumed": 128013
+  "del_shuttle_priv::queue::exact_out": {
+    "compute_units_consumed": 28490
+  },
+  "del_shuttle_priv::shuttle::exact_in": {
+    "compute_units_consumed": 129090
+  },
+  "del_shuttle_priv::shuttle::exact_out": {
+    "compute_units_consumed": 129091
   },
   "del_tq::delegate": {
-    "compute_units_consumed": 22899
+    "compute_units_consumed": 23990
   },
   "del_tq::redelegate": {
-    "compute_units_consumed": 1786
-  },
-  "dep_queue::accepts_legacy_destination_ata": {
-    "compute_units_consumed": 13468
+    "compute_units_consumed": 1796
   },
   "dep_queue::all_splits_use_client_ref_id": {
-    "compute_units_consumed": 10947
+    "compute_units_consumed": 11189
   },
   "dep_queue::assign_group_id_0": {
-    "compute_units_consumed": 10681
+    "compute_units_consumed": 10851
   },
   "dep_queue::assign_group_id_1": {
-    "compute_units_consumed": 11147
+    "compute_units_consumed": 11293
   },
   "dep_queue::deterministic_delays": {
-    "compute_units_consumed": 11344
+    "compute_units_consumed": 11481
   },
   "dep_queue::once_split": {
-    "compute_units_consumed": 10920
+    "compute_units_consumed": 11122
   },
   "dep_queue::reject_delay_range": {
-    "compute_units_consumed": 331
+    "compute_units_consumed": 814
   },
   "dep_queue::reject_queue_full": {
-    "compute_units_consumed": 273
+    "compute_units_consumed": 523
   },
   "dep_queue::reject_split_gt_amt": {
-    "compute_units_consumed": 328
+    "compute_units_consumed": 811
   },
   "dep_queue::reject_zero_split": {
-    "compute_units_consumed": 323
+    "compute_units_consumed": 809
+  },
+  "dep_queue::rejects_legacy_destination_ata": {
+    "compute_units_consumed": 2654
   },
   "dep_queue::return_to_shuttle": {
-    "compute_units_consumed": 7833
+    "compute_units_consumed": 8084
   },
   "dep_queue::split3_mod5": {
-    "compute_units_consumed": 11119
+    "compute_units_consumed": 11282
   },
   "dep_queue::split4_mod5": {
-    "compute_units_consumed": 11469
+    "compute_units_consumed": 11645
   },
   "dep_shuttle::deposit": {
-    "compute_units_consumed": 7831
+    "compute_units_consumed": 7879
   },
   "dep_spl::deposit": {
-    "compute_units_consumed": 7831
+    "compute_units_consumed": 7879
   },
   "init_eata::init": {
-    "compute_units_consumed": 4717
+    "compute_units_consumed": 4736
   },
   "init_gvault::init": {
-    "compute_units_consumed": 15919
-  },
-  "init_gvault::migrate": {
-    "compute_units_consumed": 12993
+    "compute_units_consumed": 15942
   },
   "init_shuttle::init": {
-    "compute_units_consumed": 18977
+    "compute_units_consumed": 19022
   },
   "init_tq::custom": {
-    "compute_units_consumed": 14972
+    "compute_units_consumed": 15028
   },
   "init_tq::default": {
-    "compute_units_consumed": 13506
+    "compute_units_consumed": 13560
   },
   "init_tq::noop": {
-    "compute_units_consumed": 6406
+    "compute_units_consumed": 6454
   },
   "lamports_pda::allow_extra_lamports": {
-    "compute_units_consumed": 1825
+    "compute_units_consumed": 1869
   },
   "lamports_pda::sponsored_lamports_transfer": {
-    "compute_units_consumed": 60552
+    "compute_units_consumed": 61110
   },
   "lamports_pda::transfer_lamports_pda": {
-    "compute_units_consumed": 6325
+    "compute_units_consumed": 6369
   },
   "merge_shuttle::merge": {
-    "compute_units_consumed": 9484
+    "compute_units_consumed": 9497
   },
   "rent_pda::init": {
-    "compute_units_consumed": 1627
+    "compute_units_consumed": 1644
   },
   "rent_pda::reinit": {
-    "compute_units_consumed": 237
+    "compute_units_consumed": 254
   },
   "reset_eata_perm::reset": {
-    "compute_units_consumed": 26483
+    "compute_units_consumed": 26575
   },
   "tq_alloc::already_allocated": {
-    "compute_units_consumed": 1822
+    "compute_units_consumed": 1852
   },
   "tq_alloc::first_allocate": {
-    "compute_units_consumed": 18880
+    "compute_units_consumed": 19180
   },
   "tq_auto::crank_1": {
-    "compute_units_consumed": 5308
+    "compute_units_consumed": 5337
   },
   "tq_auto::crank_2": {
-    "compute_units_consumed": 6473
+    "compute_units_consumed": 6503
   },
   "tq_auto::crank_bad_magic": {
-    "compute_units_consumed": 284
+    "compute_units_consumed": 818
   },
   "tq_auto::enqueue_delayed": {
-    "compute_units_consumed": 10408
+    "compute_units_consumed": 10521
   },
   "tq_auto::enqueue_ready": {
-    "compute_units_consumed": 10408
+    "compute_units_consumed": 10521
   },
   "tq_auto::enqueue_with_client_ref_id": {
-    "compute_units_consumed": 10409
+    "compute_units_consumed": 10536
   },
   "tq_auto::run_scheduled_tick": {
-    "compute_units_consumed": 15297
+    "compute_units_consumed": 15620
   },
   "tq_auto::run_scheduled_tick_via_magic_bundle": {
-    "compute_units_consumed": 15295
+    "compute_units_consumed": 15619
   },
   "tq_auto::schedule": {
-    "compute_units_consumed": 5308
+    "compute_units_consumed": 5337
   },
   "tq_auto::schedule_with_client_ref_id": {
-    "compute_units_consumed": 5308
+    "compute_units_consumed": 5337
   },
   "tq_auto::tick_after_bundle": {
-    "compute_units_consumed": 2096
+    "compute_units_consumed": 2120
   },
   "tq_auto::tick_empty": {
-    "compute_units_consumed": 2096
+    "compute_units_consumed": 2120
   },
   "tq_auto::tick_not_ready": {
-    "compute_units_consumed": 2182
+    "compute_units_consumed": 2206
   },
   "ud_wd_close::undelegate": {
-    "compute_units_consumed": 13752
+    "compute_units_consumed": 13866
   },
   "undel_eata_cb::undelegate": {
-    "compute_units_consumed": 36852
+    "compute_units_consumed": 36842
   },
   "undel_perm_cb::undelegate": {
     "compute_units_consumed": 34444
   },
   "wd_shuttle::withdraw": {
-    "compute_units_consumed": 63454
+    "compute_units_consumed": 64584
   },
   "wd_spl::withdraw": {
-    "compute_units_consumed": 7841
+    "compute_units_consumed": 7899
   }
 }
