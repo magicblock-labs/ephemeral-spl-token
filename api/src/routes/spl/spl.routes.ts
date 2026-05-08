@@ -142,7 +142,7 @@ export const transferRoute = createRoute({
   description: "Transfer SPL tokens publicly or privately trough an ephemeral rollup.",
   request: {
     body: jsonContentRequired(transferRequestSchema, "Transfer request"),
-    headers: optionalAuthTokenSchema
+    headers: optionalAuthTokenSchema,
   },
   responses: {
     200: jsonContent(transactionResponseSchema, "Unsigned serialized transaction"),
@@ -173,7 +173,7 @@ export const privateBalanceRoute = createRoute({
   description: "Get the balance for the owner's ATA on the ephemeral RPC.",
   request: {
     query: balanceQuerySchema,
-    headers: requiredAuthTokenSchema
+    headers: requiredAuthTokenSchema,
   },
   responses: {
     200: jsonContent(balanceResponseSchema, "Ephemeral token balance", privateBalanceResponseExample),
@@ -227,4 +227,3 @@ export const loginRoute = createRoute({
     500: jsonContent(errorResponseSchema, "Internal server error"),
   },
 });
-

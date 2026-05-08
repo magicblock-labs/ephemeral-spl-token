@@ -54,8 +54,8 @@ export function getEnv(bindings: AppBindings): AppEnv {
         "CONFIG_ERROR",
         "Missing or invalid worker environment variables",
         {
-          issues: error.issues.map((issue) => ({
-            path: issue.path.map((segment) =>
+          issues: error.issues.map(issue => ({
+            path: issue.path.map(segment =>
               typeof segment === "number" ? segment : String(segment),
             ),
             message: issue.message,
