@@ -15,7 +15,7 @@ import {
   getPrivateBalance,
 } from "../lib/solana";
 import {
-  balanceQuerySchema,
+  balanceRequestSchema,
   balanceResponseSchema,
   depositRequestSchema,
   transactionResponseSchema,
@@ -334,7 +334,7 @@ function createMcpServer(env: AppEnv) {
   server.registerTool("spl.getBalance", {
     title: "Get Base Balance",
     description: "Read the owner ATA balance on the base RPC.",
-    inputSchema: balanceQuerySchema,
+    inputSchema: balanceRequestSchema,
     outputSchema: balanceResponseSchema,
   }, async (input) => {
     const response = await getBaseBalance(env, input);
@@ -344,7 +344,7 @@ function createMcpServer(env: AppEnv) {
   server.registerTool("spl.getPrivateBalance", {
     title: "Get Private Balance",
     description: "Read the owner ATA balance on the ephemeral RPC.",
-    inputSchema: balanceQuerySchema,
+    inputSchema: balanceRequestSchema,
     outputSchema: balanceResponseSchema,
   }, async (input) => {
     const response = await getPrivateBalance(env, input);

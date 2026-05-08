@@ -1,4 +1,5 @@
 import { AppEnv } from "../env";
+import { ChallengeRequest, ChallengeResponse, LoginRequest, LoginResponse } from "../routes/spl/spl.schemas";
 import { ApiError } from "./errors";
 import { resolveRpcConfig } from "./solana";
 
@@ -6,36 +7,6 @@ export const MOCK_AUTH_TOKEN = "mock-auth-token";
 export const mockChallenge = (timestamp: string, pubkey: string) =>
   `MOCK: Login to Query Filtering Service\nTimestamp: ${timestamp}\nUser: ${pubkey}`;
 const AUTH_FETCH_TIMEOUT_MS = 5000;
-
-export type ChallengeInput = {
-  pubkey: string;
-  cluster?: string;
-};
-
-export type ChallengeResponse = {
-  challenge: string;
-};
-
-export type LoginInput = {
-  pubkey: string;
-  challenge: string;
-  signature: string;
-  cluster?: string;
-};
-
-export type LoginResponse = {
-  token: string;
-};
-
-export type AuthChallengeResponse = {
-  challenge: string;
-  error?: string;
-};
-
-type AuthLoginResponse = {
-  token?: string;
-  error?: string;
-};
 
 function buildAuthUrl(ephemeralRpcUrl: string, path: string) {
   const url = new URL(ephemeralRpcUrl);
@@ -74,7 +45,7 @@ export function parseAuthToken(
 
 export async function getChallenge(
   env: AppEnv,
-  input: ChallengeInput,
+  input: ChallengeRequest,
 ): Promise<ChallengeResponse> {
   const config = resolveRpcConfig(env, input.cluster);
   const url = buildAuthUrl(config.ephemeralRpcUrl, "auth/challenge");
@@ -91,7 +62,7 @@ export async function getChallenge(
 
   const response:
     | { jsonrpc: string; error: { code: number; message: string } }
-    | AuthChallengeResponse = await challengeResponse.json();
+    | ChallengeResponse = await challengeResponse.json();
   if ("jsonrpc" in response) {
     // Received a regular RPC error, return a mock challenge
     return {
@@ -115,7 +86,7 @@ export async function getChallenge(
 
 export async function login(
   env: AppEnv,
-  input: LoginInput,
+  input: LoginRequest,
 ): Promise<LoginResponse> {
   const config = resolveRpcConfig(env, input.cluster);
   const { pubkey, challenge, signature } = input;
@@ -138,7 +109,7 @@ export async function login(
 
   const response:
     | { jsonrpc: string; error: { code: number; message: string } }
-    | AuthLoginResponse = await loginResponse.json();
+    | LoginResponse = await loginResponse.json();
 
   if ("jsonrpc" in response) {
     // Received a regular RPC error, return a mock token

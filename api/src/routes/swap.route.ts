@@ -20,6 +20,7 @@ import { openApiDefaultHook } from "../lib/create-app";
 import { ApiError, errorResponseSchema } from "../lib/errors";
 import { jsonContent, jsonContentRequired } from "../lib/openapi";
 import { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID } from "../lib/solana";
+import { instructionVersionSchema, optionalBooleanSchema, optionalIntegerSchema, positiveSlippageSchema, prioritizationFeeLamportsSchema, privateTransferDiagnosticSchema, quoteRoutePlanSchema, swapModeSchema, unsignedIntegerStringSchema } from "../schema";
 import {
   getCachedAddressLookupTables,
   type AddressLookupTable,
@@ -68,7 +69,7 @@ class PrivateSwapTooLargeError extends Error {
 }
 
 const tags = ["Swap"];
-const USDC_TO_USDT_QUOTE_EXAMPLE = {
+const USDC_TO_USDT_QUOTE_EXAMPLE: QuoteResponse = {
   inputMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
   inAmount: "1000000",
   outputMint: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
@@ -124,12 +125,12 @@ const USDC_TO_USDT_QUOTE_EXAMPLE = {
   instructionVersion: null,
 } as const;
 
-const SWAP_REQUEST_EXAMPLE = {
+const SWAP_REQUEST_EXAMPLE: SwapRequest = {
   userPublicKey: "3rXKwQ1kpjBd5tdcco32qsvqUh1BnZjcYnS5kYrP7AYE",
   quoteResponse: USDC_TO_USDT_QUOTE_EXAMPLE,
 } as const;
 
-const SWAP_REQUEST_PRIVATE_EXAMPLE = {
+const SWAP_REQUEST_PRIVATE_EXAMPLE: SwapRequest = {
   userPublicKey: "3rXKwQ1kpjBd5tdcco32qsvqUh1BnZjcYnS5kYrP7AYE",
   quoteResponse: USDC_TO_USDT_QUOTE_EXAMPLE,
   visibility: "private",
@@ -139,14 +140,13 @@ const SWAP_REQUEST_PRIVATE_EXAMPLE = {
   split: 1,
 } as const;
 
-const SWAP_RESPONSE_PUBLIC_EXAMPLE = {
+const SWAP_RESPONSE_PUBLIC_EXAMPLE: SwapResponse = {
   swapTransaction: "AQABA...base64...",
   lastValidBlockHeight: 318_120_000,
 } as const;
 
-const SWAP_RESPONSE_PRIVATE_EXAMPLE = {
-  swapTransaction:
-    "AQABA...base64 with appended ATA-create + schedule_private_transfer...",
+const SWAP_RESPONSE_PRIVATE_EXAMPLE: SwapResponse = {
+  swapTransaction: "AQABA...base64 with appended ATA-create + schedule_private_transfer...",
   lastValidBlockHeight: 318_120_000,
   privateTransfer: {
     stashAta: "9mZP3xKHvVqXd3xtk72nSeEwJjmsgqmXvUDfwNA9BM4K",
@@ -155,313 +155,199 @@ const SWAP_RESPONSE_PRIVATE_EXAMPLE = {
   },
 } as const;
 
-const unsignedIntegerStringSchema = z
-  .string()
-  .regex(/^\d+$/, "Must be an unsigned integer string");
+const quoteQuerySchema = z.object({
+  inputMint: z.string().openapi({
+    example: "So11111111111111111111111111111111111111112",
+    description: "Input token mint address.",
+  }),
+  outputMint: z.string().openapi({
+    example: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    description: "Output token mint address.",
+  }),
+  amount: unsignedIntegerStringSchema.openapi({
+    example: "1000000",
+    description: "Raw amount to swap before decimals are applied.",
+  }),
+  slippageBps: optionalIntegerSchema.openapi({
+    example: 50,
+    description: "Slippage threshold in basis points.",
+  }),
+  swapMode: swapModeSchema.optional().openapi({
+    example: "ExactIn",
+    description: "Use `ExactIn` for fixed input amount or `ExactOut` for fixed output amount.",
+  }),
+  dexes: z.string().optional().openapi({
+    example: "Raydium,Orca+V2",
+    description: "Optional comma-separated list of DEX labels to include.",
+  }),
+  excludeDexes: z.string().optional().openapi({
+    example: "Meteora+DLMM",
+    description: "Optional comma-separated list of DEX labels to exclude.",
+  }),
+  restrictIntermediateTokens: optionalBooleanSchema.openapi({
+    example: true,
+    description: "Restrict intermediate tokens to a more stable set.",
+  }),
+  onlyDirectRoutes: optionalBooleanSchema.openapi({
+    example: false,
+    description: "Limit routing to a single hop.",
+  }),
+  asLegacyTransaction: optionalBooleanSchema.openapi({
+    example: false,
+    description: "Request a legacy transaction-compatible route.",
+  }),
+  platformFeeBps: optionalIntegerSchema.openapi({
+    example: 20,
+    description: "Optional platform fee in basis points.",
+  }),
+  maxAccounts: optionalIntegerSchema.openapi({
+    example: 64,
+    description: "Approximate maximum account budget for the route.",
+  }),
+  instructionVersion: instructionVersionSchema.optional().openapi({
+    example: "V1",
+    description: "Instruction format to target.",
+  }),
+  dynamicSlippage: optionalBooleanSchema.openapi({
+    example: false,
+    description: "Keep for compatibility with upstream quote parameters.",
+  }),
+  forJitoBundle: optionalBooleanSchema.openapi({
+    example: false,
+    description: "Exclude routes that are incompatible with Jito bundles.",
+  }),
+  supportDynamicIntermediateTokens: optionalBooleanSchema.openapi({
+    example: false,
+    description: "Allow dynamic selection of intermediate tokens.",
+  }),
+}).openapi("SwapQuoteQuery");
+export type QuoteQuery = z.infer<typeof quoteQuerySchema>;
 
-const optionalBooleanQuerySchema = z.preprocess((value) => {
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    if (normalized === "true") return true;
-    if (normalized === "false") return false;
-  }
-  return value;
-}, z.boolean().optional());
+const quoteResponseSchema = z.object({
+  inputMint: z.string(),
+  inAmount: unsignedIntegerStringSchema,
+  outputMint: z.string(),
+  outAmount: unsignedIntegerStringSchema,
+  otherAmountThreshold: unsignedIntegerStringSchema,
+  swapMode: swapModeSchema,
+  slippageBps: z.number().int().nonnegative(),
+  priceImpactPct: z.string(),
+  routePlan: z.array(quoteRoutePlanSchema),
+  instructionVersion: instructionVersionSchema.nullable().optional(),
+  platformFee: z.object({
+    amount: unsignedIntegerStringSchema,
+    feeBps: z.number().int().nonnegative(),
+  }).passthrough().nullable().optional(),
+  contextSlot: z.number().int().nonnegative().optional(),
+  timeTaken: z.number().optional(),
+  additionalIntermediateTokens: z.array(z.string()).nullable().optional(),
+}).passthrough().openapi("SwapQuoteResponse");
+export type QuoteResponse = z.infer<typeof quoteResponseSchema>;
 
-const optionalIntegerQuerySchema = z.preprocess((value) => {
-  if (value === undefined || value === "") {
-    return undefined;
-  }
+const swapRequestSchema = z.object({
+  userPublicKey: z.string().openapi({
+    example: "3rXKwQ1kpjBd5tdcco32qsvqUh1BnZjcYnS5kYrP7AYE",
+    description: "Public key of the wallet that will sign the swap transaction.",
+  }),
+  quoteResponse: quoteResponseSchema,
+  payer: z.string().optional().openapi({
+    example: "3rXKwQ1kpjBd5tdcco32qsvqUh1BnZjcYnS5kYrP7AYE",
+    description: "Optional fee payer for transaction fees and rent.",
+  }),
+  wrapAndUnwrapSol: z.boolean().optional().openapi({
+    example: true,
+    description: "Automatically wrap and unwrap native SOL when needed.",
+  }),
+  useSharedAccounts: z.boolean().optional().openapi({
+    example: true,
+    description: "Allow shared accounts for intermediate routing state.",
+  }),
+  feeAccount: z.string().optional().openapi({
+    example: "6QxLzE2KfM1NAB7sTzUPk4cNsA6V9fB3eYq9s6d9r9hP",
+    description: "Optional initialized token account used to collect platform fees.",
+  }),
+  trackingAccount: z.string().optional().openapi({
+    example: "Bt9oNR5cCtnfuMmXgWELd6q5i974PdEMQDUE55nBC57L",
+    description: "Optional public key used for downstream transaction tracking.",
+  }),
+  prioritizationFeeLamports: prioritizationFeeLamportsSchema.optional().openapi({
+    description: "Optional priority fee configuration or fixed lamport amount.",
+  }),
+  asLegacyTransaction: z.boolean().optional().openapi({
+    example: false,
+    description: "Build a legacy transaction instead of a versioned one.",
+  }),
+  destinationTokenAccount: z.string().optional().openapi({
+    example: "6QxLzE2KfM1NAB7sTzUPk4cNsA6V9fB3eYq9s6d9r9hP",
+    description: "Optional destination token account for the output mint.",
+  }),
+  nativeDestinationAccount: z.string().optional().openapi({
+    example: "Bt9oNR5cCtnfuMmXgWELd6q5i974PdEMQDUE55nBC57L",
+    description: "Optional destination account for native SOL output.",
+  }),
+  dynamicComputeUnitLimit: z.boolean().optional().openapi({
+    example: false,
+    description: "Estimate compute usage and set the compute unit limit automatically.",
+  }),
+  skipUserAccountsRpcCalls: z.boolean().optional().openapi({
+    example: false,
+    description: "Skip extra RPC checks for required user accounts.",
+  }),
+  dynamicSlippage: z.boolean().optional().openapi({
+    example: false,
+    description: "Let the upstream swap builder overwrite slippage on the transaction.",
+  }),
+  computeUnitPriceMicroLamports: z.number().int().nonnegative().optional().openapi({
+    example: 1000,
+    description: "Optional exact compute unit price in micro-lamports.",
+  }),
+  blockhashSlotsToExpiry: z.number().int().nonnegative().optional().openapi({
+    example: 10,
+    description: "Optional transaction expiry window in slots.",
+  }),
+  positiveSlippage: positiveSlippageSchema.optional().openapi({
+    description: "Optional positive slippage collection settings.",
+  }),
+  visibility: z.enum(["public", "private"]).optional().openapi({
+    example: "public",
+    description: "Public swap (default) proxies Jupiter/Metis as-is. `private` forces Jupiter's output into a program-owned stash ATA and appends a scheduled private transfer.",
+  }),
+  destination: z.string().optional().openapi({
+    example: "3rXKwQ1kpjBd5tdcco32qsvqUh1BnZjcYnS5kYrP7AYE",
+    description: "Final private-transfer recipient (wallet pubkey). Required when visibility=private.",
+  }),
+  minDelayMs: unsignedIntegerStringSchema.optional().openapi({
+    example: "0",
+    description: "Earliest (ms) the queued transfer may settle. Required when visibility=private.",
+  }),
+  maxDelayMs: unsignedIntegerStringSchema.optional().openapi({
+    example: "60000",
+    description: "Latest (ms) the queued transfer may settle. Required when visibility=private.",
+  }),
+  split: z.number().int().positive().optional().openapi({
+    example: 1,
+    description: "Number of queue entries to split the transfer across. Required when visibility=private. Must be between 1 and 14.",
+  }),
+  clientRefId: unsignedIntegerStringSchema.optional().openapi({
+    example: "0",
+    description: "Optional u64 client correlation id attached to each queued split.",
+  }),
+  validator: z.string().optional().openapi({
+    example: "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57",
+    description: "Optional validator pubkey for the transfer-queue PDA. Defaults to the well-known MagicBlock validator.",
+  }),
+}).passthrough().openapi("SwapRequest");
+export type SwapRequest = z.infer<typeof swapRequestSchema>;
 
-  if (typeof value === "string" && /^\d+$/.test(value)) {
-    return Number(value);
-  }
-
-  return value;
-}, z.number().int().nonnegative().optional());
-
-const swapModeSchema = z.enum(["ExactIn", "ExactOut"]).openapi("SwapMode");
-const instructionVersionSchema = z
-  .enum(["V1", "V2"])
-  .openapi("InstructionVersion");
-
-const quoteQuerySchema = z
-  .object({
-    inputMint: z.string().openapi({
-      example: "So11111111111111111111111111111111111111112",
-      description: "Input token mint address.",
-    }),
-    outputMint: z.string().openapi({
-      example: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-      description: "Output token mint address.",
-    }),
-    amount: unsignedIntegerStringSchema.openapi({
-      example: "1000000",
-      description: "Raw amount to swap before decimals are applied.",
-    }),
-    slippageBps: optionalIntegerQuerySchema.openapi({
-      example: 50,
-      description: "Slippage threshold in basis points.",
-    }),
-    swapMode: swapModeSchema.optional().openapi({
-      example: "ExactIn",
-      description:
-        "Use `ExactIn` for fixed input amount or `ExactOut` for fixed output amount.",
-    }),
-    dexes: z.string().optional().openapi({
-      example: "Raydium,Orca+V2",
-      description: "Optional comma-separated list of DEX labels to include.",
-    }),
-    excludeDexes: z.string().optional().openapi({
-      example: "Meteora+DLMM",
-      description: "Optional comma-separated list of DEX labels to exclude.",
-    }),
-    restrictIntermediateTokens: optionalBooleanQuerySchema.openapi({
-      example: true,
-      description: "Restrict intermediate tokens to a more stable set.",
-    }),
-    onlyDirectRoutes: optionalBooleanQuerySchema.openapi({
-      example: false,
-      description: "Limit routing to a single hop.",
-    }),
-    asLegacyTransaction: optionalBooleanQuerySchema.openapi({
-      example: false,
-      description: "Request a legacy transaction-compatible route.",
-    }),
-    platformFeeBps: optionalIntegerQuerySchema.openapi({
-      example: 20,
-      description: "Optional platform fee in basis points.",
-    }),
-    maxAccounts: optionalIntegerQuerySchema.openapi({
-      example: 64,
-      description: "Approximate maximum account budget for the route.",
-    }),
-    instructionVersion: instructionVersionSchema.optional().openapi({
-      example: "V1",
-      description: "Instruction format to target.",
-    }),
-    dynamicSlippage: optionalBooleanQuerySchema.openapi({
-      example: false,
-      description: "Keep for compatibility with upstream quote parameters.",
-    }),
-    forJitoBundle: optionalBooleanQuerySchema.openapi({
-      example: false,
-      description: "Exclude routes that are incompatible with Jito bundles.",
-    }),
-    supportDynamicIntermediateTokens: optionalBooleanQuerySchema.openapi({
-      example: false,
-      description: "Allow dynamic selection of intermediate tokens.",
-    }),
-  })
-  .openapi("SwapQuoteQuery");
-
-const quoteRoutePlanSchema = z
-  .object({
-    swapInfo: z
-      .object({
-        ammKey: z.string(),
-        inputMint: z.string(),
-        outputMint: z.string(),
-        inAmount: unsignedIntegerStringSchema,
-        outAmount: unsignedIntegerStringSchema,
-        label: z.string(),
-        outAmountAfterSlippage: unsignedIntegerStringSchema.optional(),
-      })
-      .passthrough(),
-    percent: z.number().int().nonnegative(),
-    bps: z.number().int().nonnegative().nullable(),
-  })
-  .passthrough();
-
-const quoteResponseSchema = z
-  .object({
-    inputMint: z.string(),
-    inAmount: unsignedIntegerStringSchema,
-    outputMint: z.string(),
-    outAmount: unsignedIntegerStringSchema,
-    otherAmountThreshold: unsignedIntegerStringSchema,
-    swapMode: swapModeSchema,
-    slippageBps: z.number().int().nonnegative(),
-    priceImpactPct: z.string(),
-    routePlan: z.array(quoteRoutePlanSchema),
-    instructionVersion: instructionVersionSchema.nullable().optional(),
-    platformFee: z
-      .object({
-        amount: unsignedIntegerStringSchema,
-        feeBps: z.number().int().nonnegative(),
-      })
-      .passthrough()
-      .nullable()
-      .optional(),
-    contextSlot: z.number().int().nonnegative().optional(),
-    timeTaken: z.number().optional(),
-    additionalIntermediateTokens: z.array(z.string()).nullable().optional(),
-  })
-  .passthrough()
-  .openapi("SwapQuoteResponse");
-
-const prioritizationFeeLamportsSchema = z.union([
-  z.number().int().nonnegative(),
-  z
-    .object({
-      priorityLevelWithMaxLamports: z
-        .object({
-          priorityLevel: z.string(),
-          maxLamports: z.number().int().nonnegative(),
-          global: z.boolean().optional(),
-        })
-        .optional(),
-      jitoTipLamports: z.number().int().nonnegative().optional(),
-      jitoTipLamportsWithPayer: z.number().int().nonnegative().optional(),
-    })
-    .passthrough(),
-]);
-
-const positiveSlippageSchema = z
-  .object({
-    bps: z.number().int().nonnegative(),
-    feeAccount: z.string().optional(),
-  })
-  .passthrough();
-
-const swapRequestSchema = z
-  .object({
-    userPublicKey: z.string().openapi({
-      example: "3rXKwQ1kpjBd5tdcco32qsvqUh1BnZjcYnS5kYrP7AYE",
-      description:
-        "Public key of the wallet that will sign the swap transaction.",
-    }),
-    quoteResponse: quoteResponseSchema,
-    payer: z.string().optional().openapi({
-      example: "3rXKwQ1kpjBd5tdcco32qsvqUh1BnZjcYnS5kYrP7AYE",
-      description: "Optional fee payer for transaction fees and rent.",
-    }),
-    wrapAndUnwrapSol: z.boolean().optional().openapi({
-      example: true,
-      description: "Automatically wrap and unwrap native SOL when needed.",
-    }),
-    useSharedAccounts: z.boolean().optional().openapi({
-      example: true,
-      description: "Allow shared accounts for intermediate routing state.",
-    }),
-    feeAccount: z.string().optional().openapi({
-      example: "6QxLzE2KfM1NAB7sTzUPk4cNsA6V9fB3eYq9s6d9r9hP",
-      description:
-        "Optional initialized token account used to collect platform fees.",
-    }),
-    trackingAccount: z.string().optional().openapi({
-      example: "Bt9oNR5cCtnfuMmXgWELd6q5i974PdEMQDUE55nBC57L",
-      description:
-        "Optional public key used for downstream transaction tracking.",
-    }),
-    prioritizationFeeLamports: prioritizationFeeLamportsSchema
-      .optional()
-      .openapi({
-        description:
-          "Optional priority fee configuration or fixed lamport amount.",
-      }),
-    asLegacyTransaction: z.boolean().optional().openapi({
-      example: false,
-      description: "Build a legacy transaction instead of a versioned one.",
-    }),
-    destinationTokenAccount: z.string().optional().openapi({
-      example: "6QxLzE2KfM1NAB7sTzUPk4cNsA6V9fB3eYq9s6d9r9hP",
-      description: "Optional destination token account for the output mint.",
-    }),
-    nativeDestinationAccount: z.string().optional().openapi({
-      example: "Bt9oNR5cCtnfuMmXgWELd6q5i974PdEMQDUE55nBC57L",
-      description: "Optional destination account for native SOL output.",
-    }),
-    dynamicComputeUnitLimit: z.boolean().optional().openapi({
-      example: false,
-      description:
-        "Estimate compute usage and set the compute unit limit automatically.",
-    }),
-    skipUserAccountsRpcCalls: z.boolean().optional().openapi({
-      example: false,
-      description: "Skip extra RPC checks for required user accounts.",
-    }),
-    dynamicSlippage: z.boolean().optional().openapi({
-      example: false,
-      description:
-        "Let the upstream swap builder overwrite slippage on the transaction.",
-    }),
-    computeUnitPriceMicroLamports: z
-      .number()
-      .int()
-      .nonnegative()
-      .optional()
-      .openapi({
-        example: 1000,
-        description: "Optional exact compute unit price in micro-lamports.",
-      }),
-    blockhashSlotsToExpiry: z.number().int().nonnegative().optional().openapi({
-      example: 10,
-      description: "Optional transaction expiry window in slots.",
-    }),
-    positiveSlippage: positiveSlippageSchema.optional().openapi({
-      description: "Optional positive slippage collection settings.",
-    }),
-    visibility: z.enum(["public", "private"]).optional().openapi({
-      example: "public",
-      description:
-        "Public swap (default) proxies Jupiter/Metis as-is. `private` forces Jupiter's output into a program-owned stash ATA and appends a scheduled private transfer.",
-    }),
-    destination: z.string().optional().openapi({
-      example: "3rXKwQ1kpjBd5tdcco32qsvqUh1BnZjcYnS5kYrP7AYE",
-      description:
-        "Final private-transfer recipient (wallet pubkey). Required when visibility=private.",
-    }),
-    minDelayMs: unsignedIntegerStringSchema.optional().openapi({
-      example: "0",
-      description:
-        "Earliest (ms) the queued transfer may settle. Required when visibility=private.",
-    }),
-    maxDelayMs: unsignedIntegerStringSchema.optional().openapi({
-      example: "60000",
-      description:
-        "Latest (ms) the queued transfer may settle. Required when visibility=private.",
-    }),
-    split: z.number().int().positive().optional().openapi({
-      example: 1,
-      description:
-        "Number of queue entries to split the transfer across. Required when visibility=private. Must be between 1 and 14.",
-    }),
-    clientRefId: unsignedIntegerStringSchema.optional().openapi({
-      example: "0",
-      description:
-        "Optional u64 client correlation id attached to each queued split.",
-    }),
-    validator: z.string().optional().openapi({
-      example: "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57",
-      description:
-        "Optional validator pubkey for the transfer-queue PDA. Defaults to the well-known MagicBlock validator.",
-    }),
-  })
-  .passthrough()
-  .openapi("SwapRequest");
-
-type QuoteResponse = z.infer<typeof quoteResponseSchema>;
-type SwapRequest = z.infer<typeof swapRequestSchema>;
-
-const privateTransferDiagnosticSchema = z.object({
-  stashAta: z.string(),
-  hydraCrankPda: z.string(),
-  shuttleId: z.number().int().nonnegative(),
-});
-
-const swapResponseSchema = z
-  .object({
-    swapTransaction: z.string(),
-    lastValidBlockHeight: z.number().int().nonnegative().optional(),
-    prioritizationFeeLamports: z.number().int().nonnegative().optional(),
-    privateTransfer: privateTransferDiagnosticSchema.optional().openapi({
-      description:
-        "Present when visibility=private. Diagnostic metadata about the appended schedule_private_transfer instruction.",
-    }),
-  })
-  .passthrough()
-  .openapi("SwapResponse");
+const swapResponseSchema = z.object({
+  swapTransaction: z.string(),
+  lastValidBlockHeight: z.number().int().nonnegative().optional(),
+  prioritizationFeeLamports: z.number().int().nonnegative().optional(),
+  privateTransfer: privateTransferDiagnosticSchema.optional().openapi({
+    description: "Present when visibility=private. Diagnostic metadata about the appended schedule_private_transfer instruction.",
+  }),
+}).passthrough().openapi("SwapResponse");
+export type SwapResponse = z.infer<typeof swapResponseSchema>;
 
 const quoteRoute = createRoute({
   path: "/v1/swap/quote",
@@ -642,7 +528,7 @@ app.openapi(quoteRoute, ((c: Context<{ Bindings: AppBindings }>) =>
   proxyGet(c, "quote")) as any);
 app.openapi(swapRoute, (async (c: Context<{ Bindings: AppBindings }>) => {
   const request = c.req as typeof c.req & {
-    valid: (target: "json") => z.infer<typeof swapRequestSchema>;
+    valid: (target: "json") => SwapRequest;
   };
   const body = request.valid("json");
 
@@ -1276,7 +1162,7 @@ async function rebuildSwapTransaction(input: RebuildInput): Promise<string> {
     );
   }
 
-  return bytesToBase64(serialized);
+  return Buffer.from(serialized).toString("base64");
 }
 
 function createAssociatedTokenAccountIdempotentInstruction(
@@ -1326,14 +1212,6 @@ function bumpComputeUnitLimit(
       return;
     }
   }
-}
-
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  for (let i = 0; i < bytes.length; i += 1) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
 }
 
 export default app;

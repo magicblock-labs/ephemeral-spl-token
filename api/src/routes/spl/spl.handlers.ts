@@ -1,5 +1,4 @@
 import type { RouteHandler } from "@hono/zod-openapi";
-import { z } from "@hono/zod-openapi";
 
 import { getEnv, type AppBindings } from "../../env";
 import {
@@ -23,14 +22,14 @@ import {
   withdrawRoute,
 } from "./spl.routes";
 import {
-  balanceQuerySchema,
-  challengeQuerySchema,
-  depositRequestSchema,
-  initializeMintRequestSchema,
-  loginQuerySchema,
-  mintInitializationQuerySchema,
-  transferRequestSchema,
-  withdrawRequestSchema,
+  BalanceRequest,
+  ChallengeRequest,
+  DepositRequest,
+  InitializeMintRequest,
+  LoginRequest,
+  MintInitializationRequest,
+  TransferRequest,
+  WithdrawRequest,
 } from "./spl.schemas";
 import { getChallenge, login, MOCK_AUTH_TOKEN, parseAuthToken } from "../../lib/auth";
 
@@ -49,28 +48,28 @@ function getBackgroundScheduler(c: { executionCtx: BackgroundScheduler }) {
 
 export const depositHandler: RouteHandler<typeof depositRoute, RouteEnv> = async (c) => {
   const env = getEnv(c.env);
-  const body = c.req.valid("json") as z.infer<typeof depositRequestSchema>;
+  const body = c.req.valid("json") as DepositRequest;
   const response = await buildDepositTransaction(env, body);
   return c.json(response, 200);
 };
 
 export const withdrawHandler: RouteHandler<typeof withdrawRoute, RouteEnv> = async (c) => {
   const env = getEnv(c.env);
-  const body = c.req.valid("json") as z.infer<typeof withdrawRequestSchema>;
+  const body = c.req.valid("json") as WithdrawRequest;
   const response = await buildWithdrawTransaction(env, body);
   return c.json(response, 200);
 };
 
 export const initializeMintHandler: RouteHandler<typeof initializeMintRoute, RouteEnv> = async (c) => {
   const env = getEnv(c.env);
-  const body = c.req.valid("json") as z.infer<typeof initializeMintRequestSchema>;
+  const body = c.req.valid("json") as InitializeMintRequest;
   const response = await buildInitializeMintTransaction(env, body);
   return c.json(response, 200);
 };
 
 export const transferHandler: RouteHandler<typeof transferRoute, RouteEnv> = async (c) => {
   const env = getEnv(c.env);
-  const body = c.req.valid("json") as z.infer<typeof transferRequestSchema>;
+  const body = c.req.valid("json") as TransferRequest;
   const authToken = parseAuthToken(c.req.header());
   const response = await buildTransferTransaction(env, body, authToken);
   return c.json(response, 200);
@@ -78,14 +77,14 @@ export const transferHandler: RouteHandler<typeof transferRoute, RouteEnv> = asy
 
 export const balanceHandler: RouteHandler<typeof balanceRoute, RouteEnv> = async (c) => {
   const env = getEnv(c.env);
-  const query = c.req.valid("query") as z.infer<typeof balanceQuerySchema>;
+  const query = c.req.valid("query") as BalanceRequest;
   const response = await getBaseBalance(env, query);
   return c.json(response, 200);
 };
 
 export const privateBalanceHandler: RouteHandler<typeof privateBalanceRoute, RouteEnv> = async (c) => {
   const env = getEnv(c.env);
-  const query = c.req.valid("query") as z.infer<typeof balanceQuerySchema>;
+  const query = c.req.valid("query") as BalanceRequest;
   const authToken = parseAuthToken(c.req.header());
 
   if (!authToken) {
@@ -101,7 +100,7 @@ export const privateBalanceHandler: RouteHandler<typeof privateBalanceRoute, Rou
 
 export const mintInitializationHandler: RouteHandler<typeof mintInitializationRoute, RouteEnv> = async (c) => {
   const env = getEnv(c.env);
-  const query = c.req.valid("query") as z.infer<typeof mintInitializationQuerySchema>;
+  const query = c.req.valid("query") as MintInitializationRequest;
   const response = await getMintInitializationStatus(
     env,
     query,
@@ -112,14 +111,14 @@ export const mintInitializationHandler: RouteHandler<typeof mintInitializationRo
 
 export const challengeHandler: RouteHandler<typeof challengeRoute, RouteEnv> = async (c) => {
   const env = getEnv(c.env);
-  const query = c.req.valid("query") as z.infer<typeof challengeQuerySchema>;
+  const query = c.req.valid("query") as ChallengeRequest;
   const response = await getChallenge(env, query);
   return c.json(response, 200);
 };
 
 export const loginHandler: RouteHandler<typeof loginRoute, RouteEnv> = async (c) => {
   const env = getEnv(c.env);
-  const body = c.req.valid("json") as z.infer<typeof loginQuerySchema>;
+  const body = c.req.valid("json") as LoginRequest;
   const response = await login(env, body);
   return c.json(response, 200);
 };

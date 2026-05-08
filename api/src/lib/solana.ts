@@ -25,6 +25,7 @@ import {
 
 import type { AppEnv } from "../env";
 import { ApiError } from "./errors";
+import { BalanceRequest, BalanceResponse, DepositRequest, InitializeMintRequest, InitializeMintResponse, MintInitializationRequest, MintInitializationResponse, TransactionResponse, TransferRequest, WithdrawRequest } from "../routes/spl/spl.schemas";
 import { getCachedAddressLookupTable, getConnection } from "./rpc-cache";
 
 export const TOKEN_PROGRAM_ID = new PublicKey(
@@ -70,106 +71,6 @@ type RpcConfig = {
   baseRpcUrl: string;
   ephemeralRpcUrl: string;
   cluster: "mainnet" | "devnet" | "custom";
-};
-
-type TransactionResponse = {
-  kind: "deposit" | "withdraw" | "transfer" | "initializeMint";
-  version: "legacy" | "v0";
-  transactionBase64: string;
-  sendTo: SendTarget;
-  recentBlockhash: string;
-  lastValidBlockHeight: number;
-  instructionCount: number;
-  requiredSigners: string[];
-  validator?: string;
-};
-
-type DepositInput = {
-  owner: string;
-  mint?: string;
-  amount: string | number;
-  cluster?: string;
-  validator?: string;
-  initIfMissing?: boolean;
-  initVaultIfMissing?: boolean;
-  initAtasIfMissing?: boolean;
-  idempotent?: boolean;
-};
-
-type WithdrawInput = {
-  owner: string;
-  mint: string;
-  amount: string | number;
-  cluster?: string;
-  validator?: string;
-  initIfMissing?: boolean;
-  initAtasIfMissing?: boolean;
-  escrowIndex?: number;
-  idempotent?: boolean;
-};
-
-type InitializeMintTransactionInput = {
-  payer: string;
-  mint: string;
-  cluster?: string;
-  validator?: string;
-};
-
-type TransferInput = {
-  from: string;
-  to: string;
-  mint: string;
-  amount: string | number;
-  cluster?: string;
-  fromBalance: "base" | "ephemeral";
-  toBalance: "base" | "ephemeral";
-  visibility: "public" | "private";
-  validator?: string;
-  initIfMissing?: boolean;
-  initAtasIfMissing?: boolean;
-  initVaultIfMissing?: boolean;
-  memo?: string;
-  minDelayMs?: string;
-  maxDelayMs?: string;
-  clientRefId?: string;
-  split?: number;
-  exactOut?: boolean;
-  legacy?: boolean;
-  gasless?: boolean;
-};
-
-type BalanceInput = {
-  address: string;
-  mint: string;
-  cluster?: string;
-};
-
-type MintInitializationInput = {
-  mint: string;
-  validator?: string;
-  cluster?: string;
-};
-
-type BalanceResponse = {
-  address: string;
-  mint: string;
-  ata: string;
-  location: SendTarget;
-  balance: string;
-};
-
-type MintInitializationResponse = {
-  mint: string;
-  validator: string;
-  transferQueue: string;
-  initialized: boolean;
-};
-
-type InitializeMintTransactionResponse = TransactionResponse & {
-  kind: "initializeMint";
-  validator: string;
-  transferQueue: string;
-  rentPda: string;
 };
 
 type RpcIdentityResponse = {
@@ -732,7 +633,7 @@ async function trySerializePrivateBaseToBaseTransferTransactionWithLookupTable(
   }
 }
 
-export async function buildDepositTransaction(env: AppEnv, input: DepositInput) {
+export async function buildDepositTransaction(env: AppEnv, input: DepositRequest) {
   try {
     const config = resolveRpcConfig(env, input.cluster);
     const owner = parsePublicKey(input.owner, "owner");
@@ -770,7 +671,7 @@ export async function buildDepositTransaction(env: AppEnv, input: DepositInput) 
   }
 }
 
-export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawInput) {
+export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawRequest) {
   try {
     const config = resolveRpcConfig(env, input.cluster);
     const owner = parsePublicKey(input.owner, "owner");
@@ -806,8 +707,8 @@ export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawInput
 
 export async function buildInitializeMintTransaction(
   env: AppEnv,
-  input: InitializeMintTransactionInput,
-): Promise<InitializeMintTransactionResponse> {
+  input: InitializeMintRequest,
+): Promise<InitializeMintResponse> {
   try {
     const config = resolveRpcConfig(env, input.cluster);
     const payer = parsePublicKey(input.payer, "payer");
@@ -874,7 +775,7 @@ export async function buildInitializeMintTransaction(
   }
 }
 
-export async function buildTransferTransaction(env: AppEnv, input: TransferInput, authToken?: string) {
+export async function buildTransferTransaction(env: AppEnv, input: TransferRequest, authToken?: string) {
   try {
     const config = resolveRpcConfig(env, input.cluster);
     const from = parsePublicKey(input.from, "from");
@@ -1053,7 +954,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
 
 async function getBalanceInternal(
   env: AppEnv,
-  input: BalanceInput,
+  input: BalanceRequest,
   location: SendTarget,
   authToken?: string,
 ): Promise<BalanceResponse> {
@@ -1084,11 +985,11 @@ async function getBalanceInternal(
   }
 }
 
-export function getBaseBalance(env: AppEnv, input: BalanceInput) {
+export function getBaseBalance(env: AppEnv, input: BalanceRequest) {
   return getBalanceInternal(env, input, "base");
 }
 
-export function getPrivateBalance(env: AppEnv, input: BalanceInput, authToken?: string) {
+export function getPrivateBalance(env: AppEnv, input: BalanceRequest, authToken?: string) {
   return getBalanceInternal(env, input, "ephemeral", authToken);
 }
 
@@ -1218,7 +1119,7 @@ function scheduleTransferQueueCrank(
 
 export async function getMintInitializationStatus(
   env: AppEnv,
-  input: MintInitializationInput,
+  input: MintInitializationRequest,
   backgroundScheduler?: BackgroundTaskScheduler,
 ): Promise<MintInitializationResponse> {
   const config = resolveRpcConfig(env, input.cluster);

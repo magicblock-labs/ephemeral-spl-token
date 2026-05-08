@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
-import { PublicKey } from "@solana/web3.js";
 import { boolean } from "zod";
+import { amountSchema, balanceLocationSchema, clusterSchema, depositAmountSchema, optionalBigIntStringSchema, publicKeySchema, visibilitySchema, withdrawAmountSchema } from "../../schema";
 
 const DEFAULT_DEPOSIT_VALIDATOR = "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57";
 const DEFAULT_DEPOSIT_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
@@ -9,108 +9,8 @@ const DEPOSIT_EXAMPLE_OWNER = "3rXKwQ1kpjBd5tdcco32qsvqUh1BnZjcYnS5kYrP7AYE";
 const TRANSFER_EXAMPLE_TO = "Bt9oNR5cCtnfuMmXgWELd6q5i974PdEMQDUE55nBC57L";
 const BALANCE_EXAMPLE_ADDRESS = "Bt9oNR5cCtnfuMmXgWELd6q5i974PdEMQDUE55nBC57L";
 
-const isPublicKey = (value: string) => {
-  try {
-    new PublicKey(value);
-    return true;
-  } catch {
-    return false;
-  }
-};
-
-const isNonNegativeBigIntString = (value: string) => {
-  if (!/^\d+$/.test(value)) {
-    return false;
-  }
-
-  try {
-    BigInt(value);
-    return true;
-  } catch {
-    return false;
-  }
-};
-
-export const publicKeySchema = z
-  .string()
-  .refine(isPublicKey, "Invalid public key")
-  .openapi({
-    example: "So11111111111111111111111111111111111111112",
-  });
-
-export const amountSchema = z
-  .number()
-  .int()
-  .safe()
-  .min(1)
-  .openapi({
-    example: 1000000,
-    description: "Base-unit amount as an integer JSON value with minimum 1.",
-  });
-
-export const depositAmountSchema = z
-  .number()
-  .int()
-  .safe()
-  .min(1)
-  .openapi({
-    example: 1,
-    description: "Base-unit amount as an integer JSON value with minimum 1.",
-  });
-
-export const withdrawAmountSchema = z
-  .number()
-  .int()
-  .safe()
-  .min(1)
-  .openapi({
-    example: 1000000,
-    description: "Base-unit amount as an integer JSON value with minimum 1.",
-  });
-
-export const optionalBigIntStringSchema = z
-  .string()
-  .refine(isNonNegativeBigIntString, "Must be a non-negative bigint string")
-  .openapi({
-    example: "0",
-  });
-
-export const optionalBoolean = z.preprocess((value) => {
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    if (normalized === "true") return true;
-    if (normalized === "false") return false;
-  }
-  return value;
-}, z.boolean().optional().default(false));
-
-export const clusterSchema = z.union([
-  z.enum(["mainnet", "devnet"]),
-  z.string().refine(value => /^https?:\/\//.test(value), {
-    message: "must be a http(s) URL",
-  }),
-]).openapi({
-  example: "mainnet",
-  description: "Optional. Use `mainnet` for BASE_RPC_URL and EPHEMERAL_RPC_URL, `devnet` for BASE_DEVNET_RPC_URL and EPHEMERAL_DEVNET_RPC_URL, or provide a custom http(s) RPC URL to override the base RPC while keeping the configured ephemeral RPC.",
-});
-
-export const visibilitySchema = z.enum(["public", "private"]).openapi("TransferVisibility");
-export const balanceLocationSchema = z.enum(["base", "ephemeral"]).openapi("BalanceLocation");
-export const optionalAuthTokenSchema = z.object({
-  authorization: z.string().openapi({
-    example: "Bearer 1234567890",
-    description: "Optional. Authentication token for requests that need to connect to the Private Ephemeral Rollup.",
-  }).optional(),
-});
-export const requiredAuthTokenSchema = z.object({
-  authorization: z.string().openapi({
-    example: "Bearer 1234567890",
-    description: "Required. Authentication token for private-balance requests.",
-  }),
-});
-
 export const transactionResponseSchema = z.object({
-  kind: z.enum(["deposit", "withdraw", "transfer"]),
+  kind: z.enum(["deposit", "withdraw", "transfer", "initializeMint"]),
   version: z.enum(["legacy", "v0"]),
   transactionBase64: z.string(),
   sendTo: balanceLocationSchema,
@@ -120,6 +20,7 @@ export const transactionResponseSchema = z.object({
   requiredSigners: z.array(publicKeySchema),
   validator: publicKeySchema.optional(),
 }).openapi("UnsignedTransactionResponse");
+export type TransactionResponse = z.infer<typeof transactionResponseSchema>;
 
 export const balanceResponseSchema = z.object({
   address: publicKeySchema,
@@ -128,8 +29,9 @@ export const balanceResponseSchema = z.object({
   location: balanceLocationSchema,
   balance: z.string(),
 }).openapi("BalanceResponse");
+export type BalanceResponse = z.infer<typeof balanceResponseSchema>;
 
-export const mintInitializationQuerySchema = z.object({
+export const mintInitializationRequestSchema = z.object({
   mint: publicKeySchema.openapi({
     example: DEFAULT_DEPOSIT_MINT,
   }),
@@ -138,12 +40,13 @@ export const mintInitializationQuerySchema = z.object({
     example: DEFAULT_DEPOSIT_VALIDATOR,
     description: "Optional. Defaults to the selected ephemeral RPC identity resolved via `getIdentity`.",
   }).optional(),
-}).openapi("MintInitializationQuery", {
+}).openapi("MintInitializationRequest", {
   example: {
     mint: DEFAULT_DEPOSIT_MINT,
     validator: DEFAULT_DEPOSIT_VALIDATOR,
   },
 });
+export type MintInitializationRequest = z.infer<typeof mintInitializationRequestSchema>;
 
 export const mintInitializationResponseSchema = z.object({
   mint: publicKeySchema,
@@ -151,6 +54,7 @@ export const mintInitializationResponseSchema = z.object({
   transferQueue: publicKeySchema,
   initialized: z.boolean(),
 }).openapi("MintInitializationResponse");
+export type MintInitializationResponse = z.infer<typeof mintInitializationResponseSchema>;
 
 export const initializeMintRequestSchema = z.object({
   payer: publicKeySchema.openapi({
@@ -171,6 +75,7 @@ export const initializeMintRequestSchema = z.object({
     validator: DEFAULT_DEPOSIT_VALIDATOR,
   },
 });
+export type InitializeMintRequest = z.infer<typeof initializeMintRequestSchema>;
 
 export const initializeMintResponseSchema = transactionResponseSchema.extend({
   kind: z.literal("initializeMint"),
@@ -178,6 +83,7 @@ export const initializeMintResponseSchema = transactionResponseSchema.extend({
   transferQueue: publicKeySchema,
   rentPda: publicKeySchema,
 }).openapi("InitializeMintResponse");
+export type InitializeMintResponse = z.infer<typeof initializeMintResponseSchema>;
 
 export const depositRequestSchema = z.object({
   owner: publicKeySchema.openapi({
@@ -207,6 +113,7 @@ export const depositRequestSchema = z.object({
     idempotent: true,
   },
 });
+export type DepositRequest = z.infer<typeof depositRequestSchema>;
 
 export const withdrawRequestSchema = z.object({
   owner: publicKeySchema.openapi({
@@ -234,6 +141,7 @@ export const withdrawRequestSchema = z.object({
     idempotent: true,
   },
 });
+export type WithdrawRequest = z.infer<typeof withdrawRequestSchema>;
 
 export const transferRequestSchema = z.object({
   from: publicKeySchema,
@@ -298,34 +206,39 @@ export const transferRequestSchema = z.object({
     gasless: true,
   },
 });
+export type TransferRequest = z.infer<typeof transferRequestSchema>;
 
-export const balanceQuerySchema = z.object({
+export const balanceRequestSchema = z.object({
   address: publicKeySchema,
   mint: publicKeySchema,
   cluster: clusterSchema.optional(),
-}).openapi("BalanceQuery", {
+}).openapi("BalanceRequest", {
   example: {
     address: BALANCE_EXAMPLE_ADDRESS,
     mint: DEFAULT_DEPOSIT_MINT,
   },
 });
+export type BalanceRequest = z.infer<typeof balanceRequestSchema>;
 
-export const challengeQuerySchema = z.object({
+export const challengeRequestSchema = z.object({
   cluster: clusterSchema.optional(),
   pubkey: publicKeySchema.openapi({
     example: BALANCE_EXAMPLE_ADDRESS,
     description: "The public key of the wallet that will read private data",
   }),
 });
+export type ChallengeRequest = z.infer<typeof challengeRequestSchema>;
 
 export const challengeResponseSchema = z.object({
   challenge: z.string().openapi({
     example: "1234567890",
     description: "The challenge string generated by the Private Ephemeral Rollup",
   }),
+  error: z.string().optional(),
 });
+export type ChallengeResponse = z.infer<typeof challengeResponseSchema>;
 
-export const loginQuerySchema = z.object({
+export const loginRequestSchema = z.object({
   cluster: clusterSchema.optional(),
   pubkey: publicKeySchema.openapi({
     example: BALANCE_EXAMPLE_ADDRESS,
@@ -340,10 +253,13 @@ export const loginQuerySchema = z.object({
     description: "The signature of the challenge by the wallet",
   }),
 });
+export type LoginRequest = z.infer<typeof loginRequestSchema>;
 
 export const loginResponseSchema = z.object({
   token: z.string().openapi({
     example: "1234567890",
     description: "The authentication token provided by the Private Ephemeral Rollup",
   }),
+  error: z.string().optional(),
 });
+export type LoginResponse = z.infer<typeof loginResponseSchema>;
