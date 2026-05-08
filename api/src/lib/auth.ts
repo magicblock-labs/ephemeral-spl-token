@@ -150,11 +150,7 @@ export async function login(
   const { token, error } = response;
 
   if (typeof error === "string" && error.length > 0) {
-    throw new ApiError(
-      loginResponse.status === 403 ? 403 : 502,
-      "RPC_ERROR",
-      `Failed to login: ${error}`,
-    );
+    throw new ApiError(502, "RPC_ERROR", `Failed to login: ${error}`);
   }
   if (typeof token !== "string" || token.length === 0) {
     throw new ApiError(502, "RPC_ERROR", "No token received");
