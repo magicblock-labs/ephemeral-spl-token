@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { boolean } from "zod";
-import { amountSchema, balanceLocationSchema, clusterSchema, depositAmountSchema, optionalBigIntStringSchema, optionalBooleanSchema, publicKeySchema, visibilitySchema, withdrawAmountSchema } from "../../schema";
+import { amountSchema, balanceLocationSchema, clusterSchema, depositAmountSchema, optionalBigIntStringSchema, publicKeySchema, visibilitySchema, withdrawAmountSchema } from "../../schema";
 
 const DEFAULT_DEPOSIT_VALIDATOR = "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57";
 const DEFAULT_DEPOSIT_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";

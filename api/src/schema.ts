@@ -147,10 +147,10 @@ export const prioritizationFeeLamportsSchema = z.union([
     })
     .passthrough()
     .refine(
-      (v) =>
-        v.priorityLevelWithMaxLamports !== undefined ||
-        v.jitoTipLamports !== undefined ||
-        v.jitoTipLamportsWithPayer !== undefined,
+      v =>
+        v.priorityLevelWithMaxLamports !== undefined
+        || v.jitoTipLamports !== undefined
+        || v.jitoTipLamportsWithPayer !== undefined,
       "At least one prioritization fee field must be provided",
     ),
 ]);

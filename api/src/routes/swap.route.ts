@@ -347,7 +347,7 @@ const swapResponseSchema = z.object({
     description: "Present when visibility=private. Diagnostic metadata about the appended schedule_private_transfer instruction.",
   }),
 }).passthrough().openapi("SwapResponse");
-export type SwapResponse = z.infer<typeof swapResponseSchema>;  
+export type SwapResponse = z.infer<typeof swapResponseSchema>;
 
 const quoteRoute = createRoute({
   path: "/v1/swap/quote",

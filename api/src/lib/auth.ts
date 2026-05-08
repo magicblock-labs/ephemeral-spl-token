@@ -45,7 +45,7 @@ export function parseAuthToken(
 
 export async function getChallenge(
   env: AppEnv,
-  input: ChallengeInput,
+  input: ChallengeRequest,
 ): Promise<ChallengeResponse> {
   const config = resolveRpcConfig(env, input.cluster);
   const url = buildAuthUrl(config.ephemeralRpcUrl, "auth/challenge");
@@ -62,7 +62,7 @@ export async function getChallenge(
 
   const response:
     | { jsonrpc: string; error: { code: number; message: string } }
-    | AuthChallengeResponse = await challengeResponse.json();
+    | ChallengeResponse = await challengeResponse.json();
   if ("jsonrpc" in response) {
     // Received a regular RPC error, return a mock challenge
     return {
@@ -86,7 +86,7 @@ export async function getChallenge(
 
 export async function login(
   env: AppEnv,
-  input: LoginInput,
+  input: LoginRequest,
 ): Promise<LoginResponse> {
   const config = resolveRpcConfig(env, input.cluster);
   const { pubkey, challenge, signature } = input;
@@ -109,7 +109,7 @@ export async function login(
 
   const response:
     | { jsonrpc: string; error: { code: number; message: string } }
-    | AuthLoginResponse = await loginResponse.json();
+    | LoginResponse = await loginResponse.json();
 
   if ("jsonrpc" in response) {
     // Received a regular RPC error, return a mock token

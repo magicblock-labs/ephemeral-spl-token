@@ -25,7 +25,7 @@ import {
   BalanceRequest,
   ChallengeRequest,
   DepositRequest,
-  InitializeMintRequest,  
+  InitializeMintRequest,
   LoginRequest,
   MintInitializationRequest,
   TransferRequest,
