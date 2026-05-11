@@ -12,5 +12,6 @@ pub use processor::{
     AmountAndSaltArgs, DelegateArgs, DelegateShuttleArgs, DepositAndDelegateShuttleArgs,
     DepositAndDelegateShuttleWithPrivateTransferAndStashCloseArgs,
     DepositAndDelegateShuttleWithPrivateTransferArgs, DepositAndQueueTransferArgs,
-    ExecuteQueuedTransferArgs, InitializeTransferQueueArgs,
+    EnsureStealthPoolDelegatedArgs, ExecuteQueuedTransferArgs, InitializeTransferQueueArgs,
+    UpdateStealthPoolArgs,
 };

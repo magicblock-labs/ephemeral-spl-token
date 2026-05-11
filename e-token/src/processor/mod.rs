@@ -12,6 +12,7 @@ pub mod deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transf
 pub mod deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer_and_stash_close;
 pub mod deposit_and_queue_transfer;
 pub mod deposit_spl_tokens;
+pub mod ensure_stealth_pool_delegated;
 pub mod ensure_transfer_queue_crank;
 pub mod execute_pending_transfer_queue_refill;
 pub mod execute_ready_queued_transfer;
@@ -35,6 +36,7 @@ pub mod undelegate_ephemeral_ata;
 pub mod undelegate_ephemeral_ata_permission;
 pub mod undelegate_lamports_pda;
 pub mod undelegation_callback;
+pub mod update_stealth_pool;
 pub(crate) mod utils;
 pub mod withdraw_spl_tokens;
 pub mod withdraw_through_delegated_shuttle_with_merge;
@@ -65,6 +67,9 @@ pub use deposit_and_queue_transfer::{
     process_deposit_and_queue_transfer, DepositAndQueueTransferArgs,
 };
 pub use deposit_spl_tokens::process_deposit_spl_tokens;
+pub use ensure_stealth_pool_delegated::{
+    process_ensure_stealth_pool_delegated, EnsureStealthPoolDelegatedArgs,
+};
 pub use ensure_transfer_queue_crank::process_ensure_transfer_queue_crank;
 pub use execute_pending_transfer_queue_refill::process_execute_pending_transfer_queue_refill;
 pub use execute_ready_queued_transfer::{
@@ -86,6 +91,7 @@ pub use schedule_private_transfer::process_schedule_private_transfer;
 pub use sponsored_lamports_transfer::process_sponsored_lamports_transfer;
 pub use transfer_lamports_pda::process_transfer_lamports_pda;
 pub use transfer_queue_tick::process_transfer_queue_tick;
+pub use update_stealth_pool::{process_update_stealth_pool, UpdateStealthPoolArgs};
 pub use undelegate_and_close_shuttle_to_owner::process_undelegate_and_close_shuttle_to_owner;
 pub use undelegate_ephemeral_ata::process_undelegate_ephemeral_ata;
 pub use undelegate_ephemeral_ata_permission::process_undelegate_ephemeral_ata_permission;
