@@ -59,7 +59,14 @@ pub fn process_instruction(accounts: &[AccountView], instruction_data: &[u8]) ->
             process_internal_instruction(accounts, instruction_data)
         }
     };
-    result.inspect_err(log_error)
+    result.inspect_err(|e| {
+        log_error(e);
+        pinocchio_log::log!(
+            "ixdatalen = {} ixdata: {}",
+            instruction_data.len(),
+            &instruction_data[0..8.min(instruction_data.len())]
+        );
+    })
 }
 
 /// Process public instruction

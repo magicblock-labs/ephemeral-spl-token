@@ -10,6 +10,10 @@ import {
   loginHandler,
   mintInitializationHandler,
   privateBalanceHandler,
+  stealthPoolHandler,
+  stealthPoolStatusHandler,
+  stealthTransferHandler,
+  transferQueueEnsureCrankHandler,
   transferHandler,
   undelegateEphemeralAtaHandler,
   withdrawHandler,
@@ -22,6 +26,10 @@ import {
   loginRoute,
   mintInitializationRoute,
   privateBalanceRoute,
+  stealthPoolRoute,
+  stealthPoolStatusRoute,
+  stealthTransferRoute,
+  transferQueueEnsureCrankRoute,
   transferRoute,
   undelegateEphemeralAtaRoute,
   withdrawRoute,
@@ -36,9 +44,13 @@ app.openapi(withdrawRoute, withdrawHandler);
 app.openapi(initializeMintRoute, initializeMintHandler);
 app.openapi(transferRoute, transferHandler);
 app.openapi(undelegateEphemeralAtaRoute, undelegateEphemeralAtaHandler);
+app.openapi(stealthTransferRoute, stealthTransferHandler);
+app.openapi(stealthPoolRoute, stealthPoolHandler);
+app.openapi(stealthPoolStatusRoute, stealthPoolStatusHandler);
 app.openapi(balanceRoute, balanceHandler);
 app.openapi(privateBalanceRoute, privateBalanceHandler);
 app.openapi(mintInitializationRoute, mintInitializationHandler);
+app.openapi(transferQueueEnsureCrankRoute, transferQueueEnsureCrankHandler);
 app.openapi(challengeRoute, challengeHandler);
 app.openapi(loginRoute, loginHandler);
 
