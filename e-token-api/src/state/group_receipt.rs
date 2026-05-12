@@ -2,6 +2,7 @@ use bytemuck::{Pod, Zeroable};
 use pinocchio::error::ProgramError;
 use pinocchio::{AccountView, ProgramResult};
 use solana_signature::Signature;
+use crate::require_eq;
 
 pub struct GroupReceipt<'a> {
     header: &'a mut GroupReceiptHeader,
@@ -25,7 +26,7 @@ impl<'a> GroupReceipt<'a> {
     /// Should be called only on correctly initialized slice
     pub unsafe fn from_data_mut(data: &'a mut [u8]) -> Result<Self, ProgramError> {
         let (header_data, items_data) = data
-            .split_at_mut_checked(GroupReceiptHeader::size())
+            .split_at_mut_checked(GroupReceiptHeader::SIZE)
             .ok_or(ProgramError::InvalidAccountData)?;
 
         // Parse header
@@ -36,7 +37,7 @@ impl<'a> GroupReceipt<'a> {
 
     /// Calculates required size in bytes for given number of `items`
     pub fn required_size(items: usize) -> usize {
-        GroupReceiptHeader::size() + TransferReceipt::size() * items
+        GroupReceiptHeader::SIZE + TransferReceipt::SIZE * items
     }
 
     /// Returns slice of completed transfer's receipts
@@ -63,7 +64,7 @@ impl<'a> GroupReceipt<'a> {
         }
 
         let item_start = self.initialized_items_bytes();
-        let item_range = item_start..item_start + TransferReceipt::size();
+        let item_range = item_start..item_start + TransferReceipt::SIZE;
         self.items_data[item_range].copy_from_slice(bytemuck::bytes_of(&item));
         self.header.transfers_completed += 1;
 
@@ -71,7 +72,7 @@ impl<'a> GroupReceipt<'a> {
     }
 
     fn initialized_items_bytes(&self) -> usize {
-        self.header.transfers_completed as usize * TransferReceipt::size()
+        self.header.transfers_completed as usize * TransferReceipt::SIZE
     }
 
     pub fn id(&self) -> u32 {
@@ -103,6 +104,8 @@ pub struct GroupReceiptHeader {
 }
 
 impl GroupReceiptHeader {
+    pub const SIZE: usize = core::mem::size_of::<Self>();
+
     pub fn new(id: u32, bump: u8, splits: u32) -> Self {
         Self {
             id,
@@ -138,10 +141,6 @@ impl GroupReceiptHeader {
     pub fn splits(&self) -> u32 {
         self.splits
     }
-
-    pub const fn size() -> usize {
-        size_of::<Self>()
-    }
 }
 
 #[repr(C)]
@@ -151,7 +150,7 @@ pub struct TransferReceipt {
     signature: Signature,
     /// Amount transferred in the action
     amount: u64,
-    /// Whether the transfer action succeeded (1) or failed (0)
+    /// Whether the transfer action failed (0) or succeeded otherwise
     ok: u8,
     _reserved: [u8; 7],
 }
@@ -160,6 +159,8 @@ const _: () = assert!(core::mem::size_of::<Signature>() == 64);
 const _: () = assert!(core::mem::size_of::<TransferReceipt>() == 80);
 
 impl TransferReceipt {
+    pub const SIZE: usize = core::mem::size_of::<Self>();
+
     pub fn new(signature: Option<Signature>, amount: u64, ok: bool) -> Self {
         Self {
             signature: signature.unwrap_or(Signature::zeroed()),
@@ -184,10 +185,6 @@ impl TransferReceipt {
     pub fn ok(&self) -> bool {
         self.ok != 0
     }
-
-    pub const fn size() -> usize {
-        size_of::<Self>()
-    }
 }
 
 pub fn initialize_group_receipt(
@@ -197,13 +194,11 @@ pub fn initialize_group_receipt(
     bump: u8,
 ) -> ProgramResult {
     let data = unsafe { account.borrow_unchecked_mut() };
-    let required_data = GroupReceipt::required_size(splits as usize);
-    if data.len() != required_data {
-        return Err(ProgramError::InvalidAccountData);
-    }
+    let required_size = GroupReceipt::required_size(splits as usize);
+    require_eq!(data.len(), required_size, ProgramError::InvalidInstructionData);
 
     let header = GroupReceiptHeader::new(group_id, bump, splits);
-    data[..GroupReceiptHeader::size()].copy_from_slice(bytemuck::bytes_of(&header));
+    data[..GroupReceiptHeader::SIZE].copy_from_slice(bytemuck::bytes_of(&header));
 
     Ok(())
 }
@@ -216,7 +211,7 @@ mod tests {
     fn init_data(id: u32, splits: u32, bump: u8) -> std::vec::Vec<u8> {
         let mut data = std::vec![0u8; GroupReceipt::required_size(splits as usize)];
         let header = GroupReceiptHeader::new(id, bump, splits);
-        data[..GroupReceiptHeader::size()].copy_from_slice(bytemuck::bytes_of(&header));
+        data[..GroupReceiptHeader::SIZE].copy_from_slice(bytemuck::bytes_of(&header));
         data
     }
 
@@ -230,7 +225,7 @@ mod tests {
 
     #[test]
     fn from_data_mut_too_small_returns_error() {
-        let mut data = std::vec![0u8; GroupReceiptHeader::size() - 1];
+        let mut data = std::vec![0u8; GroupReceiptHeader::SIZE - 1];
         assert!(unsafe { GroupReceipt::from_data_mut(&mut data) }.is_err());
     }
 

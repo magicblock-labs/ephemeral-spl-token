@@ -7,7 +7,9 @@ use data_layout::variable_offset_layout;
 
 use ephemeral_spl_api::state::group_receipt::{GroupReceipt, TransferReceipt};
 use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, TransferQueueHeader};
-use ephemeral_spl_api::{debug_log, require, require_n_accounts};
+use ephemeral_spl_api::{
+    debug_log, require, require_eq_keys, require_n_accounts, require_owned_by,
+};
 use pinocchio::error::ProgramError;
 use pinocchio::{AccountView, Address, ProgramResult};
 use solana_signature::Signature;
@@ -89,29 +91,22 @@ fn validate_common(
     mint: &AccountView,
     queue_header: &TransferQueueHeader,
 ) -> ProgramResult {
-    #[cfg(feature = "logging")]
-    use alloc::string::ToString;
-
     if !callback_signer.is_signer() {
         debug_log!("Missing authority to execute callback!");
         return Err(ProgramError::MissingRequiredSignature);
     }
-    if callback_signer.address() != &CALLBACK_SIGNER {
-        debug_log!(
-            "Callback expects authority: {}, got: {}",
-            CALLBACK_SIGNER.to_string().as_str(),
-            callback_signer.address().to_string().as_str(),
-        );
-        return Err(ProgramError::IncorrectAuthority);
-    }
 
-    if !queue_info.owned_by(&crate::ID) {
-        return Err(ProgramError::IllegalOwner);
-    }
-
-    if &queue_header.mint != mint.address() {
-        return Err(ProgramError::InvalidAccountData);
-    }
+    require_eq_keys!(
+        callback_signer.address(),
+        &CALLBACK_SIGNER,
+        ProgramError::IncorrectAuthority
+    );
+    require_owned_by!(queue_info, &crate::ID);
+    require_eq_keys!(
+        &queue_header.mint,
+        mint.address(),
+        ProgramError::InvalidAccountData
+    );
 
     Ok(())
 }

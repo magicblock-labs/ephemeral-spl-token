@@ -72,7 +72,7 @@ fn queue_account_data(mint: Pubkey, validator: Pubkey, bump: u8) -> Vec<u8> {
 fn receipt_account_data(group_id: u32, splits: u32, bump: u8) -> Vec<u8> {
     let mut data = vec![0u8; GroupReceipt::required_size(splits as usize)];
     let header = GroupReceiptHeader::new(group_id, bump, splits);
-    data[..GroupReceiptHeader::size()].copy_from_slice(bytemuck::bytes_of(&header));
+    data[..GroupReceiptHeader::SIZE].copy_from_slice(bytemuck::bytes_of(&header));
     data
 }
 
@@ -305,7 +305,7 @@ async fn execute_callback_with_pre_initialized_receipt_no_magic_cpi() {
         .unwrap()
         .expect("receipt must still exist");
     let header =
-        bytemuck::try_from_bytes::<GroupReceiptHeader>(&account.data[..GroupReceiptHeader::size()])
+        bytemuck::try_from_bytes::<GroupReceiptHeader>(&account.data[..GroupReceiptHeader::SIZE])
             .unwrap();
     assert_eq!(header.transfer_completed(), 1);
 }

@@ -463,7 +463,7 @@ async fn deposit_and_queue_transfer_transfers_once_and_enqueues_split_items() {
         .unwrap()
         .expect("group receipt account must exist");
     let receipt_header = bytemuck::try_from_bytes::<GroupReceiptHeader>(
-        &receipt_acc.data[..GroupReceiptHeader::size()],
+        &receipt_acc.data[..GroupReceiptHeader::SIZE],
     )
     .unwrap();
     assert_eq!(receipt_header.id(), group_id);
