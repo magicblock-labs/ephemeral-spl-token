@@ -14,7 +14,6 @@ import {
   withdrawSpl, initVaultIx, initVaultAtaIx, delegateEphemeralAtaIx, deriveVault, deriveEphemeralAta, deriveVaultAta,
 } from "@magicblock-labs/ephemeral-rollups-sdk";
 import {
-  AddressLookupTableProgram,
   Connection,
   Keypair,
   LAMPORTS_PER_SOL,
@@ -26,6 +25,8 @@ import {
 
 import type { AppEnv } from "../env";
 import { ApiError } from "./errors";
+import { BalanceRequest, BalanceResponse, DepositRequest, InitializeMintRequest, InitializeMintResponse, MintInitializationRequest, MintInitializationResponse, TransactionResponse, TransferRequest, WithdrawRequest } from "../routes/spl/spl.schemas";
+import { getCachedAddressLookupTable, getConnection } from "./rpc-cache";
 
 export const TOKEN_PROGRAM_ID = new PublicKey(
   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -35,9 +36,6 @@ export const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey(
   "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
 );
 
-const NOOP_PROGRAM_ID = new PublicKey(
-  "noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV",
-);
 const MEMO_PROGRAM_ID = new PublicKey(
   "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
 );
@@ -60,7 +58,6 @@ const PRIVATE_BASE_TO_BASE_TRANSFER_LOOKUP_TABLES = {
 const GASLESS_RELAY_FEE_MICRO_USDC = 200_000n; // 0.2 USDC/USDT
 const GASLESS_STABLECOIN_MIN_AMOUNT = BigInt(5 * 1_000_000); // 5 USDC/USDT
 
-const connectionCache = new Map<string, Connection>();
 const validatorCache = new Map<string, Promise<PublicKey | undefined>>();
 
 type SendTarget = "base" | "ephemeral";
@@ -76,106 +73,6 @@ type RpcConfig = {
   cluster: "mainnet" | "devnet" | "custom";
 };
 
-type TransactionResponse = {
-  kind: "deposit" | "withdraw" | "transfer" | "initializeMint";
-  version: "legacy" | "v0";
-  transactionBase64: string;
-  sendTo: SendTarget;
-  recentBlockhash: string;
-  lastValidBlockHeight: number;
-  instructionCount: number;
-  requiredSigners: string[];
-  validator?: string;
-};
-
-type DepositInput = {
-  owner: string;
-  mint?: string;
-  amount: string | number;
-  cluster?: string;
-  validator?: string;
-  initIfMissing?: boolean;
-  initVaultIfMissing?: boolean;
-  initAtasIfMissing?: boolean;
-  idempotent?: boolean;
-};
-
-type WithdrawInput = {
-  owner: string;
-  mint: string;
-  amount: string | number;
-  cluster?: string;
-  validator?: string;
-  initIfMissing?: boolean;
-  initAtasIfMissing?: boolean;
-  escrowIndex?: number;
-  idempotent?: boolean;
-};
-
-type InitializeMintTransactionInput = {
-  payer: string;
-  mint: string;
-  cluster?: string;
-  validator?: string;
-};
-
-type TransferInput = {
-  from: string;
-  to: string;
-  mint: string;
-  amount: string | number;
-  cluster?: string;
-  fromBalance: "base" | "ephemeral";
-  toBalance: "base" | "ephemeral";
-  visibility: "public" | "private";
-  validator?: string;
-  initIfMissing?: boolean;
-  initAtasIfMissing?: boolean;
-  initVaultIfMissing?: boolean;
-  memo?: string;
-  minDelayMs?: string;
-  maxDelayMs?: string;
-  clientRefId?: string;
-  split?: number;
-  exactOut?: boolean;
-  legacy?: boolean;
-  gasless?: boolean;
-};
-
-type BalanceInput = {
-  address: string;
-  mint: string;
-  cluster?: string;
-};
-
-type MintInitializationInput = {
-  mint: string;
-  validator?: string;
-  cluster?: string;
-};
-
-type BalanceResponse = {
-  address: string;
-  mint: string;
-  ata: string;
-  location: SendTarget;
-  balance: string;
-};
-
-type MintInitializationResponse = {
-  mint: string;
-  validator: string;
-  transferQueue: string;
-  initialized: boolean;
-};
-
-type InitializeMintTransactionResponse = TransactionResponse & {
-  kind: "initializeMint";
-  validator: string;
-  transferQueue: string;
-  rentPda: string;
-};
-
 type RpcIdentityResponse = {
   result?: {
     identity?: string;
@@ -188,17 +85,6 @@ type RpcIdentityResponse = {
 type BackgroundTaskScheduler = {
   waitUntil: (promise: Promise<unknown>) => void;
 };
-
-function getConnection(endpoint: string) {
-  let connection = connectionCache.get(endpoint);
-
-  if (!connection) {
-    connection = new Connection(endpoint, "confirmed");
-    connectionCache.set(endpoint, connection);
-  }
-
-  return connection;
-}
 
 function getBaseConnection(config: RpcConfig) {
   return getConnection(config.baseRpcUrl);
@@ -220,7 +106,7 @@ function createClusterConfigError(missingVars: Array<"BASE_DEVNET_RPC_URL" | "EP
     "CONFIG_ERROR",
     "Missing worker environment variables for cluster=devnet",
     {
-      issues: missingVars.map((name) => ({
+      issues: missingVars.map(name => ({
         path: [name],
         message: "Required for cluster=devnet",
       })),
@@ -241,8 +127,7 @@ function getGaslessSponsorKeypair(env: AppEnv) {
   let secretKey: unknown;
   try {
     secretKey = JSON.parse(env.GASLESS_SPONSOR_SECRET_KEY);
-  }
-  catch {
+  } catch {
     throw new ApiError(
       500,
       "CONFIG_ERROR",
@@ -250,7 +135,7 @@ function getGaslessSponsorKeypair(env: AppEnv) {
     );
   }
 
-  if (!Array.isArray(secretKey) || secretKey.some((value) => !Number.isInteger(value))) {
+  if (!Array.isArray(secretKey) || secretKey.some(value => !Number.isInteger(value))) {
     throw new ApiError(
       500,
       "CONFIG_ERROR",
@@ -260,8 +145,7 @@ function getGaslessSponsorKeypair(env: AppEnv) {
 
   try {
     return Keypair.fromSecretKey(Uint8Array.from(secretKey));
-  }
-  catch {
+  } catch {
     throw new ApiError(
       500,
       "CONFIG_ERROR",
@@ -317,8 +201,7 @@ export function resolveRpcConfig(env: AppEnv, cluster?: string): RpcConfig {
       ephemeralRpcUrl: env.EPHEMERAL_RPC_URL,
       cluster: "custom",
     };
-  }
-  catch {
+  } catch {
     throw new ApiError(400, "INVALID_CLUSTER", "cluster must be \"mainnet\", \"devnet\", or a valid http(s) URL");
   }
 }
@@ -326,13 +209,13 @@ export function resolveRpcConfig(env: AppEnv, cluster?: string): RpcConfig {
 function resolvePrivateBaseToBaseTransferLookupTableAddress(env: AppEnv, cluster: "mainnet" | "devnet") {
   const configuredAddress = cluster === "mainnet"
     ? parseConfigPublicKey(
-      env.PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE,
-      "PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE",
-    )
+        env.PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE,
+        "PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE",
+      )
     : parseConfigPublicKey(
-      env.PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE,
-      "PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE",
-    );
+        env.PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE,
+        "PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE",
+      );
 
   return configuredAddress ?? PRIVATE_BASE_TO_BASE_TRANSFER_LOOKUP_TABLES[cluster];
 }
@@ -340,8 +223,7 @@ function resolvePrivateBaseToBaseTransferLookupTableAddress(env: AppEnv, cluster
 function parsePublicKey(value: string, fieldName: string) {
   try {
     return new PublicKey(value);
-  }
-  catch {
+  } catch {
     throw new ApiError(400, "INVALID_PUBLIC_KEY", `Invalid ${fieldName}`);
   }
 }
@@ -350,20 +232,19 @@ function parseAmount(value: string | number, fieldName: string) {
   try {
     const amount = typeof value === "number"
       ? (() => {
-        if (!Number.isSafeInteger(value) || value <= 0) {
-          throw new Error("non-positive");
-        }
+          if (!Number.isSafeInteger(value) || value <= 0) {
+            throw new Error("non-positive");
+          }
 
-        return BigInt(value);
-      })()
+          return BigInt(value);
+        })()
       : BigInt(value);
 
     if (amount <= 0n) {
       throw new Error("non-positive");
     }
     return amount;
-  }
-  catch {
+  } catch {
     throw new ApiError(400, "INVALID_AMOUNT", `${fieldName} must be a positive integer string`);
   }
 }
@@ -375,14 +256,9 @@ function parseOptionalAmount(value: string | undefined, fieldName: string) {
 
   try {
     return BigInt(value);
-  }
-  catch {
+  } catch {
     throw new ApiError(400, "INVALID_AMOUNT", `${fieldName} must be an integer string`);
   }
-}
-
-function parseOptionalPublicKey(value: string | undefined, fieldName: string) {
-  return value ? parsePublicKey(value, fieldName) : undefined;
 }
 
 function parseConfigPublicKey(value: string | undefined, fieldName: string) {
@@ -392,8 +268,7 @@ function parseConfigPublicKey(value: string | undefined, fieldName: string) {
 
   try {
     return new PublicKey(value);
-  }
-  catch {
+  } catch {
     throw new ApiError(500, "CONFIG_ERROR", `${fieldName} must be a valid public key`);
   }
 }
@@ -533,8 +408,7 @@ async function resolveValidator(config: RpcConfig, explicitValidator?: string) {
 
   try {
     return await getValidatorFromRpc(config.ephemeralRpcUrl) ?? DEFAULT_FALLBACK_VALIDATOR;
-  }
-  catch {
+  } catch {
     return DEFAULT_FALLBACK_VALIDATOR;
   }
 }
@@ -563,8 +437,7 @@ async function getBlockhash(config: RpcConfig, source: SendTarget, authToken?: s
   try {
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
     return { blockhash, lastValidBlockHeight };
-  }
-  catch (error) {
+  } catch (error) {
     throw new ApiError(502, "RPC_ERROR", "Failed to fetch recent blockhash", {
       source,
       message: getSanitizedErrorMessage(error),
@@ -695,34 +568,21 @@ async function trySerializePrivateBaseToBaseTransferTransactionWithLookupTable(
   feePayer: PublicKey,
   blockhash: BlockhashResult,
   validator?: PublicKey,
+  partialSigners: Keypair[] = [],
 ): Promise<TransactionResponse | undefined> {
   if (config.cluster === "custom") {
     return undefined;
   }
 
   const lookupTableAddress = resolvePrivateBaseToBaseTransferLookupTableAddress(env, config.cluster);
-  const connection = getBaseConnection(config);
 
   try {
-    const lookupTableResponse = await connection.getAddressLookupTable(lookupTableAddress);
-    const lookupTable = lookupTableResponse.value;
-
-    if (!lookupTable) {
-      throw new Error("lookup table account was not found");
-    }
-
-    const lookupTableAccountInfo = await connection.getAccountInfo(lookupTableAddress, "confirmed");
-
-    if (!lookupTableAccountInfo) {
-      throw new Error("lookup table account info was not found");
-    }
-
-    if (!lookupTableAccountInfo.owner.equals(AddressLookupTableProgram.programId)) {
-      throw new Error("lookup table account has unexpected owner");
-    }
+    const lookupTable = await getCachedAddressLookupTable(config.baseRpcUrl, lookupTableAddress, {
+      validateOwner: true,
+    });
 
     const lookupTableAddresses = new Set(
-      lookupTable.state.addresses.map((address) => address.toBase58()),
+      lookupTable.state.addresses.map(address => address.toBase58()),
     );
     const candidateAddresses = collectLookupTableCandidateAddresses(instructions);
     let hasExpectedAddress = false;
@@ -748,6 +608,10 @@ async function trySerializePrivateBaseToBaseTransferTransactionWithLookupTable(
       return undefined;
     }
 
+    if (partialSigners.length > 0) {
+      compiled.transaction.sign(partialSigners);
+    }
+
     return {
       kind: "transfer",
       version: "v0",
@@ -759,8 +623,7 @@ async function trySerializePrivateBaseToBaseTransferTransactionWithLookupTable(
       requiredSigners: getRequiredSigners(feePayer, instructions),
       validator: validator?.toBase58(),
     };
-  }
-  catch (error) {
+  } catch (error) {
     console.warn("LUT v0 compilation failed, falling back to legacy", {
       cluster: config.cluster,
       lookupTable: lookupTableAddress.toBase58(),
@@ -770,7 +633,7 @@ async function trySerializePrivateBaseToBaseTransferTransactionWithLookupTable(
   }
 }
 
-export async function buildDepositTransaction(env: AppEnv, input: DepositInput) {
+export async function buildDepositTransaction(env: AppEnv, input: DepositRequest) {
   try {
     const config = resolveRpcConfig(env, input.cluster);
     const owner = parsePublicKey(input.owner, "owner");
@@ -803,13 +666,12 @@ export async function buildDepositTransaction(env: AppEnv, input: DepositInput) 
       blockhash,
       validator,
     );
-  }
-  catch (error) {
+  } catch (error) {
     throwTransactionBuildError(error);
   }
 }
 
-export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawInput) {
+export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawRequest) {
   try {
     const config = resolveRpcConfig(env, input.cluster);
     const owner = parsePublicKey(input.owner, "owner");
@@ -838,16 +700,15 @@ export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawInput
       blockhash,
       validator,
     );
-  }
-  catch (error) {
+  } catch (error) {
     throwTransactionBuildError(error);
   }
 }
 
 export async function buildInitializeMintTransaction(
   env: AppEnv,
-  input: InitializeMintTransactionInput,
-): Promise<InitializeMintTransactionResponse> {
+  input: InitializeMintRequest,
+): Promise<InitializeMintResponse> {
   try {
     const config = resolveRpcConfig(env, input.cluster);
     const payer = parsePublicKey(input.payer, "payer");
@@ -909,13 +770,12 @@ export async function buildInitializeMintTransaction(
       transferQueue: transferQueue.toBase58(),
       rentPda: rentPda.toBase58(),
     };
-  }
-  catch (error) {
+  } catch (error) {
     throwTransactionBuildError(error);
   }
 }
 
-export async function buildTransferTransaction(env: AppEnv, input: TransferInput, authToken?: string) {
+export async function buildTransferTransaction(env: AppEnv, input: TransferRequest, authToken?: string) {
   try {
     const config = resolveRpcConfig(env, input.cluster);
     const from = parsePublicKey(input.from, "from");
@@ -995,13 +855,13 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
     const feePayer = sponsor?.publicKey ?? from;
     const gaslessFeeInstructions = sponsor
       ? [
-        createTokenTransferInstruction(
-          getAssociatedTokenAddressSync(mint, from, false, TOKEN_PROGRAM_ID),
-          getAssociatedTokenAddressSync(mint, sponsor.publicKey, false, TOKEN_PROGRAM_ID),
-          from,
-          GASLESS_RELAY_FEE_MICRO_USDC,
-        ),
-      ]
+          createTokenTransferInstruction(
+            getAssociatedTokenAddressSync(mint, from, false, TOKEN_PROGRAM_ID),
+            getAssociatedTokenAddressSync(mint, sponsor.publicKey, false, TOKEN_PROGRAM_ID),
+            from,
+            GASLESS_RELAY_FEE_MICRO_USDC,
+          ),
+        ]
       : [];
 
     const shouldResolveValidator = input.validator
@@ -1031,12 +891,12 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
         || input.clientRefId !== undefined
         || input.split !== undefined
         ? {
-          minDelayMs,
-          maxDelayMs,
-          clientRefId,
-          split,
-          exactOut,
-        }
+            minDelayMs,
+            maxDelayMs,
+            clientRefId,
+            split,
+            exactOut,
+          }
         : undefined,
     });
     // Gasless private base->base already adds a relay-fee token transfer. Dropping
@@ -1069,6 +929,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
         feePayer,
         blockhash,
         validator,
+        sponsor ? [sponsor] : [],
       );
 
       if (versionedResponse) {
@@ -1086,15 +947,14 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferInput
       validator,
       sponsor ? [sponsor] : [],
     );
-  }
-  catch (error) {
+  } catch (error) {
     throwTransactionBuildError(error);
   }
 }
 
 async function getBalanceInternal(
   env: AppEnv,
-  input: BalanceInput,
+  input: BalanceRequest,
   location: SendTarget,
   authToken?: string,
 ): Promise<BalanceResponse> {
@@ -1117,8 +977,7 @@ async function getBalanceInternal(
       location,
       balance: balance.toString(),
     };
-  }
-  catch (error) {
+  } catch (error) {
     throw new ApiError(502, "RPC_ERROR", "Failed to fetch token balance", {
       location,
       message: getSanitizedErrorMessage(error),
@@ -1126,11 +985,11 @@ async function getBalanceInternal(
   }
 }
 
-export function getBaseBalance(env: AppEnv, input: BalanceInput) {
+export function getBaseBalance(env: AppEnv, input: BalanceRequest) {
   return getBalanceInternal(env, input, "base");
 }
 
-export function getPrivateBalance(env: AppEnv, input: BalanceInput, authToken?: string) {
+export function getPrivateBalance(env: AppEnv, input: BalanceRequest, authToken?: string) {
   return getBalanceInternal(env, input, "ephemeral", authToken);
 }
 
@@ -1260,7 +1119,7 @@ function scheduleTransferQueueCrank(
 
 export async function getMintInitializationStatus(
   env: AppEnv,
-  input: MintInitializationInput,
+  input: MintInitializationRequest,
   backgroundScheduler?: BackgroundTaskScheduler,
 ): Promise<MintInitializationResponse> {
   const config = resolveRpcConfig(env, input.cluster);
@@ -1284,8 +1143,7 @@ export async function getMintInitializationStatus(
       transferQueue: transferQueue.toBase58(),
       initialized,
     };
-  }
-  catch (error) {
+  } catch (error) {
     throw new ApiError(502, "RPC_ERROR", "Failed to fetch transfer queue account", {
       message: getSanitizedErrorMessage(error),
     });

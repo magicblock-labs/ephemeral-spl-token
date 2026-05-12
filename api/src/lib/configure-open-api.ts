@@ -60,8 +60,8 @@ export default function configureOpenAPI(app: OpenAPIHono<{ Bindings: AppBinding
     info: {
       title: "SPL Private Payments API",
       version: "0.1.0",
-      description: "REST API for building private SPL token transactions on Solana and MagicBlock ephemeral rollups.\n\n" +
-          "Documentation: https://docs.magicblock.gg/pages/private-ephemeral-rollups-pers/how-to-guide/quickstart",
+      description: "REST API for building private SPL token transactions on Solana and MagicBlock ephemeral rollups.\n\n"
+        + "Documentation: https://docs.magicblock.gg/pages/private-ephemeral-rollups-pers/how-to-guide/quickstart",
     },
   } as const;
 

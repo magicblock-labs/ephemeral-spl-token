@@ -399,12 +399,12 @@ async function main() {
     ...buildSharedEntries(),
     ...mintConfigs.flatMap(({ label, mint }) => buildMintEntries(label, mint, validator)),
   ]);
-  const addresses = entries.map((entry) => entry.pubkey);
+  const addresses = entries.map(entry => entry.pubkey);
   const connection = new Connection(baseRpcUrl, "confirmed");
   const recentSlot = await connection.getSlot("finalized");
   const signers = getSignerSet(payer, authority);
-  const [createInstruction, lookupTableAddress] =
-    AddressLookupTableProgram.createLookupTable({
+  const [createInstruction, lookupTableAddress]
+    = AddressLookupTableProgram.createLookupTable({
       authority: authority.publicKey,
       payer: payer.publicKey,
       recentSlot,
@@ -422,7 +422,7 @@ async function main() {
       label,
       mint: mint.toBase58(),
     })),
-    addresses: entries.map((entry) => ({
+    addresses: entries.map(entry => ({
       address: entry.pubkey.toBase58(),
       labels: entry.labels,
     })),
@@ -456,7 +456,7 @@ async function main() {
     }
 
     const loadedAddresses = new Set(
-      lookupTable.state.addresses.map((address) => address.toBase58()),
+      lookupTable.state.addresses.map(address => address.toBase58()),
     );
 
     for (const entry of entries) {
@@ -477,8 +477,7 @@ async function main() {
     }
 
     console.log(JSON.stringify(summary, null, 2));
-  }
-  catch (error) {
+  } catch (error) {
     summary.status = "failed";
     console.error(JSON.stringify(summary, null, 2));
     throw error;
