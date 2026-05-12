@@ -1,4 +1,4 @@
-use crate::processor::execute_transfer_callback::derive_group_receipt_id;
+use crate::processor::internal::group_receipt::derive_group_receipt_id;
 use crate::processor::internal::token_vault::transfer_to_vault_for_mint;
 use crate::processor::utils::{group_receipt_create, read_mint_decimals, GroupReceiptAccounts};
 use alloc::vec;

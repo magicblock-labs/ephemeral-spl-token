@@ -1,11 +1,11 @@
 use crate::common::callback_mock::take_execute_callbacks;
 use crate::common::magic_mock::{take_captured_ephemeral_closes, take_captured_ephemeral_creates};
 use crate::common::{callback_mock, magic_mock};
+use data_layout::variable_offset_layout;
 use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
 use ephemeral_spl_api::state::group_receipt::{GroupReceipt, GroupReceiptHeader};
 use ephemeral_spl_api::state::transfer_queue::{HEADER_LEN, QUEUE_SEED, TRANSFER_QUEUE_VERSION};
 use ephemeral_spl_api::ID as PROGRAM;
-use ephemeral_token_program::TransferCallbackArgs;
 use magicblock_magic_program_api::instruction::CallbackInstruction;
 use magicblock_magic_program_api::pda::CALLBACK_SIGNER;
 use magicblock_magic_program_api::CALLBACK_PROGRAM_ID;
@@ -24,6 +24,17 @@ mod common;
 mod utils;
 
 // ── helpers ───────────────────────────────────────────────────────────────────
+// buffer_offset = 6: response.data starts at byte 14 of the original 8-byte-aligned
+// instruction buffer (1 disc + 4 variant + 1 ok + 8 data_len), and 14 % 8 = 6.
+#[variable_offset_layout(buffer_offset = 6)]
+pub(crate) struct TransferCallbackArgs {
+    /// Amount was transferred in action
+    pub amount: u64,
+    /// Group ID of a transfer
+    pub group_id: u32,
+    // Flags
+    pub flag: u8,
+}
 
 /// Serialise the callback instruction data for `callback_ix_data`: discriminator
 /// (`internal::EXECUTE_TRANSFER_CALLBACK`) + `MagicResponseView`.

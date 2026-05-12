@@ -19,7 +19,7 @@ use ephemeral_spl_api::{consts, require, require_eq_keys, require_n_accounts};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use solana_instruction::{AccountMeta, Instruction};
 
-use crate::processor::execute_transfer_callback::derive_group_receipt_id;
+use crate::processor::internal::group_receipt::derive_group_receipt_id;
 use crate::processor::utils::MAGIC_VAULT_ID;
 use crate::processor::{
     internal::shuttle_delegation::{

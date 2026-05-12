@@ -1,8 +1,8 @@
+use crate::require_eq;
 use bytemuck::{Pod, Zeroable};
 use pinocchio::error::ProgramError;
 use pinocchio::{AccountView, ProgramResult};
 use solana_signature::Signature;
-use crate::require_eq;
 
 pub struct GroupReceipt<'a> {
     header: &'a mut GroupReceiptHeader,
@@ -195,7 +195,11 @@ pub fn initialize_group_receipt(
 ) -> ProgramResult {
     let data = unsafe { account.borrow_unchecked_mut() };
     let required_size = GroupReceipt::required_size(splits as usize);
-    require_eq!(data.len(), required_size, ProgramError::InvalidInstructionData);
+    require_eq!(
+        data.len(),
+        required_size,
+        ProgramError::InvalidInstructionData
+    );
 
     let header = GroupReceiptHeader::new(group_id, bump, splits);
     data[..GroupReceiptHeader::SIZE].copy_from_slice(bytemuck::bytes_of(&header));

@@ -1,4 +1,5 @@
 pub(crate) mod ephemeral_ata;
+pub(crate) mod group_receipt;
 pub(crate) mod lamports_pda;
 pub(crate) mod shuttle_delegation;
 pub(crate) mod token_vault;
@@ -8,7 +9,6 @@ pub use lamports_pda::AmountAndSaltArgs;
 pub use shuttle_delegation::DepositAndDelegateShuttleArgs;
 
 use pinocchio::{error::ProgramError, Address};
-
 /// seed is created by overwriting the first 4-bytes of stash_pda with shuttle_id bytes
 #[inline(always)]
 pub(crate) fn derive_hydra_seed(stash_pda: &Address, shuttle_id: u32) -> [u8; 32] {

@@ -1,7 +1,7 @@
 #[cfg(feature = "logging")]
 use alloc::string::ToString;
 
-use crate::processor::execute_transfer_callback::derive_group_receipt_id;
+use crate::processor::internal::group_receipt::{derive_group_receipt_id, TransferCallbackArgs};
 use dlp_api::pda::magic_fee_vault_pda_from_validator;
 use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
 use ephemeral_rollups_pinocchio::{
@@ -237,13 +237,14 @@ fn schedule_execute_ready_transfer(
     let (vault, _) =
         ephemeral_spl_api::Address::find_program_address(&[queue_state.mint.as_ref()], program_id);
 
-    let amount_bytes: [u8; 8] = queued_transfer.amount.to_le_bytes();
-
     // Create action callback
     let mut callback_data = [0_u8; 13];
-    callback_data[0..8].copy_from_slice(&amount_bytes);
-    callback_data[8..12].copy_from_slice(&queued_transfer.group_id().to_le_bytes());
-    callback_data[12] = queued_transfer.flags;
+    TransferCallbackArgs {
+        amount: queued_transfer.amount,
+        group_id: queued_transfer.group_id(),
+        flag: queued_transfer.flags,
+    }
+    .encode_to(&mut callback_data)?;
 
     let standalone_action_callback_accounts = create_action_callback_accounts(
         tick_accounts.queue_info.address(),

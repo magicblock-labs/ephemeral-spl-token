@@ -1,17 +1,15 @@
+use crate::processor::internal::group_receipt;
+use crate::processor::internal::group_receipt::{TransferCallbackArgs, TransferCallbackArgsView};
 #[cfg(feature = "logging")]
 use crate::processor::utils::group_receipt_log;
 use crate::processor::utils::{group_receipt_close, GroupReceiptAccounts, CALLBACK_SIGNER};
-use alloc::vec;
-use alloc::vec::Vec;
-use data_layout::variable_offset_layout;
-
 use ephemeral_spl_api::state::group_receipt::{GroupReceipt, TransferReceipt};
 use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, TransferQueueHeader};
 use ephemeral_spl_api::{
     debug_log, require, require_eq_keys, require_n_accounts, require_owned_by,
 };
 use pinocchio::error::ProgramError;
-use pinocchio::{AccountView, Address, ProgramResult};
+use pinocchio::{AccountView, ProgramResult};
 use solana_signature::Signature;
 
 pub const GROUP_RECEIPT_SEED: &[u8] = b"group-receipt";
@@ -135,8 +133,11 @@ fn handle_group_receipt(
         return Err(ProgramError::InvalidArgument);
     }
 
-    let (expected_group_receipt, _) =
-        derive_group_receipt_id(queue_info.address(), source.address(), group_receipt.id());
+    let (expected_group_receipt, _) = group_receipt::derive_group_receipt_id(
+        queue_info.address(),
+        source.address(),
+        group_receipt.id(),
+    );
     require!(
         expected_group_receipt.eq(group_receipt_info.address()),
         ProgramError::InvalidAccountData
@@ -236,34 +237,6 @@ impl<'a> MagicResponseView<'a> {
             signature,
         })
     }
-}
-
-// buffer_offset = 6: response.data starts at byte 14 of the original 8-byte-aligned
-// instruction buffer (1 disc + 4 variant + 1 ok + 8 data_len), and 14 % 8 = 6.
-#[variable_offset_layout(buffer_offset = 6)]
-pub struct TransferCallbackArgs {
-    /// Amount was transferred in action
-    pub amount: u64,
-    /// Group ID of a transfer
-    pub group_id: u32,
-    // Flags
-    pub flag: u8,
-}
-
-pub fn derive_group_receipt_id(
-    queue_address: &Address,
-    source: &Address,
-    group_id: u32,
-) -> (Address, u8) {
-    Address::find_program_address(
-        &[
-            GROUP_RECEIPT_SEED,
-            queue_address.as_ref(),
-            source.as_ref(),
-            &group_id.to_le_bytes(),
-        ],
-        &crate::ID,
-    )
 }
 
 #[inline(always)]
