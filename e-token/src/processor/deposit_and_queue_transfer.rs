@@ -62,7 +62,6 @@ pub fn process_deposit_and_queue_transfer(
         magic_program,
     ] = require_n_accounts!(accounts, 12);
 
-    pinocchio_log::log!("instruction_data: {}", instruction_data.len());
     let args = DepositAndQueueTransferArgs::decode(instruction_data)?;
 
     let group_id = args.group_id_u32();
