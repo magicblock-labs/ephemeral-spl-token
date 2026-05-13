@@ -25,6 +25,7 @@ pub mod initialize_transfer_queue;
 pub(crate) mod internal;
 pub mod mark_transfer_queue_refill_pending;
 pub mod merge_shuttle_into_ephemeral_ata;
+pub mod refund_on_failure_callback;
 pub mod reset_ephemeral_ata_permission;
 pub mod schedule_private_transfer;
 pub mod sponsored_lamports_transfer;

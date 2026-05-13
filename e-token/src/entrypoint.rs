@@ -2,6 +2,7 @@ use ephemeral_spl_api::debug_log;
 use ephemeral_spl_api::instruction::ESplInstruction;
 use ephemeral_spl_api::{error::EphemeralSplError, require};
 
+use crate::processor::refund_on_failure_callback::process_refund_on_failure_callback;
 use {
     crate::instruction::ESplInternalInstruction,
     crate::processor::*,
@@ -280,6 +281,11 @@ fn process_internal_instruction(
             debug_log!("Instruction: ExecuteTransferCallback");
 
             process_execute_transfer_callback(accounts, data)
+        }
+        ESplInternalInstruction::RefundOnFailureCallback => {
+            debug_log!("Instruction: RefundOnFailureCallback");
+
+            process_refund_on_failure_callback(accounts, data)
         }
     }
 }

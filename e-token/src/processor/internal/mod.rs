@@ -8,7 +8,12 @@ pub(crate) mod transfer_queue_refill;
 pub use lamports_pda::AmountAndSaltArgs;
 pub use shuttle_delegation::DepositAndDelegateShuttleArgs;
 
+use ephemeral_rollups_pinocchio::spl::TOKEN_PROGRAM_ID;
 use pinocchio::{error::ProgramError, Address};
+
+pub(crate) const ASSOCIATED_TOKEN_PROGRAM_ID: ephemeral_spl_api::Address =
+    pinocchio_associated_token_account::ID;
+
 /// seed is created by overwriting the first 4-bytes of stash_pda with shuttle_id bytes
 #[inline(always)]
 pub(crate) fn derive_hydra_seed(stash_pda: &Address, shuttle_id: u32) -> [u8; 32] {
@@ -34,4 +39,16 @@ pub(crate) fn derive_ata(
         &pinocchio_associated_token_account::ID,
     )?;
     Ok(pda)
+}
+
+#[inline(always)]
+pub(crate) fn derive_associated_token_address(
+    wallet: &ephemeral_spl_api::Address,
+    mint: &ephemeral_spl_api::Address,
+) -> ephemeral_spl_api::Address {
+    ephemeral_spl_api::Address::find_program_address(
+        &[wallet.as_ref(), TOKEN_PROGRAM_ID.as_ref(), mint.as_ref()],
+        &ASSOCIATED_TOKEN_PROGRAM_ID,
+    )
+    .0
 }
