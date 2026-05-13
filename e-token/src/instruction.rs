@@ -36,6 +36,10 @@ pub(crate) enum ESplInternalInstruction {
     /// 207 - MarkTransferQueueRefillPending: Magic standalone action that
     ///       sets the per-queue refill-state pending flag.
     MarkTransferQueueRefillPending = 207,
+
+    /// 208 - ExecuteTransferCallback: callback with result of `ExecuteReadyQueuedTransfer`
+    ///       maintains `GroupReceipt`, adds `TransferReceipt`
+    ExecuteTransferCallback = 208,
 }
 
 impl ESplInternalInstruction {
@@ -78,6 +82,7 @@ impl TryFrom<u8> for ESplInternalInstruction {
             205 => Ok(Self::UndelegateLamportsPda),
             206 => Ok(Self::CloseLamportsPdaIntent),
             207 => Ok(Self::MarkTransferQueueRefillPending),
+            208 => Ok(Self::ExecuteTransferCallback),
             _ => Err(()),
         }
     }

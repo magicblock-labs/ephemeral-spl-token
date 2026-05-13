@@ -1833,9 +1833,9 @@ dependencies = [
 
 [[package]]
 name = "ephemeral-rollups-pinocchio"
-version = "0.10.1"
+version = "0.10.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32333fcc831aeb330b5c32df9d4ac1f949487bb293aa5a1b6406f40a5d787d82"
+checksum = "4eabedb2d5ca6f4f465436d45c882bcbe23a4ff8d7db2148f0410abbf1972f5b"
 dependencies = [
  "bincode 2.0.1",
  "pinocchio 0.10.1",
@@ -1855,6 +1855,7 @@ dependencies = [
  "pinocchio-log",
  "pinocchio-pubkey",
  "solana-address 2.6.0",
+ "solana-signature 3.1.0",
 ]
 
 [[package]]
@@ -1878,6 +1879,7 @@ dependencies = [
  "pinocchio-token-2022",
  "serde",
  "serde_json",
+ "serial_test",
  "solana-account 3.3.0",
  "solana-instruction 3.1.0",
  "solana-keypair 3.1.0",
@@ -1885,6 +1887,7 @@ dependencies = [
  "solana-program-pack 3.0.0",
  "solana-program-test",
  "solana-pubkey 4.0.0",
+ "solana-signature 3.1.0",
  "solana-signer 3.0.0",
  "solana-system-interface 2.0.0",
  "solana-transaction 3.0.2",
@@ -3163,13 +3166,14 @@ dependencies = [
 
 [[package]]
 name = "magicblock-magic-program-api"
-version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bdc247ad3388a97b98ae52e386a97efe0933a361632e42966ef4e151fd1716b2"
+version = "0.9.0"
+source = "git+https://github.com/magicblock-labs/magicblock-validator.git?rev=69d3381e#69d3381edd0d84415d2ebd7e56bb221c380077aa"
 dependencies = [
  "bincode 1.3.3",
+ "const-crypto",
  "serde",
- "solana-program 2.3.0",
+ "solana-program 3.0.0",
+ "solana-signature 3.1.0",
 ]
 
 [[package]]
@@ -4524,6 +4528,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "scc"
+version = "2.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "46e6f046b7fef48e2660c57ed794263155d713de679057f2d0c169bfc6e756cc"
+dependencies = [
+ "sdd",
+]
+
+[[package]]
 name = "schannel"
 version = "0.1.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4547,6 +4560,12 @@ dependencies = [
  "ring",
  "untrusted",
 ]
+
+[[package]]
+name = "sdd"
+version = "3.0.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "490dcfcbfef26be6800d11870ff2df8774fa6e86d047e3e8c8a76b25655e41ca"
 
 [[package]]
 name = "seahash"
@@ -4697,6 +4716,32 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "52a8e3ca0ca629121f70ab50f95249e5a6f925cc0f6ffe8256c45b728875706c"
 dependencies = [
  "darling",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "serial_test"
+version = "3.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "911bd979bf1070a3f3aa7b691a3b3e9968f339ceeec89e08c280a8a22207a32f"
+dependencies = [
+ "futures-executor",
+ "futures-util",
+ "log",
+ "once_cell",
+ "parking_lot",
+ "scc",
+ "serial_test_derive",
+]
+
+[[package]]
+name = "serial_test_derive"
+version = "3.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0a7d91949b85b0d2fb687445e448b40d322b6b3e4af6b44a29b21d9a5f33e6d9"
+dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
@@ -8099,6 +8144,8 @@ version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4bb8057cc0e9f7b5e89883d49de6f407df655bb6f3a71d0b7baf9986a2218fd9"
 dependencies = [
+ "bytemuck",
+ "bytemuck_derive",
  "ed25519-dalek 2.2.0",
  "five8 0.2.1",
  "serde",

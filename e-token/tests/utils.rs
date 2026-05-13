@@ -2,6 +2,8 @@
 //! `dead_code` for the rest.
 #![allow(dead_code)]
 
+use ephemeral_spl_api::state::group_receipt::GroupReceipt;
+use ephemeral_spl_api::ID as PROGRAM;
 use solana_account::Account;
 use solana_keypair::Keypair;
 use solana_program::{
@@ -36,6 +38,8 @@ pub enum TestInternalInstruction {
     UndelegateLamportsPda = 205,
     CloseLamportsPdaIntent = 206,
     MarkTransferQueueRefillPending = 207,
+    ExecuteTransferCallback = 208,
+    InitializeGroupReceipt = 209,
 }
 
 impl TestInternalInstruction {
@@ -263,6 +267,49 @@ pub fn add_permission_program(pt: &mut ProgramTest) {
             rent_epoch: 0,
         },
     );
+}
+
+pub const GROUP_RECEIPT_SEED: &[u8] = b"group-receipt";
+pub const MAGIC_VAULT: Pubkey = pubkey!("MagicVau1t999999999999999999999999999999999");
+
+/// Derives the group receipt PDA for the given queue, source authority, and group ID.
+pub fn derive_group_receipt(queue: Pubkey, source: Pubkey, group_id: u32) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[
+            GROUP_RECEIPT_SEED,
+            queue.as_ref(),
+            source.as_ref(),
+            &group_id.to_le_bytes(),
+        ],
+        &PROGRAM,
+    )
+}
+
+/// Injects a zero-initialized group receipt account of the correct size into the test context.
+/// Required before `DepositAndQueueTransfer` because the magic mock's `CreateEphemeralAccount`
+/// is a no-op and does not actually allocate the account.
+pub fn pre_create_group_receipt(
+    context: &mut ProgramTestContext,
+    queue: Pubkey,
+    source: Pubkey,
+    group_id: u32,
+    splits: u32,
+) -> Pubkey {
+    let (receipt, _) = derive_group_receipt(queue, source, group_id);
+    let data = vec![0u8; GroupReceipt::required_size(splits as usize)];
+    let rent = Rent::default();
+    context.set_account(
+        &receipt,
+        &Account {
+            lamports: rent.minimum_balance(data.len()),
+            data,
+            owner: PROGRAM,
+            executable: false,
+            rent_epoch: 0,
+        }
+        .into(),
+    );
+    receipt
 }
 
 pub fn derive_associated_token_address(wallet: Pubkey, mint: Pubkey) -> Pubkey {

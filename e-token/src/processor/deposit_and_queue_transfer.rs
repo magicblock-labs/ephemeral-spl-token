@@ -1,16 +1,16 @@
-use core::convert::TryFrom;
-
+use crate::processor::internal::group_receipt::derive_group_receipt_id;
 use crate::processor::internal::token_vault::transfer_to_vault_for_mint;
-use crate::processor::utils::read_mint_decimals;
+use crate::processor::utils::{group_receipt_create, read_mint_decimals, GroupReceiptAccounts};
 use alloc::vec;
 use alloc::vec::Vec;
+use core::convert::TryFrom;
 use data_layout::variable_offset_layout;
+use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
 use ephemeral_spl_api::debug_log;
 #[cfg(feature = "logging")]
 use ephemeral_spl_api::state::transfer_queue::capacity_from_data_len;
 use ephemeral_spl_api::state::transfer_queue::{
-    queue_allocate_group_id_from_data, queue_len_and_bump_for_mint_with_capacity,
-    queue_push_from_data, QueuedTransfer, TransferQueue,
+    queue_len_and_bump_for_mint_with_capacity, queue_push_from_data, QueuedTransfer, TransferQueue,
     QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
 };
 use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
@@ -36,6 +36,9 @@ const MILLIS_PER_SECOND: u64 = 1_000;
 ///  6: [signer]            - Keypair : Sender authority.
 ///  7: []                  - SPL     : Token program.
 ///  8: [writable]          - SPL     : Reimbursement token account.
+///  9: [writable]          - SPL     : Group receipt.
+///  10: [writable]         - SPL     : Magic vault
+///  11: []                 - Magic   : Magic program
 ///
 /// Instruction Data: DepositAndQueueTransferArgs
 ///
@@ -54,11 +57,21 @@ pub fn process_deposit_and_queue_transfer(
         user_authority,
         token_program_info,
         reimbursement_token_info,
-    ] = require_n_accounts!(accounts, 9);
+        group_receipt_info,
+        magic_vault,
+        magic_program,
+    ] = require_n_accounts!(accounts, 12);
 
-    pinocchio_log::log!("instruction_data: {}", instruction_data.len());
     let args = DepositAndQueueTransferArgs::decode(instruction_data)?;
 
+    let group_id = args.group_id_u32();
+    let (group_receipt, group_receipt_bump) =
+        derive_group_receipt_id(queue_info.address(), user_authority.address(), group_id);
+
+    require!(
+        group_receipt.eq(group_receipt_info.address()),
+        ProgramError::InvalidInstructionData
+    );
     require!(
         user_authority.is_signer(),
         ProgramError::MissingRequiredSignature
@@ -66,6 +79,10 @@ pub fn process_deposit_and_queue_transfer(
     require!(
         queue_info.owned_by(&crate::ID),
         ProgramError::InvalidAccountOwner
+    );
+    require!(
+        magic_program.address().eq(&MAGIC_PROGRAM_ID),
+        ProgramError::IncorrectProgramId
     );
 
     let amount = args.amount();
@@ -137,7 +154,6 @@ pub fn process_deposit_and_queue_transfer(
     let split_plan = build_split_plan(amount, split, decimals)?;
 
     let data = unsafe { queue_info.borrow_unchecked_mut() };
-    let group_id = queue_allocate_group_id_from_data(data)?;
     for index in 0..split {
         let queued_amount = split_plan.amount_for_index(index);
         let queue_position = queue_len_before
@@ -189,12 +205,26 @@ pub fn process_deposit_and_queue_transfer(
         args.max_delay_ms()
     );
 
+    group_receipt_create(
+        &GroupReceiptAccounts {
+            queue_info,
+            group_receipt_info,
+            source: user_authority,
+            magic_vault,
+            _magic_program: magic_program,
+        },
+        group_receipt_bump,
+        group_id,
+        args.split(),
+    )?;
+
     Ok(())
 }
 
 #[variable_offset_layout(buffer_offset = 1, option = implicit)]
 pub struct DepositAndQueueTransferArgs {
     pub amount: u64,
+    pub group_id: [u8; 3],
     pub min_delay_ms: u64,
     pub max_delay_ms: u64,
     pub split: u32,
@@ -204,8 +234,15 @@ pub struct DepositAndQueueTransferArgs {
 
 static_assertions::const_assert!(matches!(
     DepositAndQueueTransferArgs::DATA_LENS,
-    [28, 29, 36, 37]
+    [31, 32, 39, 40]
 ));
+
+impl DepositAndQueueTransferArgsView<'_> {
+    pub fn group_id_u32(&self) -> u32 {
+        let id = self.group_id();
+        u32::from(id[0]) | (u32::from(id[1]) << 8) | (u32::from(id[2]) << 16)
+    }
+}
 
 #[inline(always)]
 fn validate_deposit_and_queue_transfer_params(

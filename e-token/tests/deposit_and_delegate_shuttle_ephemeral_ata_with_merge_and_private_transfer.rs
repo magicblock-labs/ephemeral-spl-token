@@ -250,6 +250,7 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
         encrypted_data_suffix: dlp_api::encryption::encrypt_ed25519_recipient(
             &DepositAndQueueTransferArgs {
                 amount: 0, // dont care its value
+                group_id: [2, 1, 3],
                 min_delay_ms: MIN_DELAY_MS,
                 max_delay_ms: MAX_DELAY_MS,
                 split: SPLIT,

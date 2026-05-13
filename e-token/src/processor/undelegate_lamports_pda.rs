@@ -95,6 +95,7 @@ pub fn process_undelegate_lamports_pda(
         args: ActionArgs::new(&close_handler_data).with_escrow_index(DEFAULT_ESCROW_INDEX),
         compute_units: CLOSE_LAMPORTS_PDA_COMPUTE_UNITS,
         accounts: &close_handler_accounts,
+        callback: None,
     }];
     let committed_accounts = [lamports_pda_info.clone()];
     let mut intent_bundle_data = [0u8; INTENT_BUNDLE_DATA_BUF_SIZE];

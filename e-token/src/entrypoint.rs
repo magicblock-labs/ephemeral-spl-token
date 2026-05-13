@@ -276,5 +276,10 @@ fn process_internal_instruction(
 
             process_mark_transfer_queue_refill_pending(accounts, data)
         }
+        ESplInternalInstruction::ExecuteTransferCallback => {
+            debug_log!("Instruction: ExecuteTransferCallback");
+
+            process_execute_transfer_callback(accounts, data)
+        }
     }
 }

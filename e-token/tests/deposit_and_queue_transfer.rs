@@ -1,26 +1,31 @@
+use crate::utils::pre_create_group_receipt;
 use bytemuck::Zeroable;
 use ephemeral_rollups_pinocchio::acl::{
     permission_pda_from_permissioned_account, PERMISSION_PROGRAM_ID,
 };
 use ephemeral_rollups_pinocchio::spl::EphemeralAta;
 use ephemeral_spl_api::instruction;
+use ephemeral_spl_api::state::group_receipt::GroupReceiptHeader;
 use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
 use ephemeral_spl_api::state::transfer_queue::{
     queue_views_checked, QueuedTransfer, TransferQueue, TransferQueueHeader, HEADER_LEN, ITEM_LEN,
 };
 use ephemeral_spl_api::ID as PROGRAM;
 use ephemeral_token_program::{DepositAndQueueTransferArgs, InitializeTransferQueueArgs};
+use serial_test::serial;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::clock::Clock;
 use solana_program_pack::Pack;
 use spl_token_interface::state::Account;
 use {
     solana_keypair::Keypair,
-    solana_program_test::{tokio, ProgramTestContext},
-    solana_pubkey::Pubkey,
+    solana_program_test::{processor, tokio, ProgramTestContext},
+    solana_pubkey::{pubkey, Pubkey},
     solana_signer::Signer,
     solana_transaction::{InstructionError, Transaction, TransactionError},
 };
+
+const MAGIC_PROGRAM: Pubkey = pubkey!("Magic11111111111111111111111111111111111111");
 
 mod common;
 mod utils;
@@ -35,6 +40,7 @@ struct Fixture {
     mint: Pubkey,
     queue: Pubkey,
     vault: Pubkey,
+    magic_vault: Pubkey,
     user_source_ata: Pubkey,
     destination_ata: Pubkey,
     vault_ata: Pubkey,
@@ -52,7 +58,16 @@ fn read_item_unaligned(data: &[u8], index: usize) -> QueuedTransfer {
 }
 
 async fn setup_fixture(items: Option<u32>) -> Fixture {
-    let mut context = utils::start_program_test(PROGRAM).await;
+    let mut context = utils::start_program_test_with(PROGRAM, |pt| {
+        pt.prefer_bpf(false);
+        pt.add_program(
+            "magic_mock",
+            MAGIC_PROGRAM,
+            processor!(common::magic_mock::process),
+        );
+        pt.prefer_bpf(true);
+    })
+    .await;
 
     let payer_kp = utils::fixed_payer_keypair();
     let payer = payer_kp.pubkey();
@@ -148,6 +163,7 @@ async fn setup_fixture(items: Option<u32>) -> Fixture {
         mint,
         queue,
         vault,
+        magic_vault: utils::MAGIC_VAULT,
         user_source_ata,
         destination_ata,
         vault_ata,
@@ -160,6 +176,8 @@ fn build_deposit_and_queue_ix(
     min_delay_ms: u64,
     max_delay_ms: u64,
     split: u32,
+    group_id: u32,
+    group_receipt: Pubkey,
 ) -> Instruction {
     build_deposit_and_queue_ix_with_options(
         fixture,
@@ -169,6 +187,8 @@ fn build_deposit_and_queue_ix(
         split,
         None,
         None,
+        group_id,
+        group_receipt,
     )
 }
 
@@ -180,6 +200,8 @@ fn build_deposit_and_queue_ix_with_options(
     split: u32,
     flags: Option<u8>,
     client_ref_id: Option<u64>,
+    group_id: u32,
+    group_receipt: Pubkey,
 ) -> Instruction {
     build_deposit_and_queue_ix_for_destination(
         fixture,
@@ -190,6 +212,8 @@ fn build_deposit_and_queue_ix_with_options(
         split,
         flags,
         client_ref_id,
+        group_id,
+        group_receipt,
     )
 }
 
@@ -202,10 +226,14 @@ fn build_deposit_and_queue_ix_for_destination(
     split: u32,
     flags: Option<u8>,
     client_ref_id: Option<u64>,
+    group_id: u32,
+    group_receipt: Pubkey,
 ) -> Instruction {
+    let g = group_id.to_le_bytes();
     let data = instruction::ESplInstruction::DepositAndQueueTransfer.with_data(
         &DepositAndQueueTransferArgs {
             amount,
+            group_id: [g[0], g[1], g[2]],
             min_delay_ms,
             max_delay_ms,
             split,
@@ -219,15 +247,18 @@ fn build_deposit_and_queue_ix_for_destination(
     Instruction {
         program_id: PROGRAM,
         accounts: vec![
-            AccountMeta::new(fixture.queue, false),
-            AccountMeta::new_readonly(fixture.vault, false),
-            AccountMeta::new_readonly(fixture.mint, false),
-            AccountMeta::new(fixture.user_source_ata, false),
-            AccountMeta::new(fixture.vault_ata, false),
-            AccountMeta::new_readonly(destination, false),
-            AccountMeta::new_readonly(fixture.payer, true),
-            AccountMeta::new_readonly(spl_token_interface::ID, false),
-            AccountMeta::new_readonly(PROGRAM, false),
+            AccountMeta::new(fixture.queue, false),           // 0: queue
+            AccountMeta::new_readonly(fixture.vault, false),  // 1: vault
+            AccountMeta::new_readonly(fixture.mint, false),   // 2: mint
+            AccountMeta::new(fixture.user_source_ata, false), // 3: user_source_token
+            AccountMeta::new(fixture.vault_ata, false),       // 4: vault_token
+            AccountMeta::new_readonly(destination, false),    // 5: destination
+            AccountMeta::new_readonly(fixture.payer, true),   // 6: user_authority (signer)
+            AccountMeta::new_readonly(spl_token_interface::ID, false), // 7: token_program
+            AccountMeta::new_readonly(PROGRAM, false),        // 8: reimbursement (placeholder)
+            AccountMeta::new(group_receipt, false),           // 9: group_receipt_info
+            AccountMeta::new(fixture.magic_vault, false),     // 10: magic_vault
+            AccountMeta::new_readonly(MAGIC_PROGRAM, false),  // 11: magic_program
         ],
         data,
     }
@@ -288,8 +319,9 @@ async fn assert_empty_state(fixture: &Fixture) {
 }
 
 #[tokio::test]
+#[serial]
 async fn deposit_and_queue_transfer_transfers_once_and_enqueues_split_items() {
-    let fixture = setup_fixture(None).await;
+    let mut fixture = setup_fixture(None).await;
     let clock_before = fixture
         .context
         .banks_client
@@ -301,7 +333,23 @@ async fn deposit_and_queue_transfer_transfers_once_and_enqueues_split_items() {
     let min_delay_ms: u64 = 120_000;
     let max_delay_ms: u64 = 120_000;
     let split: u32 = 3;
-    let ix = build_deposit_and_queue_ix(&fixture, amount, min_delay_ms, max_delay_ms, split);
+    let group_id: u32 = 1;
+    let group_receipt = pre_create_group_receipt(
+        &mut fixture.context,
+        fixture.queue,
+        fixture.payer,
+        group_id,
+        split,
+    );
+    let ix = build_deposit_and_queue_ix(
+        &fixture,
+        amount,
+        min_delay_ms,
+        max_delay_ms,
+        split,
+        group_id,
+        group_receipt,
+    );
     let blockhash = fixture
         .context
         .banks_client
@@ -397,13 +445,42 @@ async fn deposit_and_queue_transfer_transfers_once_and_enqueues_split_items() {
 
     queued_amounts.sort_unstable();
     assert_eq!(queued_amounts, [3, 3, 4]);
+
+    // One CreateEphemeralAccount CPI must have been sent to the magic program.
+    let creates = common::magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
+    assert_eq!(
+        creates.len(),
+        1,
+        "expected exactly one CreateEphemeralAccount CPI"
+    );
+
+    // Receipt must be initialized with the correct header (not yet used, so transfers_completed=0).
+    let receipt_acc = fixture
+        .context
+        .banks_client
+        .get_account(group_receipt)
+        .await
+        .unwrap()
+        .expect("group receipt account must exist");
+    let receipt_header = bytemuck::try_from_bytes::<GroupReceiptHeader>(
+        &receipt_acc.data[..GroupReceiptHeader::SIZE],
+    )
+    .unwrap();
+    assert_eq!(receipt_header.id(), group_id);
+    assert_eq!(receipt_header.splits(), split);
+    assert_eq!(receipt_header.transfer_completed(), 0);
 }
 
 #[tokio::test]
+#[serial]
 async fn deposit_and_queue_transfer_assigns_distinct_group_ids_per_enqueue() {
-    let fixture = setup_fixture(None).await;
-    let first_ix = build_deposit_and_queue_ix(&fixture, 10, 0, 0, 2);
-    let second_ix = build_deposit_and_queue_ix(&fixture, 12, 0, 0, 3);
+    let mut fixture = setup_fixture(None).await;
+    let receipt1 =
+        utils::pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, 1, 2);
+    let receipt2 =
+        utils::pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, 2, 3);
+    let first_ix = build_deposit_and_queue_ix(&fixture, 10, 0, 0, 2, 1, receipt1);
+    let second_ix = build_deposit_and_queue_ix(&fixture, 12, 0, 0, 3, 2, receipt2);
 
     for (i, ix) in [first_ix, second_ix].into_iter().enumerate() {
         let blockhash = fixture
@@ -446,13 +523,26 @@ async fn deposit_and_queue_transfer_assigns_distinct_group_ids_per_enqueue() {
     assert_eq!(group_ids[2], group_ids[3]);
     assert_eq!(group_ids[3], group_ids[4]);
     assert!(group_ids[1] != group_ids[2]);
+
+    // Two enqueues = two CreateEphemeralAccount CPIs (accumulated across both transactions).
+    let creates = common::magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
+    assert_eq!(creates.len(), 2, "expected two CreateEphemeralAccount CPIs");
 }
 
 #[tokio::test]
+#[serial]
 async fn deposit_and_queue_transfer_uses_explicit_client_ref_id_for_all_splits() {
-    let fixture = setup_fixture(None).await;
+    let mut fixture = setup_fixture(None).await;
     let client_ref_id = 0x1234_5678_9abc_def0_u64;
     let split = 3;
+    let group_id: u32 = 1;
+    let group_receipt = pre_create_group_receipt(
+        &mut fixture.context,
+        fixture.queue,
+        fixture.payer,
+        group_id,
+        split,
+    );
     let ix = build_deposit_and_queue_ix_with_options(
         &fixture,
         12,
@@ -461,6 +551,8 @@ async fn deposit_and_queue_transfer_uses_explicit_client_ref_id_for_all_splits()
         split,
         None,
         Some(client_ref_id),
+        group_id,
+        group_receipt,
     );
     let blockhash = fixture
         .context
@@ -495,11 +587,28 @@ async fn deposit_and_queue_transfer_uses_explicit_client_ref_id_for_all_splits()
         let queued = read_item_unaligned(&queue_account.data, index);
         assert_eq!(queued.client_ref_id, client_ref_id);
     }
+
+    // One enqueue = one CreateEphemeralAccount CPI.
+    let creates = common::magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
+    assert_eq!(
+        creates.len(),
+        1,
+        "expected exactly one CreateEphemeralAccount CPI"
+    );
 }
 
 #[tokio::test]
-async fn deposit_and_queue_transfer_rejects_legacy_destination_ata() {
-    let fixture = setup_fixture(None).await;
+#[serial]
+async fn deposit_and_queue_transfer_accepts_legacy_destination_ata() {
+    let mut fixture = setup_fixture(None).await;
+    let group_id: u32 = 1;
+    let group_receipt = pre_create_group_receipt(
+        &mut fixture.context,
+        fixture.queue,
+        fixture.payer,
+        group_id,
+        1,
+    );
     let ix = build_deposit_and_queue_ix_for_destination(
         &fixture,
         fixture.destination_ata,
@@ -509,6 +618,8 @@ async fn deposit_and_queue_transfer_rejects_legacy_destination_ata() {
         1,
         None,
         None,
+        group_id,
+        group_receipt,
     );
     let blockhash = fixture
         .context
@@ -535,13 +646,19 @@ async fn deposit_and_queue_transfer_rejects_legacy_destination_ata() {
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
     );
 
+    // Transaction rejected before CPI — no CreateEphemeralAccount CPIs expected.
+    let creates = common::magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
+    assert_eq!(creates.len(), 0, "expected no CreateEphemeralAccount CPIs");
+
     assert_empty_state(&fixture).await;
 }
 
 #[tokio::test]
+#[serial]
 async fn deposit_and_queue_transfer_rejects_zero_split() {
     let fixture = setup_fixture(None).await;
-    let ix = build_deposit_and_queue_ix(&fixture, 10, 0, 0, 0);
+    let (group_receipt, _) = utils::derive_group_receipt(fixture.queue, fixture.payer, 1);
+    let ix = build_deposit_and_queue_ix(&fixture, 10, 0, 0, 0, 1, group_receipt);
     let blockhash = fixture
         .context
         .banks_client
@@ -568,12 +685,18 @@ async fn deposit_and_queue_transfer_rejects_zero_split() {
     );
 
     assert_empty_state(&fixture).await;
+
+    // Transaction rejected before CPI — no CreateEphemeralAccount CPIs expected.
+    let creates = common::magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
+    assert_eq!(creates.len(), 0, "expected no CreateEphemeralAccount CPIs");
 }
 
 #[tokio::test]
+#[serial]
 async fn deposit_and_queue_transfer_rejects_split_greater_than_amount() {
     let fixture = setup_fixture(None).await;
-    let ix = build_deposit_and_queue_ix(&fixture, 2, 0, 0, 3);
+    let (group_receipt, _) = utils::derive_group_receipt(fixture.queue, fixture.payer, 1);
+    let ix = build_deposit_and_queue_ix(&fixture, 2, 0, 0, 3, 1, group_receipt);
     let blockhash = fixture
         .context
         .banks_client
@@ -600,13 +723,19 @@ async fn deposit_and_queue_transfer_rejects_split_greater_than_amount() {
     );
 
     assert_empty_state(&fixture).await;
+
+    // Transaction rejected before CPI — no CreateEphemeralAccount CPIs expected.
+    let creates = common::magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
+    assert_eq!(creates.len(), 0, "expected no CreateEphemeralAccount CPIs");
 }
 
 #[tokio::test]
+#[serial]
 async fn deposit_and_queue_transfer_rejects_when_queue_is_full() {
     let items = 2;
     let fixture = setup_fixture(Some(items)).await;
-    let ix = build_deposit_and_queue_ix(&fixture, 6, 0, 0, 3);
+    let (group_receipt, _) = utils::derive_group_receipt(fixture.queue, fixture.payer, 1);
+    let ix = build_deposit_and_queue_ix(&fixture, 6, 0, 0, 3, 1, group_receipt);
     let blockhash = fixture
         .context
         .banks_client
@@ -631,12 +760,18 @@ async fn deposit_and_queue_transfer_rejects_when_queue_is_full() {
     .unwrap();
 
     assert_empty_state(&fixture).await;
+
+    // Queue full — rejected before group-receipt CPI, no CreateEphemeralAccount CPIs expected.
+    let creates = common::magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
+    assert_eq!(creates.len(), 0, "expected no CreateEphemeralAccount CPIs");
 }
 
 #[tokio::test]
+#[serial]
 async fn deposit_and_queue_transfer_rejects_invalid_delay_range() {
     let fixture = setup_fixture(None).await;
-    let ix = build_deposit_and_queue_ix(&fixture, 10, 10, 9, 1);
+    let (group_receipt, _) = utils::derive_group_receipt(fixture.queue, fixture.payer, 1);
+    let ix = build_deposit_and_queue_ix(&fixture, 10, 10, 9, 1, 1, group_receipt);
     let blockhash = fixture
         .context
         .banks_client
@@ -663,16 +798,37 @@ async fn deposit_and_queue_transfer_rejects_invalid_delay_range() {
     );
 
     assert_empty_state(&fixture).await;
+
+    // Transaction rejected before CPI — no CreateEphemeralAccount CPIs expected.
+    let creates = common::magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
+    assert_eq!(creates.len(), 0, "expected no CreateEphemeralAccount CPIs");
 }
 
 #[tokio::test]
+#[serial]
 async fn deposit_and_queue_transfer_uses_deterministic_split_delays_within_range() {
-    let fixture = setup_fixture(None).await;
+    let mut fixture = setup_fixture(None).await;
     let amount: u64 = 12;
     let min_delay_ms: u64 = 100;
     let max_delay_ms: u64 = 300;
     let split: u32 = 4;
-    let ix = build_deposit_and_queue_ix(&fixture, amount, min_delay_ms, max_delay_ms, split);
+    let group_id: u32 = 1;
+    let group_receipt = pre_create_group_receipt(
+        &mut fixture.context,
+        fixture.queue,
+        fixture.payer,
+        group_id,
+        split,
+    );
+    let ix = build_deposit_and_queue_ix(
+        &fixture,
+        amount,
+        min_delay_ms,
+        max_delay_ms,
+        split,
+        group_id,
+        group_receipt,
+    );
     let blockhash = fixture
         .context
         .banks_client
@@ -718,14 +874,31 @@ async fn deposit_and_queue_transfer_uses_deterministic_split_delays_within_range
     for (ready_at, expected_delay_ms) in actual_ready_ats.iter().zip(expected_delays.iter()) {
         assert_eq!(*ready_at - *expected_delay_ms as i64, implied_now_ms);
     }
+
+    // One CreateEphemeralAccount CPI must have been sent to the magic program.
+    let creates = common::magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
+    assert_eq!(
+        creates.len(),
+        1,
+        "expected exactly one CreateEphemeralAccount CPI"
+    );
 }
 
 #[tokio::test]
+#[serial]
 async fn deposit_and_queue_transfer_prefers_multiples_of_five_for_four_way_split() {
-    let fixture = setup_fixture(None).await;
+    let mut fixture = setup_fixture(None).await;
     let amount: u64 = 33_500_000;
     let split: u32 = 4;
-    let ix = build_deposit_and_queue_ix(&fixture, amount, 0, 0, split);
+    let group_id: u32 = 1;
+    let group_receipt = pre_create_group_receipt(
+        &mut fixture.context,
+        fixture.queue,
+        fixture.payer,
+        group_id,
+        split,
+    );
+    let ix = build_deposit_and_queue_ix(&fixture, amount, 0, 0, split, group_id, group_receipt);
     let blockhash = fixture
         .context
         .banks_client
@@ -763,14 +936,31 @@ async fn deposit_and_queue_transfer_prefers_multiples_of_five_for_four_way_split
         queued_amounts,
         vec![3_500_000, 10_000_000, 10_000_000, 10_000_000]
     );
+
+    // One CreateEphemeralAccount CPI must have been sent to the magic program.
+    let creates = common::magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
+    assert_eq!(
+        creates.len(),
+        1,
+        "expected exactly one CreateEphemeralAccount CPI"
+    );
 }
 
 #[tokio::test]
+#[serial]
 async fn deposit_and_queue_transfer_prefers_multiples_of_five_for_three_way_split() {
-    let fixture = setup_fixture(None).await;
+    let mut fixture = setup_fixture(None).await;
     let amount: u64 = 33_500_000;
     let split: u32 = 3;
-    let ix = build_deposit_and_queue_ix(&fixture, amount, 0, 0, split);
+    let group_id: u32 = 1;
+    let group_receipt = pre_create_group_receipt(
+        &mut fixture.context,
+        fixture.queue,
+        fixture.payer,
+        group_id,
+        split,
+    );
+    let ix = build_deposit_and_queue_ix(&fixture, amount, 0, 0, split, group_id, group_receipt);
     let blockhash = fixture
         .context
         .banks_client
@@ -805,9 +995,18 @@ async fn deposit_and_queue_transfer_prefers_multiples_of_five_for_three_way_spli
         .collect::<Vec<_>>();
     queued_amounts.sort_unstable();
     assert_eq!(queued_amounts, vec![3_500_000, 15_000_000, 15_000_000]);
+
+    // One CreateEphemeralAccount CPI must have been sent to the magic program.
+    let creates = common::magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
+    assert_eq!(
+        creates.len(),
+        1,
+        "expected exactly one CreateEphemeralAccount CPI"
+    );
 }
 
 #[tokio::test]
+#[serial]
 async fn deposit_and_queue_transfer_return_to_shuttle() {
     let fixture = setup_fixture(None).await;
 
@@ -851,15 +1050,15 @@ async fn deposit_and_queue_transfer_return_to_shuttle() {
 
     let amount: u64 = 33_500_000;
     let split: u32 = 1000;
+    let group_id: u32 = 1;
+    let (group_receipt_pda, _) =
+        utils::derive_group_receipt(fixture.queue, fixture.payer, group_id);
     let ix = {
-        //let mut data = instruction::ESplInstruction::DepositAndQueueTransfer.to_vec();
-        //data.extend_from_slice(&amount.to_le_bytes());
-        //data.extend_from_slice(&0_u64.to_le_bytes());
-        //data.extend_from_slice(&0_u64.to_le_bytes());
-        //data.extend_from_slice(&split.to_le_bytes());
+        let g = group_id.to_le_bytes();
         let data = instruction::ESplInstruction::DepositAndQueueTransfer.with_data(
             &DepositAndQueueTransferArgs {
                 amount,
+                group_id: [g[0], g[1], g[2]],
                 min_delay_ms: 0,
                 max_delay_ms: 0,
                 split,
@@ -873,15 +1072,18 @@ async fn deposit_and_queue_transfer_return_to_shuttle() {
         Instruction {
             program_id: PROGRAM,
             accounts: vec![
-                AccountMeta::new(fixture.queue, false),
-                AccountMeta::new_readonly(fixture.vault, false),
-                AccountMeta::new_readonly(fixture.mint, false),
-                AccountMeta::new(fixture.user_source_ata, false),
-                AccountMeta::new(fixture.vault_ata, false),
-                AccountMeta::new_readonly(fixture.payer, false),
-                AccountMeta::new_readonly(fixture.payer, true),
-                AccountMeta::new_readonly(spl_token_interface::ID, false),
-                AccountMeta::new(shuttle_wallet_ata, false),
+                AccountMeta::new(fixture.queue, false),           // 0: queue
+                AccountMeta::new_readonly(fixture.vault, false),  // 1: vault
+                AccountMeta::new_readonly(fixture.mint, false),   // 2: mint
+                AccountMeta::new(fixture.user_source_ata, false), // 3: user_source_token
+                AccountMeta::new(fixture.vault_ata, false),       // 4: vault_token
+                AccountMeta::new_readonly(fixture.payer, false),  // 5: destination
+                AccountMeta::new_readonly(fixture.payer, true),   // 6: user_authority (signer)
+                AccountMeta::new_readonly(spl_token_interface::ID, false), // 7: token_program
+                AccountMeta::new(shuttle_wallet_ata, false),      // 8: reimbursement
+                AccountMeta::new(group_receipt_pda, false),       // 9: group_receipt_info
+                AccountMeta::new(fixture.magic_vault, false),     // 10: magic_vault
+                AccountMeta::new_readonly(MAGIC_PROGRAM, false),  // 11: magic_program
             ],
             data,
         }
@@ -928,4 +1130,8 @@ async fn deposit_and_queue_transfer_return_to_shuttle() {
         .expect("shuttle token account must exist");
     let shuttle_token_state = Account::unpack(&shuttle_token_acc.data).unwrap();
     assert_eq!(shuttle_token_state.amount, amount);
+
+    // return_to_shuttle takes a different code path — no group-receipt CPI expected.
+    let creates = common::magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
+    assert_eq!(creates.len(), 0, "expected no CreateEphemeralAccount CPIs");
 }

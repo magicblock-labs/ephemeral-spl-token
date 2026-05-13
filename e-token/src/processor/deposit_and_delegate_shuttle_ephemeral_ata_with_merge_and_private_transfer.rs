@@ -19,6 +19,8 @@ use ephemeral_spl_api::{consts, require, require_eq_keys, require_n_accounts};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use solana_instruction::{AccountMeta, Instruction};
 
+use crate::processor::internal::group_receipt::derive_group_receipt_id;
+use crate::processor::utils::MAGIC_VAULT_ID;
 use crate::processor::{
     internal::shuttle_delegation::{
         merge_shuttle_into_token_account_action,
@@ -29,6 +31,7 @@ use crate::processor::{
     utils::read_mint_decimals,
 };
 use dlp_api::{args::PostDelegationActions, compact::ClearTextWithInsertable};
+use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
 
 const TRANSFER_CHECKED_DISCRIMINATOR: u8 = 12;
 
@@ -281,6 +284,20 @@ fn private_transfer_action_encrypted(
     encrypted_data_suffix: &[u8],
     amount: u64,
 ) -> Result<PostDelegationActions, ProgramError> {
+    let group_id_raw = [
+        encrypted_destination[0],
+        encrypted_destination[1],
+        encrypted_destination[2],
+    ];
+    let group_id = u32::from(group_id_raw[0])
+        | (u32::from(group_id_raw[1]) << 8)
+        | (u32::from(group_id_raw[2]) << 16);
+    let group_receipt_info = derive_group_receipt_id(
+        queue_info.address(),
+        common_accounts.owner_info.address(),
+        group_id,
+    )
+    .0;
     Ok(PostDelegationActions {
         inserted_signers: 0,
         inserted_non_signers: 0,
@@ -301,6 +318,9 @@ fn private_transfer_action_encrypted(
             MaybeEncryptedPubkey::ClearText(
                 common_accounts.shuttle_wallet_ata_info.address().to_bytes()
             ), // 9
+            MaybeEncryptedPubkey::ClearText(group_receipt_info.to_bytes()), // 10
+            MaybeEncryptedPubkey::ClearText(MAGIC_VAULT_ID.to_bytes(),),    // 11
+            MaybeEncryptedPubkey::ClearText(MAGIC_PROGRAM_ID.to_bytes(),),  // 12
         ],
         instructions: alloc::vec![MaybeEncryptedInstruction {
             program_id: 1,
@@ -314,9 +334,14 @@ fn private_transfer_action_encrypted(
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(0, true)), // owner_info
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(8, false)), // token_program_info
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(9, false)), // shuttle_wallet_ata_info
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(10, false)), // group_receipt
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(11, false)), // magic_vault
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(12, false)), // magic_program
             ],
             data: MaybeEncryptedIxData {
-                prefix: ESplInstruction::DepositAndQueueTransfer.with_data(&amount.to_le_bytes()),
+                prefix: ESplInstruction::DepositAndQueueTransfer.with_data(
+                    &[amount.to_le_bytes().as_slice(), group_id_raw.as_slice()].concat()
+                ),
                 suffix: EncryptedBuffer::new(encrypted_data_suffix.into()),
             },
         }],

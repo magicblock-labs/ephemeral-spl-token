@@ -207,7 +207,7 @@ pub fn process_ensure_transfer_queue_crank(
 // TODO (perf): avoid loop, copies, etc.
 //
 #[inline(always)]
-fn derive_queue_crank_task_id(queue_address: &ephemeral_spl_api::Address) -> i64 {
+pub(crate) fn derive_queue_crank_task_id(queue_address: &ephemeral_spl_api::Address) -> i64 {
     let mut acc = 0_u64;
     for chunk in queue_address.as_ref().chunks_exact(8) {
         let mut bytes = [0_u8; 8];

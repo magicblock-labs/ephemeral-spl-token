@@ -1,9 +1,13 @@
 #[cfg(feature = "logging")]
 use alloc::string::ToString;
 
+use crate::processor::internal::group_receipt::{derive_group_receipt_id, TransferCallbackArgs};
 use dlp_api::pda::magic_fee_vault_pda_from_validator;
+use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
 use ephemeral_rollups_pinocchio::{
-    intent_bundle::{ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta},
+    intent_bundle::{
+        ActionArgs, ActionCallback, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
+    },
     spl::consts::TOKEN_PROGRAM_ID,
 };
 use ephemeral_spl_api::debug_log;
@@ -17,14 +21,13 @@ use pinocchio::sysvars::{clock::Clock, Sysvar};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
 
-use crate::processor::{
-    initialize_rent_pda::RENT_PDA,
-    internal::transfer_queue_refill::{
-        queue_refill_state_address, refill_transfer_queue_amounts,
-        MARK_TRANSFER_QUEUE_REFILL_PENDING_COMPUTE_UNITS,
-        MARK_TRANSFER_QUEUE_REFILL_PENDING_ESCROW_INDEX,
-    },
+use crate::processor::initialize_rent_pda::RENT_PDA;
+use crate::processor::internal::transfer_queue_refill::{
+    queue_refill_state_address, refill_transfer_queue_amounts,
+    MARK_TRANSFER_QUEUE_REFILL_PENDING_COMPUTE_UNITS,
+    MARK_TRANSFER_QUEUE_REFILL_PENDING_ESCROW_INDEX,
 };
+use crate::processor::utils::{CALLBACK_SIGNER, MAGIC_VAULT_ID};
 use crate::{
     instruction::ESplInternalInstruction,
     processor::execute_ready_queued_transfer::ExecuteQueuedTransferArgs,
@@ -84,7 +87,7 @@ pub fn process_transfer_queue_tick(
 
     require_eq_keys!(
         magic_program_info.address(),
-        &ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID,
+        &MAGIC_PROGRAM_ID,
         ProgramError::IncorrectProgramId
     );
 
@@ -111,18 +114,6 @@ pub fn process_transfer_queue_tick(
 
     schedule_execute_ready_transfer(&tick_accounts, &queue_state, &queued_transfer, &program_id)?;
     pop_executed_transfer(tick_accounts.queue_info, queued_transfer)
-}
-
-#[inline(always)]
-fn derive_associated_token_address(
-    wallet: &ephemeral_spl_api::Address,
-    mint: &ephemeral_spl_api::Address,
-) -> ephemeral_spl_api::Address {
-    ephemeral_spl_api::Address::find_program_address(
-        &[wallet.as_ref(), TOKEN_PROGRAM_ID.as_ref(), mint.as_ref()],
-        &ASSOCIATED_TOKEN_PROGRAM_ID,
-    )
-    .0
 }
 
 #[inline(always)]
@@ -193,6 +184,7 @@ fn try_schedule_queue_refill(
             .with_escrow_index(MARK_TRANSFER_QUEUE_REFILL_PENDING_ESCROW_INDEX),
         compute_units: MARK_TRANSFER_QUEUE_REFILL_PENDING_COMPUTE_UNITS,
         accounts: &refill_accounts,
+        callback: None,
     }];
 
     invoke_queue_standalone_action(tick_accounts, queue_state, &standalone_actions)?;
@@ -244,9 +236,24 @@ fn schedule_execute_ready_transfer(
 
     let (vault, _) =
         ephemeral_spl_api::Address::find_program_address(&[queue_state.mint.as_ref()], program_id);
-    let vault_token_account = derive_associated_token_address(&vault, &queue_state.mint);
-    let destination_token_account =
-        derive_associated_token_address(&queued_transfer.destination_owner, &queue_state.mint);
+
+    // Create action callback
+    let mut callback_data = [0_u8; 13];
+    TransferCallbackArgs {
+        amount: queued_transfer.amount,
+        group_id: queued_transfer.group_id(),
+        flag: queued_transfer.flags,
+    }
+    .encode_to(&mut callback_data)?;
+
+    let standalone_action_callback_accounts = create_action_callback_accounts(
+        tick_accounts.queue_info.address(),
+        queued_transfer,
+        &vault,
+        &queue_state.mint,
+    );
+    let standalone_action_callback =
+        create_action_callback(&standalone_action_callback_accounts, &callback_data);
 
     let args = ExecuteQueuedTransferArgs {
         amount: queued_transfer.amount,
@@ -261,55 +268,14 @@ fn schedule_execute_ready_transfer(
     let execute_data =
         ESplInternalInstruction::ExecuteReadyQueuedTransfer.with_data(&args.encode().unwrap());
 
-    // Note that we initialize CallHandler with 9 accounts only, and then 3 more accounts [source_program,
-    // escrow_authority, escrow_signer] are appended by DLP's CallHandlerV2 instruction, which is
-    // why EXECUTE_READY_QUEUED_TRANSFER receives 12 accounts (not 9).
-    let execute_accounts = [
-        ShortAccountMeta {
-            pubkey: vault,
-            is_writable: false,
-        },
-        ShortAccountMeta {
-            pubkey: queue_state.mint,
-            is_writable: false,
-        },
-        ShortAccountMeta {
-            pubkey: vault_token_account,
-            is_writable: true,
-        },
-        ShortAccountMeta {
-            pubkey: queued_transfer.destination_owner,
-            is_writable: false,
-        },
-        ShortAccountMeta {
-            pubkey: destination_token_account,
-            is_writable: true,
-        },
-        ShortAccountMeta {
-            pubkey: RENT_PDA,
-            is_writable: true,
-        },
-        ShortAccountMeta {
-            pubkey: TOKEN_PROGRAM_ID,
-            is_writable: false,
-        },
-        ShortAccountMeta {
-            pubkey: ASSOCIATED_TOKEN_PROGRAM_ID,
-            is_writable: false,
-        },
-        ShortAccountMeta {
-            pubkey: SYSTEM_PROGRAM_ID,
-            is_writable: false,
-        },
-    ];
-    let standalone_actions = [CallHandler {
-        destination_program: crate::ID,
-        escrow_authority: tick_accounts.queue_info.clone(),
-        args: ActionArgs::new(&execute_data)
-            .with_escrow_index(EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX),
-        compute_units: EXECUTE_READY_QUEUED_TRANSFER_COMPUTE_UNITS,
-        accounts: &execute_accounts,
-    }];
+    let standalone_action_accounts =
+        create_action_accounts(queued_transfer, &vault, &queue_state.mint);
+    let standalone_actions = [create_callhandler(
+        tick_accounts.queue_info,
+        &standalone_action_accounts,
+        &execute_data,
+        standalone_action_callback,
+    )];
 
     invoke_queue_standalone_action(tick_accounts, queue_state, &standalone_actions)
 }
@@ -372,4 +338,162 @@ fn pop_executed_transfer(
     );
 
     Ok(())
+}
+
+fn create_action_accounts(
+    queued_transfer: &QueuedTransfer,
+    vault: &ephemeral_spl_api::Address,
+    mint: &ephemeral_spl_api::Address,
+) -> [ShortAccountMeta; 9] {
+    let vault_token_account = derive_associated_token_address(vault, mint);
+    let destination_token_account =
+        derive_associated_token_address(&queued_transfer.destination_owner, mint);
+
+    // Note that we initialize CallHandler with 9 accounts only, and then 3 more accounts [source_program,
+    // escrow_authority, escrow_signer] are appended by DLP's CallHandlerV2 instruction, which is
+    // why EXECUTE_READY_QUEUED_TRANSFER receives 12 accounts (not 9).
+    [
+        ShortAccountMeta {
+            pubkey: vault.clone(),
+            is_writable: false,
+        },
+        ShortAccountMeta {
+            pubkey: mint.clone(),
+            is_writable: false,
+        },
+        ShortAccountMeta {
+            pubkey: vault_token_account,
+            is_writable: true,
+        },
+        ShortAccountMeta {
+            pubkey: queued_transfer.destination_owner,
+            is_writable: false,
+        },
+        ShortAccountMeta {
+            pubkey: destination_token_account,
+            is_writable: true,
+        },
+        ShortAccountMeta {
+            pubkey: RENT_PDA,
+            is_writable: true,
+        },
+        ShortAccountMeta {
+            pubkey: TOKEN_PROGRAM_ID,
+            is_writable: false,
+        },
+        ShortAccountMeta {
+            pubkey: ASSOCIATED_TOKEN_PROGRAM_ID,
+            is_writable: false,
+        },
+        ShortAccountMeta {
+            pubkey: SYSTEM_PROGRAM_ID,
+            is_writable: false,
+        },
+    ]
+}
+
+#[inline(never)]
+fn create_action_callback_accounts(
+    queue_address: &ephemeral_spl_api::Address,
+    queued_transfer: &QueuedTransfer,
+    vault: &ephemeral_spl_api::Address,
+    mint: &ephemeral_spl_api::Address,
+) -> [ShortAccountMeta; 11] {
+    let vault_token_account = derive_associated_token_address(vault, mint);
+    let source_token_account = derive_associated_token_address(&queued_transfer.source, mint);
+    let (group_receipt_account, _) = derive_group_receipt_id(
+        queue_address,
+        &queued_transfer.source,
+        queued_transfer.group_id(),
+    );
+    [
+        ShortAccountMeta {
+            pubkey: CALLBACK_SIGNER,
+            is_writable: false,
+        },
+        ShortAccountMeta {
+            pubkey: group_receipt_account,
+            is_writable: true,
+        },
+        ShortAccountMeta {
+            pubkey: queue_address.clone(),
+            is_writable: true,
+        },
+        ShortAccountMeta {
+            pubkey: vault.clone(),
+            is_writable: false,
+        },
+        ShortAccountMeta {
+            pubkey: mint.clone(),
+            is_writable: false,
+        },
+        ShortAccountMeta {
+            pubkey: vault_token_account,
+            is_writable: true,
+        },
+        ShortAccountMeta {
+            pubkey: queued_transfer.source,
+            is_writable: true,
+        },
+        ShortAccountMeta {
+            pubkey: source_token_account,
+            is_writable: true,
+        },
+        ShortAccountMeta {
+            pubkey: TOKEN_PROGRAM_ID,
+            is_writable: false,
+        },
+        ShortAccountMeta {
+            pubkey: MAGIC_VAULT_ID,
+            is_writable: true,
+        },
+        ShortAccountMeta {
+            pubkey: MAGIC_PROGRAM_ID,
+            is_writable: false,
+        },
+    ]
+}
+
+fn create_action_callback<'a>(
+    accounts: &'a [ShortAccountMeta],
+    payload: &'a [u8],
+) -> ActionCallback<'a> {
+    const CALLBACK_COMPUTE_UNITS: u32 = 100_000;
+
+    ActionCallback {
+        destination_program: crate::ID,
+        discriminator: &[ESplInternalInstruction::ExecuteTransferCallback as u8],
+        payload,
+        compute_units: CALLBACK_COMPUTE_UNITS,
+        accounts,
+    }
+}
+
+fn create_callhandler<'a>(
+    queue_info: &AccountView,
+    action_accounts: &'a [ShortAccountMeta],
+    action_data: &'a [u8],
+    action_callback: ActionCallback<'a>,
+) -> CallHandler<'a> {
+    CallHandler {
+        destination_program: crate::ID,
+        escrow_authority: queue_info.clone(),
+        args: ActionArgs::new(action_data)
+            .with_escrow_index(EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX),
+        compute_units: EXECUTE_READY_QUEUED_TRANSFER_COMPUTE_UNITS,
+        accounts: action_accounts,
+        callback: Some(action_callback),
+    }
+}
+
+#[inline(always)]
+pub(crate) fn derive_associated_token_address(
+    wallet: &ephemeral_spl_api::Address,
+    mint: &ephemeral_spl_api::Address,
+) -> ephemeral_spl_api::Address {
+    ephemeral_spl_api::Address::find_program_address(
+        &[wallet.as_ref(), TOKEN_PROGRAM_ID.as_ref(), mint.as_ref()],
+        &ASSOCIATED_TOKEN_PROGRAM_ID,
+    )
+    .0
 }

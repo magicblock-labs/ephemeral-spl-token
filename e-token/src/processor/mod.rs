@@ -16,6 +16,7 @@ pub mod ensure_transfer_queue_crank;
 pub mod execute_pending_transfer_queue_refill;
 pub mod execute_ready_queued_transfer;
 pub mod execute_scheduled_private_transfer;
+pub mod execute_transfer_callback;
 pub mod initialize_ephemeral_ata;
 pub mod initialize_global_vault;
 pub mod initialize_rent_pda;
@@ -70,6 +71,7 @@ pub use execute_ready_queued_transfer::{
     process_execute_ready_queued_transfer, ExecuteQueuedTransferArgs,
 };
 pub use execute_scheduled_private_transfer::process_execute_scheduled_private_transfer;
+pub use execute_transfer_callback::{process_execute_transfer_callback};
 pub use initialize_ephemeral_ata::process_initialize_ephemeral_ata;
 pub use initialize_global_vault::process_initialize_global_vault;
 pub use initialize_rent_pda::process_initialize_rent_pda;
