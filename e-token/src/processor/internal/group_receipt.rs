@@ -34,13 +34,6 @@ pub(crate) struct TransferCallbackArgs {
     pub flag: u8,
 }
 
-// TODO(edwin): rename file or maybe move to another file
-#[fixed_offset_layout]
-pub(crate) struct RefundOnFailureArgs {
-    /// Amount to be refunded
-    pub amount: u64,
-}
-
 /// Deserialize the bincode-encoded `MagicResponse` from a byte slice without
 /// pulling in the `bincode` crate.
 pub(crate) struct MagicResponseView<'a> {

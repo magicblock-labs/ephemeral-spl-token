@@ -1,11 +1,11 @@
 use crate::instruction::ESplInternalInstruction;
-use crate::processor::internal::execute_queued_transfer::{
-    create_action_accounts, execute_queued_transfer_action, invoke_standalone_transfer_action,
-    MagicAccounts, MagicState,
+use crate::processor::internal::group_receipt::MagicResponseView;
+use crate::processor::internal::queue_authorized_action::{
+    invoke_standalone_action, IntentBundleAccounts, QueueSignerState, QueuedTransferActionBuilder,
 };
-use crate::processor::internal::group_receipt::{MagicResponseView, RefundOnFailureArgs};
 use crate::processor::utils::CALLBACK_SIGNER;
 use crate::ExecuteQueuedTransferArgs;
+use data_layout::fixed_offset_layout;
 use ephemeral_rollups_pinocchio::consts::{MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID};
 use ephemeral_rollups_pinocchio::intent_bundle::{ActionCallback, ShortAccountMeta};
 use ephemeral_rollups_pinocchio::pda::magic_fee_vault_pda_from_validator;
@@ -144,36 +144,42 @@ pub(crate) fn schedule_refund_on_failure(
     let encoded_refund_args = RefundOnFailureArgs { amount }.encode()?;
     let callback = create_callback(&callback_accounts, &encoded_refund_args);
 
-    let transfer_args = ExecuteQueuedTransferArgs {
-        amount,
-        // TODO(edwin): clarify if needed
-        client_ref_id: None,
-        escrow_index: EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
-        flags: QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
-    };
-    let action_data =
-        ESplInternalInstruction::ExecuteReadyQueuedTransfer.with_data(&transfer_args.encode()?);
-
-    let refund_action_accounts =
-        create_action_accounts(refund_destination_owner.address(), &vault, &mint);
-    let mut refund_action =
-        execute_queued_transfer_action(queue_info, &refund_action_accounts, &action_data);
+    let action_builder = QueuedTransferActionBuilder::new(
+        queue_info,
+        refund_destination_owner.address(),
+        &vault,
+        &mint,
+        ExecuteQueuedTransferArgs {
+            amount,
+            // TODO(edwin): clarify if needed
+            client_ref_id: None,
+            escrow_index: EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
+            flags: QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
+        },
+    );
+    let mut refund_action = action_builder.build();
     refund_action.callback = Some(callback);
 
-    invoke_standalone_transfer_action(
-        &MagicAccounts {
+    invoke_standalone_action(
+        &IntentBundleAccounts {
             queue_info,
             magic_program_info,
             magic_context_info,
             magic_fee_vault_info,
         },
-        &MagicState {
+        &QueueSignerState {
             mint: header.mint,
             queue_bump: header.bump,
             validator: header.validator,
         },
         &[refund_action],
     )
+}
+
+#[fixed_offset_layout]
+pub(crate) struct RefundOnFailureArgs {
+    /// Amount to be refunded
+    pub amount: u64,
 }
 
 fn create_callback_accounts(

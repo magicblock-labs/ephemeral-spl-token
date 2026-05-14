@@ -23,9 +23,8 @@ use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
 
 use crate::processor::initialize_rent_pda::RENT_PDA;
 use crate::processor::internal;
-use crate::processor::internal::execute_queued_transfer::{
-    create_action_accounts, execute_queued_transfer_action, invoke_standalone_transfer_action,
-    MagicAccounts, MagicState,
+use crate::processor::internal::queue_authorized_action::{
+    invoke_standalone_action, IntentBundleAccounts, QueueSignerState, QueuedTransferActionBuilder,
 };
 use crate::processor::internal::transfer_queue_refill::{
     queue_refill_state_address, refill_transfer_queue_amounts,
@@ -190,14 +189,14 @@ fn try_schedule_queue_refill(
         callback: None,
     }];
 
-    invoke_standalone_transfer_action(
-        &MagicAccounts {
+    invoke_standalone_action(
+        &IntentBundleAccounts {
             queue_info: tick_accounts.queue_info,
             magic_fee_vault_info: tick_accounts.magic_fee_vault_info,
             magic_context_info: tick_accounts.magic_context_info,
             magic_program_info: tick_accounts.magic_program_info,
         },
-        &MagicState {
+        &QueueSignerState {
             mint: queue_state.mint,
             queue_bump: queue_state.queue_bump,
             validator: queue_state.validator,
@@ -271,39 +270,33 @@ fn schedule_execute_ready_transfer(
     let standalone_action_callback =
         create_action_callback(&standalone_action_callback_accounts, &callback_data);
 
-    let args = ExecuteQueuedTransferArgs {
-        amount: queued_transfer.amount,
-        client_ref_id: if queued_transfer.client_ref_id != 0 {
-            Some(queued_transfer.client_ref_id)
-        } else {
-            None
-        },
-        escrow_index: EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
-        flags: queued_transfer.flags,
-    };
-    let execute_data =
-        ESplInternalInstruction::ExecuteReadyQueuedTransfer.with_data(&args.encode().unwrap());
-
-    let standalone_action_accounts = create_action_accounts(
+    let action_builder = QueuedTransferActionBuilder::new(
+        tick_accounts.queue_info,
         &queued_transfer.destination_owner,
         &vault,
         &queue_state.mint,
+        ExecuteQueuedTransferArgs {
+            amount: queued_transfer.amount,
+            client_ref_id: if queued_transfer.client_ref_id != 0 {
+                Some(queued_transfer.client_ref_id)
+            } else {
+                None
+            },
+            escrow_index: EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
+            flags: queued_transfer.flags,
+        },
     );
-    let mut standalone_action = execute_queued_transfer_action(
-        tick_accounts.queue_info,
-        &standalone_action_accounts,
-        &execute_data,
-    );
+    let mut standalone_action = action_builder.build();
     standalone_action.callback = Some(standalone_action_callback);
 
-    invoke_standalone_transfer_action(
-        &MagicAccounts {
+    invoke_standalone_action(
+        &IntentBundleAccounts {
             queue_info: tick_accounts.queue_info,
             magic_fee_vault_info: tick_accounts.magic_fee_vault_info,
             magic_context_info: tick_accounts.magic_context_info,
             magic_program_info: tick_accounts.magic_program_info,
         },
-        &MagicState {
+        &QueueSignerState {
             mint: queue_state.mint,
             queue_bump: queue_state.queue_bump,
             validator: queue_state.validator,
@@ -311,39 +304,6 @@ fn schedule_execute_ready_transfer(
         &[standalone_action],
     )
 }
-
-// #[inline(always)]
-// fn invoke_queue_standalone_action(
-//     tick_accounts: &TickAccounts<'_>,
-//     queue_state: &QueueTickState,
-//     standalone_actions: &[CallHandler],
-// ) -> ProgramResult {
-//     let queue_bump_seed = [queue_state.queue_bump];
-//     let signer_seeds = [
-//         Seed::from(QUEUE_SEED),
-//         Seed::from(queue_state.mint.as_ref()),
-//         Seed::from(queue_state.validator.as_ref()),
-//         Seed::from(&queue_bump_seed),
-//     ];
-//     let signers = [Signer::from(&signer_seeds)];
-//     let mut intent_bundle_data = [0_u8; MAGIC_INTENT_BUNDLE_DATA_LEN];
-//     let derived_magic_fee_vault =
-//         magic_fee_vault_pda_from_validator(&queue_state.validator.to_bytes().into());
-//     require!(
-//         derived_magic_fee_vault.to_bytes()
-//             == tick_accounts.magic_fee_vault_info.address().to_bytes(),
-//         ProgramError::InvalidSeeds
-//     );
-//
-//     MagicIntentBundleBuilder::new(
-//         tick_accounts.queue_info.clone(),
-//         tick_accounts.magic_context_info.clone(),
-//         tick_accounts.magic_program_info.clone(),
-//     )
-//     .magic_fee_vault(tick_accounts.magic_fee_vault_info.clone())
-//     .set_standalone_actions(standalone_actions)
-//     .build_and_invoke_signed(&mut intent_bundle_data, &signers)
-// }
 
 #[inline(always)]
 fn pop_executed_transfer(
@@ -371,58 +331,6 @@ fn pop_executed_transfer(
 
     Ok(())
 }
-
-// fn create_action_accounts(
-//     queued_transfer: &QueuedTransfer,
-//     vault: &ephemeral_spl_api::Address,
-//     mint: &ephemeral_spl_api::Address,
-// ) -> [ShortAccountMeta; 9] {
-//     let vault_token_account = internal::derive_associated_token_address(vault, mint);
-//     let destination_token_account =
-//         internal::derive_associated_token_address(&queued_transfer.destination_owner, mint);
-//
-//     // Note that we initialize CallHandler with 9 accounts only, and then 3 more accounts [source_program,
-//     // escrow_authority, escrow_signer] are appended by DLP's CallHandlerV2 instruction, which is
-//     // why EXECUTE_READY_QUEUED_TRANSFER receives 12 accounts (not 9).
-//     [
-//         ShortAccountMeta {
-//             pubkey: vault.clone(),
-//             is_writable: false,
-//         },
-//         ShortAccountMeta {
-//             pubkey: mint.clone(),
-//             is_writable: false,
-//         },
-//         ShortAccountMeta {
-//             pubkey: vault_token_account,
-//             is_writable: true,
-//         },
-//         ShortAccountMeta {
-//             pubkey: queued_transfer.destination_owner,
-//             is_writable: false,
-//         },
-//         ShortAccountMeta {
-//             pubkey: destination_token_account,
-//             is_writable: true,
-//         },
-//         ShortAccountMeta {
-//             pubkey: RENT_PDA,
-//             is_writable: true,
-//         },
-//         ShortAccountMeta {
-//             pubkey: TOKEN_PROGRAM_ID,
-//             is_writable: false,
-//         },
-//         ShortAccountMeta {
-//             pubkey: ASSOCIATED_TOKEN_PROGRAM_ID,
-//             is_writable: false,
-//         },
-//         ShortAccountMeta {
-//             pubkey: SYSTEM_PROGRAM_ID,
-//             is_writable: false,
-//         },
-//     ]
-// }
 
 #[inline(never)]
 fn create_action_callback_accounts(
@@ -501,20 +409,3 @@ fn create_action_callback<'a>(
         accounts,
     }
 }
-
-// fn create_callhandler<'a>(
-//     queue_info: &AccountView,
-//     action_accounts: &'a [ShortAccountMeta],
-//     action_data: &'a [u8],
-//     action_callback: ActionCallback<'a>,
-// ) -> CallHandler<'a> {
-//     CallHandler {
-//         destination_program: crate::ID,
-//         escrow_authority: queue_info.clone(),
-//         args: ActionArgs::new(action_data)
-//             .with_escrow_index(EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX),
-//         compute_units: EXECUTE_READY_QUEUED_TRANSFER_COMPUTE_UNITS,
-//         accounts: action_accounts,
-//         callback: Some(action_callback),
-//     }
-// }
