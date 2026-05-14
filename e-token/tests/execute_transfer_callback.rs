@@ -2,7 +2,8 @@ use crate::common::callback_mock::take_execute_callbacks;
 use crate::common::magic_mock::{take_captured_ephemeral_closes, take_captured_ephemeral_creates};
 use crate::common::{callback_mock, magic_mock};
 use data_layout::variable_offset_layout;
-use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
+use dlp_api::pda::magic_fee_vault_pda_from_validator;
+use ephemeral_rollups_pinocchio::consts::{MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID};
 use ephemeral_spl_api::state::group_receipt::{GroupReceipt, GroupReceiptHeader};
 use ephemeral_spl_api::state::transfer_queue::{HEADER_LEN, QUEUE_SEED, TRANSFER_QUEUE_VERSION};
 use ephemeral_spl_api::ID as PROGRAM;
@@ -181,6 +182,12 @@ async fn setup_context(
     )
 }
 
+fn magic_fee_vault_pubkey(validator: Pubkey) -> Pubkey {
+    Pubkey::new_from_array(
+        magic_fee_vault_pda_from_validator(&validator.to_bytes().into()).to_bytes(),
+    )
+}
+
 fn callback_executor_ix(
     validator: Pubkey,
     receipt: Pubkey,
@@ -193,6 +200,8 @@ fn callback_executor_ix(
     amount: u64,
     group_id: u32,
 ) -> Instruction {
+    let magic_fee_vault = magic_fee_vault_pubkey(validator);
+    let magic_context = MAGIC_CONTEXT_ID;
     let callback_ix = callback_ix(
         receipt,
         queue,
@@ -200,6 +209,8 @@ fn callback_executor_ix(
         mint,
         vault_token,
         source,
+        magic_fee_vault,
+        magic_context,
         ok,
         amount,
         group_id,
@@ -234,6 +245,8 @@ fn callback_ix(
     mint: Pubkey,
     vault_token: Pubkey,
     source: Pubkey,
+    magic_fee_vault: Pubkey,
+    magic_context: Pubkey,
     ok: bool,
     amount: u64,
     group_id: u32,
@@ -251,7 +264,9 @@ fn callback_ix(
             AccountMeta::new_readonly(solana_system_interface::program::ID, false), // 7: source_token_account (unused)
             AccountMeta::new_readonly(spl_token_interface::ID, false), // 8: token_program (unused)
             AccountMeta::new(utils::MAGIC_VAULT, false),               // 9: magic_vault
-            AccountMeta::new_readonly(MAGIC_PROGRAM_ID, false),        // 10: magic_program
+            AccountMeta::new(magic_fee_vault, false),                  // 10: magic_fee_vault
+            AccountMeta::new_readonly(MAGIC_PROGRAM_ID, false),        // 11: magic_program
+            AccountMeta::new(magic_context, false),                    // 12: magic_context
         ],
         data: callback_ix_data(ok, amount, group_id),
     }
