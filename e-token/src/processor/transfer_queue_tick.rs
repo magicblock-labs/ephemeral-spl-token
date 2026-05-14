@@ -2,7 +2,7 @@
 use alloc::string::ToString;
 
 use crate::processor::internal::callbacks::TransferCallbackArgs;
-use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
+use ephemeral_rollups_pinocchio::consts::{MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID};
 use ephemeral_rollups_pinocchio::{
     intent_bundle::{ActionArgs, ActionCallback, CallHandler, ShortAccountMeta},
     spl::consts::TOKEN_PROGRAM_ID,
@@ -332,7 +332,7 @@ fn create_action_callback_accounts(
     queued_transfer: &QueuedTransfer,
     vault: &ephemeral_spl_api::Address,
     mint: &ephemeral_spl_api::Address,
-) -> [ShortAccountMeta; 11] {
+) -> [ShortAccountMeta; 12] {
     let vault_token_account = internal::derive_associated_token_address(vault, mint);
     let source_token_account =
         internal::derive_associated_token_address(&queued_transfer.source, mint);
@@ -386,6 +386,10 @@ fn create_action_callback_accounts(
             pubkey: MAGIC_PROGRAM_ID,
             is_writable: false,
         },
+        ShortAccountMeta {
+            pubkey: MAGIC_CONTEXT_ID,
+            is_writable: true
+        }
     ]
 }
 

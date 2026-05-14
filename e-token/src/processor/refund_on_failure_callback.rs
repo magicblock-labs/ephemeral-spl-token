@@ -70,6 +70,7 @@ impl<'a> RefundOnFailureAccounts<'a> {
     }
 }
 
+#[inline(never)]
 pub fn process_refund_on_failure_callback(
     accounts: &[AccountView],
     instruction_data: &[u8],
