@@ -2,12 +2,15 @@ use crate::processor::internal::group_receipt;
 use crate::processor::internal::group_receipt::{
     MagicResponseView, TransferCallbackArgs, TransferCallbackArgsView,
 };
+#[cfg(feature = "logging")]
+use crate::processor::internal::group_receipt_accounts::group_receipt_log;
+use crate::processor::internal::group_receipt_accounts::{
+    group_receipt_close, GroupReceiptAccounts,
+};
 use crate::processor::refund_on_failure_callback::{
     schedule_refund_on_failure, RefundOnFailureAccounts,
 };
-#[cfg(feature = "logging")]
-use crate::processor::utils::group_receipt_log;
-use crate::processor::utils::{group_receipt_close, GroupReceiptAccounts, CALLBACK_SIGNER};
+use crate::processor::utils::CALLBACK_SIGNER;
 use ephemeral_spl_api::state::group_receipt::{GroupReceipt, TransferReceipt};
 use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, TransferQueueHeader};
 use ephemeral_spl_api::{
@@ -15,6 +18,7 @@ use ephemeral_spl_api::{
 };
 use pinocchio::error::ProgramError;
 use pinocchio::{AccountView, ProgramResult};
+
 pub const GROUP_RECEIPT_SEED: &[u8] = b"group-receipt";
 
 ///

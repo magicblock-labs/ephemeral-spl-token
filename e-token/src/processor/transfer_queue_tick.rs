@@ -23,16 +23,16 @@ use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
 
 use crate::processor::initialize_rent_pda::RENT_PDA;
 use crate::processor::internal;
+use crate::processor::internal::execute_queued_transfer::{
+    create_action_accounts, execute_queued_transfer_action, invoke_standalone_transfer_action,
+    MagicAccounts, MagicState,
+};
 use crate::processor::internal::transfer_queue_refill::{
     queue_refill_state_address, refill_transfer_queue_amounts,
     MARK_TRANSFER_QUEUE_REFILL_PENDING_COMPUTE_UNITS,
     MARK_TRANSFER_QUEUE_REFILL_PENDING_ESCROW_INDEX,
 };
-use crate::processor::internal::ASSOCIATED_TOKEN_PROGRAM_ID;
-use crate::processor::utils::{
-    create_action_accounts, execute_queued_transfer_action, invoke_standalone_transfer_action,
-    MagicAccounts, MagicState, CALLBACK_SIGNER, MAGIC_VAULT_ID,
-};
+use crate::processor::utils::{CALLBACK_SIGNER, MAGIC_VAULT_ID};
 use crate::{
     instruction::ESplInternalInstruction,
     processor::execute_ready_queued_transfer::ExecuteQueuedTransferArgs,

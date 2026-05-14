@@ -1,11 +1,11 @@
 use crate::instruction::ESplInternalInstruction;
-use crate::processor::internal::group_receipt::{MagicResponseView, RefundOnFailureArgs};
-use crate::processor::utils::{
+use crate::processor::internal::execute_queued_transfer::{
     create_action_accounts, execute_queued_transfer_action, invoke_standalone_transfer_action,
-    MagicAccounts, MagicState, CALLBACK_SIGNER,
+    MagicAccounts, MagicState,
 };
+use crate::processor::internal::group_receipt::{MagicResponseView, RefundOnFailureArgs};
+use crate::processor::utils::CALLBACK_SIGNER;
 use crate::ExecuteQueuedTransferArgs;
-use alloc::string::ToString;
 use ephemeral_rollups_pinocchio::consts::{MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID};
 use ephemeral_rollups_pinocchio::intent_bundle::{ActionCallback, ShortAccountMeta};
 use ephemeral_rollups_pinocchio::pda::magic_fee_vault_pda_from_validator;
@@ -56,7 +56,6 @@ impl RefundOnFailureAccounts<'_> {
     }
 }
 
-// TODO(edwin): naming?
 pub fn process_refund_on_failure_callback(
     accounts: &[AccountView],
     instruction_data: &[u8],
@@ -76,7 +75,6 @@ pub fn process_refund_on_failure_callback(
     let response = MagicResponseView::deserialize(instruction_data)?;
     let args = RefundOnFailureArgs::decode(response.data)?;
 
-    // TODO(edwin): extract loggin into separate func
     if response.ok {
         #[cfg(feature = "logging")]
         {

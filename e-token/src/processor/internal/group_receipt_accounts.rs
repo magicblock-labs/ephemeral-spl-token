@@ -1,7 +1,5 @@
 use crate::processor::execute_transfer_callback::GROUP_RECEIPT_SEED;
-use crate::processor::utils::ephemeral_account::{
-    close_ephemeral_account, create_ephemeral_account,
-};
+use crate::processor::utils::{close_ephemeral_account, create_ephemeral_account};
 use ephemeral_spl_api::state::group_receipt;
 use ephemeral_spl_api::state::group_receipt::GroupReceipt;
 use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, QUEUE_SEED};
