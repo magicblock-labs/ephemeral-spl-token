@@ -36,8 +36,9 @@ pub const GROUP_RECEIPT_SEED: &[u8] = b"group-receipt";
 ///  7: []                   - SPL     : Source token account (unused).
 ///  8: []                   - Builtin : Token program (unused).
 ///  9: [writable]           - PDA     : Magic vault account.
-/// 10: []                   - Program : Magic program.
-/// 11: [writable]           - PDA     : Magic context account.
+/// 10: [writable]           - PDA     : Magic fee vault account.
+/// 11: []                   - Program : Magic program.
+/// 12: [writable]           - PDA     : Magic context account.
 ///
 /// Instruction Data: MagicResponse
 ///
@@ -56,9 +57,10 @@ pub fn process_execute_transfer_callback(
         _, // source token account
         _, // token program
         magic_vault,
+        magic_fee_vault,
         magic_program,
         magic_context,
-    ] = require_n_accounts!(accounts, 12);
+    ] = require_n_accounts!(accounts, 13);
 
     // Verify validator & queue info
     let data = unsafe { queue_info.borrow_unchecked() };
@@ -100,7 +102,7 @@ pub fn process_execute_transfer_callback(
                 callback_signer,
                 source,
                 queue_info,
-                magic_vault,
+                magic_fee_vault,
                 magic_context,
                 magic_program,
             )?,

@@ -257,6 +257,7 @@ fn schedule_execute_ready_transfer(
 
     let standalone_action_callback_accounts = create_action_callback_accounts(
         tick_accounts.queue_info.address(),
+        tick_accounts.magic_fee_vault_info.address(),
         queued_transfer,
         &vault,
         &queue_state.mint,
@@ -329,10 +330,11 @@ fn pop_executed_transfer(
 #[inline(never)]
 fn create_action_callback_accounts(
     queue_address: &ephemeral_spl_api::Address,
+    magic_fee_vault: &ephemeral_spl_api::Address,
     queued_transfer: &QueuedTransfer,
     vault: &ephemeral_spl_api::Address,
     mint: &ephemeral_spl_api::Address,
-) -> [ShortAccountMeta; 12] {
+) -> [ShortAccountMeta; 13] {
     let vault_token_account = internal::derive_associated_token_address(vault, mint);
     let source_token_account =
         internal::derive_associated_token_address(&queued_transfer.source, mint);
@@ -383,13 +385,17 @@ fn create_action_callback_accounts(
             is_writable: true,
         },
         ShortAccountMeta {
+            pubkey: magic_fee_vault.clone(),
+            is_writable: true,
+        },
+        ShortAccountMeta {
             pubkey: MAGIC_PROGRAM_ID,
             is_writable: false,
         },
         ShortAccountMeta {
             pubkey: MAGIC_CONTEXT_ID,
-            is_writable: true
-        }
+            is_writable: true,
+        },
     ]
 }
 

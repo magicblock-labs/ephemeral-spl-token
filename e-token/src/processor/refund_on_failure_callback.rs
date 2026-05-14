@@ -1,3 +1,6 @@
+use alloc::vec;
+use alloc::vec::Vec;
+
 use crate::instruction::ESplInternalInstruction;
 use crate::processor::internal::callbacks::MagicResponseView;
 use crate::processor::internal::queue_authorized_action::{
@@ -5,7 +8,7 @@ use crate::processor::internal::queue_authorized_action::{
 };
 use crate::processor::utils::CALLBACK_SIGNER;
 use crate::ExecuteQueuedTransferArgs;
-use data_layout::fixed_offset_layout;
+use data_layout::variable_offset_layout;
 use ephemeral_rollups_pinocchio::consts::{MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID};
 use ephemeral_rollups_pinocchio::intent_bundle::{ActionCallback, ShortAccountMeta};
 use ephemeral_rollups_pinocchio::pda::magic_fee_vault_pda_from_validator;
@@ -191,7 +194,9 @@ pub(crate) fn schedule_refund_on_failure(
     )
 }
 
-#[fixed_offset_layout]
+// buffer_offset = 6: response.data starts at byte 14 of the original 8-byte-aligned
+// instruction buffer (1 disc + 4 variant + 1 ok + 8 data_len), and 14 % 8 = 6.
+#[variable_offset_layout(buffer_offset = 6)]
 pub(crate) struct RefundOnFailureArgs {
     /// Amount to be refunded
     pub amount: u64,
