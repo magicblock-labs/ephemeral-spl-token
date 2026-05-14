@@ -21,38 +21,52 @@ use pinocchio::{AccountView, ProgramResult};
 const EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX: u8 = 0;
 
 pub(crate) struct RefundOnFailureAccounts<'a> {
-    pub(crate) callback_signer: &'a AccountView,
-    pub(crate) refund_destination_owner: &'a AccountView,
-    pub(crate) queue_info: &'a AccountView,
-    pub(crate) magic_fee_vault_info: &'a AccountView,
-    pub(crate) magic_context_info: &'a AccountView,
-    pub(crate) magic_program_info: &'a AccountView,
+    callback_signer: &'a AccountView,
+    refund_destination_owner: &'a AccountView,
+    queue_info: &'a AccountView,
+    magic_fee_vault_info: &'a AccountView,
+    magic_context_info: &'a AccountView,
+    magic_program_info: &'a AccountView,
 }
 
-impl RefundOnFailureAccounts<'_> {
-    fn validate(&self) -> ProgramResult {
-        if !self.callback_signer.is_signer() {
+impl<'a> RefundOnFailureAccounts<'a> {
+    pub(crate) fn try_new(
+        callback_signer: &'a AccountView,
+        refund_destination_owner: &'a AccountView,
+        queue_info: &'a AccountView,
+        magic_fee_vault_info: &'a AccountView,
+        magic_context_info: &'a AccountView,
+        magic_program_info: &'a AccountView,
+    ) -> Result<Self, ProgramError> {
+        if !callback_signer.is_signer() {
             debug_log!("Missing authority to execute callback!");
             return Err(ProgramError::MissingRequiredSignature);
         }
         require_eq_keys!(
-            self.callback_signer.address(),
+            callback_signer.address(),
             &CALLBACK_SIGNER,
             ProgramError::IncorrectAuthority
         );
         require_eq_keys!(
-            self.magic_context_info.address(),
+            magic_context_info.address(),
             &MAGIC_CONTEXT_ID,
             ProgramError::InvalidSeeds
         );
         require_eq_keys!(
-            self.magic_program_info.address(),
+            magic_program_info.address(),
             &MAGIC_PROGRAM_ID,
             ProgramError::InvalidSeeds
         );
-        require_owned_by!(self.queue_info, &crate::ID);
+        require_owned_by!(queue_info, &crate::ID);
 
-        Ok(())
+        Ok(Self {
+            callback_signer,
+            refund_destination_owner,
+            queue_info,
+            magic_fee_vault_info,
+            magic_context_info,
+            magic_program_info,
+        })
     }
 }
 
@@ -62,15 +76,14 @@ pub fn process_refund_on_failure_callback(
 ) -> ProgramResult {
     let [callback_signer, refund_destination_owner, queue_info, magic_fee_vault_info, magic_context_info, magic_program_info] =
         require_n_accounts!(accounts, 6);
-    let accounts = RefundOnFailureAccounts {
+    let accounts = RefundOnFailureAccounts::try_new(
         callback_signer,
         refund_destination_owner,
         queue_info,
         magic_fee_vault_info,
         magic_context_info,
         magic_program_info,
-    };
-    accounts.validate()?;
+    )?;
 
     let response = MagicResponseView::deserialize(instruction_data)?;
     let args = RefundOnFailureArgs::decode(response.data)?;
@@ -113,12 +126,12 @@ pub(crate) fn schedule_refund_on_failure(
     amount: u64,
 ) -> ProgramResult {
     let RefundOnFailureAccounts {
+        callback_signer,
         refund_destination_owner,
         queue_info,
         magic_fee_vault_info,
         magic_context_info,
         magic_program_info,
-        ..
     } = accounts;
 
     let queue_data = unsafe { queue_info.borrow_unchecked() };
@@ -137,6 +150,7 @@ pub(crate) fn schedule_refund_on_failure(
 
     // Construct action
     let callback_accounts = create_callback_accounts(
+        callback_signer.address(),
         refund_destination_owner.address(),
         queue_info.address(),
         magic_fee_vault_info.address(),
@@ -183,13 +197,14 @@ pub(crate) struct RefundOnFailureArgs {
 }
 
 fn create_callback_accounts(
+    callback_signer: &ephemeral_spl_api::Address,
     refund_destination_owner: &ephemeral_spl_api::Address,
     queue: &ephemeral_spl_api::Address,
     magic_fee_vault: &ephemeral_spl_api::Address,
 ) -> [ShortAccountMeta; 6] {
     [
         ShortAccountMeta {
-            pubkey: CALLBACK_SIGNER,
+            pubkey: callback_signer.clone(),
             is_writable: false,
         },
         ShortAccountMeta {

@@ -1,7 +1,7 @@
-use crate::processor::internal::callbacks;
 use crate::processor::internal::callbacks::{
     MagicResponseView, TransferCallbackArgs, TransferCallbackArgsView,
 };
+use crate::processor::internal::group_receipt_accounts;
 #[cfg(feature = "logging")]
 use crate::processor::internal::group_receipt_accounts::group_receipt_log;
 use crate::processor::internal::group_receipt_accounts::{
@@ -96,14 +96,14 @@ pub fn process_execute_transfer_callback(
         }
 
         schedule_refund_on_failure(
-            &RefundOnFailureAccounts {
+            &RefundOnFailureAccounts::try_new(
                 callback_signer,
-                refund_destination_owner: source,
+                source,
                 queue_info,
-                magic_fee_vault_info: magic_vault,
-                magic_context_info: magic_context,
-                magic_program_info: magic_program,
-            },
+                magic_vault,
+                magic_context,
+                magic_program,
+            )?,
             args.amount(),
         )
     } else {
@@ -161,7 +161,7 @@ fn handle_group_receipt(
         return Err(ProgramError::InvalidArgument);
     }
 
-    let (expected_group_receipt, _) = callbacks::derive_group_receipt_id(
+    let (expected_group_receipt, _) = group_receipt_accounts::derive_group_receipt_id(
         queue_info.address(),
         source.address(),
         group_receipt.id(),

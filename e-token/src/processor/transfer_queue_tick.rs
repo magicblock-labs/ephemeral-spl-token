@@ -1,13 +1,10 @@
 #[cfg(feature = "logging")]
 use alloc::string::ToString;
 
-use crate::processor::internal::callbacks::{derive_group_receipt_id, TransferCallbackArgs};
-use dlp_api::pda::magic_fee_vault_pda_from_validator;
+use crate::processor::internal::callbacks::TransferCallbackArgs;
 use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
 use ephemeral_rollups_pinocchio::{
-    intent_bundle::{
-        ActionArgs, ActionCallback, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
-    },
+    intent_bundle::{ActionArgs, ActionCallback, CallHandler, ShortAccountMeta},
     spl::consts::TOKEN_PROGRAM_ID,
 };
 use ephemeral_spl_api::debug_log;
@@ -16,13 +13,13 @@ use ephemeral_spl_api::state::transfer_queue::{
     queue_peek_from_data, queue_pop_from_data, queue_views_checked, QueuedTransfer, QUEUE_SEED,
 };
 use ephemeral_spl_api::{require, require_eq_keys};
-use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::{clock::Clock, Sysvar};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
 
 use crate::processor::initialize_rent_pda::RENT_PDA;
 use crate::processor::internal;
+use crate::processor::internal::group_receipt_accounts::derive_group_receipt_id;
 use crate::processor::internal::queue_authorized_action::{
     invoke_standalone_action, IntentBundleAccounts, QueueSignerState, QueuedTransferActionBuilder,
 };
@@ -38,9 +35,6 @@ use crate::{
 };
 
 const EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX: u8 = 0;
-
-const EXECUTE_READY_QUEUED_TRANSFER_COMPUTE_UNITS: u32 = 140_000;
-const MAGIC_INTENT_BUNDLE_DATA_LEN: usize = 512;
 const MILLIS_PER_SECOND: i64 = 1_000;
 
 struct TickAccounts<'a> {

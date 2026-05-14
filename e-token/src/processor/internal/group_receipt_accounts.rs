@@ -3,6 +3,7 @@ use crate::processor::utils::{close_ephemeral_account, create_ephemeral_account}
 use ephemeral_spl_api::state::group_receipt;
 use ephemeral_spl_api::state::group_receipt::GroupReceipt;
 use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, QUEUE_SEED};
+use ephemeral_spl_api::Address;
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::error::ProgramError;
 use pinocchio::{AccountView, ProgramResult};
@@ -117,4 +118,20 @@ pub(crate) fn group_receipt_log(group_receipt: &GroupReceipt<'_>) {
             }
         }
     }
+}
+
+pub(crate) fn derive_group_receipt_id(
+    queue_address: &Address,
+    source: &Address,
+    group_id: u32,
+) -> (Address, u8) {
+    Address::find_program_address(
+        &[
+            GROUP_RECEIPT_SEED,
+            queue_address.as_ref(),
+            source.as_ref(),
+            &group_id.to_le_bytes(),
+        ],
+        &crate::ID,
+    )
 }
