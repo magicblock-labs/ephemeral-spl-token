@@ -1,7 +1,7 @@
 #[cfg(feature = "logging")]
 use alloc::string::ToString;
 
-use crate::processor::internal::group_receipt::{derive_group_receipt_id, TransferCallbackArgs};
+use crate::processor::internal::callbacks::{derive_group_receipt_id, TransferCallbackArgs};
 use dlp_api::pda::magic_fee_vault_pda_from_validator;
 use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
 use ephemeral_rollups_pinocchio::{

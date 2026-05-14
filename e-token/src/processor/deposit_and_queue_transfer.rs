@@ -1,4 +1,4 @@
-use crate::processor::internal::group_receipt::derive_group_receipt_id;
+use crate::processor::internal::callbacks::derive_group_receipt_id;
 use crate::processor::internal::group_receipt_accounts::{
     group_receipt_create, GroupReceiptAccounts,
 };

@@ -1,5 +1,5 @@
-use crate::processor::internal::group_receipt;
-use crate::processor::internal::group_receipt::{
+use crate::processor::internal::callbacks;
+use crate::processor::internal::callbacks::{
     MagicResponseView, TransferCallbackArgs, TransferCallbackArgsView,
 };
 #[cfg(feature = "logging")]
@@ -161,7 +161,7 @@ fn handle_group_receipt(
         return Err(ProgramError::InvalidArgument);
     }
 
-    let (expected_group_receipt, _) = group_receipt::derive_group_receipt_id(
+    let (expected_group_receipt, _) = callbacks::derive_group_receipt_id(
         queue_info.address(),
         source.address(),
         group_receipt.id(),

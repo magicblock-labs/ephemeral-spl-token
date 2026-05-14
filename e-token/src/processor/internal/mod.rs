@@ -1,5 +1,5 @@
+pub(crate) mod callbacks;
 pub(crate) mod ephemeral_ata;
-pub(crate) mod group_receipt;
 pub(crate) mod group_receipt_accounts;
 pub(crate) mod lamports_pda;
 pub(crate) mod queue_authorized_action;

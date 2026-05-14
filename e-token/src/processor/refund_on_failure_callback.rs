@@ -1,5 +1,5 @@
 use crate::instruction::ESplInternalInstruction;
-use crate::processor::internal::group_receipt::MagicResponseView;
+use crate::processor::internal::callbacks::MagicResponseView;
 use crate::processor::internal::queue_authorized_action::{
     invoke_standalone_action, IntentBundleAccounts, QueueSignerState, QueuedTransferActionBuilder,
 };
