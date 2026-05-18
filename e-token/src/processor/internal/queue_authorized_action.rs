@@ -16,6 +16,7 @@ use pinocchio::error::ProgramError;
 use pinocchio::{AccountView, ProgramResult};
 
 const MAGIC_INTENT_BUNDLE_DATA_LEN: usize = 512;
+pub(crate) const EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX: u8 = 0;
 
 pub(crate) struct IntentBundleAccounts<'a> {
     pub queue_info: &'a AccountView,
@@ -71,7 +72,6 @@ pub(crate) struct QueuedTransferActionBuilder {
 }
 
 impl QueuedTransferActionBuilder {
-    const EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX: u8 = 0;
     const EXECUTE_READY_QUEUED_TRANSFER_COMPUTE_UNITS: u32 = 140_000;
 
     pub(crate) fn new(
@@ -96,7 +96,7 @@ impl QueuedTransferActionBuilder {
             destination_program: crate::ID,
             escrow_authority: self.queue_info.clone(),
             args: ActionArgs::new(&self.data)
-                .with_escrow_index(Self::EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX),
+                .with_escrow_index(EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX),
             compute_units: Self::EXECUTE_READY_QUEUED_TRANSFER_COMPUTE_UNITS,
             accounts: &self.accounts,
             callback: None,

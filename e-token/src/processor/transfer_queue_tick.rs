@@ -22,6 +22,7 @@ use crate::processor::internal;
 use crate::processor::internal::group_receipt_accounts::derive_group_receipt_id;
 use crate::processor::internal::queue_authorized_action::{
     invoke_standalone_action, IntentBundleAccounts, QueueSignerState, QueuedTransferActionBuilder,
+    EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
 };
 use crate::processor::internal::transfer_queue_refill::{
     queue_refill_state_address, refill_transfer_queue_amounts,
@@ -34,7 +35,6 @@ use crate::{
     processor::execute_ready_queued_transfer::ExecuteQueuedTransferArgs,
 };
 
-const EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX: u8 = 0;
 const MILLIS_PER_SECOND: i64 = 1_000;
 
 struct TickAccounts<'a> {

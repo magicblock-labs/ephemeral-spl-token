@@ -5,6 +5,7 @@ use crate::instruction::ESplInternalInstruction;
 use crate::processor::internal::callbacks::MagicResponseView;
 use crate::processor::internal::queue_authorized_action::{
     invoke_standalone_action, IntentBundleAccounts, QueueSignerState, QueuedTransferActionBuilder,
+    EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
 };
 use crate::processor::utils::CALLBACK_SIGNER;
 use crate::ExecuteQueuedTransferArgs;
@@ -20,8 +21,6 @@ use ephemeral_spl_api::{
 };
 use pinocchio::error::ProgramError;
 use pinocchio::{AccountView, ProgramResult};
-
-const EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX: u8 = 0;
 
 pub(crate) struct RefundOnFailureAccounts<'a> {
     callback_signer: &'a AccountView,
