@@ -856,8 +856,8 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
     const gaslessFeeInstructions = sponsor
       ? [
           createTokenTransferInstruction(
-            getAssociatedTokenAddressSync(mint, from, false, TOKEN_PROGRAM_ID),
-            getAssociatedTokenAddressSync(mint, sponsor.publicKey, false, TOKEN_PROGRAM_ID),
+            getAssociatedTokenAddressSync(mint, from, true, TOKEN_PROGRAM_ID),
+            getAssociatedTokenAddressSync(mint, sponsor.publicKey, true, TOKEN_PROGRAM_ID),
             from,
             GASLESS_RELAY_FEE_MICRO_USDC,
           ),
