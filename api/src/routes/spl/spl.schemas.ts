@@ -14,6 +14,7 @@ export const transactionResponseSchema = z.object({
   version: z.enum(["legacy", "v0"]),
   transactionBase64: z.string(),
   sendTo: balanceLocationSchema,
+  from: balanceLocationSchema.optional(),
   recentBlockhash: z.string(),
   lastValidBlockHeight: z.number().int(),
   instructionCount: z.number().int().nonnegative(),
