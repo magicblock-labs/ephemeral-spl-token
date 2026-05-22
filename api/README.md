@@ -24,6 +24,7 @@ The API exposes:
 - `GET /v1/spl/private-balance`
 - `GET /v1/swap/quote`
 - `POST /v1/swap/swap`
+- `POST /v1/transaction/send`
 - `GET /mcp`
 - `POST /mcp`
 - `GET /.well-known/mcp.json`
@@ -31,6 +32,7 @@ The API exposes:
 Transaction endpoints return an unsigned serialized Solana transaction (legacy or v0) as base64 plus metadata such as:
 
 - `sendTo`: where the client should submit the signed transaction, `"base"` or `"ephemeral"`
+- `from`: transfer-only balance source, matching the request `fromBalance`
 - `recentBlockhash`
 - `lastValidBlockHeight`
 - `requiredSigners`
@@ -51,7 +53,7 @@ Important behavior:
 - if `fromBalance` is `"base"`, the blockhash is fetched from the base RPC
 - if `fromBalance` is `"ephemeral"`, the blockhash is fetched from the ephemeral RPC
 - `getBalance` reads the owner ATA on the base RPC
-- `getPrivateBalance` reads the owner ATA on the ephemeral RPC
+- `getPrivateBalance` returns `0` unless the owner's eATA is delegated to the selected ephemeral RPC
 
 ## Stack
 
@@ -275,7 +277,7 @@ curl http://127.0.0.1:8787/mcp
     },
     {
       "name": "spl.getPrivateBalance",
-      "description": "Read the owner ATA balance on the ephemeral RPC."
+      "description": "Read the private balance when the eATA is delegated to the ephemeral RPC."
     }
   ]
 }
@@ -475,6 +477,7 @@ Transaction routes return:
   "version": "legacy",
   "transactionBase64": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA...",
   "sendTo": "ephemeral",
+  "from": "ephemeral",
   "recentBlockhash": "9A4VhP8M8fQZxP4h7rB6mP6eM8w2pJkYh7QdZk7V4r2x",
   "lastValidBlockHeight": 123456,
   "instructionCount": 2,
@@ -491,9 +494,25 @@ The expected client flow is:
 2. decode `transactionBase64`
 3. optionally adjust the transaction if your client needs to
 4. sign with the required wallet(s)
-5. send to the RPC indicated by `sendTo`
+5. submit the signed transaction with `POST /v1/transaction/send`, or send to the RPC indicated by `sendTo`
 
 ## Endpoints
+
+### `POST /v1/transaction/send`
+
+Submits a signed serialized transaction to the base or ephemeral RPC selected by `sendTo`.
+The response includes `confirmationRpcEndpoint`; when `confirmationRequiresAuthToken` is `true`, use the same bearer token for client-side confirmation instead of logging or storing a tokenized URL.
+
+Example:
+
+```bash
+curl -X POST http://127.0.0.1:8787/v1/transaction/send \
+  -H 'content-type: application/json' \
+  -d '{
+    "transactionBase64": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAA==",
+    "sendTo": "base"
+  }'
+```
 
 ### `POST /v1/spl/deposit`
 
@@ -581,6 +600,8 @@ The returned `sendTo` value is:
 
 - `"base"` when `fromBalance` is `"base"`
 - `"ephemeral"` when `fromBalance` is `"ephemeral"`
+
+Transfer responses also include `from`, which mirrors the request `fromBalance`.
 
 Example:
 
@@ -680,7 +701,7 @@ Response shape:
 
 ### `GET /v1/spl/private-balance`
 
-Returns the owner ATA balance from the ephemeral RPC. If `cluster` is omitted, the API uses `mainnet`.
+Returns the owner private balance from the ephemeral RPC only when the owner's eATA is delegated to the selected ephemeral RPC. If `cluster` is omitted, the API uses `mainnet`.
 
 Example:
 
@@ -690,8 +711,8 @@ curl "http://127.0.0.1:8787/v1/spl/private-balance?address=Bt9oNR5cCtnfuMmXgWELd
 
 Note:
 
-- this currently reads the owner ATA on the ephemeral RPC
-- it does not decode or return a delegation PDA balance directly
+- returns `0` when the eATA delegation record is missing or delegated to another validator
+- the response still reports the projected owner ATA address, not the delegation PDA
 
 ## Error Handling
 
@@ -740,7 +761,7 @@ The included test suite verifies:
 
 ## Notes
 
-- This API returns unsigned transactions only
-- The client is responsible for signing and submitting them
+- Transaction-builder endpoints return unsigned transactions
+- The client is responsible for signing transactions before submission
 - The API serializes legacy `Transaction` by default; private `base -> base` transfers may return a v0 transaction when a useful lookup table is configured
 - `transfer` prepends a noop instruction to preserve the same behavior as the current app flow

@@ -3,6 +3,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import {
   DELEGATION_PROGRAM_ID,
+  delegationRecordPdaFromDelegatedAccount,
   deriveEphemeralAta,
   deriveHydraCrankPda,
   deriveRentPda,
@@ -97,6 +98,24 @@ function createQueueAccountInfo(owner: PublicKey): AccountInfo<Buffer> {
     owner,
     rentEpoch: 0,
   };
+}
+
+function createDelegationAccountInfo(validator: PublicKey): AccountInfo<Buffer> {
+  const data = Buffer.alloc(40);
+  validator.toBuffer().copy(data, 8);
+
+  return {
+    data,
+    executable: false,
+    lamports: 1,
+    owner: DELEGATION_PROGRAM_ID,
+    rentEpoch: 0,
+  };
+}
+
+function deriveEataDelegationRecord(owner: string, mint: string) {
+  const [eata] = deriveEphemeralAta(new PublicKey(owner), new PublicKey(mint));
+  return delegationRecordPdaFromDelegatedAccount(eata);
 }
 
 function createIdentityResponse(identity: string) {
@@ -204,6 +223,15 @@ describe("app", () => {
     expect(json.paths["/v1/spl/initialize-mint"]).toBeDefined();
     expect(json.paths["/v1/swap/quote"]).toBeDefined();
     expect(json.paths["/v1/swap/swap"]).toBeDefined();
+    expect(json.tags).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "Swap",
+          description: "Provide quoting and execution for public and private swaps.",
+        }),
+      ]),
+    );
+    expect(json.paths["/v1/transaction/send"]).toBeDefined();
     expect(json.paths["/v1/swap/swap-instructions"]).toBeUndefined();
     expect(json.paths["/v1/swap/program-id-to-label"]).toBeUndefined();
     expect(json.paths["/v1/swap/quote"]?.get?.parameters).toEqual(
@@ -323,6 +351,195 @@ describe("app", () => {
       kind: "withdraw",
       instructionCount: 2,
     });
+  });
+
+  it("sends a signed transaction to the selected base RPC", async () => {
+    const transaction = Buffer.from([1, 2, 3, 4]);
+    const sendRawTransactionSpy = vi
+      .spyOn(Connection.prototype, "sendRawTransaction")
+      .mockImplementation(async function sendRawTransaction(
+        this: Connection & { _rpcEndpoint: string },
+        raw,
+        options,
+      ) {
+        expect((this as Connection & { _rpcEndpoint: string })._rpcEndpoint).toBe(
+          env.BASE_DEVNET_RPC_URL,
+        );
+        expect(Buffer.from(raw as Uint8Array)).toEqual(transaction);
+        expect(options?.preflightCommitment).toBe("confirmed");
+        expect(options?.skipPreflight).toBe(true);
+        expect(options?.maxRetries).toBe(2);
+        return "base-signature";
+      });
+
+    const response = await app.request(
+      "/v1/transaction/send",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          transactionBase64: transaction.toString("base64"),
+          sendTo: "base",
+          cluster: "devnet",
+          skipPreflight: true,
+          maxRetries: 2,
+        }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(200);
+    expect(sendRawTransactionSpy).toHaveBeenCalledOnce();
+
+    const json = (await response.json()) as {
+      signature: string;
+      sendTo: string;
+      confirmed: boolean;
+      confirmationRpcEndpoint: string;
+      confirmationRequiresAuthToken: boolean;
+    };
+
+    expect(json).toEqual({
+      signature: "base-signature",
+      sendTo: "base",
+      confirmed: false,
+      confirmationRpcEndpoint: env.BASE_DEVNET_RPC_URL,
+      confirmationRequiresAuthToken: false,
+    });
+  });
+
+  it("sends a signed transaction to the ephemeral RPC with the auth token", async () => {
+    const transaction = Buffer.from([5, 6, 7, 8]);
+
+    vi.spyOn(Connection.prototype, "sendRawTransaction").mockImplementation(
+      async function sendRawTransaction(
+        this: Connection & { _rpcEndpoint: string },
+        raw,
+      ) {
+        expect((this as Connection & { _rpcEndpoint: string })._rpcEndpoint).toBe(
+          `${env.EPHEMERAL_DEVNET_RPC_URL}/?token=private-token`,
+        );
+        expect(Buffer.from(raw as Uint8Array)).toEqual(transaction);
+        return "ephemeral-signature";
+      },
+    );
+
+    const response = await app.request(
+      "/v1/transaction/send",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "Authorization": "Bearer private-token",
+        },
+        body: JSON.stringify({
+          transactionBase64: transaction.toString("base64"),
+          sendTo: "ephemeral",
+          cluster: "devnet",
+        }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(200);
+
+    const json = (await response.json()) as {
+      signature: string;
+      sendTo: string;
+      confirmed: boolean;
+      confirmationRpcEndpoint: string;
+      confirmationRequiresAuthToken: boolean;
+    };
+
+    expect(json).toEqual({
+      signature: "ephemeral-signature",
+      sendTo: "ephemeral",
+      confirmed: false,
+      confirmationRpcEndpoint: env.EPHEMERAL_DEVNET_RPC_URL,
+      confirmationRequiresAuthToken: true,
+    });
+  });
+
+  it("confirms a sent transaction when requested", async () => {
+    const transaction = Buffer.from([9, 10, 11, 12]);
+    const blockhash = "11111111111111111111111111111111";
+    const confirmTransactionSpy = vi
+      .spyOn(Connection.prototype, "confirmTransaction")
+      .mockResolvedValue({
+        context: { slot: 1 },
+        value: { err: null },
+      } as never);
+
+    vi.spyOn(Connection.prototype, "sendRawTransaction").mockResolvedValue(
+      "confirmed-signature",
+    );
+
+    const response = await app.request(
+      "/v1/transaction/send",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          transactionBase64: transaction.toString("base64"),
+          sendTo: "base",
+          confirm: true,
+          recentBlockhash: blockhash,
+          lastValidBlockHeight: 123,
+        }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(200);
+    expect(confirmTransactionSpy).toHaveBeenCalledWith({
+      signature: "confirmed-signature",
+      blockhash,
+      lastValidBlockHeight: 123,
+    }, "confirmed");
+
+    const json = (await response.json()) as {
+      confirmed: boolean;
+    };
+
+    expect(json.confirmed).toBe(true);
+  });
+
+  it("requires confirmation fields only when confirmation is requested", async () => {
+    const sendRawTransactionSpy = vi.spyOn(
+      Connection.prototype,
+      "sendRawTransaction",
+    );
+
+    const response = await app.request(
+      "/v1/transaction/send",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          transactionBase64: Buffer.from([1, 2, 3]).toString("base64"),
+          sendTo: "base",
+          confirm: true,
+        }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(400);
+    expect(sendRawTransactionSpy).not.toHaveBeenCalled();
+
+    const json = (await response.json()) as {
+      error: {
+        code: string;
+      };
+    };
+
+    expect(json.error.code).toBe("MISSING_CONFIRMATION_FIELDS");
   });
 
   it("proxies Metis quote requests to the configured upstream endpoint", async () => {
@@ -2109,11 +2326,13 @@ describe("app", () => {
 
     const json = (await response.json()) as {
       sendTo: string;
+      from: string;
       recentBlockhash: string;
       instructionCount: number;
     };
 
     expect(json.sendTo).toBe("ephemeral");
+    expect(json.from).toBe("ephemeral");
     expect(json.recentBlockhash).toBe("11111111111111111111111111111111");
     expect(json.instructionCount).toBe(1);
   });
@@ -2163,12 +2382,14 @@ describe("app", () => {
 
     const json = (await response.json()) as {
       sendTo: string;
+      from: string;
       recentBlockhash: string;
       validator: string;
       version: string;
     };
 
     expect(json.sendTo).toBe("base");
+    expect(json.from).toBe("base");
     expect(json.recentBlockhash).toBe("11111111111111111111111111111111");
     expect(json.validator).toBe(resolvedValidator);
     expect(json.version).toBe("legacy");
@@ -2239,10 +2460,12 @@ describe("app", () => {
 
     const json = (await response.json()) as {
       version: string;
+      from: string;
       transactionBase64: string;
     };
 
     expect(json.version).toBe("v0");
+    expect(json.from).toBe("base");
     expect(() =>
       VersionedTransaction.deserialize(
         Buffer.from(json.transactionBase64, "base64"),
@@ -3135,12 +3358,31 @@ describe("app", () => {
   });
 
   it("returns base and private balances from different RPCs", async () => {
+    const mint = "So11111111111111111111111111111111111111112";
+    const balanceEnv = {
+      ...env,
+      EPHEMERAL_RPC_URL: "https://ephemeral.balance.rpc.test",
+    };
+    const delegationRecord = deriveEataDelegationRecord(owner, mint);
+    const validator = new PublicKey(resolvedValidator);
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(balanceEnv.EPHEMERAL_RPC_URL);
+      return createIdentityResponse(resolvedValidator);
+    });
     vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(
       async function getAccountInfo(
         this: Connection & { _rpcEndpoint: string },
+        address,
       ) {
         const endpoint = (this as Connection & { _rpcEndpoint: string })
           ._rpcEndpoint;
+
+        if (address.toBase58() === delegationRecord.toBase58()) {
+          expect(endpoint).toBe(balanceEnv.BASE_RPC_URL);
+          return createDelegationAccountInfo(validator);
+        }
+
         return endpoint.includes("ephemeral")
           ? createAccountInfo(9n)
           : createAccountInfo(3n);
@@ -3148,14 +3390,14 @@ describe("app", () => {
     );
 
     const baseResponse = await app.request(
-      `/v1/spl/balance?address=${owner}&mint=So11111111111111111111111111111111111111112`,
+      `/v1/spl/balance?address=${owner}&mint=${mint}`,
       {},
-      env,
+      balanceEnv,
     );
     const privateResponse = await app.request(
-      `/v1/spl/private-balance?address=${owner}&mint=So11111111111111111111111111111111111111112`,
+      `/v1/spl/private-balance?address=${owner}&mint=${mint}`,
       { headers: { authorization: "Bearer 1234567890" } },
-      env,
+      balanceEnv,
     );
 
     expect(baseResponse.status).toBe(200);
@@ -3176,13 +3418,114 @@ describe("app", () => {
     expect(privateJson.balance).toBe("9");
   });
 
-  it("returns base and mock private balances from different RPCs", async () => {
-    vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(
-      async function getAccountInfo(
+  it("returns zero private balance when the eATA is not delegated", async () => {
+    const mint = DEVNET_USDC_MINT;
+    const balanceEnv = {
+      ...env,
+      EPHEMERAL_RPC_URL: "https://ephemeral.undelegated-balance.rpc.test",
+    };
+    const delegationRecord = deriveEataDelegationRecord(owner, mint);
+    const getAccountInfoSpy = vi
+      .spyOn(Connection.prototype, "getAccountInfo")
+      .mockImplementation(async function getAccountInfo(
         this: Connection & { _rpcEndpoint: string },
+        address,
       ) {
         const endpoint = (this as Connection & { _rpcEndpoint: string })
           ._rpcEndpoint;
+        expect(endpoint).toBe(balanceEnv.BASE_RPC_URL);
+        expect(address.toBase58()).toBe(delegationRecord.toBase58());
+        return null;
+      });
+
+    const response = await app.request(
+      `/v1/spl/private-balance?address=${owner}&mint=${mint}`,
+      { headers: { authorization: "Bearer 1234567890" } },
+      balanceEnv,
+    );
+
+    expect(response.status).toBe(200);
+    expect(getAccountInfoSpy).toHaveBeenCalledOnce();
+
+    const json = (await response.json()) as {
+      location: string;
+      balance: string;
+    };
+
+    expect(json.location).toBe("ephemeral");
+    expect(json.balance).toBe("0");
+  });
+
+  it("returns zero private balance when the eATA is delegated to another validator", async () => {
+    const mint = DEVNET_USDC_MINT;
+    const balanceEnv = {
+      ...env,
+      EPHEMERAL_RPC_URL: "https://ephemeral.wrong-validator-balance.rpc.test",
+    };
+    const delegationRecord = deriveEataDelegationRecord(owner, mint);
+    const otherValidator = Keypair.generate().publicKey;
+    const getAccountInfoSpy = vi
+      .spyOn(Connection.prototype, "getAccountInfo")
+      .mockImplementation(async function getAccountInfo(
+        this: Connection & { _rpcEndpoint: string },
+        address,
+      ) {
+        const endpoint = (this as Connection & { _rpcEndpoint: string })
+          ._rpcEndpoint;
+        expect(endpoint).toBe(balanceEnv.BASE_RPC_URL);
+        expect(address.toBase58()).toBe(delegationRecord.toBase58());
+        return createDelegationAccountInfo(otherValidator);
+      });
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(balanceEnv.EPHEMERAL_RPC_URL);
+      return createIdentityResponse(resolvedValidator);
+    });
+
+    const response = await app.request(
+      `/v1/spl/private-balance?address=${owner}&mint=${mint}`,
+      { headers: { authorization: "Bearer 1234567890" } },
+      balanceEnv,
+    );
+
+    expect(response.status).toBe(200);
+    expect(getAccountInfoSpy).toHaveBeenCalledOnce();
+
+    const json = (await response.json()) as {
+      location: string;
+      balance: string;
+    };
+
+    expect(json.location).toBe("ephemeral");
+    expect(json.balance).toBe("0");
+  });
+
+  it("returns private balance with the mock auth token", async () => {
+    const mint = "So11111111111111111111111111111111111111112";
+    const balanceEnv = {
+      ...env,
+      EPHEMERAL_RPC_URL: "https://ephemeral.mock-balance.rpc.test",
+    };
+    const delegationRecord = deriveEataDelegationRecord(owner, mint);
+    const validator = new PublicKey(resolvedValidator);
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(balanceEnv.EPHEMERAL_RPC_URL);
+      return createIdentityResponse(resolvedValidator);
+    });
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(
+      async function getAccountInfo(
+        this: Connection & { _rpcEndpoint: string },
+        address,
+      ) {
+        const endpoint = (this as Connection & { _rpcEndpoint: string })
+          ._rpcEndpoint;
+
+        if (address.toBase58() === delegationRecord.toBase58()) {
+          expect(endpoint).toBe(balanceEnv.BASE_RPC_URL);
+          return createDelegationAccountInfo(validator);
+        }
+
         return endpoint.includes("ephemeral")
           ? createAccountInfo(9n)
           : createAccountInfo(3n);
@@ -3190,14 +3533,14 @@ describe("app", () => {
     );
 
     const baseResponse = await app.request(
-      `/v1/spl/balance?address=${owner}&mint=So11111111111111111111111111111111111111112`,
+      `/v1/spl/balance?address=${owner}&mint=${mint}`,
       {},
-      env,
+      balanceEnv,
     );
     const privateResponse = await app.request(
-      `/v1/spl/private-balance?address=${owner}&mint=So11111111111111111111111111111111111111112`,
+      `/v1/spl/private-balance?address=${owner}&mint=${mint}`,
       { headers: { authorization: "Bearer mock-auth-token" } },
-      env,
+      balanceEnv,
     );
 
     expect(baseResponse.status).toBe(200);
@@ -3214,8 +3557,8 @@ describe("app", () => {
 
     expect(baseJson.location).toBe("base");
     expect(baseJson.balance).toBe("3");
-    expect(privateJson.location).toBe("base");
-    expect(privateJson.balance).toBe("3");
+    expect(privateJson.location).toBe("ephemeral");
+    expect(privateJson.balance).toBe("9");
   });
 
   it("returns 422 when private balance is requested without authToken", async () => {
@@ -3838,12 +4181,31 @@ describe("app", () => {
   });
 
   it("uses a custom RPC URL only for base RPC calls when cluster is a URL", async () => {
+    const mint = "So11111111111111111111111111111111111111112";
+    const customRpcEnv = {
+      ...env,
+      EPHEMERAL_RPC_URL: "https://ephemeral.custom-balance.rpc.test",
+    };
+    const delegationRecord = deriveEataDelegationRecord(owner, mint);
+    const validator = new PublicKey(resolvedValidator);
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(customRpcEnv.EPHEMERAL_RPC_URL);
+      return createIdentityResponse(resolvedValidator);
+    });
     vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(
       async function getAccountInfo(
         this: Connection & { _rpcEndpoint: string },
+        address,
       ) {
         const endpoint = (this as Connection & { _rpcEndpoint: string })
           ._rpcEndpoint;
+
+        if (address.toBase58() === delegationRecord.toBase58()) {
+          expect(endpoint).toBe("https://custom.rpc.test/");
+          return createDelegationAccountInfo(validator);
+        }
+
         return endpoint.includes("custom.rpc.test")
           ? createAccountInfo(7n)
           : endpoint.includes("ephemeral")
@@ -3853,14 +4215,14 @@ describe("app", () => {
     );
 
     const baseResponse = await app.request(
-      `/v1/spl/balance?address=${owner}&mint=So11111111111111111111111111111111111111112&cluster=${encodeURIComponent("https://custom.rpc.test")}`,
+      `/v1/spl/balance?address=${owner}&mint=${mint}&cluster=${encodeURIComponent("https://custom.rpc.test")}`,
       {},
-      env,
+      customRpcEnv,
     );
     const privateResponse = await app.request(
-      `/v1/spl/private-balance?address=${owner}&mint=So11111111111111111111111111111111111111112&cluster=${encodeURIComponent("https://custom.rpc.test")}`,
+      `/v1/spl/private-balance?address=${owner}&mint=${mint}&cluster=${encodeURIComponent("https://custom.rpc.test")}`,
       { headers: { authorization: "Bearer 1234567890" } },
-      env,
+      customRpcEnv,
     );
 
     expect(baseResponse.status).toBe(200);

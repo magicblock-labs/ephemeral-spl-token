@@ -1,12 +1,14 @@
 import {
   compileLegacyTransactionToV0,
   DELEGATION_PROGRAM_ID,
+  DelegationStatus,
   delegateTransferQueueIx,
   deriveRentPda,
   deriveTransferQueue,
   delegateSpl,
   EPHEMERAL_SPL_TOKEN_PROGRAM_ID,
   ensureTransferQueueCrankIx,
+  getDelegationRecord,
   initRentPdaIx,
   initTransferQueueIx,
   magicFeeVaultPdaFromValidator,
@@ -18,6 +20,7 @@ import {
   Keypair,
   LAMPORTS_PER_SOL,
   PublicKey,
+  SendOptions,
   SystemProgram,
   Transaction,
   TransactionInstruction,
@@ -26,6 +29,7 @@ import {
 import type { AppEnv } from "../env";
 import { ApiError } from "./errors";
 import { BalanceRequest, BalanceResponse, DepositRequest, InitializeMintRequest, InitializeMintResponse, MintInitializationRequest, MintInitializationResponse, TransactionResponse, TransferRequest, WithdrawRequest } from "../routes/spl/spl.schemas";
+import { SendTransactionRequest, SendTransactionResponse } from "../routes/transaction.schemas";
 import { getCachedAddressLookupTable, getConnection } from "./rpc-cache";
 
 export const TOKEN_PROGRAM_ID = new PublicKey(
@@ -50,6 +54,7 @@ const TRANSFER_QUEUE_RENT_LAMPORTS = LAMPORTS_PER_SOL / 50;
 const PRIVATE_TRANSFER_MAX_DELAY_MS_LIMIT = 10n * 60n * 1000n;
 const TRANSFER_QUEUE_RECENT_SIGNATURE_LIMIT = 5;
 const TRANSFER_QUEUE_STALE_MS = 60_000;
+const SOLANA_WIRE_TRANSACTION_SIZE_LIMIT = 1232;
 // Keep these defaults aligned with scripts/create-private-transfer-lut.js. Updating them requires a redeploy.
 const PRIVATE_BASE_TO_BASE_TRANSFER_LOOKUP_TABLES = {
   mainnet: new PublicKey("2J2Pw639kU7U6rj7qUXY5sVXdJqyt4DjEcVxzqmFrFds"),
@@ -445,6 +450,113 @@ async function getBlockhash(config: RpcConfig, source: SendTarget, authToken?: s
   }
 }
 
+function decodeTransactionBase64(value: string) {
+  const transactionBase64 = value.trim();
+
+  if (
+    transactionBase64.length === 0
+    || transactionBase64.length % 4 !== 0
+    || !/^[A-Za-z0-9+/]+={0,2}$/.test(transactionBase64)
+  ) {
+    throw new ApiError(400, "INVALID_TRANSACTION", "transactionBase64 must be valid base64");
+  }
+
+  const transaction = Buffer.from(transactionBase64, "base64");
+  if (transaction.length === 0) {
+    throw new ApiError(400, "INVALID_TRANSACTION", "transactionBase64 must decode to transaction bytes");
+  }
+
+  if (transaction.length > SOLANA_WIRE_TRANSACTION_SIZE_LIMIT) {
+    throw new ApiError(
+      400,
+      "TRANSACTION_TOO_LARGE",
+      `Serialized transaction exceeds ${SOLANA_WIRE_TRANSACTION_SIZE_LIMIT} bytes`,
+    );
+  }
+
+  return transaction;
+}
+
+export async function sendSignedTransaction(
+  env: AppEnv,
+  input: SendTransactionRequest,
+  authToken?: string,
+): Promise<SendTransactionResponse> {
+  const config = resolveRpcConfig(env, input.cluster);
+  const connection = input.sendTo === "base"
+    ? getBaseConnection(config)
+    : getEphemeralConnection(config, authToken);
+  const confirmationRpcEndpoint = input.sendTo === "base"
+    ? config.baseRpcUrl
+    : config.ephemeralRpcUrl;
+  const confirmationRequiresAuthToken = input.sendTo === "ephemeral";
+  const transaction = decodeTransactionBase64(input.transactionBase64);
+  const options: SendOptions = {
+    preflightCommitment: "confirmed",
+  };
+
+  if (input.skipPreflight !== undefined) {
+    options.skipPreflight = input.skipPreflight;
+  }
+
+  if (input.maxRetries !== undefined) {
+    options.maxRetries = input.maxRetries;
+  }
+
+  if (input.confirm && (input.recentBlockhash === undefined || input.lastValidBlockHeight === undefined)) {
+    throw new ApiError(
+      400,
+      "MISSING_CONFIRMATION_FIELDS",
+      "recentBlockhash and lastValidBlockHeight are required when confirm is true",
+    );
+  }
+
+  try {
+    const signature = await connection.sendRawTransaction(transaction, options);
+
+    if (!input.confirm) {
+      return {
+        signature,
+        sendTo: input.sendTo,
+        confirmed: false,
+        confirmationRpcEndpoint,
+        confirmationRequiresAuthToken,
+      };
+    }
+
+    const blockhash = input.recentBlockhash!;
+    const lastValidBlockHeight = input.lastValidBlockHeight!;
+    const confirmation = await connection.confirmTransaction({
+      signature,
+      blockhash,
+      lastValidBlockHeight,
+    }, "confirmed");
+
+    if (confirmation.value.err !== null) {
+      throw new ApiError(400, "TRANSACTION_FAILED", "Transaction failed", {
+        err: confirmation.value.err,
+      });
+    }
+
+    return {
+      signature,
+      sendTo: input.sendTo,
+      confirmed: true,
+      confirmationRpcEndpoint,
+      confirmationRequiresAuthToken,
+    };
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+
+    throw new ApiError(502, "RPC_ERROR", "Failed to send transaction", {
+      sendTo: input.sendTo,
+      message: getSanitizedErrorMessage(error),
+    });
+  }
+}
+
 function getRequiredSigners(feePayer: PublicKey, instructions: TransactionInstruction[]) {
   const signers = new Set<string>([feePayer.toBase58()]);
 
@@ -537,6 +649,7 @@ function serializeTransaction(
   blockhash: BlockhashResult,
   validator?: PublicKey,
   partialSigners: Keypair[] = [],
+  from?: SendTarget,
 ): TransactionResponse {
   const transaction = createUnsignedTransaction(instructions, feePayer, blockhash);
   if (partialSigners.length > 0) {
@@ -553,6 +666,7 @@ function serializeTransaction(
       }),
     ).toString("base64"),
     sendTo,
+    from,
     recentBlockhash: blockhash.blockhash,
     lastValidBlockHeight: blockhash.lastValidBlockHeight,
     instructionCount: instructions.length,
@@ -617,6 +731,7 @@ async function trySerializePrivateBaseToBaseTransferTransactionWithLookupTable(
       version: "v0",
       transactionBase64: Buffer.from(compiled.transaction.serialize()).toString("base64"),
       sendTo: "base",
+      from: "base",
       recentBlockhash: blockhash.blockhash,
       lastValidBlockHeight: blockhash.lastValidBlockHeight,
       instructionCount: instructions.length,
@@ -946,6 +1061,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       blockhash,
       validator,
       sponsor ? [sponsor] : [],
+      input.fromBalance,
     );
   } catch (error) {
     throwTransactionBuildError(error);
@@ -989,8 +1105,47 @@ export function getBaseBalance(env: AppEnv, input: BalanceRequest) {
   return getBalanceInternal(env, input, "base");
 }
 
-export function getPrivateBalance(env: AppEnv, input: BalanceRequest, authToken?: string) {
-  return getBalanceInternal(env, input, "ephemeral", authToken);
+export async function getPrivateBalance(env: AppEnv, input: BalanceRequest, authToken?: string) {
+  const config = resolveRpcConfig(env, input.cluster);
+  const owner = parsePublicKey(input.address, "address");
+  const mint = parsePublicKey(input.mint, "mint");
+  const ata = getAssociatedTokenAddressSync(mint, owner, true, TOKEN_PROGRAM_ID);
+  const [eata] = deriveEphemeralAta(owner, mint);
+  const zeroBalanceResponse: BalanceResponse = {
+    address: owner.toBase58(),
+    mint: mint.toBase58(),
+    ata: ata.toBase58(),
+    location: "ephemeral",
+    balance: "0",
+  };
+
+  try {
+    const delegationRecord = await getDelegationRecord(getBaseConnection(config), eata);
+    if (delegationRecord.status !== DelegationStatus.Delegated) {
+      return zeroBalanceResponse;
+    }
+
+    const validator = await resolveRequiredValidator(config);
+    if (!delegationRecord.validator.equals(validator)) {
+      return zeroBalanceResponse;
+    }
+
+    const accountInfo = await getEphemeralConnection(config, authToken).getAccountInfo(ata, "confirmed");
+    const balance = accountInfo ? (parseTokenAmount(accountInfo) ?? 0n) : 0n;
+
+    return {
+      address: owner.toBase58(),
+      mint: mint.toBase58(),
+      ata: ata.toBase58(),
+      location: "ephemeral",
+      balance: balance.toString(),
+    };
+  } catch (error) {
+    throw new ApiError(502, "RPC_ERROR", "Failed to fetch token balance", {
+      location: "ephemeral",
+      message: getSanitizedErrorMessage(error),
+    });
+  }
 }
 
 function getNewestSignatureTimestampMs(signatures: Array<{ blockTime?: number | null }>) {

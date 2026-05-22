@@ -175,7 +175,7 @@ export const privateBalanceRoute = createRoute({
   path: "/v1/spl/private-balance",
   method: "get",
   tags,
-  description: "Get the balance for the owner's ATA on the ephemeral RPC.",
+  description: "Get the owner's private balance when the eATA is delegated to the selected ephemeral RPC.",
   request: {
     query: balanceRequestSchema,
     headers: requiredAuthTokenSchema,

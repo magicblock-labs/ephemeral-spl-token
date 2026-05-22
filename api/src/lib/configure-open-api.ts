@@ -56,14 +56,20 @@ const MAGICBLOCK_CUSTOM_CSS = `
 
 export default function configureOpenAPI(app: OpenAPIHono<{ Bindings: AppBindings }>) {
   const openApiConfig = {
-    openapi: "3.1.0",
+    openapi: "3.1.0" as const,
     info: {
       title: "SPL Private Payments API",
       version: "0.1.0",
       description: "REST API for building private SPL token transactions on Solana and MagicBlock ephemeral rollups.\n\n"
         + "Documentation: https://docs.magicblock.gg/pages/private-ephemeral-rollups-pers/how-to-guide/quickstart",
     },
-  } as const;
+    tags: [
+      {
+        name: "Swap",
+        description: "Provide quoting and execution for public and private swaps.",
+      },
+    ],
+  };
 
   app.get("/doc", (c) => {
     const document = app.getOpenAPI31Document(openApiConfig);
