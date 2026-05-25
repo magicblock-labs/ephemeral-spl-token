@@ -33,7 +33,7 @@ import {
 } from "@solana/web3.js";
 
 import app from "./app";
-import { TOKEN_PROGRAM_ID } from "./lib/solana";
+import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from "./lib/solana";
 import { MOCK_AUTH_TOKEN } from "./lib/auth";
 
 const env = {
@@ -86,6 +86,16 @@ function createAccountInfo(amount: bigint): AccountInfo<Buffer> {
     executable: false,
     lamports: 0,
     owner: TOKEN_PROGRAM_ID,
+    rentEpoch: 0,
+  };
+}
+
+function createMintAccountInfo(tokenProgram: PublicKey): AccountInfo<Buffer> {
+  return {
+    data: Buffer.alloc(82),
+    executable: false,
+    lamports: 1,
+    owner: tokenProgram,
     rentEpoch: 0,
   };
 }
@@ -1778,6 +1788,70 @@ describe("app", () => {
     expect(depositIx.data.length).toBe(45);
   });
 
+  it("uses the mint token program when building a deposit", async () => {
+    const mint = new PublicKey("2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo");
+    const validator = new PublicKey(resolvedValidator);
+    const [vault] = deriveVault(mint);
+    const vaultAta = deriveVaultAta(mint, vault, TOKEN_2022_PROGRAM_ID);
+
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123,
+    });
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockResolvedValue(
+      createMintAccountInfo(TOKEN_2022_PROGRAM_ID),
+    );
+
+    const response = await app.request(
+      "/v1/spl/deposit",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          owner,
+          mint: mint.toBase58(),
+          amount: 1,
+          validator: validator.toBase58(),
+          idempotent: true,
+          initIfMissing: true,
+          initAtasIfMissing: true,
+          initVaultIfMissing: true,
+        }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(200);
+
+    const json = (await response.json()) as {
+      transactionBase64: string;
+    };
+    const transaction = Transaction.from(
+      Buffer.from(json.transactionBase64, "base64"),
+    );
+    const initVaultInstruction = transaction.instructions.find(
+      ix => ix.programId.equals(EPHEMERAL_SPL_TOKEN_PROGRAM_ID) && ix.data[0] === 1,
+    );
+    const depositInstruction = transaction.instructions.find(
+      ix => ix.programId.equals(EPHEMERAL_SPL_TOKEN_PROGRAM_ID) && ix.data[0] === 24,
+    );
+
+    expect(initVaultInstruction?.keys[4].pubkey.toBase58()).toBe(
+      vaultAta.toBase58(),
+    );
+    expect(initVaultInstruction?.keys[5].pubkey.toBase58()).toBe(
+      TOKEN_2022_PROGRAM_ID.toBase58(),
+    );
+    expect(depositInstruction?.keys[15].pubkey.toBase58()).toBe(
+      TOKEN_2022_PROGRAM_ID.toBase58(),
+    );
+    expect(depositInstruction?.keys[18].pubkey.toBase58()).toBe(
+      vaultAta.toBase58(),
+    );
+  });
+
   it("falls back to the default validator after a transient RPC failure and retries later", async () => {
     const retryEnv = {
       ...env,
@@ -1950,6 +2024,9 @@ describe("app", () => {
       blockhash: "11111111111111111111111111111111",
       lastValidBlockHeight: 123,
     });
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockResolvedValue(
+      createMintAccountInfo(TOKEN_PROGRAM_ID),
+    );
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       expect(String(input)).toBe(withdrawEnv.EPHEMERAL_RPC_URL);
       return createIdentityResponse(resolvedValidator);
@@ -1995,6 +2072,60 @@ describe("app", () => {
     expect(withdrawIx.data.length).toBe(45);
   });
 
+  it("uses the mint token program when building a withdraw", async () => {
+    const mint = new PublicKey("2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo");
+
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123,
+    });
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockResolvedValue(
+      createMintAccountInfo(TOKEN_2022_PROGRAM_ID),
+    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(env.EPHEMERAL_RPC_URL);
+      return createIdentityResponse(resolvedValidator);
+    });
+
+    const response = await app.request(
+      "/v1/spl/withdraw",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          owner,
+          mint: mint.toBase58(),
+          amount: 1,
+          idempotent: true,
+          initAtasIfMissing: true,
+        }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(200);
+
+    const json = (await response.json()) as {
+      transactionBase64: string;
+    };
+    const transaction = Transaction.from(
+      Buffer.from(json.transactionBase64, "base64"),
+    );
+    const ataInstruction = transaction.instructions.find(
+      ix => ix.keys[5]?.pubkey.equals(TOKEN_2022_PROGRAM_ID),
+    );
+    const withdrawInstruction = transaction.instructions.find(
+      ix => ix.programId.equals(EPHEMERAL_SPL_TOKEN_PROGRAM_ID) && ix.data[0] === 26,
+    );
+
+    expect(ataInstruction).toBeDefined();
+    expect(withdrawInstruction?.keys[15].pubkey.toBase58()).toBe(
+      TOKEN_2022_PROGRAM_ID.toBase58(),
+    );
+  });
+
   it("builds an initialize mint transaction with the expected queue setup instructions", async () => {
     const validatorPublicKey = Keypair.generate().publicKey;
     const validator = validatorPublicKey.toBase58();
@@ -2026,6 +2157,9 @@ describe("app", () => {
             };
       },
     );
+    const getAccountInfoSpy = vi
+      .spyOn(Connection.prototype, "getAccountInfo")
+      .mockResolvedValue(createMintAccountInfo(TOKEN_PROGRAM_ID));
 
     const response = await app.request(
       "/v1/spl/initialize-mint",
@@ -2045,6 +2179,7 @@ describe("app", () => {
 
     expect(response.status).toBe(200);
     expect(fetchSpy).not.toHaveBeenCalled();
+    expect(getAccountInfoSpy).toHaveBeenCalledOnce();
 
     const json = (await response.json()) as {
       kind: string;
@@ -2122,6 +2257,62 @@ describe("app", () => {
     ]);
   });
 
+  it("builds an initialize mint transaction for Token-2022 mints", async () => {
+    const validatorPublicKey = Keypair.generate().publicKey;
+    const validator = validatorPublicKey.toBase58();
+    const mint = new PublicKey("2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo");
+    const [vault] = deriveVault(mint);
+    const vaultAta = deriveVaultAta(mint, vault, TOKEN_2022_PROGRAM_ID);
+
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "So11111111111111111111111111111111111111112",
+      lastValidBlockHeight: 321,
+    });
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockResolvedValue(
+      createMintAccountInfo(TOKEN_2022_PROGRAM_ID),
+    );
+
+    const response = await app.request(
+      "/v1/spl/initialize-mint",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          payer: owner,
+          mint: mint.toBase58(),
+          validator,
+        }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(200);
+
+    const json = (await response.json()) as {
+      transactionBase64: string;
+    };
+    const transaction = Transaction.from(
+      Buffer.from(json.transactionBase64, "base64"),
+    );
+    const initVaultInstruction = transaction.instructions[4]!;
+    const initVaultAtaInstruction = transaction.instructions[5]!;
+
+    expect(initVaultInstruction.keys[4].pubkey.toBase58()).toBe(
+      vaultAta.toBase58(),
+    );
+    expect(initVaultInstruction.keys[5].pubkey.toBase58()).toBe(
+      TOKEN_2022_PROGRAM_ID.toBase58(),
+    );
+    expect(initVaultAtaInstruction.keys[1].pubkey.toBase58()).toBe(
+      vaultAta.toBase58(),
+    );
+    expect(initVaultAtaInstruction.keys[5].pubkey.toBase58()).toBe(
+      TOKEN_2022_PROGRAM_ID.toBase58(),
+    );
+  });
+
   it("defaults the validator when building an initialize mint transaction", async () => {
     const initializeMintEnv = {
       ...env,
@@ -2133,6 +2324,9 @@ describe("app", () => {
       blockhash: "So11111111111111111111111111111111111111112",
       lastValidBlockHeight: 321,
     });
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockResolvedValue(
+      createMintAccountInfo(TOKEN_PROGRAM_ID),
+    );
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       expect(String(input)).toBe(initializeMintEnv.EPHEMERAL_RPC_URL);
       return createIdentityResponse(resolvedValidator);
@@ -2393,6 +2587,74 @@ describe("app", () => {
     expect(json.recentBlockhash).toBe("11111111111111111111111111111111");
     expect(json.validator).toBe(resolvedValidator);
     expect(json.version).toBe("legacy");
+  });
+
+  it("uses the mint token program when initializing a transfer vault", async () => {
+    const mint = new PublicKey("2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo");
+    const [vault] = deriveVault(mint);
+    const vaultAta = deriveVaultAta(mint, vault, TOKEN_2022_PROGRAM_ID);
+
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123,
+    });
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockResolvedValue(
+      createMintAccountInfo(TOKEN_2022_PROGRAM_ID),
+    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(env.EPHEMERAL_RPC_URL);
+      return createIdentityResponse(resolvedValidator);
+    });
+
+    const response = await app.request(
+      "/v1/spl/transfer",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          from: owner,
+          to: destination,
+          mint: mint.toBase58(),
+          amount: 2,
+          visibility: "public",
+          fromBalance: "base",
+          toBalance: "base",
+          initVaultIfMissing: true,
+          legacy: true,
+        }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(200);
+
+    const json = (await response.json()) as {
+      transactionBase64: string;
+    };
+    const transaction = Transaction.from(
+      Buffer.from(json.transactionBase64, "base64"),
+    );
+    const initVaultInstruction = transaction.instructions.find(
+      ix => ix.programId.equals(EPHEMERAL_SPL_TOKEN_PROGRAM_ID) && ix.data[0] === 1,
+    );
+    const initVaultAtaInstruction = transaction.instructions.find(
+      ix => ix.keys[1]?.pubkey.equals(vaultAta)
+        && ix.keys[5]?.pubkey.equals(TOKEN_2022_PROGRAM_ID),
+    );
+    const transferInstruction = transaction.instructions.find(
+      ix => ix.programId.equals(TOKEN_2022_PROGRAM_ID) && ix.data[0] === 3,
+    );
+
+    expect(initVaultInstruction?.keys[4].pubkey.toBase58()).toBe(
+      vaultAta.toBase58(),
+    );
+    expect(initVaultInstruction?.keys[5].pubkey.toBase58()).toBe(
+      TOKEN_2022_PROGRAM_ID.toBase58(),
+    );
+    expect(initVaultAtaInstruction).toBeDefined();
+    expect(transferInstruction).toBeDefined();
   });
 
   it("builds a v0 private base transfer when the LUT is useful", async () => {

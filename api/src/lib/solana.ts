@@ -36,6 +36,10 @@ export const TOKEN_PROGRAM_ID = new PublicKey(
   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
 );
 
+export const TOKEN_2022_PROGRAM_ID = new PublicKey(
+  "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+);
+
 export const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey(
   "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
 );
@@ -103,6 +107,25 @@ function getEphemeralConnection(config: RpcConfig, authToken?: string) {
   const url = new URL(config.ephemeralRpcUrl);
   url.searchParams.set("token", authToken);
   return new Connection(url.toString(), "confirmed");
+}
+
+async function resolveMintTokenProgram(config: RpcConfig, mint: PublicKey) {
+  const accountInfo = await getBaseConnection(config).getAccountInfo(mint, "confirmed");
+  if (!accountInfo) {
+    throw new ApiError(400, "MINT_NOT_FOUND", "Mint account not found");
+  }
+
+  if (
+    accountInfo.owner.equals(TOKEN_PROGRAM_ID)
+    || accountInfo.owner.equals(TOKEN_2022_PROGRAM_ID)
+  ) {
+    return accountInfo.owner;
+  }
+
+  throw new ApiError(400, "UNSUPPORTED_TOKEN_PROGRAM", "Mint owner is not a supported token program", {
+    mint: mint.toBase58(),
+    owner: accountInfo.owner.toBase58(),
+  });
 }
 
 function createClusterConfigError(missingVars: Array<"BASE_DEVNET_RPC_URL" | "EPHEMERAL_DEVNET_RPC_URL">) {
@@ -760,11 +783,15 @@ export async function buildDepositTransaction(env: AppEnv, input: DepositRequest
     const payer = owner;
     const feePayer = owner;
     const validator = await resolveDepositValidator(config, input.validator);
+    const tokenProgram = input.mint !== undefined
+      ? await resolveMintTokenProgram(config, mint)
+      : TOKEN_PROGRAM_ID;
     const blockhash = await getBlockhash(config, "base");
 
     const instructions = await delegateSpl(owner, mint, amount, {
       payer,
       validator,
+      tokenProgram,
       initIfMissing: input.initIfMissing,
       initVaultIfMissing: input.initVaultIfMissing,
       initAtasIfMissing: input.initAtasIfMissing,
@@ -795,11 +822,13 @@ export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawReque
     const payer = owner;
     const feePayer = owner;
     const validator = await resolveValidator(config, input.validator);
+    const tokenProgram = await resolveMintTokenProgram(config, mint);
     const blockhash = await getBlockhash(config, "base");
 
     const instructions = await withdrawSpl(owner, mint, amount, {
       payer,
       validator,
+      tokenProgram,
       initIfMissing: input.initIfMissing,
       initAtasIfMissing: input.initAtasIfMissing,
       shuttleId: createRandomShuttleId(),
@@ -833,7 +862,8 @@ export async function buildInitializeMintTransaction(
     const [rentPda] = deriveRentPda();
     const [vault] = deriveVault(mint);
     const [vaultEphemeralAta] = deriveEphemeralAta(vault, mint);
-    const vaultAta = deriveVaultAta(mint, vault);
+    const tokenProgram = await resolveMintTokenProgram(config, mint);
+    const vaultAta = deriveVaultAta(mint, vault, tokenProgram);
     const blockhash = await getBlockhash(config, "base");
 
     const instructions = [
@@ -857,8 +887,8 @@ export async function buildInitializeMintTransaction(
         payer,
         mint,
       ),
-      initVaultIx(vault, mint, payer),
-      initVaultAtaIx(payer, vaultAta, vault, mint),
+      initVaultIx(vault, mint, payer, tokenProgram),
+      initVaultAtaIx(payer, vaultAta, vault, mint, tokenProgram),
       delegateEphemeralAtaIx(payer, vaultEphemeralAta, validator),
     ];
 
@@ -988,6 +1018,13 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       ? await resolveValidator(config, input.validator)
       : undefined;
 
+    const shouldResolveTokenProgram = input.initIfMissing
+      || input.initAtasIfMissing
+      || input.initVaultIfMissing;
+    const tokenProgram = shouldResolveTokenProgram
+      ? await resolveMintTokenProgram(config, mint)
+      : TOKEN_PROGRAM_ID;
+
     const sendTo: SendTarget = input.fromBalance === "ephemeral" ? "ephemeral" : "base";
     const blockhash = await getBlockhash(config, sendTo, authToken);
 
@@ -997,6 +1034,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       toBalance: input.toBalance,
       payer,
       validator,
+      tokenProgram,
       initIfMissing: input.initIfMissing,
       initAtasIfMissing: input.initAtasIfMissing,
       initVaultIfMissing: input.initVaultIfMissing,
