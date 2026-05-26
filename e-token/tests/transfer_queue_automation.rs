@@ -436,12 +436,12 @@ async fn ensure_transfer_queue_crank_schedules_one_recurring_queue_crank() {
             CapturedScheduleAccount {
                 pubkey: fixture.magic_fee_vault,
                 is_signer: false,
-                is_writable: false,
+                is_writable: true,
             },
             CapturedScheduleAccount {
                 pubkey: fixture.magic_context,
                 is_signer: false,
-                is_writable: false,
+                is_writable: true,
             },
             CapturedScheduleAccount {
                 pubkey: fixture.magic_program,

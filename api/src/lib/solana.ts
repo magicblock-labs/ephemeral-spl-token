@@ -36,6 +36,10 @@ export const TOKEN_PROGRAM_ID = new PublicKey(
   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
 );
 
+export const TOKEN_2022_PROGRAM_ID = new PublicKey(
+  "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+);
+
 export const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey(
   "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
 );
@@ -103,6 +107,34 @@ function getEphemeralConnection(config: RpcConfig, authToken?: string) {
   const url = new URL(config.ephemeralRpcUrl);
   url.searchParams.set("token", authToken);
   return new Connection(url.toString(), "confirmed");
+}
+
+async function resolveMintTokenProgram(config: RpcConfig, mint: PublicKey) {
+  let accountInfo: { owner: PublicKey } | null;
+  try {
+    accountInfo = await getBaseConnection(config).getAccountInfo(mint, "confirmed");
+  } catch (error) {
+    throw new ApiError(502, "RPC_ERROR", "Failed to resolve mint token program", {
+      mint: mint.toBase58(),
+      message: getSanitizedErrorMessage(error),
+    });
+  }
+
+  if (!accountInfo) {
+    throw new ApiError(400, "MINT_NOT_FOUND", "Mint account not found");
+  }
+
+  if (
+    accountInfo.owner.equals(TOKEN_PROGRAM_ID)
+    || accountInfo.owner.equals(TOKEN_2022_PROGRAM_ID)
+  ) {
+    return accountInfo.owner;
+  }
+
+  throw new ApiError(400, "UNSUPPORTED_TOKEN_PROGRAM", "Mint owner is not a supported token program", {
+    mint: mint.toBase58(),
+    owner: accountInfo.owner.toBase58(),
+  });
 }
 
 function createClusterConfigError(missingVars: Array<"BASE_DEVNET_RPC_URL" | "EPHEMERAL_DEVNET_RPC_URL">) {
@@ -330,13 +362,14 @@ function createTokenTransferInstruction(
   destination: PublicKey,
   authority: PublicKey,
   amount: bigint,
+  programId: PublicKey = TOKEN_PROGRAM_ID,
 ) {
   const data = Buffer.alloc(9);
   data[0] = 3; // TokenInstruction::Transfer
   data.writeBigUInt64LE(amount, 1);
 
   return new TransactionInstruction({
-    programId: TOKEN_PROGRAM_ID,
+    programId,
     keys: [
       { pubkey: source, isSigner: false, isWritable: true },
       { pubkey: destination, isSigner: false, isWritable: true },
@@ -760,11 +793,15 @@ export async function buildDepositTransaction(env: AppEnv, input: DepositRequest
     const payer = owner;
     const feePayer = owner;
     const validator = await resolveDepositValidator(config, input.validator);
+    const tokenProgram = input.mint !== undefined
+      ? await resolveMintTokenProgram(config, mint)
+      : TOKEN_PROGRAM_ID;
     const blockhash = await getBlockhash(config, "base");
 
     const instructions = await delegateSpl(owner, mint, amount, {
       payer,
       validator,
+      tokenProgram,
       initIfMissing: input.initIfMissing,
       initVaultIfMissing: input.initVaultIfMissing,
       initAtasIfMissing: input.initAtasIfMissing,
@@ -795,11 +832,13 @@ export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawReque
     const payer = owner;
     const feePayer = owner;
     const validator = await resolveValidator(config, input.validator);
+    const tokenProgram = await resolveMintTokenProgram(config, mint);
     const blockhash = await getBlockhash(config, "base");
 
     const instructions = await withdrawSpl(owner, mint, amount, {
       payer,
       validator,
+      tokenProgram,
       initIfMissing: input.initIfMissing,
       initAtasIfMissing: input.initAtasIfMissing,
       shuttleId: createRandomShuttleId(),
@@ -833,7 +872,8 @@ export async function buildInitializeMintTransaction(
     const [rentPda] = deriveRentPda();
     const [vault] = deriveVault(mint);
     const [vaultEphemeralAta] = deriveEphemeralAta(vault, mint);
-    const vaultAta = deriveVaultAta(mint, vault);
+    const tokenProgram = await resolveMintTokenProgram(config, mint);
+    const vaultAta = deriveVaultAta(mint, vault, tokenProgram);
     const blockhash = await getBlockhash(config, "base");
 
     const instructions = [
@@ -857,8 +897,8 @@ export async function buildInitializeMintTransaction(
         payer,
         mint,
       ),
-      initVaultIx(vault, mint, payer),
-      initVaultAtaIx(payer, vaultAta, vault, mint),
+      initVaultIx(vault, mint, payer, tokenProgram),
+      initVaultAtaIx(payer, vaultAta, vault, mint, tokenProgram),
       delegateEphemeralAtaIx(payer, vaultEphemeralAta, validator),
     ];
 
@@ -968,16 +1008,6 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
     const sponsor = input.gasless ? getGaslessSponsorKeypair(env) : undefined;
     const payer = sponsor?.publicKey ?? from;
     const feePayer = sponsor?.publicKey ?? from;
-    const gaslessFeeInstructions = sponsor
-      ? [
-          createTokenTransferInstruction(
-            getAssociatedTokenAddressSync(mint, from, true, TOKEN_PROGRAM_ID),
-            getAssociatedTokenAddressSync(mint, sponsor.publicKey, true, TOKEN_PROGRAM_ID),
-            from,
-            GASLESS_RELAY_FEE_MICRO_USDC,
-          ),
-        ]
-      : [];
 
     const shouldResolveValidator = input.validator
       || input.visibility === "private"
@@ -988,6 +1018,19 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       ? await resolveValidator(config, input.validator)
       : undefined;
 
+    const tokenProgram = await resolveMintTokenProgram(config, mint);
+    const gaslessFeeInstructions = sponsor
+      ? [
+          createTokenTransferInstruction(
+            getAssociatedTokenAddressSync(mint, from, true, tokenProgram),
+            getAssociatedTokenAddressSync(mint, sponsor.publicKey, true, tokenProgram),
+            from,
+            GASLESS_RELAY_FEE_MICRO_USDC,
+            tokenProgram,
+          ),
+        ]
+      : [];
+
     const sendTo: SendTarget = input.fromBalance === "ephemeral" ? "ephemeral" : "base";
     const blockhash = await getBlockhash(config, sendTo, authToken);
 
@@ -997,6 +1040,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       toBalance: input.toBalance,
       payer,
       validator,
+      tokenProgram,
       initIfMissing: input.initIfMissing,
       initAtasIfMissing: input.initAtasIfMissing,
       initVaultIfMissing: input.initVaultIfMissing,
