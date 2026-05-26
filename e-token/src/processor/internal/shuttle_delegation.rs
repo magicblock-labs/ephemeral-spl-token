@@ -397,12 +397,12 @@ pub(crate) fn build_undelegate_and_close_shuttle_instruction(
     close_stash: Option<CloseStashArgs>,
 ) -> Instruction {
     let accounts = alloc::vec![
-        AccountMeta::new(*payer, true),
-        AccountMeta::new(*rent_pda, false),
+        AccountMeta::new_readonly(*payer, true),
+        AccountMeta::new_readonly(*rent_pda, false),
         AccountMeta::new_readonly(*shuttle, false),
         AccountMeta::new_readonly(*shuttle_eata, false),
         AccountMeta::new(*shuttle_wallet_ata, false),
-        AccountMeta::new(*refund_token, false),
+        AccountMeta::new_readonly(*refund_token, false),
         AccountMeta::new_readonly(*token_program, false),
         AccountMeta::new(Pubkey::from(MAGIC_CONTEXT_ID.to_bytes()), false),
         AccountMeta::new_readonly(Pubkey::from(MAGIC_PROGRAM_ID.to_bytes()), false),

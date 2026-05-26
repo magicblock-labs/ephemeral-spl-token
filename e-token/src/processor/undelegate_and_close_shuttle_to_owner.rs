@@ -221,7 +221,7 @@ fn schedule_shuttle_close_after_undelegate(
         },
         ShortAccountMeta {
             pubkey: *destination_token_info.address(),
-            is_writable: destination_token_info.is_writable(),
+            is_writable: true,
         },
         ShortAccountMeta {
             pubkey: *mint,

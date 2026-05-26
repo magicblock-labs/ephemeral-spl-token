@@ -166,10 +166,10 @@ pub fn process_ensure_transfer_queue_crank(
             .write(InstructionAccount::readonly(queue_info.address()));
         schedule_accounts
             .get_unchecked_mut(2)
-            .write(InstructionAccount::readonly(magic_fee_vault_info.address()));
+            .write(InstructionAccount::writable(magic_fee_vault_info.address()));
         schedule_accounts
             .get_unchecked_mut(3)
-            .write(InstructionAccount::readonly(magic_context_info.address()));
+            .write(InstructionAccount::writable(magic_context_info.address()));
         schedule_accounts
             .get_unchecked_mut(4)
             .write(InstructionAccount::readonly(magic_program_info.address()));

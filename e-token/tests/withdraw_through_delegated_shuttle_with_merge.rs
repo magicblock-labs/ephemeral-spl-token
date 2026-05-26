@@ -475,12 +475,12 @@ async fn undelegate_and_close_shuttle_ephemeral_ata_schedules_close_action() {
     let ix_undelegate = Instruction {
         program_id: PROGRAM,
         accounts: vec![
-            AccountMeta::new(payer, true),
-            AccountMeta::new(rent_pda, false),
+            AccountMeta::new_readonly(payer, true),
+            AccountMeta::new_readonly(rent_pda, false),
             AccountMeta::new_readonly(shuttle_metadata, false),
             AccountMeta::new_readonly(shuttle_eata, false),
             AccountMeta::new(shuttle_wallet_ata, false),
-            AccountMeta::new(owner_destination_ata, false),
+            AccountMeta::new_readonly(owner_destination_ata, false),
             AccountMeta::new_readonly(spl_token_interface::ID, false),
             AccountMeta::new(magic_context, false),
             AccountMeta::new_readonly(magic_program, false),
@@ -528,10 +528,12 @@ async fn undelegate_and_close_shuttle_ephemeral_ata_schedules_close_action() {
         close_action.accounts[0].pubkey.to_bytes(),
         rent_pda.to_bytes()
     );
+    assert!(close_action.accounts[0].is_writable);
     assert_eq!(
         close_action.accounts[4].pubkey.to_bytes(),
         owner_destination_ata.to_bytes()
     );
+    assert!(close_action.accounts[4].is_writable);
     assert_eq!(close_action.accounts[5].pubkey.to_bytes(), mint.to_bytes());
     assert_eq!(close_action.accounts[6].pubkey.to_bytes(), vault.to_bytes());
     assert_eq!(
