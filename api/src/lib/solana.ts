@@ -353,13 +353,14 @@ function createTokenTransferInstruction(
   destination: PublicKey,
   authority: PublicKey,
   amount: bigint,
+  programId: PublicKey = TOKEN_PROGRAM_ID,
 ) {
   const data = Buffer.alloc(9);
   data[0] = 3; // TokenInstruction::Transfer
   data.writeBigUInt64LE(amount, 1);
 
   return new TransactionInstruction({
-    programId: TOKEN_PROGRAM_ID,
+    programId,
     keys: [
       { pubkey: source, isSigner: false, isWritable: true },
       { pubkey: destination, isSigner: false, isWritable: true },
@@ -998,16 +999,6 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
     const sponsor = input.gasless ? getGaslessSponsorKeypair(env) : undefined;
     const payer = sponsor?.publicKey ?? from;
     const feePayer = sponsor?.publicKey ?? from;
-    const gaslessFeeInstructions = sponsor
-      ? [
-          createTokenTransferInstruction(
-            getAssociatedTokenAddressSync(mint, from, true, TOKEN_PROGRAM_ID),
-            getAssociatedTokenAddressSync(mint, sponsor.publicKey, true, TOKEN_PROGRAM_ID),
-            from,
-            GASLESS_RELAY_FEE_MICRO_USDC,
-          ),
-        ]
-      : [];
 
     const shouldResolveValidator = input.validator
       || input.visibility === "private"
@@ -1018,12 +1009,18 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       ? await resolveValidator(config, input.validator)
       : undefined;
 
-    const shouldResolveTokenProgram = input.initIfMissing
-      || input.initAtasIfMissing
-      || input.initVaultIfMissing;
-    const tokenProgram = shouldResolveTokenProgram
-      ? await resolveMintTokenProgram(config, mint)
-      : TOKEN_PROGRAM_ID;
+    const tokenProgram = await resolveMintTokenProgram(config, mint);
+    const gaslessFeeInstructions = sponsor
+      ? [
+          createTokenTransferInstruction(
+            getAssociatedTokenAddressSync(mint, from, true, tokenProgram),
+            getAssociatedTokenAddressSync(mint, sponsor.publicKey, true, tokenProgram),
+            from,
+            GASLESS_RELAY_FEE_MICRO_USDC,
+            tokenProgram,
+          ),
+        ]
+      : [];
 
     const sendTo: SendTarget = input.fromBalance === "ephemeral" ? "ephemeral" : "base";
     const blockhash = await getBlockhash(config, sendTo, authToken);
