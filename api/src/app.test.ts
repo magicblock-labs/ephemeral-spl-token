@@ -1852,6 +1852,129 @@ describe("app", () => {
     );
   });
 
+  it("returns MINT_NOT_FOUND when a deposit mint account is missing", async () => {
+    const mint = new PublicKey("2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo");
+    const getAccountInfoSpy = vi
+      .spyOn(Connection.prototype, "getAccountInfo")
+      .mockResolvedValue(null);
+
+    const response = await app.request(
+      "/v1/spl/deposit",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          owner,
+          mint: mint.toBase58(),
+          amount: 1,
+          validator: resolvedValidator,
+        }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(400);
+    expect(getAccountInfoSpy).toHaveBeenCalledOnce();
+
+    const json = (await response.json()) as {
+      error: { code: string; message: string };
+    };
+    expect(json.error.code).toBe("MINT_NOT_FOUND");
+    expect(json.error.message).toBe("Mint account not found");
+  });
+
+  it("returns UNSUPPORTED_TOKEN_PROGRAM when a deposit mint owner is unsupported", async () => {
+    const mint = new PublicKey("2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo");
+    const getAccountInfoSpy = vi
+      .spyOn(Connection.prototype, "getAccountInfo")
+      .mockResolvedValue(createMintAccountInfo(SystemProgram.programId));
+
+    const response = await app.request(
+      "/v1/spl/deposit",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          owner,
+          mint: mint.toBase58(),
+          amount: 1,
+          validator: resolvedValidator,
+        }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(400);
+    expect(getAccountInfoSpy).toHaveBeenCalledOnce();
+
+    const json = (await response.json()) as {
+      error: {
+        code: string;
+        message: string;
+        details?: {
+          mint?: string;
+          owner?: string;
+        };
+      };
+    };
+    expect(json.error.code).toBe("UNSUPPORTED_TOKEN_PROGRAM");
+    expect(json.error.message).toBe(
+      "Mint owner is not a supported token program",
+    );
+    expect(json.error.details).toEqual({
+      mint: mint.toBase58(),
+      owner: SystemProgram.programId.toBase58(),
+    });
+  });
+
+  it("returns RPC_ERROR when resolving a deposit mint token program fails", async () => {
+    const mint = new PublicKey("2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo");
+    const getAccountInfoSpy = vi
+      .spyOn(Connection.prototype, "getAccountInfo")
+      .mockRejectedValue(new Error("mint lookup failed"));
+
+    const response = await app.request(
+      "/v1/spl/deposit",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          owner,
+          mint: mint.toBase58(),
+          amount: 1,
+          validator: resolvedValidator,
+        }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(502);
+    expect(getAccountInfoSpy).toHaveBeenCalledOnce();
+
+    const json = (await response.json()) as {
+      error: {
+        code: string;
+        message: string;
+        details?: {
+          mint?: string;
+          message?: string;
+        };
+      };
+    };
+    expect(json.error.code).toBe("RPC_ERROR");
+    expect(json.error.message).toBe("Failed to resolve mint token program");
+    expect(json.error.details).toEqual({
+      mint: mint.toBase58(),
+      message: "mint lookup failed",
+    });
+  });
+
   it("falls back to the default validator after a transient RPC failure and retries later", async () => {
     const retryEnv = {
       ...env,

@@ -110,7 +110,16 @@ function getEphemeralConnection(config: RpcConfig, authToken?: string) {
 }
 
 async function resolveMintTokenProgram(config: RpcConfig, mint: PublicKey) {
-  const accountInfo = await getBaseConnection(config).getAccountInfo(mint, "confirmed");
+  let accountInfo: { owner: PublicKey } | null;
+  try {
+    accountInfo = await getBaseConnection(config).getAccountInfo(mint, "confirmed");
+  } catch (error) {
+    throw new ApiError(502, "RPC_ERROR", "Failed to resolve mint token program", {
+      mint: mint.toBase58(),
+      message: getSanitizedErrorMessage(error),
+    });
+  }
+
   if (!accountInfo) {
     throw new ApiError(400, "MINT_NOT_FOUND", "Mint account not found");
   }
