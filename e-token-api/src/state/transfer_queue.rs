@@ -10,6 +10,8 @@ pub const TRANSFER_QUEUE_VERSION: u8 = 1;
 pub const QUEUE_SEED: &[u8] = b"queue";
 
 pub const QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA: u8 = 1 << 0;
+pub const TRANSFER_QUEUE_TOKEN_PROGRAM_SPL_TOKEN: u8 = 0;
+pub const TRANSFER_QUEUE_TOKEN_PROGRAM_TOKEN_2022: u8 = 1;
 pub const MAX_GROUP_ID: u32 = 0x00FF_FFFF; // we have 3 only bytes for group_id in QueuedTransfer
 
 pub const HEADER_LEN: usize = core::mem::size_of::<TransferQueueHeader>();
@@ -30,6 +32,18 @@ pub struct TransferQueueHeader {
     pub next_task_id: u32,
     pub crank_task_id: i64,
     pub validator: Address,
+}
+
+impl TransferQueueHeader {
+    #[inline(always)]
+    pub fn token_program_kind(&self) -> u8 {
+        self._pad0[0]
+    }
+
+    #[inline(always)]
+    pub fn set_token_program_kind(&mut self, kind: u8) {
+        self._pad0[0] = kind;
+    }
 }
 
 /// One queued transfer entry.
@@ -197,6 +211,16 @@ pub fn queue_views_mut(
         .map_err(|_| ProgramError::InvalidAccountData)?;
 
     Ok((header, items))
+}
+
+#[inline(always)]
+pub fn queue_set_token_program_kind_from_data(
+    data: &mut [u8],
+    kind: u8,
+) -> Result<(), ProgramError> {
+    let (header, _) = queue_views_mut_checked(data)?;
+    header.set_token_program_kind(kind);
+    Ok(())
 }
 
 /// Initializes an uninitialized queue (version == 0).

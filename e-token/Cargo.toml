@@ -13,6 +13,7 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 logging = ["ephemeral-spl-api/logging"]
+no-fees = ["ephemeral-spl-api/no-fees"]
 
 [dependencies]
 bytemuck = { workspace = true }

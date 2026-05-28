@@ -17,22 +17,23 @@ use ephemeral_spl_api::instruction::ESplInstruction;
 use ephemeral_spl_api::state::transfer_queue::{queue_views, TransferQueue};
 use ephemeral_spl_api::{consts, require, require_eq_keys, require_n_accounts};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+#[cfg(not(feature = "no-fees"))]
 use solana_instruction::{AccountMeta, Instruction};
 
 use crate::processor::internal::group_receipt::derive_group_receipt_id;
-use crate::processor::utils::MAGIC_VAULT_ID;
-use crate::processor::{
-    internal::shuttle_delegation::{
-        merge_shuttle_into_token_account_action,
-        process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions,
-        undelegate_and_close_shuttle_action, CloseStashArgs, DepositAndDelegateShuttleAccounts,
-        DepositAndDelegateShuttleCommonArgs,
-    },
-    utils::read_mint_decimals,
+use crate::processor::internal::shuttle_delegation::{
+    merge_shuttle_into_token_account_action,
+    process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions,
+    undelegate_and_close_shuttle_action, CloseStashArgs, DepositAndDelegateShuttleAccounts,
+    DepositAndDelegateShuttleCommonArgs,
 };
+#[cfg(not(feature = "no-fees"))]
+use crate::processor::utils::read_mint_decimals;
+use crate::processor::utils::MAGIC_VAULT_ID;
 use dlp_api::{args::PostDelegationActions, compact::ClearTextWithInsertable};
 use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
 
+#[cfg(not(feature = "no-fees"))]
 const TRANSFER_CHECKED_DISCRIMINATOR: u8 = 12;
 
 ///
@@ -201,11 +202,6 @@ pub(crate) fn process_with_merge_and_private_transfer_inner(
         private_transfer_amount
     );
 
-    let mint_decimals = read_mint_decimals(
-        common_accounts.mint_info,
-        common_accounts.token_program_info,
-    )?;
-
     let actions = {
         let private_transfer = private_transfer_action_encrypted(
             &common_accounts,
@@ -215,15 +211,29 @@ pub(crate) fn process_with_merge_and_private_transfer_inner(
             private_transfer_amount,
         )?;
 
-        alloc::vec![
-            merge_shuttle_into_token_account_action(
+        let mut post_actions = alloc::vec![merge_shuttle_into_token_account_action(
+            &common_accounts,
+            common_accounts.owner_source_token_info,
+        )];
+
+        #[cfg(not(feature = "no-fees"))]
+        {
+            let mint_decimals = read_mint_decimals(
+                common_accounts.mint_info,
+                common_accounts.token_program_info,
+            )?;
+            post_actions.push(private_transfer_fee_action(
                 &common_accounts,
-                common_accounts.owner_source_token_info,
-            ),
-            private_transfer_fee_action(&common_accounts, fee_amount, mint_decimals),
-            undelegate_and_close_shuttle_action(&common_accounts, close_stash),
-        ]
-        .cleartext_with_insertable(private_transfer, 1)
+                fee_amount,
+                mint_decimals,
+            ));
+        }
+
+        post_actions.push(undelegate_and_close_shuttle_action(
+            &common_accounts,
+            close_stash,
+        ));
+        post_actions.cleartext_with_insertable(private_transfer, 1)
     };
 
     process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions(
@@ -357,6 +367,7 @@ fn private_transfer_fee_amount(amount: u64) -> Result<u64, ProgramError> {
         .ok_or(ProgramError::InvalidInstructionData)? as u64)
 }
 
+#[cfg(not(feature = "no-fees"))]
 fn private_transfer_fee_action(
     common_accounts: &DepositAndDelegateShuttleAccounts<'_>,
     fee_amount: u64,
