@@ -226,7 +226,7 @@ pub fn queue_views_mut(
 #[inline(always)]
 pub fn queue_set_token_program_kind_from_data(
     data: &mut [u8],
-    kind: u8,
+    spl_token_program: SplTokenProgram,
 ) -> Result<(), ProgramError> {
     let (header, _) = queue_views_mut_checked(data)?;
     header.set_token_program_kind(kind);
