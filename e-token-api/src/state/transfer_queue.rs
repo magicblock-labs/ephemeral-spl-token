@@ -10,18 +10,19 @@ pub const TRANSFER_QUEUE_VERSION: u8 = 1;
 pub const QUEUE_SEED: &[u8] = b"queue";
 
 pub const QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA: u8 = 1 << 0;
-pub const TRANSFER_QUEUE_TOKEN_PROGRAM_SPL_TOKEN: u8 = 0;
 #[repr(u8)]
 pub enum SplTokenProgram {
-   Token = 0,
-   Token2022 = 1,
+    Token = 0,
+    Token2022 = 1,
 }
 
 impl SplTokenProgram {
-   pub const fn value(self) -> u8 {
-     self as u8
-   }
+    pub const fn value(self) -> u8 {
+        self as u8
+    }
 }
+pub const TRANSFER_QUEUE_TOKEN_PROGRAM_SPL_TOKEN: u8 = SplTokenProgram::Token.value();
+pub const TRANSFER_QUEUE_TOKEN_PROGRAM_TOKEN_2022: u8 = SplTokenProgram::Token2022.value();
 pub const MAX_GROUP_ID: u32 = 0x00FF_FFFF; // we have 3 only bytes for group_id in QueuedTransfer
 
 pub const HEADER_LEN: usize = core::mem::size_of::<TransferQueueHeader>();
@@ -34,7 +35,8 @@ pub const ITEM_LEN: usize = core::mem::size_of::<QueuedTransfer>();
 pub struct TransferQueueHeader {
     pub version: u8,
     pub bump: u8,
-    pub _pad0: [u8; 6],
+    pub spl_token_program: u8,
+    pub _pad0: [u8; 5],
     pub mint: Address,
     pub length: u32,
     pub group_id: u32,
@@ -47,12 +49,12 @@ pub struct TransferQueueHeader {
 impl TransferQueueHeader {
     #[inline(always)]
     pub fn token_program_kind(&self) -> u8 {
-        self._pad0[0]
+        self.spl_token_program
     }
 
     #[inline(always)]
     pub fn set_token_program_kind(&mut self, kind: u8) {
-        self._pad0[0] = kind;
+        self.spl_token_program = kind;
     }
 }
 
@@ -226,7 +228,7 @@ pub fn queue_views_mut(
 #[inline(always)]
 pub fn queue_set_token_program_kind_from_data(
     data: &mut [u8],
-    spl_token_program: SplTokenProgram,
+    kind: u8,
 ) -> Result<(), ProgramError> {
     let (header, _) = queue_views_mut_checked(data)?;
     header.set_token_program_kind(kind);

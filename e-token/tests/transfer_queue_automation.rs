@@ -1182,7 +1182,7 @@ async fn process_transfer_queue_tick_uses_token_2022_accounts_from_queue_header(
     enqueue_transfer(&mut fixture, 0, "tq_auto::enqueue_token_2022_ready").await;
 
     let mut queue = queue_account(&mut fixture.context, fixture.queue).await;
-    // Header bytes are version, bump, then _pad0; _pad0[0] stores the token-program kind.
+    // Header bytes are version, bump, then spl_token_program.
     queue.data[2] = TRANSFER_QUEUE_TOKEN_PROGRAM_TOKEN_2022;
     fixture.context.set_account(&fixture.queue, &queue.into());
 
