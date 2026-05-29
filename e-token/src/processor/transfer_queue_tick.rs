@@ -124,7 +124,7 @@ fn read_queue_tick_state(
     let data = unsafe { queue_info.borrow_unchecked() };
     let (header, _) = queue_views_checked(data)?;
     let mint = header.mint;
-    let token_program = token_program_for_kind(header.token_program_kind())?;
+    let token_program = token_program_for_kind(header.token_program_kind()?);
     let validator = header.validator;
     let queue_len = header.length as usize;
 

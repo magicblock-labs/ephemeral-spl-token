@@ -11,8 +11,7 @@ use ephemeral_rollups_pinocchio::{
     spl::EphemeralAta,
 };
 use ephemeral_spl_api::state::transfer_queue::{
-    QueuedTransfer, TransferQueueHeader, HEADER_LEN, ITEM_LEN, QUEUE_SEED,
-    TRANSFER_QUEUE_TOKEN_PROGRAM_TOKEN_2022,
+    QueuedTransfer, SplTokenProgram, TransferQueueHeader, HEADER_LEN, ITEM_LEN, QUEUE_SEED,
 };
 use ephemeral_spl_api::ID as PROGRAM;
 use ephemeral_spl_api::{instruction, state::transfer_queue::TransferQueue};
@@ -1183,7 +1182,7 @@ async fn process_transfer_queue_tick_uses_token_2022_accounts_from_queue_header(
 
     let mut queue = queue_account(&mut fixture.context, fixture.queue).await;
     // Header bytes are version, bump, then spl_token_program.
-    queue.data[2] = TRANSFER_QUEUE_TOKEN_PROGRAM_TOKEN_2022;
+    queue.data[2] = SplTokenProgram::Token2022.value();
     fixture.context.set_account(&fixture.queue, &queue.into());
 
     let token_2022_program = Pubkey::new_from_array(pinocchio_token_2022::ID.to_bytes());
