@@ -11,7 +11,17 @@ pub const QUEUE_SEED: &[u8] = b"queue";
 
 pub const QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA: u8 = 1 << 0;
 pub const TRANSFER_QUEUE_TOKEN_PROGRAM_SPL_TOKEN: u8 = 0;
-pub const TRANSFER_QUEUE_TOKEN_PROGRAM_TOKEN_2022: u8 = 1;
+#[repr(u8)]
+pub enum SplTokenProgram {
+   Token = 0,
+   Token2022 = 1,
+}
+
+impl SplTokenProgram {
+   pub const fn value(self) -> u8 {
+     self as u8
+   }
+}
 pub const MAX_GROUP_ID: u32 = 0x00FF_FFFF; // we have 3 only bytes for group_id in QueuedTransfer
 
 pub const HEADER_LEN: usize = core::mem::size_of::<TransferQueueHeader>();
