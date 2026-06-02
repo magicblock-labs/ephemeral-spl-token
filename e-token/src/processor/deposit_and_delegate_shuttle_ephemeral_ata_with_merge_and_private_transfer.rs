@@ -159,7 +159,8 @@ pub(crate) fn process_with_merge_and_private_transfer_inner(
         let vault_token = common_accounts.vault_token_info.address().to_string();
         let queue = queue_info.address().to_string();
 
-        pinocchio_log::log!(
+        pinocchio_log::log!( 
+            512,
             "Private shuttle ix accounts shuttle={} shuttle_eata={} shuttle_wallet={} mint={} owner_source={} vault_token={} queue={}",
             shuttle.as_str(),
             shuttle_eata.as_str(),
@@ -308,6 +309,19 @@ fn private_transfer_action_encrypted(
         group_id,
     )
     .0;
+
+    debug_log!("private_transfer_action_encrypted");
+    debug_log! (320, "queue_info = {}, global_vault_info = {}, mint_info = {}, owner_source ata = {}", 
+        queue_info.address().to_string().as_str(),
+        common_accounts.global_vault_info.address().to_string().as_str(),
+        common_accounts.mint_info.address().to_string().as_str(),
+        common_accounts.owner_source_token_info.address().to_string().as_str(),
+    );
+    debug_log! (320, "vault ata = {}, shuttle wallet ata = {}, group_receipt_info = {}", 
+        common_accounts.vault_token_info.address().to_string().as_str(),
+        common_accounts.shuttle_wallet_ata_info.address().to_string().as_str(),
+        group_receipt_info.to_string().as_str(),
+    );
     Ok(PostDelegationActions {
         inserted_signers: 0,
         inserted_non_signers: 0,
