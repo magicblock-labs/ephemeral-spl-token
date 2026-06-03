@@ -1,4 +1,5 @@
 import type { RouteHandler } from "@hono/zod-openapi";
+import type { BackgroundTaskScheduler } from "../../lib/solana";
 
 import { getEnv, type AppBindings } from "../../env";
 import {
@@ -34,11 +35,8 @@ import {
 import { getChallenge, login, parseAuthToken } from "../../lib/auth";
 
 type RouteEnv = { Bindings: AppBindings };
-type BackgroundScheduler = {
-  waitUntil: (promise: Promise<unknown>) => void;
-};
 
-function getBackgroundScheduler(c: { executionCtx: BackgroundScheduler }) {
+function getBackgroundScheduler(c: { executionCtx: BackgroundTaskScheduler }) {
   try {
     return c.executionCtx;
   } catch {
@@ -71,7 +69,12 @@ export const transferHandler: RouteHandler<typeof transferRoute, RouteEnv> = asy
   const env = getEnv(c.env);
   const body = c.req.valid("json") as TransferRequest;
   const authToken = parseAuthToken(c.req.header());
-  const response = await buildTransferTransaction(env, body, authToken);
+  const response = await buildTransferTransaction(
+    env,
+    body,
+    authToken,
+    getBackgroundScheduler(c as { executionCtx: BackgroundTaskScheduler }),
+  );
   return c.json(response, 200);
 };
 
@@ -100,7 +103,7 @@ export const mintInitializationHandler: RouteHandler<typeof mintInitializationRo
   const response = await getMintInitializationStatus(
     env,
     query,
-    getBackgroundScheduler(c as { executionCtx: BackgroundScheduler }),
+    getBackgroundScheduler(c as { executionCtx: BackgroundTaskScheduler }),
   );
   return c.json(response, 200);
 };

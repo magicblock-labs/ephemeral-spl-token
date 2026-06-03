@@ -56,7 +56,6 @@ const DEFAULT_FALLBACK_VALIDATOR = new PublicKey(
 );
 const TRANSFER_QUEUE_RENT_LAMPORTS = LAMPORTS_PER_SOL / 50;
 const PRIVATE_TRANSFER_MAX_DELAY_MS_LIMIT = 10n * 60n * 1000n;
-const TRANSFER_QUEUE_RECENT_SIGNATURE_LIMIT = 5;
 const TRANSFER_QUEUE_STALE_MS = 60_000;
 const SOLANA_WIRE_TRANSACTION_SIZE_LIMIT = 1232;
 // Keep these defaults aligned with scripts/create-private-transfer-lut.js. Updating them requires a redeploy.
@@ -91,7 +90,7 @@ type RpcIdentityResponse = {
   };
 };
 
-type BackgroundTaskScheduler = {
+export type BackgroundTaskScheduler = {
   waitUntil: (promise: Promise<unknown>) => void;
 };
 
@@ -930,7 +929,12 @@ export async function buildInitializeMintTransaction(
   }
 }
 
-export async function buildTransferTransaction(env: AppEnv, input: TransferRequest, authToken?: string) {
+export async function buildTransferTransaction(
+  env: AppEnv,
+  input: TransferRequest,
+  authToken?: string,
+  backgroundScheduler?: BackgroundTaskScheduler,
+) {
   try {
     const config = resolveRpcConfig(env, input.cluster);
     const from = parsePublicKey(input.from, "from");
@@ -1092,12 +1096,19 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       );
 
       if (versionedResponse) {
+        scheduleTransferQueueCrankAfterPrivateBaseTransfer(
+          backgroundScheduler,
+          config,
+          input,
+          mint,
+          validator,
+        );
         return versionedResponse;
       }
     }
     console.log("instructions: ", instructions);
 
-    return serializeTransaction(
+    const response = serializeTransaction(
       "transfer",
       sendTo,
       instructions,
@@ -1107,6 +1118,16 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       sponsor ? [sponsor] : [],
       input.fromBalance,
     );
+
+    scheduleTransferQueueCrankAfterPrivateBaseTransfer(
+      backgroundScheduler,
+      config,
+      input,
+      mint,
+      validator,
+    );
+
+    return response;
   } catch (error) {
     throwTransactionBuildError(error);
   }
@@ -1192,22 +1213,14 @@ export async function getPrivateBalance(env: AppEnv, input: BalanceRequest, auth
   }
 }
 
-function getNewestSignatureTimestampMs(signatures: Array<{ blockTime?: number | null }>) {
-  let newestSignatureTimestampMs: number | undefined;
+const transferQueueCrankAttemptMs = new Map<string, number>();
 
-  for (const signature of signatures) {
-    if (signature.blockTime === null || signature.blockTime === undefined) {
-      continue;
-    }
-
-    const signatureTimestampMs = signature.blockTime * 1000;
-
-    if (newestSignatureTimestampMs === undefined || signatureTimestampMs > newestSignatureTimestampMs) {
-      newestSignatureTimestampMs = signatureTimestampMs;
-    }
-  }
-
-  return newestSignatureTimestampMs;
+function getTransferQueueCrankAttemptKey(
+  config: RpcConfig,
+  transferQueue: PublicKey,
+  validator: PublicKey,
+) {
+  return `${config.ephemeralRpcUrl}:${transferQueue.toBase58()}:${validator.toBase58()}`;
 }
 
 async function ensureTransferQueueCrankRunning(
@@ -1215,83 +1228,82 @@ async function ensureTransferQueueCrankRunning(
   transferQueue: PublicKey,
   validator: PublicKey,
 ) {
-  const connection = getEphemeralConnection(config);
-  const signatures = await connection.getSignaturesForAddress(
-    transferQueue,
-    { limit: TRANSFER_QUEUE_RECENT_SIGNATURE_LIMIT },
-    "confirmed",
-  );
-  const newestSignatureTimestampMs = getNewestSignatureTimestampMs(signatures);
-
-  if (
-    newestSignatureTimestampMs !== undefined
-    && Date.now() - newestSignatureTimestampMs < TRANSFER_QUEUE_STALE_MS
-  ) {
+  const nowMs = Date.now();
+  const attemptKey = getTransferQueueCrankAttemptKey(config, transferQueue, validator);
+  const lastAttemptMs = transferQueueCrankAttemptMs.get(attemptKey);
+  if (lastAttemptMs !== undefined && nowMs - lastAttemptMs < TRANSFER_QUEUE_STALE_MS) {
     return;
   }
+  transferQueueCrankAttemptMs.set(attemptKey, nowMs);
 
-  const payer = Keypair.generate();
-  const magicFeeVault = magicFeeVaultPdaFromValidator(validator);
-  const transaction = new Transaction().add(
-    ensureTransferQueueCrankIx(
-      payer.publicKey,
-      transferQueue,
-      magicFeeVault,
-    ),
-  );
-  transaction.feePayer = payer.publicKey;
+  try {
+    const connection = getEphemeralConnection(config);
+    const payer = Keypair.generate();
+    const magicFeeVault = magicFeeVaultPdaFromValidator(validator);
+    const transaction = new Transaction().add(
+      ensureTransferQueueCrankIx(
+        payer.publicKey,
+        transferQueue,
+        magicFeeVault,
+      ),
+    );
+    transaction.feePayer = payer.publicKey;
 
-  const {
-    context: blockhashContext,
-    value: { blockhash, lastValidBlockHeight },
-  } = await connection.getLatestBlockhashAndContext("confirmed");
-  const epochInfo = await connection.getEpochInfo({
-    commitment: "confirmed",
-    minContextSlot: blockhashContext.slot,
-  });
-  const currentBlockHeight = epochInfo.blockHeight;
-  if (currentBlockHeight === undefined) {
-    throw new Error("Transfer queue crank failed to fetch current block height");
-  }
+    const {
+      context: blockhashContext,
+      value: { blockhash, lastValidBlockHeight },
+    } = await connection.getLatestBlockhashAndContext("confirmed");
+    const epochInfo = await connection.getEpochInfo({
+      commitment: "confirmed",
+      minContextSlot: blockhashContext.slot,
+    });
+    const currentBlockHeight = epochInfo.blockHeight;
+    if (currentBlockHeight === undefined) {
+      throw new Error("Transfer queue crank failed to fetch current block height");
+    }
 
-  if (currentBlockHeight > lastValidBlockHeight) {
-    throw new Error(`Transfer queue crank blockhash expired before send: currentBlockHeight=${currentBlockHeight}, lastValidBlockHeight=${lastValidBlockHeight}`);
-  }
+    if (currentBlockHeight > lastValidBlockHeight) {
+      throw new Error(`Transfer queue crank blockhash expired before send: currentBlockHeight=${currentBlockHeight}, lastValidBlockHeight=${lastValidBlockHeight}`);
+    }
 
-  console.log("Preparing transfer queue crank", {
-    transferQueue: transferQueue.toBase58(),
-    validator: validator.toBase58(),
-    blockhash,
-    blockhashContextSlot: blockhashContext.slot,
-    currentBlockHeight,
-    lastValidBlockHeight,
-  });
+    console.log("Preparing transfer queue crank", {
+      transferQueue: transferQueue.toBase58(),
+      validator: validator.toBase58(),
+      blockhash,
+      blockhashContextSlot: blockhashContext.slot,
+      currentBlockHeight,
+      lastValidBlockHeight,
+    });
 
-  transaction.recentBlockhash = blockhash;
-  transaction.lastValidBlockHeight = lastValidBlockHeight;
-  transaction.sign(payer);
+    transaction.recentBlockhash = blockhash;
+    transaction.lastValidBlockHeight = lastValidBlockHeight;
+    transaction.sign(payer);
 
-  const signature = await connection.sendRawTransaction(transaction.serialize(), {
-    skipPreflight: true,
-    preflightCommitment: "confirmed",
-  });
-  console.log("Sent transfer queue crank", {
-    transferQueue: transferQueue.toBase58(),
-    validator: validator.toBase58(),
-    signature,
-    blockhash,
-    blockhashContextSlot: blockhashContext.slot,
-    currentBlockHeight,
-    lastValidBlockHeight,
-  });
-  const confirmation = await connection.confirmTransaction({
-    signature,
-    blockhash,
-    lastValidBlockHeight,
-  }, "confirmed");
+    const signature = await connection.sendRawTransaction(transaction.serialize(), {
+      skipPreflight: true,
+      preflightCommitment: "confirmed",
+    });
+    console.log("Sent transfer queue crank", {
+      transferQueue: transferQueue.toBase58(),
+      validator: validator.toBase58(),
+      signature,
+      blockhash,
+      blockhashContextSlot: blockhashContext.slot,
+      currentBlockHeight,
+      lastValidBlockHeight,
+    });
+    const confirmation = await connection.confirmTransaction({
+      signature,
+      blockhash,
+      lastValidBlockHeight,
+    }, "confirmed");
 
-  if (confirmation.value.err !== null) {
-    throw new Error(`Transfer queue crank transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+    if (confirmation.value.err !== null) {
+      throw new Error(`Transfer queue crank transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+    }
+  } catch (error) {
+    transferQueueCrankAttemptMs.delete(attemptKey);
+    throw error;
   }
 }
 
@@ -1314,6 +1326,26 @@ function scheduleTransferQueueCrank(
       });
     }),
   );
+}
+
+function scheduleTransferQueueCrankAfterPrivateBaseTransfer(
+  backgroundScheduler: BackgroundTaskScheduler | undefined,
+  config: RpcConfig,
+  input: TransferRequest,
+  mint: PublicKey,
+  validator: PublicKey | undefined,
+) {
+  if (
+    input.visibility !== "private"
+    || input.fromBalance !== "base"
+    || input.toBalance !== "base"
+    || validator === undefined
+  ) {
+    return;
+  }
+
+  const [transferQueue] = deriveTransferQueue(mint, validator);
+  scheduleTransferQueueCrank(backgroundScheduler, config, transferQueue, validator);
 }
 
 export async function getMintInitializationStatus(
