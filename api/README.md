@@ -601,7 +601,8 @@ The returned `sendTo` value is:
 - `"base"` when `fromBalance` is `"base"`
 - `"ephemeral"` when `fromBalance` is `"ephemeral"`
 
-Transfer responses also include `from`, which mirrors the request `fromBalance`.
+Transfer responses also include `from`, which mirrors the request `fromBalance`, and `fees`.
+`fees.lamports` and `fees.tokens` are total fee strings and return `"0"` when that fee type is not charged. `fees.tokens` uses mint base units. Private `base -> base` transfers report the on-chain private-transfer token fee and shuttle setup lamport fee. Gasless transfers add the relay fee to `fees.tokens` only when gasless is honored.
 
 Example:
 
@@ -655,6 +656,7 @@ Gasless transfer validation:
 - the API prepends a 0.2 USDC/USDT relay-fee token transfer from the sender to the sponsor ATA
 - gasless transfers require an approved stablecoin mint: mainnet USDC, mainnet USDT, or devnet USDC
 - gasless transfers must be at least 5 USDC/USDT
+- if `from` is an off-curve PDA owner, `gasless: true` is ignored because gasless transfers require a supported wallet sender
 
 Relevant fields:
 
@@ -674,6 +676,7 @@ Relevant fields:
 - `minDelayMs`
 - `maxDelayMs`
 - `split`
+- `exactOut`
 - `gasless`
 - `legacy`
 

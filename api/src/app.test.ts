@@ -353,6 +353,10 @@ describe("app", () => {
       "initVaultIfMissing",
     );
     expect(transferRequestSchema?.example).not.toHaveProperty("split");
+    const transactionResponseSchema = (
+      json.components?.schemas as Record<string, any>
+    )?.UnsignedTransactionResponse;
+    expect(transactionResponseSchema?.properties?.fees).toBeDefined();
     expect(
       json.paths["/v1/spl/withdraw"]?.post?.responses?.["200"]?.content?.[
         "application/json"
@@ -2649,12 +2653,20 @@ describe("app", () => {
       from: string;
       recentBlockhash: string;
       instructionCount: number;
+      fees: {
+        lamports: string;
+        tokens: string;
+      };
     };
 
     expect(json.sendTo).toBe("ephemeral");
     expect(json.from).toBe("ephemeral");
     expect(json.recentBlockhash).toBe("11111111111111111111111111111111");
     expect(json.instructionCount).toBe(1);
+    expect(json.fees).toEqual({
+      lamports: "0",
+      tokens: "0",
+    });
   });
 
   it("builds a private transfer with top-level split and delay options", async () => {
@@ -2689,7 +2701,7 @@ describe("app", () => {
           from: owner,
           to: destination,
           mint: "So11111111111111111111111111111111111111112",
-          amount: 2,
+          amount: 5_000_000,
           visibility: "private",
           fromBalance: "base",
           toBalance: "base",
@@ -2709,6 +2721,10 @@ describe("app", () => {
       recentBlockhash: string;
       validator: string;
       version: string;
+      fees: {
+        lamports: string;
+        tokens: string;
+      };
     };
 
     expect(json.sendTo).toBe("base");
@@ -2716,6 +2732,10 @@ describe("app", () => {
     expect(json.recentBlockhash).toBe("11111111111111111111111111111111");
     expect(json.validator).toBe(resolvedValidator);
     expect(json.version).toBe("legacy");
+    expect(json.fees).toEqual({
+      lamports: "2039280",
+      tokens: "5000",
+    });
   });
 
   it("uses the mint token program when initializing a transfer vault", async () => {
@@ -3219,7 +3239,15 @@ describe("app", () => {
     const json = (await response.json()) as {
       requiredSigners: string[];
       transactionBase64: string;
+      fees: {
+        lamports: string;
+        tokens: string;
+      };
     };
+    expect(json.fees).toEqual({
+      lamports: "2039280",
+      tokens: "205000",
+    });
     expect(json.requiredSigners).toEqual(
       expect.arrayContaining([owner, sponsor.publicKey.toBase58()]),
     );
@@ -3349,8 +3377,16 @@ describe("app", () => {
       requiredSigners: string[];
       transactionBase64: string;
       version: string;
+      fees: {
+        lamports: string;
+        tokens: string;
+      };
     };
     expect(json.version).toBe("v0");
+    expect(json.fees).toEqual({
+      lamports: "2039280",
+      tokens: "205000",
+    });
     expect(json.requiredSigners).toEqual(
       expect.arrayContaining([owner, sponsor.publicKey.toBase58()]),
     );
@@ -3437,7 +3473,15 @@ describe("app", () => {
     const json = (await response.json()) as {
       requiredSigners: string[];
       transactionBase64: string;
+      fees: {
+        lamports: string;
+        tokens: string;
+      };
     };
+    expect(json.fees).toEqual({
+      lamports: "0",
+      tokens: "200000",
+    });
     expect(json.requiredSigners).toEqual(
       expect.arrayContaining([owner, sponsor.publicKey.toBase58()]),
     );
@@ -3469,6 +3513,58 @@ describe("app", () => {
     ]);
     expect(publicTransferIx.data[0]).toBe(3);
     expect(publicTransferIx.data.readBigUInt64LE(1)).toBe(BigInt(amount));
+  });
+
+  it("ignores gasless for off-curve transfer senders", async () => {
+    const [offCurveSender] = PublicKey.findProgramAddressSync(
+      [Buffer.from("off-curve-sender")],
+      EPHEMERAL_SPL_TOKEN_PROGRAM_ID,
+    );
+
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123,
+    });
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockResolvedValue(
+      createMintAccountInfo(TOKEN_PROGRAM_ID),
+    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(env.EPHEMERAL_DEVNET_RPC_URL);
+      return createIdentityResponse(resolvedValidator);
+    });
+
+    const response = await app.request(
+      "/v1/spl/transfer",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          from: offCurveSender.toBase58(),
+          to: destination,
+          mint: DEVNET_USDC_MINT,
+          amount: 1,
+          cluster: "devnet",
+          visibility: "public",
+          fromBalance: "base",
+          toBalance: "base",
+          gasless: true,
+        }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(400);
+
+    const json = (await response.json()) as {
+      error: {
+        code: string;
+        message: string;
+      };
+    };
+    expect(json.error.code).toBe("TRANSACTION_BUILD_ERROR");
+    expect(json.error.message).toBe("Owner public key is off-curve");
   });
 
   it("rejects gasless transfers when the sponsor key is not configured", async () => {
