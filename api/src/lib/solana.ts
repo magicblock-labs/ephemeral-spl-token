@@ -64,6 +64,9 @@ const PRIVATE_BASE_TO_BASE_TRANSFER_LOOKUP_TABLES = {
   mainnet: new PublicKey("2J2Pw639kU7U6rj7qUXY5sVXdJqyt4DjEcVxzqmFrFds"),
   devnet: new PublicKey("HFmj4QbofPjhXP2vdnDARDQFw1AucSQTKVAs8df4tkUy"),
 } as const;
+const PRIVATE_TRANSFER_SETUP_LAMPORTS = 2_039_280n;
+const PRIVATE_TRANSFER_FEE_BASIS_POINTS = 10n;
+const BASIS_POINTS_FACTOR = 10_000n;
 const GASLESS_RELAY_FEE_MICRO_USDC = 200_000n; // 0.2 USDC/USDT
 const GASLESS_STABLECOIN_MIN_AMOUNT = BigInt(5 * 1_000_000); // 5 USDC/USDT
 
@@ -94,6 +97,8 @@ type RpcIdentityResponse = {
 type BackgroundTaskScheduler = {
   waitUntil: (promise: Promise<unknown>) => void;
 };
+
+type TransferFees = NonNullable<TransactionResponse["fees"]>;
 
 function getBaseConnection(config: RpcConfig) {
   return getConnection(config.baseRpcUrl);
@@ -617,6 +622,27 @@ function isSupportedGaslessMint(cluster: RpcConfig["cluster"], mint: PublicKey) 
   return mintAddress === DEFAULT_DEPOSIT_MINT || mintAddress === MAINNET_USDT_MINT;
 }
 
+function privateTransferFeeAmount(amount: bigint) {
+  return amount * PRIVATE_TRANSFER_FEE_BASIS_POINTS / BASIS_POINTS_FACTOR;
+}
+
+function isPrivateBaseToBaseTransfer(input: TransferRequest) {
+  return input.visibility === "private"
+    && input.fromBalance === "base"
+    && input.toBalance === "base";
+}
+
+function privateTransferSetupLamports(input: TransferRequest) {
+  return isPrivateBaseToBaseTransfer(input) ? PRIVATE_TRANSFER_SETUP_LAMPORTS : 0n;
+}
+
+function createTransferFees(lamports: bigint, tokens: bigint): TransferFees {
+  return {
+    lamports: lamports.toString(),
+    tokens: tokens.toString(),
+  };
+}
+
 function isTransactionTooLargeMessage(message: string) {
   const normalized = message.toLowerCase();
 
@@ -683,6 +709,7 @@ function serializeTransaction(
   validator?: PublicKey,
   partialSigners: Keypair[] = [],
   from?: SendTarget,
+  fees?: TransferFees,
 ): TransactionResponse {
   const transaction = createUnsignedTransaction(instructions, feePayer, blockhash);
   if (partialSigners.length > 0) {
@@ -705,6 +732,7 @@ function serializeTransaction(
     instructionCount: instructions.length,
     requiredSigners: getRequiredSigners(feePayer, instructions),
     validator: validator?.toBase58(),
+    fees,
   };
 }
 
@@ -716,6 +744,7 @@ async function trySerializePrivateBaseToBaseTransferTransactionWithLookupTable(
   blockhash: BlockhashResult,
   validator?: PublicKey,
   partialSigners: Keypair[] = [],
+  fees?: TransferFees,
 ): Promise<TransactionResponse | undefined> {
   if (config.cluster === "custom") {
     return undefined;
@@ -770,6 +799,7 @@ async function trySerializePrivateBaseToBaseTransferTransactionWithLookupTable(
       instructionCount: instructions.length,
       requiredSigners: getRequiredSigners(feePayer, instructions),
       validator: validator?.toBase58(),
+      fees,
     };
   } catch (error) {
     console.warn("LUT v0 compilation failed, falling back to legacy", {
@@ -989,7 +1019,9 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "split cannot exceed amount");
     }
 
-    if (input.gasless && !isSupportedGaslessMint(config.cluster, mint)) {
+    const useGasless = input.gasless === true && PublicKey.isOnCurve(from.toBuffer());
+
+    if (useGasless && !isSupportedGaslessMint(config.cluster, mint)) {
       throw new ApiError(
         400,
         "INVALID_GASLESS_TRANSFER_MINT",
@@ -997,7 +1029,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       );
     }
 
-    if (input.gasless && amount < GASLESS_STABLECOIN_MIN_AMOUNT) {
+    if (useGasless && amount < GASLESS_STABLECOIN_MIN_AMOUNT) {
       throw new ApiError(
         400,
         "INVALID_GASLESS_TRANSFER_AMOUNT",
@@ -1005,9 +1037,14 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       );
     }
 
-    const sponsor = input.gasless ? getGaslessSponsorKeypair(env) : undefined;
+    const sponsor = useGasless ? getGaslessSponsorKeypair(env) : undefined;
     const payer = sponsor?.publicKey ?? from;
     const feePayer = sponsor?.publicKey ?? from;
+    const privateTransferFee = isPrivateBaseToBaseTransfer(input) ? privateTransferFeeAmount(amount) : 0n;
+    const fees = createTransferFees(
+      privateTransferSetupLamports(input),
+      privateTransferFee + (sponsor ? GASLESS_RELAY_FEE_MICRO_USDC : 0n),
+    );
 
     const shouldResolveValidator = input.validator
       || input.visibility === "private"
@@ -1089,6 +1126,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
         blockhash,
         validator,
         sponsor ? [sponsor] : [],
+        fees,
       );
 
       if (versionedResponse) {
@@ -1106,6 +1144,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       validator,
       sponsor ? [sponsor] : [],
       input.fromBalance,
+      fees,
     );
   } catch (error) {
     throwTransactionBuildError(error);
