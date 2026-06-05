@@ -8,7 +8,8 @@ use ephemeral_rollups_pinocchio::acl::{
 use ephemeral_spl_api::consts::TRANSFER_QUEUE_INITIAL_BUFFER_LAMPORTS;
 use ephemeral_spl_api::require_n_accounts;
 use ephemeral_spl_api::state::transfer_queue::{
-    capacity_from_data_len, init_queue, queue_views_checked, TransferQueue, HEADER_LEN, ITEM_LEN,
+    capacity_from_data_len, init_queue, queue_set_token_program_kind_from_data,
+    queue_views_checked, TransferQueue, HEADER_LEN, ITEM_LEN,
 };
 use ephemeral_spl_api::{require, require_eq_keys};
 use pinocchio::cpi::Signer;
@@ -16,6 +17,8 @@ use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_system::instructions::{CreateAccount, Transfer};
+
+use crate::processor::utils::token_program_kind;
 
 pub const DEFAULT_TRANSFER_QUEUE_ITEMS: u32 = 100;
 /// Default queue size in bytes. (HEADER_LEN + ITEM_LEN * DEFAULT_TRANSFER_QUEUE_ITEMS)
@@ -53,6 +56,7 @@ pub fn process_initialize_transfer_queue(
     ] = require_n_accounts!(accounts, 7);
 
     let args = InitializeTransferQueueArgs::decode(instruction_data)?;
+    let token_program_kind = token_program_kind(unsafe { mint_info.owner() }).unwrap_or_default();
 
     let (requested_items, queue_size) = if let Some(items) = args.requested_items() {
         (items, HEADER_LEN + ITEM_LEN * items as usize)
@@ -160,6 +164,7 @@ pub fn process_initialize_transfer_queue(
 
     let data = unsafe { queue_info.borrow_unchecked_mut() };
     init_queue(data, bump, *mint_info.address(), *validator_info.address())?;
+    queue_set_token_program_kind_from_data(data, token_program_kind)?;
 
     let (header, _) = queue_views_checked(data)?;
     require!(

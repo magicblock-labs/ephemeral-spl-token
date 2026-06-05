@@ -9,6 +9,7 @@ edition = { workspace = true }
 
 [features]
 logging = []
+no-fees = []
 
 [dependencies]
 pinocchio = { workspace = true }

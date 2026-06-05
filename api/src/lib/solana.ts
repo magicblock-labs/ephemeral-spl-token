@@ -1,12 +1,14 @@
 import {
   compileLegacyTransactionToV0,
   DELEGATION_PROGRAM_ID,
+  DelegationStatus,
   delegateTransferQueueIx,
   deriveRentPda,
   deriveTransferQueue,
   delegateSpl,
   EPHEMERAL_SPL_TOKEN_PROGRAM_ID,
   ensureTransferQueueCrankIx,
+  getDelegationRecord,
   initRentPdaIx,
   initTransferQueueIx,
   magicFeeVaultPdaFromValidator,
@@ -18,6 +20,7 @@ import {
   Keypair,
   LAMPORTS_PER_SOL,
   PublicKey,
+  SendOptions,
   SystemProgram,
   Transaction,
   TransactionInstruction,
@@ -26,10 +29,15 @@ import {
 import type { AppEnv } from "../env";
 import { ApiError } from "./errors";
 import { BalanceRequest, BalanceResponse, DepositRequest, InitializeMintRequest, InitializeMintResponse, MintInitializationRequest, MintInitializationResponse, TransactionResponse, TransferRequest, WithdrawRequest } from "../routes/spl/spl.schemas";
+import { SendTransactionRequest, SendTransactionResponse } from "../routes/transaction.schemas";
 import { getCachedAddressLookupTable, getConnection } from "./rpc-cache";
 
 export const TOKEN_PROGRAM_ID = new PublicKey(
   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+);
+
+export const TOKEN_2022_PROGRAM_ID = new PublicKey(
+  "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
 );
 
 export const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey(
@@ -50,11 +58,15 @@ const TRANSFER_QUEUE_RENT_LAMPORTS = LAMPORTS_PER_SOL / 50;
 const PRIVATE_TRANSFER_MAX_DELAY_MS_LIMIT = 10n * 60n * 1000n;
 const TRANSFER_QUEUE_RECENT_SIGNATURE_LIMIT = 5;
 const TRANSFER_QUEUE_STALE_MS = 60_000;
+const SOLANA_WIRE_TRANSACTION_SIZE_LIMIT = 1232;
 // Keep these defaults aligned with scripts/create-private-transfer-lut.js. Updating them requires a redeploy.
 const PRIVATE_BASE_TO_BASE_TRANSFER_LOOKUP_TABLES = {
   mainnet: new PublicKey("2J2Pw639kU7U6rj7qUXY5sVXdJqyt4DjEcVxzqmFrFds"),
   devnet: new PublicKey("HFmj4QbofPjhXP2vdnDARDQFw1AucSQTKVAs8df4tkUy"),
 } as const;
+const PRIVATE_TRANSFER_SETUP_LAMPORTS = 2_039_280n;
+const PRIVATE_TRANSFER_FEE_BASIS_POINTS = 10n;
+const BASIS_POINTS_FACTOR = 10_000n;
 const GASLESS_RELAY_FEE_MICRO_USDC = 200_000n; // 0.2 USDC/USDT
 const GASLESS_STABLECOIN_MIN_AMOUNT = BigInt(5 * 1_000_000); // 5 USDC/USDT
 
@@ -86,6 +98,8 @@ type BackgroundTaskScheduler = {
   waitUntil: (promise: Promise<unknown>) => void;
 };
 
+type TransferFees = NonNullable<TransactionResponse["fees"]>;
+
 function getBaseConnection(config: RpcConfig) {
   return getConnection(config.baseRpcUrl);
 }
@@ -98,6 +112,34 @@ function getEphemeralConnection(config: RpcConfig, authToken?: string) {
   const url = new URL(config.ephemeralRpcUrl);
   url.searchParams.set("token", authToken);
   return new Connection(url.toString(), "confirmed");
+}
+
+async function resolveMintTokenProgram(config: RpcConfig, mint: PublicKey) {
+  let accountInfo: { owner: PublicKey } | null;
+  try {
+    accountInfo = await getBaseConnection(config).getAccountInfo(mint, "confirmed");
+  } catch (error) {
+    throw new ApiError(502, "RPC_ERROR", "Failed to resolve mint token program", {
+      mint: mint.toBase58(),
+      message: getSanitizedErrorMessage(error),
+    });
+  }
+
+  if (!accountInfo) {
+    throw new ApiError(400, "MINT_NOT_FOUND", "Mint account not found");
+  }
+
+  if (
+    accountInfo.owner.equals(TOKEN_PROGRAM_ID)
+    || accountInfo.owner.equals(TOKEN_2022_PROGRAM_ID)
+  ) {
+    return accountInfo.owner;
+  }
+
+  throw new ApiError(400, "UNSUPPORTED_TOKEN_PROGRAM", "Mint owner is not a supported token program", {
+    mint: mint.toBase58(),
+    owner: accountInfo.owner.toBase58(),
+  });
 }
 
 function createClusterConfigError(missingVars: Array<"BASE_DEVNET_RPC_URL" | "EPHEMERAL_DEVNET_RPC_URL">) {
@@ -325,13 +367,14 @@ function createTokenTransferInstruction(
   destination: PublicKey,
   authority: PublicKey,
   amount: bigint,
+  programId: PublicKey = TOKEN_PROGRAM_ID,
 ) {
   const data = Buffer.alloc(9);
   data[0] = 3; // TokenInstruction::Transfer
   data.writeBigUInt64LE(amount, 1);
 
   return new TransactionInstruction({
-    programId: TOKEN_PROGRAM_ID,
+    programId,
     keys: [
       { pubkey: source, isSigner: false, isWritable: true },
       { pubkey: destination, isSigner: false, isWritable: true },
@@ -445,6 +488,113 @@ async function getBlockhash(config: RpcConfig, source: SendTarget, authToken?: s
   }
 }
 
+function decodeTransactionBase64(value: string) {
+  const transactionBase64 = value.trim();
+
+  if (
+    transactionBase64.length === 0
+    || transactionBase64.length % 4 !== 0
+    || !/^[A-Za-z0-9+/]+={0,2}$/.test(transactionBase64)
+  ) {
+    throw new ApiError(400, "INVALID_TRANSACTION", "transactionBase64 must be valid base64");
+  }
+
+  const transaction = Buffer.from(transactionBase64, "base64");
+  if (transaction.length === 0) {
+    throw new ApiError(400, "INVALID_TRANSACTION", "transactionBase64 must decode to transaction bytes");
+  }
+
+  if (transaction.length > SOLANA_WIRE_TRANSACTION_SIZE_LIMIT) {
+    throw new ApiError(
+      400,
+      "TRANSACTION_TOO_LARGE",
+      `Serialized transaction exceeds ${SOLANA_WIRE_TRANSACTION_SIZE_LIMIT} bytes`,
+    );
+  }
+
+  return transaction;
+}
+
+export async function sendSignedTransaction(
+  env: AppEnv,
+  input: SendTransactionRequest,
+  authToken?: string,
+): Promise<SendTransactionResponse> {
+  const config = resolveRpcConfig(env, input.cluster);
+  const connection = input.sendTo === "base"
+    ? getBaseConnection(config)
+    : getEphemeralConnection(config, authToken);
+  const confirmationRpcEndpoint = input.sendTo === "base"
+    ? config.baseRpcUrl
+    : config.ephemeralRpcUrl;
+  const confirmationRequiresAuthToken = input.sendTo === "ephemeral";
+  const transaction = decodeTransactionBase64(input.transactionBase64);
+  const options: SendOptions = {
+    preflightCommitment: "confirmed",
+  };
+
+  if (input.skipPreflight !== undefined) {
+    options.skipPreflight = input.skipPreflight;
+  }
+
+  if (input.maxRetries !== undefined) {
+    options.maxRetries = input.maxRetries;
+  }
+
+  if (input.confirm && (input.recentBlockhash === undefined || input.lastValidBlockHeight === undefined)) {
+    throw new ApiError(
+      400,
+      "MISSING_CONFIRMATION_FIELDS",
+      "recentBlockhash and lastValidBlockHeight are required when confirm is true",
+    );
+  }
+
+  try {
+    const signature = await connection.sendRawTransaction(transaction, options);
+
+    if (!input.confirm) {
+      return {
+        signature,
+        sendTo: input.sendTo,
+        confirmed: false,
+        confirmationRpcEndpoint,
+        confirmationRequiresAuthToken,
+      };
+    }
+
+    const blockhash = input.recentBlockhash!;
+    const lastValidBlockHeight = input.lastValidBlockHeight!;
+    const confirmation = await connection.confirmTransaction({
+      signature,
+      blockhash,
+      lastValidBlockHeight,
+    }, "confirmed");
+
+    if (confirmation.value.err !== null) {
+      throw new ApiError(400, "TRANSACTION_FAILED", "Transaction failed", {
+        err: confirmation.value.err,
+      });
+    }
+
+    return {
+      signature,
+      sendTo: input.sendTo,
+      confirmed: true,
+      confirmationRpcEndpoint,
+      confirmationRequiresAuthToken,
+    };
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+
+    throw new ApiError(502, "RPC_ERROR", "Failed to send transaction", {
+      sendTo: input.sendTo,
+      message: getSanitizedErrorMessage(error),
+    });
+  }
+}
+
 function getRequiredSigners(feePayer: PublicKey, instructions: TransactionInstruction[]) {
   const signers = new Set<string>([feePayer.toBase58()]);
 
@@ -470,6 +620,27 @@ function isSupportedGaslessMint(cluster: RpcConfig["cluster"], mint: PublicKey) 
   }
 
   return mintAddress === DEFAULT_DEPOSIT_MINT || mintAddress === MAINNET_USDT_MINT;
+}
+
+function privateTransferFeeAmount(amount: bigint) {
+  return amount * PRIVATE_TRANSFER_FEE_BASIS_POINTS / BASIS_POINTS_FACTOR;
+}
+
+function isPrivateBaseToBaseTransfer(input: TransferRequest) {
+  return input.visibility === "private"
+    && input.fromBalance === "base"
+    && input.toBalance === "base";
+}
+
+function privateTransferSetupLamports(input: TransferRequest) {
+  return isPrivateBaseToBaseTransfer(input) ? PRIVATE_TRANSFER_SETUP_LAMPORTS : 0n;
+}
+
+function createTransferFees(lamports: bigint, tokens: bigint): TransferFees {
+  return {
+    lamports: lamports.toString(),
+    tokens: tokens.toString(),
+  };
 }
 
 function isTransactionTooLargeMessage(message: string) {
@@ -537,6 +708,8 @@ function serializeTransaction(
   blockhash: BlockhashResult,
   validator?: PublicKey,
   partialSigners: Keypair[] = [],
+  from?: SendTarget,
+  fees?: TransferFees,
 ): TransactionResponse {
   const transaction = createUnsignedTransaction(instructions, feePayer, blockhash);
   if (partialSigners.length > 0) {
@@ -553,11 +726,13 @@ function serializeTransaction(
       }),
     ).toString("base64"),
     sendTo,
+    from,
     recentBlockhash: blockhash.blockhash,
     lastValidBlockHeight: blockhash.lastValidBlockHeight,
     instructionCount: instructions.length,
     requiredSigners: getRequiredSigners(feePayer, instructions),
     validator: validator?.toBase58(),
+    fees,
   };
 }
 
@@ -569,6 +744,7 @@ async function trySerializePrivateBaseToBaseTransferTransactionWithLookupTable(
   blockhash: BlockhashResult,
   validator?: PublicKey,
   partialSigners: Keypair[] = [],
+  fees?: TransferFees,
 ): Promise<TransactionResponse | undefined> {
   if (config.cluster === "custom") {
     return undefined;
@@ -617,11 +793,13 @@ async function trySerializePrivateBaseToBaseTransferTransactionWithLookupTable(
       version: "v0",
       transactionBase64: Buffer.from(compiled.transaction.serialize()).toString("base64"),
       sendTo: "base",
+      from: "base",
       recentBlockhash: blockhash.blockhash,
       lastValidBlockHeight: blockhash.lastValidBlockHeight,
       instructionCount: instructions.length,
       requiredSigners: getRequiredSigners(feePayer, instructions),
       validator: validator?.toBase58(),
+      fees,
     };
   } catch (error) {
     console.warn("LUT v0 compilation failed, falling back to legacy", {
@@ -645,11 +823,15 @@ export async function buildDepositTransaction(env: AppEnv, input: DepositRequest
     const payer = owner;
     const feePayer = owner;
     const validator = await resolveDepositValidator(config, input.validator);
+    const tokenProgram = input.mint !== undefined
+      ? await resolveMintTokenProgram(config, mint)
+      : TOKEN_PROGRAM_ID;
     const blockhash = await getBlockhash(config, "base");
 
     const instructions = await delegateSpl(owner, mint, amount, {
       payer,
       validator,
+      tokenProgram,
       initIfMissing: input.initIfMissing,
       initVaultIfMissing: input.initVaultIfMissing,
       initAtasIfMissing: input.initAtasIfMissing,
@@ -680,11 +862,13 @@ export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawReque
     const payer = owner;
     const feePayer = owner;
     const validator = await resolveValidator(config, input.validator);
+    const tokenProgram = await resolveMintTokenProgram(config, mint);
     const blockhash = await getBlockhash(config, "base");
 
     const instructions = await withdrawSpl(owner, mint, amount, {
       payer,
       validator,
+      tokenProgram,
       initIfMissing: input.initIfMissing,
       initAtasIfMissing: input.initAtasIfMissing,
       shuttleId: createRandomShuttleId(),
@@ -718,7 +902,8 @@ export async function buildInitializeMintTransaction(
     const [rentPda] = deriveRentPda();
     const [vault] = deriveVault(mint);
     const [vaultEphemeralAta] = deriveEphemeralAta(vault, mint);
-    const vaultAta = deriveVaultAta(mint, vault);
+    const tokenProgram = await resolveMintTokenProgram(config, mint);
+    const vaultAta = deriveVaultAta(mint, vault, tokenProgram);
     const blockhash = await getBlockhash(config, "base");
 
     const instructions = [
@@ -742,8 +927,8 @@ export async function buildInitializeMintTransaction(
         payer,
         mint,
       ),
-      initVaultIx(vault, mint, payer),
-      initVaultAtaIx(payer, vaultAta, vault, mint),
+      initVaultIx(vault, mint, payer, tokenProgram),
+      initVaultAtaIx(payer, vaultAta, vault, mint, tokenProgram),
       delegateEphemeralAtaIx(payer, vaultEphemeralAta, validator),
     ];
 
@@ -834,7 +1019,9 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "split cannot exceed amount");
     }
 
-    if (input.gasless && !isSupportedGaslessMint(config.cluster, mint)) {
+    const useGasless = input.gasless === true && PublicKey.isOnCurve(from.toBuffer());
+
+    if (useGasless && !isSupportedGaslessMint(config.cluster, mint)) {
       throw new ApiError(
         400,
         "INVALID_GASLESS_TRANSFER_MINT",
@@ -842,7 +1029,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       );
     }
 
-    if (input.gasless && amount < GASLESS_STABLECOIN_MIN_AMOUNT) {
+    if (useGasless && amount < GASLESS_STABLECOIN_MIN_AMOUNT) {
       throw new ApiError(
         400,
         "INVALID_GASLESS_TRANSFER_AMOUNT",
@@ -850,19 +1037,14 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       );
     }
 
-    const sponsor = input.gasless ? getGaslessSponsorKeypair(env) : undefined;
+    const sponsor = useGasless ? getGaslessSponsorKeypair(env) : undefined;
     const payer = sponsor?.publicKey ?? from;
     const feePayer = sponsor?.publicKey ?? from;
-    const gaslessFeeInstructions = sponsor
-      ? [
-          createTokenTransferInstruction(
-            getAssociatedTokenAddressSync(mint, from, false, TOKEN_PROGRAM_ID),
-            getAssociatedTokenAddressSync(mint, sponsor.publicKey, false, TOKEN_PROGRAM_ID),
-            from,
-            GASLESS_RELAY_FEE_MICRO_USDC,
-          ),
-        ]
-      : [];
+    const privateTransferFee = isPrivateBaseToBaseTransfer(input) ? privateTransferFeeAmount(amount) : 0n;
+    const fees = createTransferFees(
+      privateTransferSetupLamports(input),
+      privateTransferFee + (sponsor ? GASLESS_RELAY_FEE_MICRO_USDC : 0n),
+    );
 
     const shouldResolveValidator = input.validator
       || input.visibility === "private"
@@ -873,6 +1055,19 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       ? await resolveValidator(config, input.validator)
       : undefined;
 
+    const tokenProgram = await resolveMintTokenProgram(config, mint);
+    const gaslessFeeInstructions = sponsor
+      ? [
+          createTokenTransferInstruction(
+            getAssociatedTokenAddressSync(mint, from, true, tokenProgram),
+            getAssociatedTokenAddressSync(mint, sponsor.publicKey, true, tokenProgram),
+            from,
+            GASLESS_RELAY_FEE_MICRO_USDC,
+            tokenProgram,
+          ),
+        ]
+      : [];
+
     const sendTo: SendTarget = input.fromBalance === "ephemeral" ? "ephemeral" : "base";
     const blockhash = await getBlockhash(config, sendTo, authToken);
 
@@ -882,6 +1077,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       toBalance: input.toBalance,
       payer,
       validator,
+      tokenProgram,
       initIfMissing: input.initIfMissing,
       initAtasIfMissing: input.initAtasIfMissing,
       initVaultIfMissing: input.initVaultIfMissing,
@@ -930,6 +1126,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
         blockhash,
         validator,
         sponsor ? [sponsor] : [],
+        fees,
       );
 
       if (versionedResponse) {
@@ -946,6 +1143,8 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       blockhash,
       validator,
       sponsor ? [sponsor] : [],
+      input.fromBalance,
+      fees,
     );
   } catch (error) {
     throwTransactionBuildError(error);
@@ -989,8 +1188,47 @@ export function getBaseBalance(env: AppEnv, input: BalanceRequest) {
   return getBalanceInternal(env, input, "base");
 }
 
-export function getPrivateBalance(env: AppEnv, input: BalanceRequest, authToken?: string) {
-  return getBalanceInternal(env, input, "ephemeral", authToken);
+export async function getPrivateBalance(env: AppEnv, input: BalanceRequest, authToken?: string) {
+  const config = resolveRpcConfig(env, input.cluster);
+  const owner = parsePublicKey(input.address, "address");
+  const mint = parsePublicKey(input.mint, "mint");
+  const ata = getAssociatedTokenAddressSync(mint, owner, true, TOKEN_PROGRAM_ID);
+  const [eata] = deriveEphemeralAta(owner, mint);
+  const zeroBalanceResponse: BalanceResponse = {
+    address: owner.toBase58(),
+    mint: mint.toBase58(),
+    ata: ata.toBase58(),
+    location: "ephemeral",
+    balance: "0",
+  };
+
+  try {
+    const delegationRecord = await getDelegationRecord(getBaseConnection(config), eata);
+    if (delegationRecord.status !== DelegationStatus.Delegated) {
+      return zeroBalanceResponse;
+    }
+
+    const validator = await resolveRequiredValidator(config);
+    if (!delegationRecord.validator.equals(validator)) {
+      return zeroBalanceResponse;
+    }
+
+    const accountInfo = await getEphemeralConnection(config, authToken).getAccountInfo(ata, "confirmed");
+    const balance = accountInfo ? (parseTokenAmount(accountInfo) ?? 0n) : 0n;
+
+    return {
+      address: owner.toBase58(),
+      mint: mint.toBase58(),
+      ata: ata.toBase58(),
+      location: "ephemeral",
+      balance: balance.toString(),
+    };
+  } catch (error) {
+    throw new ApiError(502, "RPC_ERROR", "Failed to fetch token balance", {
+      location: "ephemeral",
+      message: getSanitizedErrorMessage(error),
+    });
+  }
 }
 
 function getNewestSignatureTimestampMs(signatures: Array<{ blockTime?: number | null }>) {

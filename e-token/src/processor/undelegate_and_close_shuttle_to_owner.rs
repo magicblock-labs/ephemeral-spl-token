@@ -26,11 +26,11 @@ struct CloseStashForward {
 /// Accounts:
 ///
 ///  0: [signer]            - Keypair : Executor payer.
-///  1: [writable]          - Any     : Rent reimbursement account (must match `shuttle.payer`).
+///  1: []                  - Any     : Rent reimbursement account (must match `shuttle.payer`).
 ///  2: []                  - PDA     : Shuttle metadata account (PDA derived from [owner, mint, shuttle_id]).
 ///  3: []                  - PDA     : Shuttle EATA account.
 ///  4: [writable]          - SPL     : Shuttle wallet ATA account (ATA for [shuttle_metadata, mint]).
-///  5: [writable]          - SPL     : Refund token ATA.
+///  5: []                  - SPL     : Refund token ATA.
 ///  6: []                  - SPL     : Token program account.
 ///  7: [writable]          - Any     : Magic context account.
 ///  8: []                  - Program : Magic program.
@@ -221,7 +221,7 @@ fn schedule_shuttle_close_after_undelegate(
         },
         ShortAccountMeta {
             pubkey: *destination_token_info.address(),
-            is_writable: destination_token_info.is_writable(),
+            is_writable: true,
         },
         ShortAccountMeta {
             pubkey: *mint,

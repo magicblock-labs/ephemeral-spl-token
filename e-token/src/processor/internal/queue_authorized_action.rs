@@ -79,6 +79,7 @@ impl QueuedTransferActionBuilder {
         destination_owner: &ephemeral_spl_api::Address,
         vault: &ephemeral_spl_api::Address,
         mint: &ephemeral_spl_api::Address,
+        token_program: &ephemeral_spl_api::Address,
         args: crate::ExecuteQueuedTransferArgs,
     ) -> Self {
         let data = crate::instruction::ESplInternalInstruction::ExecuteReadyQueuedTransfer
@@ -86,7 +87,7 @@ impl QueuedTransferActionBuilder {
 
         Self {
             queue_info: queue_info.clone(),
-            accounts: Self::action_accounts(destination_owner, vault, mint),
+            accounts: Self::action_accounts(destination_owner, vault, mint, token_program),
             data,
         }
     }
@@ -107,10 +108,11 @@ impl QueuedTransferActionBuilder {
         destination_owner: &ephemeral_spl_api::Address,
         vault: &ephemeral_spl_api::Address,
         mint: &ephemeral_spl_api::Address,
+        token_program: &ephemeral_spl_api::Address,
     ) -> [ShortAccountMeta; 9] {
-        let vault_token_account = internal::derive_associated_token_address(vault, mint);
+        let vault_token_account = internal::derive_associated_token_address_with_program(vault, mint, token_program);
         let destination_token_account =
-            internal::derive_associated_token_address(&destination_owner, mint);
+            internal::derive_associated_token_address_with_program(&destination_owner, mint, token_program);
 
         // Note that we initialize CallHandler with 9 accounts only, and then 3 more accounts [source_program,
         // escrow_authority, escrow_signer] are appended by DLP's CallHandlerV2 instruction, which is

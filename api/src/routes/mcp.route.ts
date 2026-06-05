@@ -43,7 +43,7 @@ const mcpTools = [
   },
   {
     name: "spl.getPrivateBalance",
-    description: "Read the owner ATA balance on the ephemeral RPC.",
+    description: "Read the private balance when the eATA is delegated to the ephemeral RPC.",
   },
 ] as const;
 
@@ -343,7 +343,7 @@ function createMcpServer(env: AppEnv) {
 
   server.registerTool("spl.getPrivateBalance", {
     title: "Get Private Balance",
-    description: "Read the owner ATA balance on the ephemeral RPC.",
+    description: "Read the private balance when the eATA is delegated to the ephemeral RPC.",
     inputSchema: balanceRequestSchema,
     outputSchema: balanceResponseSchema,
   }, async (input) => {

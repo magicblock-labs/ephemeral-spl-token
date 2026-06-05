@@ -462,11 +462,20 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
     let mut fee_transfer_data = vec![TRANSFER_CHECKED_DISCRIMINATOR];
     fee_transfer_data.extend_from_slice(&FEE_AMOUNT.to_le_bytes());
     fee_transfer_data.push(DECIMALS);
+
+    #[cfg(not(feature = "no-fees"))]
     assert!(
         action_payload
             .windows(fee_transfer_data.len())
             .any(|window| window == fee_transfer_data.as_slice()),
         "expected stored post-delegation payload to include the fee transfer action"
+    );
+    #[cfg(feature = "no-fees")]
+    assert!(
+        !action_payload
+            .windows(fee_transfer_data.len())
+            .any(|window| window == fee_transfer_data.as_slice()),
+        "expected stored post-delegation payload to omit the fee transfer action"
     );
 
     assert_eq!(

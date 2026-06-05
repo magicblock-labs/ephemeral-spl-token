@@ -72,7 +72,7 @@ fn derive_queue(mint: Pubkey, validator: Pubkey) -> (Pubkey, u8) {
 fn queue_account_data(mint: Pubkey, validator: Pubkey, bump: u8) -> Vec<u8> {
     let mut data = vec![0u8; HEADER_LEN];
     // TransferQueueHeader layout (repr C):
-    // version(1) bump(1) _pad0(6) mint(32) length(4) _pad1(8) next_task_id(4) crank_task_id(8) validator(32)
+    // version(1) bump(1) spl_token_program(1) _pad0(5) mint(32) length(4) _pad1(8) next_task_id(4) crank_task_id(8) validator(32)
     data[0] = TRANSFER_QUEUE_VERSION;
     data[1] = bump;
     data[8..40].copy_from_slice(&mint.to_bytes());

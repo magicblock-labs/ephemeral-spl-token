@@ -9,16 +9,30 @@ const DEPOSIT_EXAMPLE_OWNER = "3rXKwQ1kpjBd5tdcco32qsvqUh1BnZjcYnS5kYrP7AYE";
 const TRANSFER_EXAMPLE_TO = "Bt9oNR5cCtnfuMmXgWELd6q5i974PdEMQDUE55nBC57L";
 const BALANCE_EXAMPLE_ADDRESS = "Bt9oNR5cCtnfuMmXgWELd6q5i974PdEMQDUE55nBC57L";
 
+export const transferFeesSchema = z.object({
+  lamports: z.string().openapi({
+    example: "2039280",
+    description: "Total lamport fees charged by the transfer. Returns \"0\" when no lamport fee is charged.",
+  }),
+  tokens: z.string().openapi({
+    example: "205000",
+    description: "Total token fees charged by the transfer, in mint base units. Returns \"0\" when no token fee is charged.",
+  }),
+}).openapi("TransferFees");
+export type TransferFees = z.infer<typeof transferFeesSchema>;
+
 export const transactionResponseSchema = z.object({
   kind: z.enum(["deposit", "withdraw", "transfer", "initializeMint"]),
   version: z.enum(["legacy", "v0"]),
   transactionBase64: z.string(),
   sendTo: balanceLocationSchema,
+  from: balanceLocationSchema.optional(),
   recentBlockhash: z.string(),
   lastValidBlockHeight: z.number().int(),
   instructionCount: z.number().int().nonnegative(),
   requiredSigners: z.array(publicKeySchema),
   validator: publicKeySchema.optional(),
+  fees: transferFeesSchema.optional(),
 }).openapi("UnsignedTransactionResponse");
 export type TransactionResponse = z.infer<typeof transactionResponseSchema>;
 

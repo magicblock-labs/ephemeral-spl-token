@@ -54,3 +54,16 @@ pub(crate) fn derive_associated_token_address(
     )
     .0
 }
+
+#[inline(always)]
+pub(crate) fn derive_associated_token_address_with_program(
+    wallet: &Address,
+    mint: &Address,
+    token_program: &Address,
+) -> Address {
+    Address::find_program_address(
+        &[wallet.as_ref(), token_program.as_ref(), mint.as_ref()],
+        &ASSOCIATED_TOKEN_PROGRAM_ID,
+    )
+    .0
+}

@@ -1,4 +1,5 @@
 use ephemeral_spl_api::require;
+use ephemeral_spl_api::state::transfer_queue::SplTokenProgram;
 use pinocchio::{address::address_eq, error::ProgramError, AccountView, Address};
 use pinocchio_token_2022::state::{Mint, TokenAccount};
 use spl_token_interface::ID as SPL_TOKEN_PROGRAM_ID;
@@ -7,6 +8,25 @@ use spl_token_interface::ID as SPL_TOKEN_PROGRAM_ID;
 pub(crate) fn is_supported_token_program(token_program: &Address) -> bool {
     address_eq(token_program, &SPL_TOKEN_PROGRAM_ID)
         || address_eq(token_program, &pinocchio_token_2022::ID)
+}
+
+#[inline(always)]
+pub(crate) fn token_program_kind(token_program: &Address) -> Result<SplTokenProgram, ProgramError> {
+    if address_eq(token_program, &SPL_TOKEN_PROGRAM_ID) {
+        Ok(SplTokenProgram::Token)
+    } else if address_eq(token_program, &pinocchio_token_2022::ID) {
+        Ok(SplTokenProgram::Token2022)
+    } else {
+        Err(ProgramError::IncorrectProgramId)
+    }
+}
+
+#[inline(always)]
+pub(crate) fn token_program_for_kind(kind: SplTokenProgram) -> Address {
+    match kind {
+        SplTokenProgram::Token => SPL_TOKEN_PROGRAM_ID,
+        SplTokenProgram::Token2022 => pinocchio_token_2022::ID,
+    }
 }
 
 #[inline(always)]

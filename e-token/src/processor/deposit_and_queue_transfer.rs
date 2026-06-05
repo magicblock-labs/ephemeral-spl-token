@@ -3,7 +3,7 @@ use crate::processor::internal::group_receipt_accounts::{
     group_receipt_create, GroupReceiptAccounts,
 };
 use crate::processor::internal::token_vault::transfer_to_vault_for_mint;
-use crate::processor::utils::read_mint_decimals;
+use crate::processor::utils::{read_mint_decimals, token_program_kind};
 use alloc::vec;
 use alloc::vec::Vec;
 use core::convert::TryFrom;
@@ -13,7 +13,8 @@ use ephemeral_spl_api::debug_log;
 #[cfg(feature = "logging")]
 use ephemeral_spl_api::state::transfer_queue::capacity_from_data_len;
 use ephemeral_spl_api::state::transfer_queue::{
-    queue_len_and_bump_for_mint_with_capacity, queue_push_from_data, QueuedTransfer, TransferQueue,
+    queue_len_and_bump_for_mint_with_capacity, queue_push_from_data,
+    queue_set_token_program_kind_from_data, QueuedTransfer, TransferQueue,
     QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
 };
 use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
@@ -98,6 +99,7 @@ pub fn process_deposit_and_queue_transfer(
 
     let split = args.split() as usize;
     let decimals = read_mint_decimals(mint_info, token_program_info)?;
+    let queue_token_program_kind = token_program_kind(token_program_info.address())?;
 
     let (queue_len_before, validator, bump) = {
         let data = unsafe { queue_info.borrow_unchecked() };
@@ -157,6 +159,7 @@ pub fn process_deposit_and_queue_transfer(
     let split_plan = build_split_plan(amount, split, decimals)?;
 
     let data = unsafe { queue_info.borrow_unchecked_mut() };
+    queue_set_token_program_kind_from_data(data, queue_token_program_kind)?;
     for index in 0..split {
         let queued_amount = split_plan.amount_for_index(index);
         let queue_position = queue_len_before

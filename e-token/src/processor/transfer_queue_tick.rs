@@ -3,9 +3,8 @@ use alloc::string::ToString;
 
 use crate::processor::internal::callbacks::TransferCallbackArgs;
 use ephemeral_rollups_pinocchio::consts::{MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID};
-use ephemeral_rollups_pinocchio::{
-    intent_bundle::{ActionArgs, ActionCallback, CallHandler, ShortAccountMeta},
-    spl::consts::TOKEN_PROGRAM_ID,
+use ephemeral_rollups_pinocchio::intent_bundle::{
+    ActionArgs, ActionCallback, CallHandler, ShortAccountMeta,
 };
 use ephemeral_spl_api::debug_log;
 use ephemeral_spl_api::require_n_accounts;
@@ -29,7 +28,7 @@ use crate::processor::internal::transfer_queue_refill::{
     MARK_TRANSFER_QUEUE_REFILL_PENDING_COMPUTE_UNITS,
     MARK_TRANSFER_QUEUE_REFILL_PENDING_ESCROW_INDEX,
 };
-use crate::processor::utils::{CALLBACK_SIGNER, MAGIC_VAULT_ID};
+use crate::processor::utils::{token_program_for_kind, CALLBACK_SIGNER, MAGIC_VAULT_ID};
 use crate::{
     instruction::ESplInternalInstruction,
     processor::execute_ready_queued_transfer::ExecuteQueuedTransferArgs,
@@ -48,6 +47,7 @@ struct QueueTickState {
     mint: ephemeral_spl_api::Address,
     queue_bump: u8,
     queue_len: usize,
+    token_program: ephemeral_spl_api::Address,
     validator: ephemeral_spl_api::Address,
     queued_transfer: Option<QueuedTransfer>,
 }
@@ -120,6 +120,7 @@ fn read_queue_tick_state(
     let data = unsafe { queue_info.borrow_unchecked() };
     let (header, _) = queue_views_checked(data)?;
     let mint = header.mint;
+    let token_program = token_program_for_kind(header.token_program_kind()?);
     let validator = header.validator;
     let queue_len = header.length as usize;
 
@@ -137,6 +138,7 @@ fn read_queue_tick_state(
         mint,
         queue_bump,
         queue_len,
+        token_program,
         validator,
         queued_transfer: queue_peek_from_data(data)?,
     })
@@ -261,6 +263,7 @@ fn schedule_execute_ready_transfer(
         queued_transfer,
         &vault,
         &queue_state.mint,
+        &queue_state.token_program,
     );
     let standalone_action_callback =
         create_action_callback(&standalone_action_callback_accounts, &callback_data);
@@ -334,6 +337,7 @@ fn create_action_callback_accounts(
     queued_transfer: &QueuedTransfer,
     vault: &ephemeral_spl_api::Address,
     mint: &ephemeral_spl_api::Address,
+    token_program: &ephemeral_spl_api::Address,
 ) -> [ShortAccountMeta; 13] {
     let vault_token_account = internal::derive_associated_token_address(vault, mint);
     let source_token_account =
@@ -377,7 +381,7 @@ fn create_action_callback_accounts(
             is_writable: true,
         },
         ShortAccountMeta {
-            pubkey: TOKEN_PROGRAM_ID,
+            pubkey: *token_program,
             is_writable: false,
         },
         ShortAccountMeta {

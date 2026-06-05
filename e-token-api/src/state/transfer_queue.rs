@@ -10,6 +10,32 @@ pub const TRANSFER_QUEUE_VERSION: u8 = 1;
 pub const QUEUE_SEED: &[u8] = b"queue";
 
 pub const QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA: u8 = 1 << 0;
+#[repr(u8)]
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum SplTokenProgram {
+    Token = 0,
+    Token2022 = 1,
+}
+
+impl Default for SplTokenProgram {
+    fn default() -> Self {
+        Self::Token
+    }
+}
+
+impl SplTokenProgram {
+    pub const fn value(self) -> u8 {
+        self as u8
+    }
+
+    pub fn from_value(value: u8) -> Result<Self, ProgramError> {
+        match value {
+            value if value == Self::Token.value() => Ok(Self::Token),
+            value if value == Self::Token2022.value() => Ok(Self::Token2022),
+            _ => Err(ProgramError::InvalidAccountData),
+        }
+    }
+}
 pub const MAX_GROUP_ID: u32 = 0x00FF_FFFF; // we have 3 only bytes for group_id in QueuedTransfer
 
 pub const HEADER_LEN: usize = core::mem::size_of::<TransferQueueHeader>();
@@ -22,7 +48,8 @@ pub const ITEM_LEN: usize = core::mem::size_of::<QueuedTransfer>();
 pub struct TransferQueueHeader {
     pub version: u8,
     pub bump: u8,
-    pub _pad0: [u8; 6],
+    pub spl_token_program: u8,
+    pub _pad0: [u8; 5],
     pub mint: Address,
     pub length: u32,
     pub group_id: u32,
@@ -30,6 +57,18 @@ pub struct TransferQueueHeader {
     pub next_task_id: u32,
     pub crank_task_id: i64,
     pub validator: Address,
+}
+
+impl TransferQueueHeader {
+    #[inline(always)]
+    pub fn token_program_kind(&self) -> Result<SplTokenProgram, ProgramError> {
+        SplTokenProgram::from_value(self.spl_token_program)
+    }
+
+    #[inline(always)]
+    pub fn set_token_program_kind(&mut self, kind: SplTokenProgram) {
+        self.spl_token_program = kind.value();
+    }
 }
 
 /// One queued transfer entry.
@@ -197,6 +236,16 @@ pub fn queue_views_mut(
         .map_err(|_| ProgramError::InvalidAccountData)?;
 
     Ok((header, items))
+}
+
+#[inline(always)]
+pub fn queue_set_token_program_kind_from_data(
+    data: &mut [u8],
+    kind: SplTokenProgram,
+) -> Result<(), ProgramError> {
+    let (header, _) = queue_views_mut_checked(data)?;
+    header.set_token_program_kind(kind);
+    Ok(())
 }
 
 /// Initializes an uninitialized queue (version == 0).

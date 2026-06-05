@@ -11,7 +11,7 @@ use ephemeral_rollups_pinocchio::{
     spl::EphemeralAta,
 };
 use ephemeral_spl_api::state::transfer_queue::{
-    QueuedTransfer, TransferQueueHeader, HEADER_LEN, ITEM_LEN, QUEUE_SEED,
+    QueuedTransfer, SplTokenProgram, TransferQueueHeader, HEADER_LEN, ITEM_LEN, QUEUE_SEED,
 };
 use ephemeral_spl_api::ID as PROGRAM;
 use ephemeral_spl_api::{instruction, state::transfer_queue::TransferQueue};
@@ -91,6 +91,18 @@ fn magic_fee_vault(validator: &Pubkey) -> Pubkey {
     Pubkey::new_from_array(
         magic_fee_vault_pda_from_validator(&validator.to_bytes().into()).to_bytes(),
     )
+}
+
+fn derive_associated_token_address_with_program(
+    wallet: Pubkey,
+    mint: Pubkey,
+    token_program: Pubkey,
+) -> Pubkey {
+    Pubkey::find_program_address(
+        &[wallet.as_ref(), token_program.as_ref(), mint.as_ref()],
+        &utils::associated_token_program_id(),
+    )
+    .0
 }
 
 fn delegation_program() -> Pubkey {
@@ -436,12 +448,12 @@ async fn ensure_transfer_queue_crank_schedules_one_recurring_queue_crank() {
             CapturedScheduleAccount {
                 pubkey: fixture.magic_fee_vault,
                 is_signer: false,
-                is_writable: false,
+                is_writable: true,
             },
             CapturedScheduleAccount {
                 pubkey: fixture.magic_context,
                 is_signer: false,
-                is_writable: false,
+                is_writable: true,
             },
             CapturedScheduleAccount {
                 pubkey: fixture.magic_program,
@@ -1159,6 +1171,61 @@ async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
     assert_eq!(
         token_amount(&mut fixture.context, fixture.destination_ata).await,
         0
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn process_transfer_queue_tick_uses_token_2022_accounts_from_queue_header() {
+    let _test_guard = test_lock().lock().unwrap();
+    let mut fixture = setup_fixture().await;
+    enqueue_transfer(&mut fixture, 0, "tq_auto::enqueue_token_2022_ready").await;
+
+    let mut queue = queue_account(&mut fixture.context, fixture.queue).await;
+    // Header bytes are version, bump, then spl_token_program.
+    queue.data[2] = SplTokenProgram::Token2022.value();
+    fixture.context.set_account(&fixture.queue, &queue.into());
+
+    let token_2022_program = Pubkey::new_from_array(pinocchio_token_2022::ID.to_bytes());
+    let expected_vault_ata = derive_associated_token_address_with_program(
+        fixture.vault,
+        fixture.mint,
+        token_2022_program,
+    );
+    let expected_destination_ata = derive_associated_token_address_with_program(
+        fixture.payer,
+        fixture.mint,
+        token_2022_program,
+    );
+
+    let blockhash = latest_blockhash(&mut fixture.context).await;
+    let tx = Transaction::new_signed_with_payer(
+        &[process_queue_tick_ix(&fixture)],
+        Some(&fixture.payer),
+        &[&fixture.payer_kp],
+        blockhash,
+    );
+    common::metrics::process_transaction_record_cu(
+        &fixture.context.banks_client,
+        tx,
+        "tq_auto::tick_token_2022_accounts",
+    )
+    .await
+    .unwrap();
+
+    let captured_bundles = peek_captured_intent_bundles(fixture.magic_program);
+    assert_eq!(captured_bundles.len(), 1);
+    let standalone_action = &captured_bundles[0].args.standalone_actions[0];
+    assert_eq!(
+        standalone_action.accounts[2].pubkey.to_bytes(),
+        expected_vault_ata.to_bytes()
+    );
+    assert_eq!(
+        standalone_action.accounts[4].pubkey.to_bytes(),
+        expected_destination_ata.to_bytes()
+    );
+    assert_eq!(
+        standalone_action.accounts[6].pubkey.to_bytes(),
+        token_2022_program.to_bytes()
     );
 }
 

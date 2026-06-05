@@ -166,6 +166,7 @@ pub(crate) fn schedule_refund_on_failure(
         refund_destination_owner.address(),
         &vault,
         &mint,
+
         ExecuteQueuedTransferArgs {
             amount,
             // TODO(edwin): clarify if needed
