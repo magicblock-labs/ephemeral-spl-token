@@ -38,15 +38,15 @@ pub fn process_execute_transfer_callback(
     instruction_data: &[u8],
 ) -> ProgramResult {
     let [
-        callback_signer,
+        callback_signer, // force multi-line
         group_receipt,
         queue_info,
-        _, // vault
+        _vault,
         mint,
-        _, // vault token account
+        _vault_token_account,
         source,
-        _, // source token account
-        _, // token program
+        _source_token_account,
+        _token_program,
         magic_vault,
         magic_program
     ] = require_n_accounts!(accounts, 11);
