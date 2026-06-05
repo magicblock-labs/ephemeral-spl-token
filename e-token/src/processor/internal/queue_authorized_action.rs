@@ -7,7 +7,6 @@ use dlp_api::pda::magic_fee_vault_pda_from_validator;
 use ephemeral_rollups_pinocchio::intent_bundle::{
     ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
 };
-use ephemeral_rollups_pinocchio::spl::TOKEN_PROGRAM_ID;
 use ephemeral_spl_api::require;
 use ephemeral_spl_api::state::transfer_queue::QUEUE_SEED;
 use hydra_api::instruction::SYSTEM_PROGRAM_ID;
@@ -110,9 +109,13 @@ impl QueuedTransferActionBuilder {
         mint: &ephemeral_spl_api::Address,
         token_program: &ephemeral_spl_api::Address,
     ) -> [ShortAccountMeta; 9] {
-        let vault_token_account = internal::derive_associated_token_address_with_program(vault, mint, token_program);
-        let destination_token_account =
-            internal::derive_associated_token_address_with_program(&destination_owner, mint, token_program);
+        let vault_token_account =
+            internal::derive_associated_token_address_with_program(vault, mint, token_program);
+        let destination_token_account = internal::derive_associated_token_address_with_program(
+            &destination_owner,
+            mint,
+            token_program,
+        );
 
         // Note that we initialize CallHandler with 9 accounts only, and then 3 more accounts [source_program,
         // escrow_authority, escrow_signer] are appended by DLP's CallHandlerV2 instruction, which is
@@ -143,7 +146,7 @@ impl QueuedTransferActionBuilder {
                 is_writable: true,
             },
             ShortAccountMeta {
-                pubkey: TOKEN_PROGRAM_ID,
+                pubkey: *token_program,
                 is_writable: false,
             },
             ShortAccountMeta {

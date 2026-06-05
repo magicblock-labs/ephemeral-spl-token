@@ -7,7 +7,7 @@ use crate::processor::internal::queue_authorized_action::{
     invoke_standalone_action, IntentBundleAccounts, QueueSignerState, QueuedTransferActionBuilder,
     EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
 };
-use crate::processor::utils::CALLBACK_SIGNER;
+use crate::processor::utils::{token_program_for_kind, CALLBACK_SIGNER};
 use crate::ExecuteQueuedTransferArgs;
 use data_layout::variable_offset_layout;
 use ephemeral_rollups_pinocchio::consts::{MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID};
@@ -149,6 +149,7 @@ pub(crate) fn schedule_refund_on_failure(
 
     // Handle transfer failure by scheduling refund action
     let mint = header.mint;
+    let token_program = token_program_for_kind(header.token_program_kind()?);
     let (vault, _) = ephemeral_spl_api::Address::find_program_address(&[mint.as_ref()], &crate::ID);
 
     // Construct action
@@ -166,7 +167,7 @@ pub(crate) fn schedule_refund_on_failure(
         refund_destination_owner.address(),
         &vault,
         &mint,
-
+        &token_program,
         ExecuteQueuedTransferArgs {
             amount,
             // TODO(edwin): clarify if needed

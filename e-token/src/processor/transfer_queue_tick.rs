@@ -273,6 +273,7 @@ fn schedule_execute_ready_transfer(
         &queued_transfer.destination_owner,
         &vault,
         &queue_state.mint,
+        &queue_state.token_program,
         ExecuteQueuedTransferArgs {
             amount: queued_transfer.amount,
             client_ref_id: if queued_transfer.client_ref_id != 0 {
@@ -339,9 +340,13 @@ fn create_action_callback_accounts(
     mint: &ephemeral_spl_api::Address,
     token_program: &ephemeral_spl_api::Address,
 ) -> [ShortAccountMeta; 13] {
-    let vault_token_account = internal::derive_associated_token_address(vault, mint);
-    let source_token_account =
-        internal::derive_associated_token_address(&queued_transfer.source, mint);
+    let vault_token_account =
+        internal::derive_associated_token_address_with_program(vault, mint, token_program);
+    let source_token_account = internal::derive_associated_token_address_with_program(
+        &queued_transfer.source,
+        mint,
+        token_program,
+    );
     let (group_receipt_account, _) = derive_group_receipt_id(
         queue_address,
         &queued_transfer.source,
