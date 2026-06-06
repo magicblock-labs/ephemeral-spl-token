@@ -71,6 +71,26 @@ pub fn process_deposit_and_queue_transfer(
     let (group_receipt, group_receipt_bump) =
         derive_group_receipt_id(queue_info.address(), user_authority.address(), group_id);
 
+    debug_log!({
+        use alloc::string::ToString;
+
+        pinocchio_log::log!(
+            "DepositAndQueueTransfer receipt expected: {} passed: {} owner: {} expected_owner: {} owned_by_program: {} lamports: {} data_len: {} queue: {} source: {} group_id: {} split: {} amount: {}",
+            group_receipt.to_string().as_str(),
+            group_receipt_info.address().to_string().as_str(),
+            unsafe { group_receipt_info.owner() }.to_string().as_str(),
+            crate::ID.to_string().as_str(),
+            group_receipt_info.owned_by(&crate::ID),
+            group_receipt_info.lamports(),
+            group_receipt_info.data_len(),
+            queue_info.address().to_string().as_str(),
+            user_authority.address().to_string().as_str(),
+            group_id,
+            args.split(),
+            args.amount()
+        );
+    });
+
     require!(
         group_receipt.eq(group_receipt_info.address()),
         ProgramError::InvalidInstructionData
@@ -105,7 +125,18 @@ pub fn process_deposit_and_queue_transfer(
         match queue_len_and_bump_for_mint_with_capacity(data, mint_info.address(), split) {
             Ok((queue_len_before, validator, bump)) => (queue_len_before, validator, bump),
             Err(ProgramError::AccountDataTooSmall) => {
-                debug_log!("Queue is full");
+                debug_log!({
+                    use alloc::string::ToString;
+
+                    pinocchio_log::log!(
+                        "Queue is full; group receipt not created receipt: {} group_id: {} source: {} split: {} amount: {}",
+                        group_receipt_info.address().to_string().as_str(),
+                        group_id,
+                        user_authority.address().to_string().as_str(),
+                        args.split(),
+                        amount
+                    );
+                });
                 if !address_eq(reimbursement_token_info.address(), &crate::ID) {
                     TransferChecked {
                         mint: mint_info,
@@ -222,6 +253,20 @@ pub fn process_deposit_and_queue_transfer(
         group_id,
         args.split(),
     )?;
+    debug_log!({
+        use alloc::string::ToString;
+
+        pinocchio_log::log!(
+            "DepositAndQueueTransfer group receipt created receipt: {} owner: {} lamports: {} data_len: {} bump: {} group_id: {} splits: {}",
+            group_receipt_info.address().to_string().as_str(),
+            unsafe { group_receipt_info.owner() }.to_string().as_str(),
+            group_receipt_info.lamports(),
+            group_receipt_info.data_len(),
+            group_receipt_bump,
+            group_id,
+            args.split()
+        );
+    });
 
     Ok(())
 }

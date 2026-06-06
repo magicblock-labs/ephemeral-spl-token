@@ -122,22 +122,73 @@ fn handle_group_receipt(
     args: &TransferCallbackArgsView<'_>,
     response: &MagicResponseView,
 ) -> ProgramResult {
+    let (expected_group_receipt, _) = group_receipt::derive_group_receipt_id(
+        queue_info.address(),
+        source.address(),
+        args.group_id(),
+    );
+    debug_log!({
+        use alloc::string::ToString;
+
+        pinocchio_log::log!(
+            "ExecuteTransferCallback receipt check actual: {} expected: {} owner: {} expected_owner: {} owned_by_program: {} lamports: {} data_len: {} queue: {} source: {} group_id: {} amount: {} ok: {}",
+            group_receipt_info.address().to_string().as_str(),
+            expected_group_receipt.to_string().as_str(),
+            unsafe { group_receipt_info.owner() }.to_string().as_str(),
+            crate::ID.to_string().as_str(),
+            group_receipt_info.owned_by(&crate::ID),
+            group_receipt_info.lamports(),
+            group_receipt_info.data_len(),
+            queue_info.address().to_string().as_str(),
+            source.address().to_string().as_str(),
+            args.group_id(),
+            args.amount(),
+            response.ok
+        );
+    });
+
     if !group_receipt_info.owned_by(&crate::ID) {
-        debug_log!("Group receipt expected to be initialized");
+        debug_log!({
+            use alloc::string::ToString;
+
+            pinocchio_log::log!(
+                "Group receipt has unexpected owner actual: {} expected: {} owner: {} expected_owner: {} lamports: {} data_len: {} group_id: {}",
+                group_receipt_info.address().to_string().as_str(),
+                expected_group_receipt.to_string().as_str(),
+                unsafe { group_receipt_info.owner() }.to_string().as_str(),
+                crate::ID.to_string().as_str(),
+                group_receipt_info.lamports(),
+                group_receipt_info.data_len(),
+                args.group_id()
+            );
+        });
         return Err(ProgramError::InvalidAccountOwner);
     }
 
     let mut group_receipt = GroupReceipt::new(group_receipt_info)?;
     if group_receipt.id() != args.group_id() {
-        debug_log!("Callback with wrong group id");
+        debug_log!(
+            "Callback with wrong group id receipt_id: {} callback_id: {}",
+            group_receipt.id(),
+            args.group_id()
+        );
         return Err(ProgramError::InvalidArgument);
     }
 
-    let (expected_group_receipt, _) = group_receipt::derive_group_receipt_id(
-        queue_info.address(),
-        source.address(),
-        group_receipt.id(),
-    );
+    debug_log!({
+        use alloc::string::ToString;
+
+        if !expected_group_receipt.eq(group_receipt_info.address()) {
+            pinocchio_log::log!(
+                "Callback group receipt PDA mismatch actual: {} expected: {} queue: {} source: {} group_id: {}",
+                group_receipt_info.address().to_string().as_str(),
+                expected_group_receipt.to_string().as_str(),
+                queue_info.address().to_string().as_str(),
+                source.address().to_string().as_str(),
+                group_receipt.id()
+            );
+        }
+    });
     require!(
         expected_group_receipt.eq(group_receipt_info.address()),
         ProgramError::InvalidAccountData
@@ -155,6 +206,17 @@ fn handle_group_receipt(
     if group_receipt.all_transfer_completed() {
         #[cfg(feature = "logging")]
         group_receipt_log(&group_receipt);
+        debug_log!({
+            use alloc::string::ToString;
+
+            pinocchio_log::log!(
+                "Closing completed group receipt: {} group_id: {} source: {} queue: {}",
+                group_receipt_info.address().to_string().as_str(),
+                group_receipt.id(),
+                source.address().to_string().as_str(),
+                queue_info.address().to_string().as_str()
+            );
+        });
 
         group_receipt_close(
             &GroupReceiptAccounts {

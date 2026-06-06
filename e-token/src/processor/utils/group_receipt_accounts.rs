@@ -2,6 +2,7 @@ use crate::processor::execute_transfer_callback::GROUP_RECEIPT_SEED;
 use crate::processor::utils::ephemeral_account::{
     close_ephemeral_account, create_ephemeral_account,
 };
+use ephemeral_spl_api::debug_log;
 use ephemeral_spl_api::state::group_receipt;
 use ephemeral_spl_api::state::group_receipt::GroupReceipt;
 use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, QUEUE_SEED};
@@ -48,6 +49,23 @@ pub fn group_receipt_create<'a>(
     let receipt_signer = Signer::from(&receipt_signer_seeds);
 
     let space = GroupReceipt::required_size(splits as usize);
+    debug_log!({
+        use alloc::string::ToString;
+
+        pinocchio_log::log!(
+            "Creating group receipt account receipt: {} queue: {} source: {} owner_before: {} lamports_before: {} data_len_before: {} space: {} receipt_bump: {} group_id: {} splits: {}",
+            accounts.group_receipt_info.address().to_string().as_str(),
+            accounts.queue_info.address().to_string().as_str(),
+            accounts.source.address().to_string().as_str(),
+            unsafe { accounts.group_receipt_info.owner() }.to_string().as_str(),
+            accounts.group_receipt_info.lamports(),
+            accounts.group_receipt_info.data_len(),
+            space,
+            group_receipt_bump,
+            group_id,
+            splits
+        );
+    });
     create_ephemeral_account(
         accounts.queue_info,
         accounts.group_receipt_info,
@@ -63,6 +81,20 @@ pub fn group_receipt_create<'a>(
         splits,
         group_receipt_bump,
     )?;
+    debug_log!({
+        use alloc::string::ToString;
+
+        pinocchio_log::log!(
+            "Initialized group receipt account receipt: {} owner_after: {} expected_owner: {} lamports_after: {} data_len_after: {} group_id: {} splits: {}",
+            accounts.group_receipt_info.address().to_string().as_str(),
+            unsafe { accounts.group_receipt_info.owner() }.to_string().as_str(),
+            crate::ID.to_string().as_str(),
+            accounts.group_receipt_info.lamports(),
+            accounts.group_receipt_info.data_len(),
+            group_id,
+            splits
+        );
+    });
 
     GroupReceipt::new(accounts.group_receipt_info)
 }
