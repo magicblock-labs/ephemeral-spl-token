@@ -255,17 +255,6 @@ fn schedule_execute_ready_transfer(
         &queue_state.mint,
         &queue_state.token_program,
     );
-    debug_log!({
-        pinocchio_log::log!(
-            320,
-            "ProcessTransferQueueTick callback receipt: {} source: {} group_id: {} task_id: {} amount: {}",
-            standalone_action_callback_accounts[1].pubkey.to_string().as_str(),
-            queued_transfer.source.to_string().as_str(),
-            queued_transfer.group_id(),
-            queued_transfer.task_id,
-            queued_transfer.amount
-        );
-    });
     let standalone_action_callback =
         create_action_callback(&standalone_action_callback_accounts, &callback_data);
 
@@ -426,16 +415,6 @@ fn create_action_callback_accounts(
         queue_address,
         &queued_transfer.source,
         queued_transfer.group_id(),
-    );
-    debug_log!(
-        384,
-        "ProcessTransferQueueTick derived callback receipt: {} queue: {} source: {} group_id: {} task_id: {} amount: {}",
-        group_receipt_account.to_string().as_str(),
-        queue_address.to_string().as_str(),
-        queued_transfer.source.to_string().as_str(),
-        queued_transfer.group_id(),
-        queued_transfer.task_id,
-        queued_transfer.amount
     );
     [
         ShortAccountMeta {
