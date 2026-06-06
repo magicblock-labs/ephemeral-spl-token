@@ -257,6 +257,7 @@ fn schedule_execute_ready_transfer(
     );
     debug_log!({
         pinocchio_log::log!(
+            320,
             "ProcessTransferQueueTick callback receipt: {} source: {} group_id: {} task_id: {} amount: {}",
             standalone_action_callback_accounts[1].pubkey.to_string().as_str(),
             queued_transfer.source.to_string().as_str(),
@@ -427,6 +428,7 @@ fn create_action_callback_accounts(
         queued_transfer.group_id(),
     );
     debug_log!(
+        384,
         "ProcessTransferQueueTick derived callback receipt: {} queue: {} source: {} group_id: {} task_id: {} amount: {}",
         group_receipt_account.to_string().as_str(),
         queue_address.to_string().as_str(),
@@ -462,7 +464,7 @@ fn create_action_callback_accounts(
         },
         ShortAccountMeta {
             pubkey: queued_transfer.source,
-            is_writable: true,
+            is_writable: false,
         },
         ShortAccountMeta {
             pubkey: source_token_account,

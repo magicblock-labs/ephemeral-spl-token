@@ -75,6 +75,7 @@ pub fn process_deposit_and_queue_transfer(
         use alloc::string::ToString;
 
         pinocchio_log::log!(
+            640,
             "DepositAndQueueTransfer receipt expected: {} passed: {} owner: {} expected_owner: {} owned_by_program: {} lamports: {} data_len: {} queue: {} source: {} group_id: {} split: {} amount: {}",
             group_receipt.to_string().as_str(),
             group_receipt_info.address().to_string().as_str(),
@@ -129,6 +130,7 @@ pub fn process_deposit_and_queue_transfer(
                     use alloc::string::ToString;
 
                     pinocchio_log::log!(
+                        320,
                         "Queue is full; group receipt not created receipt: {} group_id: {} source: {} split: {} amount: {}",
                         group_receipt_info.address().to_string().as_str(),
                         group_id,
@@ -257,6 +259,7 @@ pub fn process_deposit_and_queue_transfer(
         use alloc::string::ToString;
 
         pinocchio_log::log!(
+            384,
             "DepositAndQueueTransfer group receipt created receipt: {} owner: {} lamports: {} data_len: {} bump: {} group_id: {} splits: {}",
             group_receipt_info.address().to_string().as_str(),
             unsafe { group_receipt_info.owner() }.to_string().as_str(),

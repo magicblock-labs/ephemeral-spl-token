@@ -53,6 +53,7 @@ pub fn group_receipt_create<'a>(
         use alloc::string::ToString;
 
         pinocchio_log::log!(
+            640,
             "Creating group receipt account receipt: {} queue: {} source: {} owner_before: {} lamports_before: {} data_len_before: {} space: {} receipt_bump: {} group_id: {} splits: {}",
             accounts.group_receipt_info.address().to_string().as_str(),
             accounts.queue_info.address().to_string().as_str(),
@@ -85,6 +86,7 @@ pub fn group_receipt_create<'a>(
         use alloc::string::ToString;
 
         pinocchio_log::log!(
+            512,
             "Initialized group receipt account receipt: {} owner_after: {} expected_owner: {} lamports_after: {} data_len_after: {} group_id: {} splits: {}",
             accounts.group_receipt_info.address().to_string().as_str(),
             unsafe { accounts.group_receipt_info.owner() }.to_string().as_str(),

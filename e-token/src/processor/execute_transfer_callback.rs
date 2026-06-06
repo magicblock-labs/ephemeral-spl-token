@@ -131,6 +131,7 @@ fn handle_group_receipt(
         use alloc::string::ToString;
 
         pinocchio_log::log!(
+            512,
             "ExecuteTransferCallback receipt check actual: {} expected: {} owner: {} expected_owner: {} owned_by_program: {} lamports: {} data_len: {} queue: {} source: {} group_id: {} amount: {} ok: {}",
             group_receipt_info.address().to_string().as_str(),
             expected_group_receipt.to_string().as_str(),
@@ -152,6 +153,7 @@ fn handle_group_receipt(
             use alloc::string::ToString;
 
             pinocchio_log::log!(
+                512,
                 "Group receipt has unexpected owner actual: {} expected: {} owner: {} expected_owner: {} lamports: {} data_len: {} group_id: {}",
                 group_receipt_info.address().to_string().as_str(),
                 expected_group_receipt.to_string().as_str(),
@@ -168,6 +170,7 @@ fn handle_group_receipt(
     let mut group_receipt = GroupReceipt::new(group_receipt_info)?;
     if group_receipt.id() != args.group_id() {
         debug_log!(
+            160,
             "Callback with wrong group id receipt_id: {} callback_id: {}",
             group_receipt.id(),
             args.group_id()
@@ -180,6 +183,7 @@ fn handle_group_receipt(
 
         if !expected_group_receipt.eq(group_receipt_info.address()) {
             pinocchio_log::log!(
+                512,
                 "Callback group receipt PDA mismatch actual: {} expected: {} queue: {} source: {} group_id: {}",
                 group_receipt_info.address().to_string().as_str(),
                 expected_group_receipt.to_string().as_str(),
@@ -210,6 +214,7 @@ fn handle_group_receipt(
             use alloc::string::ToString;
 
             pinocchio_log::log!(
+                320,
                 "Closing completed group receipt: {} group_id: {} source: {} queue: {}",
                 group_receipt_info.address().to_string().as_str(),
                 group_receipt.id(),
