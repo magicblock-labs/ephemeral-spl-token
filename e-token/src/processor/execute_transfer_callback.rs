@@ -5,9 +5,7 @@ use crate::processor::utils::group_receipt_log;
 use crate::processor::utils::{group_receipt_close, GroupReceiptAccounts, CALLBACK_SIGNER};
 use ephemeral_spl_api::state::group_receipt::{GroupReceipt, TransferReceipt};
 use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, TransferQueueHeader};
-use ephemeral_spl_api::{
-    debug_log, require, require_eq_keys, require_n_accounts, require_owned_by,
-};
+use ephemeral_spl_api::{debug_log, require_eq_keys, require_n_accounts, require_owned_by};
 use pinocchio::error::ProgramError;
 use pinocchio::{AccountView, ProgramResult};
 use solana_signature::Signature;
@@ -122,14 +120,8 @@ fn handle_group_receipt(
     args: &TransferCallbackArgsView<'_>,
     response: &MagicResponseView,
 ) -> ProgramResult {
-    let (expected_group_receipt, _) = group_receipt::derive_group_receipt_id(
-        queue_info.address(),
-        source.address(),
-        args.group_id(),
-    );
     debug_log!({
         use alloc::string::ToString;
-
         pinocchio_log::log!(
             256,
             "ExecuteTransferCallback group_receipt address: {} data_len: {} owner: {}",
@@ -140,16 +132,24 @@ fn handle_group_receipt(
     });
 
     if !group_receipt_info.owned_by(&crate::ID) {
+        debug_log!("Group receipt expected to be initialized");
         return Err(ProgramError::InvalidAccountOwner);
     }
 
     let mut group_receipt = GroupReceipt::new(group_receipt_info)?;
     if group_receipt.id() != args.group_id() {
+        debug_log!("Callback with wrong group id");
         return Err(ProgramError::InvalidArgument);
     }
 
-    require!(
-        expected_group_receipt.eq(group_receipt_info.address()),
+    let (expected_group_receipt, _) = group_receipt::derive_group_receipt_id(
+        queue_info.address(),
+        source.address(),
+        group_receipt.id(),
+    );
+    require_eq_keys!(
+        &expected_group_receipt,
+        group_receipt_info.address(),
         ProgramError::InvalidAccountData
     );
 

@@ -105,6 +105,7 @@ pub fn process_deposit_and_queue_transfer(
         match queue_len_and_bump_for_mint_with_capacity(data, mint_info.address(), split) {
             Ok((queue_len_before, validator, bump)) => (queue_len_before, validator, bump),
             Err(ProgramError::AccountDataTooSmall) => {
+                debug_log!("Queue is full");
                 if !address_eq(reimbursement_token_info.address(), &crate::ID) {
                     TransferChecked {
                         mint: mint_info,
