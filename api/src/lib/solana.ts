@@ -9,6 +9,7 @@ import {
   EPHEMERAL_SPL_TOKEN_PROGRAM_ID,
   ensureTransferQueueCrankIx,
   getDelegationRecord,
+  getAuthToken,
   initRentPdaIx,
   initTransferQueueIx,
   magicFeeVaultPdaFromValidator,
@@ -25,6 +26,7 @@ import {
   Transaction,
   TransactionInstruction,
 } from "@solana/web3.js";
+import nacl from "tweetnacl";
 
 import type { AppEnv } from "../env";
 import { ApiError } from "./errors";
@@ -58,6 +60,7 @@ const TRANSFER_QUEUE_RENT_LAMPORTS = LAMPORTS_PER_SOL / 50;
 const PRIVATE_TRANSFER_MAX_DELAY_MS_LIMIT = 10n * 60n * 1000n;
 const TRANSFER_QUEUE_RECENT_SIGNATURE_LIMIT = 5;
 const TRANSFER_QUEUE_STALE_MS = 60_000;
+const TRANSFER_QUEUE_AUTH_ERROR_FORCE_INTERVAL = 100;
 const SOLANA_WIRE_TRANSACTION_SIZE_LIMIT = 1232;
 // Keep these defaults aligned with scripts/create-private-transfer-lut.js. Updating them requires a redeploy.
 const PRIVATE_BASE_TO_BASE_TRANSFER_LOOKUP_TABLES = {
@@ -71,6 +74,7 @@ const GASLESS_RELAY_FEE_MICRO_USDC = 200_000n; // 0.2 USDC/USDT
 const GASLESS_STABLECOIN_MIN_AMOUNT = BigInt(5 * 1_000_000); // 5 USDC/USDT
 
 const validatorCache = new Map<string, Promise<PublicKey | undefined>>();
+const transferQueueAuthErrorCounts = new Map<string, number>();
 
 type SendTarget = "base" | "ephemeral";
 
@@ -82,6 +86,7 @@ type BlockhashResult = {
 type RpcConfig = {
   baseRpcUrl: string;
   ephemeralRpcUrl: string;
+  transferQueueCrankRpcUrl: string;
   cluster: "mainnet" | "devnet" | "custom";
 };
 
@@ -104,14 +109,28 @@ function getBaseConnection(config: RpcConfig) {
   return getConnection(config.baseRpcUrl);
 }
 
-function getEphemeralConnection(config: RpcConfig, authToken?: string) {
+function getConnectionWithOptionalAuthToken(rpcUrl: string, authToken?: string) {
   if (!authToken) {
-    return getConnection(config.ephemeralRpcUrl);
+    return getConnection(rpcUrl);
   }
 
-  const url = new URL(config.ephemeralRpcUrl);
+  const url = new URL(rpcUrl);
   url.searchParams.set("token", authToken);
   return new Connection(url.toString(), "confirmed");
+}
+
+function getEphemeralConnection(config: RpcConfig, authToken?: string) {
+  return getConnectionWithOptionalAuthToken(config.ephemeralRpcUrl, authToken);
+}
+
+async function createThrowawayAuthToken(rpcUrl: string) {
+  const keypair = Keypair.generate();
+  const { token } = await getAuthToken(
+    rpcUrl,
+    keypair.publicKey,
+    async message => nacl.sign.detached(message, keypair.secretKey),
+  );
+  return token;
 }
 
 async function resolveMintTokenProgram(config: RpcConfig, mint: PublicKey) {
@@ -201,6 +220,7 @@ export function resolveRpcConfig(env: AppEnv, cluster?: string): RpcConfig {
     return {
       baseRpcUrl: env.BASE_RPC_URL,
       ephemeralRpcUrl: env.EPHEMERAL_RPC_URL,
+      transferQueueCrankRpcUrl: env.TRANSFER_QUEUE_CRANK_RPC_URL ?? env.EPHEMERAL_RPC_URL,
       cluster: env.CLUSTER,
     };
   }
@@ -210,6 +230,7 @@ export function resolveRpcConfig(env: AppEnv, cluster?: string): RpcConfig {
     return {
       baseRpcUrl: env.BASE_RPC_URL,
       ephemeralRpcUrl: env.EPHEMERAL_RPC_URL,
+      transferQueueCrankRpcUrl: env.TRANSFER_QUEUE_CRANK_RPC_URL ?? env.EPHEMERAL_RPC_URL,
       cluster: "mainnet",
     };
   }
@@ -227,6 +248,7 @@ export function resolveRpcConfig(env: AppEnv, cluster?: string): RpcConfig {
     return {
       baseRpcUrl: env.BASE_DEVNET_RPC_URL!,
       ephemeralRpcUrl: env.EPHEMERAL_DEVNET_RPC_URL!,
+      transferQueueCrankRpcUrl: env.TRANSFER_QUEUE_DEVNET_CRANK_RPC_URL ?? env.EPHEMERAL_DEVNET_RPC_URL!,
       cluster: "devnet",
     };
   }
@@ -241,6 +263,7 @@ export function resolveRpcConfig(env: AppEnv, cluster?: string): RpcConfig {
     return {
       baseRpcUrl: url.toString(),
       ephemeralRpcUrl: env.EPHEMERAL_RPC_URL,
+      transferQueueCrankRpcUrl: env.TRANSFER_QUEUE_CRANK_RPC_URL ?? env.EPHEMERAL_RPC_URL,
       cluster: "custom",
     };
   } catch {
@@ -1210,7 +1233,11 @@ export async function getPrivateBalance(env: AppEnv, input: BalanceRequest, auth
 
     const validator = await resolveRequiredValidator(config);
     if (!delegationRecord.validator.equals(validator)) {
-      return zeroBalanceResponse;
+      throw new ApiError(400, "EATA_DELEGATED_ELSEWHERE", "eATA is delegated to a different validator", {
+        eata: eata.toBase58(),
+        delegatedValidator: delegationRecord.validator.toBase58(),
+        selectedValidator: validator.toBase58(),
+      });
     }
 
     const accountInfo = await getEphemeralConnection(config, authToken).getAccountInfo(ata, "confirmed");
@@ -1224,6 +1251,10 @@ export async function getPrivateBalance(env: AppEnv, input: BalanceRequest, auth
       balance: balance.toString(),
     };
   } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+
     throw new ApiError(502, "RPC_ERROR", "Failed to fetch token balance", {
       location: "ephemeral",
       message: getSanitizedErrorMessage(error),
@@ -1231,10 +1262,14 @@ export async function getPrivateBalance(env: AppEnv, input: BalanceRequest, auth
   }
 }
 
-function getNewestSignatureTimestampMs(signatures: Array<{ blockTime?: number | null }>) {
+function getNewestSuccessfulSignatureTimestampMs(signatures: Array<{ blockTime?: number | null; err?: unknown }>) {
   let newestSignatureTimestampMs: number | undefined;
 
   for (const signature of signatures) {
+    if (signature.err !== null && signature.err !== undefined) {
+      continue;
+    }
+
     if (signature.blockTime === null || signature.blockTime === undefined) {
       continue;
     }
@@ -1249,26 +1284,71 @@ function getNewestSignatureTimestampMs(signatures: Array<{ blockTime?: number | 
   return newestSignatureTimestampMs;
 }
 
+function isAuthFilteredRpcError(error: unknown) {
+  const message = getSanitizedErrorMessage(error).toLowerCase();
+  return message.includes("missing token")
+    || message.includes("invalidtoken")
+    || message.includes("invalid token")
+    || message.includes("401 unauthorized")
+    || message.includes("access denied")
+    || message.includes("unauthorized");
+}
+
+function shouldForceTransferQueueCrankAfterAuthError(transferQueue: PublicKey) {
+  const key = transferQueue.toBase58();
+  const count = (transferQueueAuthErrorCounts.get(key) ?? 0) + 1;
+  transferQueueAuthErrorCounts.set(key, count);
+
+  if (count % TRANSFER_QUEUE_AUTH_ERROR_FORCE_INTERVAL !== 0) {
+    return false;
+  }
+
+  transferQueueAuthErrorCounts.set(key, 0);
+  return true;
+}
+
 async function ensureTransferQueueCrankRunning(
   config: RpcConfig,
   transferQueue: PublicKey,
   validator: PublicKey,
 ) {
-  const connection = getEphemeralConnection(config);
-  const signatures = await connection.getSignaturesForAddress(
-    transferQueue,
-    { limit: TRANSFER_QUEUE_RECENT_SIGNATURE_LIMIT },
-    "confirmed",
-  );
-  const newestSignatureTimestampMs = getNewestSignatureTimestampMs(signatures);
+  const activityConnection = getEphemeralConnection(config);
+  let activityWasAuthFiltered = false;
+  try {
+    const signatures = await activityConnection.getSignaturesForAddress(
+      transferQueue,
+      { limit: TRANSFER_QUEUE_RECENT_SIGNATURE_LIMIT },
+      "confirmed",
+    );
+    transferQueueAuthErrorCounts.delete(transferQueue.toBase58());
+    const newestSignatureTimestampMs = getNewestSuccessfulSignatureTimestampMs(signatures);
 
-  if (
-    newestSignatureTimestampMs !== undefined
-    && Date.now() - newestSignatureTimestampMs < TRANSFER_QUEUE_STALE_MS
-  ) {
-    return;
+    if (
+      newestSignatureTimestampMs !== undefined
+      && Date.now() - newestSignatureTimestampMs < TRANSFER_QUEUE_STALE_MS
+    ) {
+      return;
+    }
+  } catch (error) {
+    if (!isAuthFilteredRpcError(error)) {
+      throw error;
+    }
+
+    if (!shouldForceTransferQueueCrankAfterAuthError(transferQueue)) {
+      return;
+    }
+
+    activityWasAuthFiltered = true;
+    console.warn("Forcing transfer queue crank after auth-filtered activity checks", {
+      transferQueue: transferQueue.toBase58(),
+      validator: validator.toBase58(),
+    });
   }
 
+  const crankAuthToken = activityWasAuthFiltered && config.transferQueueCrankRpcUrl === config.ephemeralRpcUrl
+    ? await createThrowawayAuthToken(config.transferQueueCrankRpcUrl)
+    : undefined;
+  const crankConnection = getConnectionWithOptionalAuthToken(config.transferQueueCrankRpcUrl, crankAuthToken);
   const payer = Keypair.generate();
   const magicFeeVault = magicFeeVaultPdaFromValidator(validator);
   const transaction = new Transaction().add(
@@ -1283,8 +1363,8 @@ async function ensureTransferQueueCrankRunning(
   const {
     context: blockhashContext,
     value: { blockhash, lastValidBlockHeight },
-  } = await connection.getLatestBlockhashAndContext("confirmed");
-  const epochInfo = await connection.getEpochInfo({
+  } = await crankConnection.getLatestBlockhashAndContext("confirmed");
+  const epochInfo = await crankConnection.getEpochInfo({
     commitment: "confirmed",
     minContextSlot: blockhashContext.slot,
   });
@@ -1300,6 +1380,8 @@ async function ensureTransferQueueCrankRunning(
   console.log("Preparing transfer queue crank", {
     transferQueue: transferQueue.toBase58(),
     validator: validator.toBase58(),
+    crankRpcUrl: config.transferQueueCrankRpcUrl,
+    crankAuth: crankAuthToken ? "throwaway" : "none",
     blockhash,
     blockhashContextSlot: blockhashContext.slot,
     currentBlockHeight,
@@ -1310,20 +1392,22 @@ async function ensureTransferQueueCrankRunning(
   transaction.lastValidBlockHeight = lastValidBlockHeight;
   transaction.sign(payer);
 
-  const signature = await connection.sendRawTransaction(transaction.serialize(), {
+  const signature = await crankConnection.sendRawTransaction(transaction.serialize(), {
     skipPreflight: true,
     preflightCommitment: "confirmed",
   });
   console.log("Sent transfer queue crank", {
     transferQueue: transferQueue.toBase58(),
     validator: validator.toBase58(),
+    crankRpcUrl: config.transferQueueCrankRpcUrl,
+    crankAuth: crankAuthToken ? "throwaway" : "none",
     signature,
     blockhash,
     blockhashContextSlot: blockhashContext.slot,
     currentBlockHeight,
     lastValidBlockHeight,
   });
-  const confirmation = await connection.confirmTransaction({
+  const confirmation = await crankConnection.confirmTransaction({
     signature,
     blockhash,
     lastValidBlockHeight,

@@ -4024,7 +4024,7 @@ describe("app", () => {
     expect(json.balance).toBe("0");
   });
 
-  it("returns zero private balance when the eATA is delegated to another validator", async () => {
+  it("returns an error when the eATA is delegated to another validator", async () => {
     const mint = DEVNET_USDC_MINT;
     const balanceEnv = {
       ...env,
@@ -4056,16 +4056,26 @@ describe("app", () => {
       balanceEnv,
     );
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(400);
     expect(getAccountInfoSpy).toHaveBeenCalledOnce();
 
     const json = (await response.json()) as {
-      location: string;
-      balance: string;
+      error: {
+        code: string;
+        message: string;
+        details: {
+          eata: string;
+          delegatedValidator: string;
+          selectedValidator: string;
+        };
+      };
     };
 
-    expect(json.location).toBe("ephemeral");
-    expect(json.balance).toBe("0");
+    expect(json.error.code).toBe("EATA_DELEGATED_ELSEWHERE");
+    expect(json.error.message).toBe("eATA is delegated to a different validator");
+    expect(json.error.details.eata).toBe(deriveEphemeralAta(new PublicKey(owner), new PublicKey(mint))[0].toBase58());
+    expect(json.error.details.delegatedValidator).toBe(otherValidator.toBase58());
+    expect(json.error.details.selectedValidator).toBe(resolvedValidator);
   });
 
   it("returns private balance with the mock auth token", async () => {
@@ -4591,6 +4601,305 @@ describe("app", () => {
 
     expect(getLatestBlockhashSpy).not.toHaveBeenCalled();
     expect(sendRawTransactionSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not fail mint initialization when transfer queue activity is auth-filtered", async () => {
+    const mint = "So11111111111111111111111111111111111111112";
+    const validator = Keypair.generate().publicKey.toBase58();
+    const executionCtx = createExecutionContext();
+    const sendRawTransactionSpy = vi.spyOn(
+      Connection.prototype,
+      "sendRawTransaction",
+    );
+
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockResolvedValue(
+      createQueueAccountInfo(DELEGATION_PROGRAM_ID),
+    );
+    vi.spyOn(Connection.prototype, "getSignaturesForAddress").mockRejectedValue(
+      new Error("Missing token query param"),
+    );
+
+    const response = await app.fetch(
+      new Request(
+        `http://localhost/v1/spl/is-mint-initialized?mint=${mint}&validator=${validator}`,
+      ),
+      env,
+      executionCtx,
+    );
+
+    expect(response.status).toBe(200);
+    await executionCtx.drain();
+
+    const json = (await response.json()) as {
+      initialized: boolean;
+    };
+
+    expect(json.initialized).toBe(true);
+    expect(sendRawTransactionSpy).not.toHaveBeenCalled();
+  });
+
+  it("forces the transfer queue crank every 100 auth-filtered activity checks", async () => {
+    const crankEnv = {
+      ...env,
+      TRANSFER_QUEUE_DEVNET_CRANK_RPC_URL: "https://crank.devnet.rpc.test",
+    };
+    const mint = "So11111111111111111111111111111111111111112";
+    const validator = Keypair.generate().publicKey.toBase58();
+    const validatorPublicKey = new PublicKey(validator);
+    const [transferQueue] = deriveTransferQueue(
+      new PublicKey(mint),
+      validatorPublicKey,
+    );
+    const executionCtx = createExecutionContext();
+    const sendRawTransactionSpy = vi
+      .spyOn(Connection.prototype, "sendRawTransaction")
+      .mockImplementation(async function sendRawTransaction(
+        this: Connection & { _rpcEndpoint: string },
+      ) {
+        expect((this as Connection & { _rpcEndpoint: string })._rpcEndpoint).toBe(
+          crankEnv.TRANSFER_QUEUE_DEVNET_CRANK_RPC_URL,
+        );
+        return "background-crank-signature";
+      });
+
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockResolvedValue(
+      createQueueAccountInfo(DELEGATION_PROGRAM_ID),
+    );
+    vi.spyOn(Connection.prototype, "getSignaturesForAddress").mockImplementation(
+      async function getSignaturesForAddress(
+        this: Connection & { _rpcEndpoint: string },
+      ) {
+        expect((this as Connection & { _rpcEndpoint: string })._rpcEndpoint).toBe(
+          crankEnv.EPHEMERAL_DEVNET_RPC_URL,
+        );
+        throw new Error("401 Unauthorized: Missing token query param");
+      },
+    );
+    vi.spyOn(
+      Connection.prototype,
+      "getLatestBlockhashAndContext",
+    ).mockResolvedValue({
+      context: { slot: 1 },
+      value: {
+        blockhash: "11111111111111111111111111111111",
+        lastValidBlockHeight: 123,
+      },
+    });
+    vi.spyOn(Connection.prototype, "getEpochInfo").mockResolvedValue({
+      absoluteSlot: 1,
+      blockHeight: 1,
+      epoch: 1,
+      slotIndex: 1,
+      slotsInEpoch: 1,
+      transactionCount: 1,
+    });
+    vi.spyOn(Connection.prototype, "confirmTransaction").mockResolvedValue({
+      context: { slot: 1 },
+      value: { err: null },
+    } as never);
+
+    for (let index = 0; index < 100; index += 1) {
+      const response = await app.fetch(
+        new Request(
+          `http://localhost/v1/spl/is-mint-initialized?mint=${mint}&validator=${validator}&cluster=devnet`,
+        ),
+        crankEnv,
+        executionCtx,
+      );
+
+      expect(response.status).toBe(200);
+      await executionCtx.drain();
+    }
+
+    expect(sendRawTransactionSpy).toHaveBeenCalledOnce();
+    const rawTransaction = sendRawTransactionSpy.mock.calls[0]?.[0];
+    expect(rawTransaction).toBeDefined();
+
+    const transaction = Transaction.from(Buffer.from(rawTransaction as Uint8Array));
+    expect(transaction.instructions).toHaveLength(1);
+    expect(transaction.instructions[0]?.keys[1]?.pubkey.toBase58()).toBe(
+      transferQueue.toBase58(),
+    );
+    expect(transaction.instructions[0]?.keys[2]?.pubkey.toBase58()).toBe(
+      magicFeeVaultPdaFromValidator(validatorPublicKey).toBase58(),
+    );
+  });
+
+  it("uses a throwaway auth token when auth-filtered activity checks force the devnet crank", async () => {
+    const mint = "So11111111111111111111111111111111111111112";
+    const validator = Keypair.generate().publicKey.toBase58();
+    const executionCtx = createExecutionContext();
+    const expectedCrankRpcEndpoint = `${env.EPHEMERAL_DEVNET_RPC_URL}/?token=throwaway-crank-token`;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+
+      if (url.startsWith(`${env.EPHEMERAL_DEVNET_RPC_URL}/auth/challenge?pubkey=`)) {
+        return new Response(
+          JSON.stringify({ challenge: "transfer queue crank challenge" }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }
+
+      if (url === `${env.EPHEMERAL_DEVNET_RPC_URL}/auth/login`) {
+        expect(init?.method).toBe("POST");
+        const body = JSON.parse(String(init?.body)) as {
+          challenge?: string;
+          pubkey?: string;
+          signature?: string;
+        };
+        expect(body.challenge).toBe("transfer queue crank challenge");
+        expect(body.pubkey).toEqual(expect.any(String));
+        expect(body.signature).toEqual(expect.any(String));
+
+        return new Response(
+          JSON.stringify({
+            token: "throwaway-crank-token",
+            expiresAt: 1_800_000_000_000,
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }
+
+      throw new Error(`Unexpected fetch ${url}`);
+    });
+    const sendRawTransactionSpy = vi
+      .spyOn(Connection.prototype, "sendRawTransaction")
+      .mockImplementation(async function sendRawTransaction(
+        this: Connection & { _rpcEndpoint: string },
+      ) {
+        expect((this as Connection & { _rpcEndpoint: string })._rpcEndpoint).toBe(
+          expectedCrankRpcEndpoint,
+        );
+        return "background-crank-signature";
+      });
+
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockResolvedValue(
+      createQueueAccountInfo(DELEGATION_PROGRAM_ID),
+    );
+    vi.spyOn(Connection.prototype, "getSignaturesForAddress").mockImplementation(
+      async function getSignaturesForAddress(
+        this: Connection & { _rpcEndpoint: string },
+      ) {
+        expect((this as Connection & { _rpcEndpoint: string })._rpcEndpoint).toBe(
+          env.EPHEMERAL_DEVNET_RPC_URL,
+        );
+        throw new Error("401 Unauthorized: Missing token query param");
+      },
+    );
+    vi.spyOn(
+      Connection.prototype,
+      "getLatestBlockhashAndContext",
+    ).mockImplementation(async function getLatestBlockhashAndContext(
+      this: Connection & { _rpcEndpoint: string },
+    ) {
+      expect((this as Connection & { _rpcEndpoint: string })._rpcEndpoint).toBe(
+        expectedCrankRpcEndpoint,
+      );
+      return {
+        context: { slot: 1 },
+        value: {
+          blockhash: "11111111111111111111111111111111",
+          lastValidBlockHeight: 123,
+        },
+      };
+    });
+    vi.spyOn(Connection.prototype, "getEpochInfo").mockResolvedValue({
+      absoluteSlot: 1,
+      blockHeight: 1,
+      epoch: 1,
+      slotIndex: 1,
+      slotsInEpoch: 1,
+      transactionCount: 1,
+    });
+    vi.spyOn(Connection.prototype, "confirmTransaction").mockResolvedValue({
+      context: { slot: 1 },
+      value: { err: null },
+    } as never);
+
+    for (let index = 0; index < 100; index += 1) {
+      const response = await app.fetch(
+        new Request(
+          `http://localhost/v1/spl/is-mint-initialized?mint=${mint}&validator=${validator}&cluster=devnet`,
+        ),
+        env,
+        executionCtx,
+      );
+
+      expect(response.status).toBe(200);
+      await executionCtx.drain();
+    }
+
+    expect(sendRawTransactionSpy).toHaveBeenCalledOnce();
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("starts the background crank when recent transfer queue signatures failed", async () => {
+    const mint = "So11111111111111111111111111111111111111112";
+    const validator = Keypair.generate().publicKey.toBase58();
+    const executionCtx = createExecutionContext();
+    const nowMs = 1_700_000_000_000;
+    const sendRawTransactionSpy = vi
+      .spyOn(Connection.prototype, "sendRawTransaction")
+      .mockResolvedValue("background-crank-signature");
+
+    vi.spyOn(Date, "now").mockReturnValue(nowMs);
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockResolvedValue(
+      createQueueAccountInfo(DELEGATION_PROGRAM_ID),
+    );
+    vi.spyOn(Connection.prototype, "getSignaturesForAddress").mockResolvedValue([
+      {
+        blockTime: Math.floor((nowMs - 30_000) / 1000),
+        confirmationStatus: "confirmed",
+        err: "InvalidWritableAccount",
+        memo: null,
+        signature: "recent-failed-signature",
+        slot: 1,
+      },
+    ]);
+    vi.spyOn(
+      Connection.prototype,
+      "getLatestBlockhashAndContext",
+    ).mockResolvedValue({
+      context: { slot: 1 },
+      value: {
+        blockhash: "11111111111111111111111111111111",
+        lastValidBlockHeight: 123,
+      },
+    });
+    vi.spyOn(Connection.prototype, "getEpochInfo").mockResolvedValue({
+      absoluteSlot: 1,
+      blockHeight: 1,
+      epoch: 1,
+      slotIndex: 1,
+      slotsInEpoch: 1,
+      transactionCount: 1,
+    });
+    vi.spyOn(Connection.prototype, "confirmTransaction").mockResolvedValue({
+      context: { slot: 1 },
+      value: { err: null },
+    } as never);
+
+    const response = await app.fetch(
+      new Request(
+        `http://localhost/v1/spl/is-mint-initialized?mint=${mint}&validator=${validator}`,
+      ),
+      env,
+      executionCtx,
+    );
+
+    expect(response.status).toBe(200);
+
+    await executionCtx.drain();
+
+    expect(sendRawTransactionSpy).toHaveBeenCalledOnce();
   });
 
   it("starts the background crank when the transfer queue has no recent transactions", async () => {
