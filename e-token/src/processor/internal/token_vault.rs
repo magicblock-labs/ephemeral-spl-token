@@ -1,4 +1,4 @@
-use crate::processor::utils::read_mint_decimals;
+use crate::processor::utils::{get_associated_token_address, read_mint_decimals};
 use ephemeral_spl_api::{
     error::EphemeralSplError, require, require_eq_keys, state::load_initialized,
 };
@@ -6,7 +6,9 @@ use pinocchio::cpi::Signer;
 
 use {
     ephemeral_spl_api::state::{
-        ephemeral_ata::load_ephemeral_ata_compat_mut, global_vault::GlobalVault,
+        ephemeral_ata::load_ephemeral_ata_compat_mut,
+        global_vault::GlobalVault,
+        transfer_queue::{queue_views_checked, TransferQueue},
     },
     pinocchio::{error::ProgramError, AccountView, Address, ProgramResult},
 };
@@ -35,6 +37,39 @@ pub(crate) fn transfer_to_vault_for_mint(
             && vault.mint == *expected_mint,
         ProgramError::InvalidAccountData
     );
+
+    let decimals = read_mint_decimals(mint_info, token_program_info)?;
+
+    pinocchio_token_2022::instructions::TransferChecked {
+        mint: mint_info,
+        from: user_source_token_acc,
+        to: vault_token_acc,
+        authority: user_authority,
+        token_program: token_program_info.address(),
+        amount,
+        decimals,
+    }
+    .invoke()
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn transfer_to_queue_vault_for_mint(
+    queue_info: &AccountView,
+    mint_info: &AccountView,
+    user_source_token_acc: &AccountView,
+    vault_token_acc: &AccountView,
+    user_authority: &AccountView,
+    token_program_info: &AccountView,
+    expected_mint: &Address,
+    amount: u64,
+) -> ProgramResult {
+    let _ = validate_queue_vault_for_mint(
+        queue_info,
+        mint_info,
+        vault_token_acc,
+        token_program_info,
+        expected_mint,
+    )?;
 
     let decimals = read_mint_decimals(mint_info, token_program_info)?;
 
@@ -126,6 +161,11 @@ pub(crate) fn withdraw_ephemeral_ata_tokens(
     Ok(())
 }
 
+pub(crate) struct QueueVault {
+    pub(crate) bump: u8,
+    pub(crate) validator: Address,
+}
+
 #[inline(always)]
 pub(crate) fn validate_vault_for_mint(
     vault_info: &AccountView,
@@ -151,4 +191,42 @@ pub(crate) fn validate_vault_for_mint(
     );
 
     Ok(vault.bump)
+}
+
+pub(crate) fn validate_queue_vault_for_mint(
+    queue_info: &AccountView,
+    mint_info: &AccountView,
+    vault_token_acc_info: &AccountView,
+    token_program_info: &AccountView,
+    expected_mint: &Address,
+) -> Result<QueueVault, ProgramError> {
+    let (bump, validator) = {
+        let data = unsafe { queue_info.borrow_unchecked() };
+        let (header, _) = queue_views_checked(data)?;
+        require!(
+            header.mint == *mint_info.address() && header.mint == *expected_mint,
+            ProgramError::InvalidAccountData
+        );
+        (header.bump, header.validator)
+    };
+
+    let derived_queue = TransferQueue::derive_pda(mint_info.address(), &validator, bump)?;
+    require_eq_keys!(
+        &derived_queue,
+        queue_info.address(),
+        ProgramError::InvalidSeeds
+    );
+
+    let expected_vault_token = get_associated_token_address(
+        queue_info.address(),
+        mint_info.address(),
+        token_program_info.address(),
+    );
+    require_eq_keys!(
+        &expected_vault_token,
+        vault_token_acc_info.address(),
+        EphemeralSplError::VaultTokenAccountMismatch
+    );
+
+    Ok(QueueVault { bump, validator })
 }

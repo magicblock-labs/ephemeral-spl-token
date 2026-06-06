@@ -1,15 +1,11 @@
-use ephemeral_rollups_pinocchio::acl::permission_pda_from_permissioned_account;
 use ephemeral_spl_api::state::transfer_queue::{
     capacity_from_data_len, TransferQueue, TransferQueueHeader, HEADER_LEN, ITEM_LEN,
     TRANSFER_QUEUE_VERSION,
 };
 use ephemeral_spl_api::ID as PROGRAM;
-use ephemeral_token_program::InitializeTransferQueueArgs;
-use solana_account::Account as SolanaAccount;
-use solana_instruction::Instruction;
 use {
-    ephemeral_spl_api::instruction, solana_instruction::AccountMeta, solana_program_test::tokio,
-    solana_pubkey::Pubkey, solana_signer::Signer, solana_transaction::Transaction,
+    solana_program_test::tokio, solana_pubkey::Pubkey, solana_signer::Signer,
+    solana_transaction::Transaction,
 };
 
 mod common;
@@ -25,46 +21,22 @@ const VALIDATOR: Pubkey = Pubkey::new_from_array([77; 32]);
 
 #[tokio::test]
 async fn initialize_transfer_queue_default_size() {
-    let mint = utils::test_pubkey("initialize_transfer_queue_default_size::mint");
-    let context = utils::start_program_test_with(PROGRAM, |pt| {
-        pt.add_account(
-            mint,
-            SolanaAccount {
-                lamports: 1,
-                data: vec![],
-                owner: solana_system_interface::program::ID,
-                executable: false,
-                rent_epoch: 0,
-            },
-        );
-    })
-    .await;
-
+    let mut context = utils::start_program_test(PROGRAM).await;
     let payer_kp = utils::fixed_payer_keypair();
     let payer = payer_kp.pubkey();
+    let mint_kp = utils::test_keypair("initialize_transfer_queue_default_size::mint");
+    let mint = mint_kp.pubkey();
+    utils::setup_mint_and_token_accounts(&mut context, &payer_kp, &mint_kp, 6, 0, 1).await;
 
     let (queue, bump) = TransferQueue::find_pda(&mint, &VALIDATOR);
-    let queue_permission = permission_pda_from_permissioned_account(&queue);
-
-    let ix = Instruction {
-        program_id: PROGRAM,
-        accounts: vec![
-            AccountMeta::new(payer, true),
-            AccountMeta::new(queue, false),
-            AccountMeta::new(queue_permission, false),
-            AccountMeta::new_readonly(mint, false),
-            AccountMeta::new_readonly(VALIDATOR, false),
-            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
-            AccountMeta::new_readonly(utils::permission_program_id(), false),
-        ],
-        data: instruction::ESplInstruction::InitializeTransferQueue.with_data(
-            &InitializeTransferQueueArgs {
-                requested_items: None,
-            }
-            .encode()
-            .unwrap(),
-        ),
-    };
+    let ix = utils::build_initialize_transfer_queue_ix(
+        payer,
+        queue,
+        mint,
+        VALIDATOR,
+        None,
+        spl_token_interface::ID,
+    );
 
     let tx = Transaction::new_signed_with_payer(
         &[ix],
@@ -105,48 +77,24 @@ async fn initialize_transfer_queue_default_size() {
 
 #[tokio::test]
 async fn initialize_transfer_queue_custom_size_is_idempotent() {
-    let mint = utils::test_pubkey("initialize_transfer_queue_custom_size_is_idempotent::mint");
-    let context = utils::start_program_test_with(PROGRAM, |pt| {
-        pt.add_account(
-            mint,
-            SolanaAccount {
-                lamports: 1,
-                data: vec![],
-                owner: solana_system_interface::program::ID,
-                executable: false,
-                rent_epoch: 0,
-            },
-        );
-    })
-    .await;
-
+    let mut context = utils::start_program_test(PROGRAM).await;
     let payer_kp = utils::fixed_payer_keypair();
     let payer = payer_kp.pubkey();
+    let mint_kp = utils::test_keypair("initialize_transfer_queue_custom_size_is_idempotent::mint");
+    let mint = mint_kp.pubkey();
+    utils::setup_mint_and_token_accounts(&mut context, &payer_kp, &mint_kp, 6, 0, 1).await;
+
     let (queue, bump) = TransferQueue::find_pda(&mint, &VALIDATOR);
-    let queue_permission = permission_pda_from_permissioned_account(&queue);
 
     let items = 4_u32;
-    let data = instruction::ESplInstruction::InitializeTransferQueue.with_data(
-        &InitializeTransferQueueArgs {
-            requested_items: Some(items),
-        }
-        .encode()
-        .unwrap(),
+    let ix_init_custom = utils::build_initialize_transfer_queue_ix(
+        payer,
+        queue,
+        mint,
+        VALIDATOR,
+        Some(items),
+        spl_token_interface::ID,
     );
-
-    let ix_init_custom = Instruction {
-        program_id: PROGRAM,
-        accounts: vec![
-            AccountMeta::new(payer, true),
-            AccountMeta::new(queue, false),
-            AccountMeta::new(queue_permission, false),
-            AccountMeta::new_readonly(mint, false),
-            AccountMeta::new_readonly(VALIDATOR, false),
-            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
-            AccountMeta::new_readonly(utils::permission_program_id(), false),
-        ],
-        data,
-    };
 
     let tx_custom = Transaction::new_signed_with_payer(
         &[ix_init_custom],
@@ -163,25 +111,14 @@ async fn initialize_transfer_queue_custom_size_is_idempotent() {
     .unwrap();
 
     let second_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
-    let ix_noop = Instruction {
-        program_id: PROGRAM,
-        accounts: vec![
-            AccountMeta::new(payer, true),
-            AccountMeta::new(queue, false),
-            AccountMeta::new(queue_permission, false),
-            AccountMeta::new_readonly(mint, false),
-            AccountMeta::new_readonly(VALIDATOR, false),
-            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
-            AccountMeta::new_readonly(utils::permission_program_id(), false),
-        ],
-        data: instruction::ESplInstruction::InitializeTransferQueue.with_data(
-            &InitializeTransferQueueArgs {
-                requested_items: None,
-            }
-            .encode()
-            .unwrap(),
-        ),
-    };
+    let ix_noop = utils::build_initialize_transfer_queue_ix(
+        payer,
+        queue,
+        mint,
+        VALIDATOR,
+        None,
+        spl_token_interface::ID,
+    );
     let tx_noop = Transaction::new_signed_with_payer(
         &[ix_noop],
         Some(&payer),

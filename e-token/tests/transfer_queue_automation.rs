@@ -6,18 +6,15 @@ use common::magic_mock::{
     take_captured_schedules, CapturedScheduleAccount,
 };
 use dlp_api::pda::magic_fee_vault_pda_from_validator;
-use ephemeral_rollups_pinocchio::{
-    acl::{permission_pda_from_permissioned_account, PERMISSION_PROGRAM_ID},
-    spl::EphemeralAta,
-};
-use ephemeral_spl_api::state::transfer_queue::{
-    QueuedTransfer, SplTokenProgram, TransferQueueHeader, HEADER_LEN, ITEM_LEN, QUEUE_SEED,
+use ephemeral_spl_api::state::{
+    ephemeral_ata::EphemeralAta,
+    transfer_queue::{
+        QueuedTransfer, SplTokenProgram, TransferQueueHeader, HEADER_LEN, ITEM_LEN, QUEUE_SEED,
+    },
 };
 use ephemeral_spl_api::ID as PROGRAM;
 use ephemeral_spl_api::{instruction, state::transfer_queue::TransferQueue};
-use ephemeral_token_program::{
-    DepositAndQueueTransferArgs, ExecuteQueuedTransferArgs, InitializeTransferQueueArgs,
-};
+use ephemeral_token_program::{DepositAndQueueTransferArgs, ExecuteQueuedTransferArgs};
 use magicblock_magic_program_api::{Pubkey as MagicPubkey, MAGIC_CONTEXT_PUBKEY};
 use solana_account::Account as SolanaAccount;
 use solana_instruction::{AccountMeta, Instruction};
@@ -109,6 +106,26 @@ fn delegation_program() -> Pubkey {
     Pubkey::new_from_array(ephemeral_rollups_pinocchio::consts::DELEGATION_PROGRAM_ID.to_bytes())
 }
 
+fn initialize_global_vault_ix(payer: Pubkey, vault: Pubkey, mint: Pubkey) -> Instruction {
+    let (vault_eata, _) = EphemeralAta::find_pda(&vault, &mint);
+    let vault_ata = utils::derive_associated_token_address(vault, mint);
+
+    Instruction {
+        program_id: PROGRAM,
+        accounts: vec![
+            AccountMeta::new(vault, false),
+            AccountMeta::new(payer, true),
+            AccountMeta::new_readonly(mint, false),
+            AccountMeta::new(vault_eata, false),
+            AccountMeta::new(vault_ata, false),
+            AccountMeta::new_readonly(spl_token_interface::ID, false),
+            AccountMeta::new_readonly(utils::associated_token_program_id(), false),
+            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+        ],
+        data: instruction::ESplInstruction::InitializeGlobalVault.to_vec(),
+    }
+}
+
 struct Fixture {
     context: ProgramTestContext,
     payer_kp: Keypair,
@@ -157,7 +174,6 @@ async fn setup_fixture() -> Fixture {
     let validator = automation_validator();
     let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
 
-    let pdas = utils::derive_pdas(PROGRAM, payer, mint);
     let setup = utils::setup_mint_and_token_accounts(
         &mut context,
         &payer_kp,
@@ -181,11 +197,9 @@ async fn setup_fixture() -> Fixture {
         }
         .into(),
     );
-    let queue_permission = permission_pda_from_permissioned_account(&queue);
-    let vault = pdas.vault;
+    let vault = utils::derive_pdas(PROGRAM, payer, mint).vault;
     let source_ata = setup.user_tokens[0];
     let destination_ata = utils::derive_associated_token_address(payer, mint);
-    let (vault_eata, _) = EphemeralAta::find_pda(&vault, &mint);
     let vault_ata = utils::derive_associated_token_address(vault, mint);
 
     let ix_init_rent = Instruction {
@@ -199,40 +213,15 @@ async fn setup_fixture() -> Fixture {
     };
     let ix_fund_rent =
         solana_system_interface::instruction::transfer(&payer, &rent_pda, 100_000_000);
-    let ix_init_vault = Instruction {
-        program_id: PROGRAM,
-        accounts: vec![
-            AccountMeta::new(vault, false),
-            AccountMeta::new(payer, true),
-            AccountMeta::new_readonly(mint, false),
-            AccountMeta::new(vault_eata, false),
-            AccountMeta::new(vault_ata, false),
-            AccountMeta::new_readonly(spl_token_interface::ID, false),
-            AccountMeta::new_readonly(utils::associated_token_program_id(), false),
-            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
-        ],
-        data: instruction::ESplInstruction::InitializeGlobalVault.to_vec(),
-    };
-
-    let ix_init_queue = Instruction {
-        program_id: PROGRAM,
-        accounts: vec![
-            AccountMeta::new(payer, true),
-            AccountMeta::new(queue, false),
-            AccountMeta::new(queue_permission, false),
-            AccountMeta::new_readonly(mint, false),
-            AccountMeta::new_readonly(validator, false),
-            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
-            AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
-        ],
-        data: instruction::ESplInstruction::InitializeTransferQueue.with_data(
-            &InitializeTransferQueueArgs {
-                requested_items: None,
-            }
-            .encode()
-            .unwrap(),
-        ),
-    };
+    let ix_init_queue = utils::build_initialize_transfer_queue_ix(
+        payer,
+        queue,
+        mint,
+        validator,
+        None,
+        spl_token_interface::ID,
+    );
+    let ix_init_global_vault = initialize_global_vault_ix(payer, vault, mint);
 
     let ix_init_destination_ata = Instruction {
         program_id: utils::associated_token_program_id(),
@@ -251,8 +240,8 @@ async fn setup_fixture() -> Fixture {
         &[
             ix_init_rent,
             ix_fund_rent,
-            ix_init_vault,
             ix_init_queue,
+            ix_init_global_vault,
             ix_init_destination_ata,
         ],
         Some(&payer),
@@ -583,7 +572,6 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
         let validator = automation_validator();
         let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
 
-        let pdas = utils::derive_pdas(PROGRAM, payer, mint);
         let setup = utils::setup_mint_and_token_accounts(
             &mut context,
             &payer_kp,
@@ -611,12 +599,9 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
             }
             .into(),
         );
-        let queue_permission = permission_pda_from_permissioned_account(&queue);
-        let vault = pdas.vault;
+        let vault = utils::derive_pdas(PROGRAM, payer, mint).vault;
         let source_ata = setup.user_tokens[0];
         let destination_ata = utils::derive_associated_token_address(payer, mint);
-        let (vault_eata, _) =
-            Pubkey::find_program_address(&[vault.as_ref(), mint.as_ref()], &PROGRAM);
         let vault_ata = utils::derive_associated_token_address(vault, mint);
 
         let ix_init_rent = Instruction {
@@ -630,40 +615,15 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
         };
         let ix_fund_rent =
             solana_system_interface::instruction::transfer(&payer, &rent_pda, 100_000_000);
-        let ix_init_vault = Instruction {
-            program_id: PROGRAM,
-            accounts: vec![
-                AccountMeta::new(vault, false),
-                AccountMeta::new(payer, true),
-                AccountMeta::new_readonly(mint, false),
-                AccountMeta::new(vault_eata, false),
-                AccountMeta::new(vault_ata, false),
-                AccountMeta::new_readonly(spl_token_interface::ID, false),
-                AccountMeta::new_readonly(utils::associated_token_program_id(), false),
-                AccountMeta::new_readonly(solana_system_interface::program::ID, false),
-            ],
-            data: instruction::ESplInstruction::InitializeGlobalVault.to_vec(),
-        };
-
-        let ix_init_queue = Instruction {
-            program_id: PROGRAM,
-            accounts: vec![
-                AccountMeta::new(payer, true),
-                AccountMeta::new(queue, false),
-                AccountMeta::new(queue_permission, false),
-                AccountMeta::new_readonly(mint, false),
-                AccountMeta::new_readonly(validator, false),
-                AccountMeta::new_readonly(solana_system_interface::program::ID, false),
-                AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
-            ],
-            data: instruction::ESplInstruction::InitializeTransferQueue.with_data(
-                &InitializeTransferQueueArgs {
-                    requested_items: None,
-                }
-                .encode()
-                .unwrap(),
-            ),
-        };
+        let ix_init_queue = utils::build_initialize_transfer_queue_ix(
+            payer,
+            queue,
+            mint,
+            validator,
+            None,
+            spl_token_interface::ID,
+        );
+        let ix_init_global_vault = initialize_global_vault_ix(payer, vault, mint);
 
         let ix_init_destination_ata = Instruction {
             program_id: utils::associated_token_program_id(),
@@ -682,8 +642,8 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
             &[
                 ix_init_rent,
                 ix_fund_rent,
-                ix_init_vault,
                 ix_init_queue,
+                ix_init_global_vault,
                 ix_init_destination_ata,
             ],
             Some(&payer),
@@ -817,7 +777,6 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
         let validator = automation_validator();
         let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
 
-        let pdas = utils::derive_pdas(PROGRAM, payer, mint);
         let setup = utils::setup_mint_and_token_accounts(
             &mut context,
             &payer_kp,
@@ -829,7 +788,6 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
         .await;
 
         let (queue, _) = TransferQueue::find_pda(&mint, &validator);
-        let queue_permission = permission_pda_from_permissioned_account(&queue);
         let magic_fee_vault = magic_fee_vault(&validator);
         context.set_account(
             &magic_fee_vault,
@@ -842,10 +800,9 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
             }
             .into(),
         );
-        let vault = pdas.vault;
+        let vault = utils::derive_pdas(PROGRAM, payer, mint).vault;
         let source_ata = setup.user_tokens[0];
         let destination_ata = utils::derive_associated_token_address(payer, mint);
-        let (vault_eata, _) = EphemeralAta::find_pda(&vault, &mint);
         let vault_ata = utils::derive_associated_token_address(vault, mint);
 
         let ix_init_rent = Instruction {
@@ -859,40 +816,15 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
         };
         let ix_fund_rent =
             solana_system_interface::instruction::transfer(&payer, &rent_pda, 100_000_000);
-        let ix_init_vault = Instruction {
-            program_id: PROGRAM,
-            accounts: vec![
-                AccountMeta::new(vault, false),
-                AccountMeta::new(payer, true),
-                AccountMeta::new_readonly(mint, false),
-                AccountMeta::new(vault_eata, false),
-                AccountMeta::new(vault_ata, false),
-                AccountMeta::new_readonly(spl_token_interface::ID, false),
-                AccountMeta::new_readonly(utils::associated_token_program_id(), false),
-                AccountMeta::new_readonly(solana_system_interface::program::ID, false),
-            ],
-            data: instruction::ESplInstruction::InitializeGlobalVault.to_vec(),
-        };
-
-        let ix_init_queue = Instruction {
-            program_id: PROGRAM,
-            accounts: vec![
-                AccountMeta::new(payer, true),
-                AccountMeta::new(queue, false),
-                AccountMeta::new(queue_permission, false),
-                AccountMeta::new_readonly(mint, false),
-                AccountMeta::new_readonly(validator, false),
-                AccountMeta::new_readonly(solana_system_interface::program::ID, false),
-                AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
-            ],
-            data: instruction::ESplInstruction::InitializeTransferQueue.with_data(
-                &InitializeTransferQueueArgs {
-                    requested_items: None,
-                }
-                .encode()
-                .unwrap(),
-            ),
-        };
+        let ix_init_queue = utils::build_initialize_transfer_queue_ix(
+            payer,
+            queue,
+            mint,
+            validator,
+            None,
+            spl_token_interface::ID,
+        );
+        let ix_init_global_vault = initialize_global_vault_ix(payer, vault, mint);
 
         let ix_init_destination_ata = Instruction {
             program_id: utils::associated_token_program_id(),
@@ -911,8 +843,8 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
             &[
                 ix_init_rent,
                 ix_fund_rent,
-                ix_init_vault,
                 ix_init_queue,
+                ix_init_global_vault,
                 ix_init_destination_ata,
             ],
             Some(&payer),

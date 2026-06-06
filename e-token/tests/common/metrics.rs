@@ -4,6 +4,8 @@
 //! Metric keys are short `area::step` strings (for example `del_eata::delegate`, `tq_auto::crank_1`).
 //! Relative paths are resolved from the **workspace** root (the parent of this crate’s manifest).
 
+#![allow(dead_code)]
+
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};

@@ -1,9 +1,5 @@
 use crate::utils::pre_create_group_receipt;
 use bytemuck::Zeroable;
-use ephemeral_rollups_pinocchio::acl::{
-    permission_pda_from_permissioned_account, PERMISSION_PROGRAM_ID,
-};
-use ephemeral_rollups_pinocchio::spl::EphemeralAta;
 use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::state::group_receipt::GroupReceiptHeader;
 use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
@@ -11,7 +7,7 @@ use ephemeral_spl_api::state::transfer_queue::{
     queue_views_checked, QueuedTransfer, TransferQueue, TransferQueueHeader, HEADER_LEN, ITEM_LEN,
 };
 use ephemeral_spl_api::ID as PROGRAM;
-use ephemeral_token_program::{DepositAndQueueTransferArgs, InitializeTransferQueueArgs};
+use ephemeral_token_program::DepositAndQueueTransferArgs;
 use serial_test::serial;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::clock::Clock;
@@ -75,7 +71,6 @@ async fn setup_fixture(items: Option<u32>) -> Fixture {
     let mint = mint_kp.pubkey();
     let validator = Keypair::new().pubkey();
 
-    let pdas = utils::derive_pdas(PROGRAM, payer, mint);
     let setup = utils::setup_mint_and_token_accounts(
         &mut context,
         &payer_kp,
@@ -87,49 +82,19 @@ async fn setup_fixture(items: Option<u32>) -> Fixture {
     .await;
 
     let (queue, _) = TransferQueue::find_pda(&mint, &validator);
-    let queue_permission = permission_pda_from_permissioned_account(&queue);
-    let vault = pdas.vault;
+    let vault = queue;
     let user_source_ata = setup.user_tokens[0];
     let destination_ata = utils::derive_associated_token_address(payer, mint);
-    let (vault_eata, _) = EphemeralAta::find_pda(&vault, &mint);
     let vault_ata = utils::derive_associated_token_address(vault, mint);
 
-    let ix_init_vault = Instruction {
-        program_id: PROGRAM,
-        accounts: vec![
-            AccountMeta::new(vault, false),
-            AccountMeta::new(payer, true),
-            AccountMeta::new_readonly(mint, false),
-            AccountMeta::new(vault_eata, false),
-            AccountMeta::new(vault_ata, false),
-            AccountMeta::new_readonly(spl_token_interface::ID, false),
-            AccountMeta::new_readonly(utils::associated_token_program_id(), false),
-            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
-        ],
-        data: instruction::ESplInstruction::InitializeGlobalVault.to_vec(),
-    };
-
-    let queue_init_data = instruction::ESplInstruction::InitializeTransferQueue.with_data(
-        &InitializeTransferQueueArgs {
-            requested_items: items,
-        }
-        .encode()
-        .unwrap(),
+    let ix_init_queue = utils::build_initialize_transfer_queue_ix(
+        payer,
+        queue,
+        mint,
+        validator,
+        items,
+        spl_token_interface::ID,
     );
-
-    let ix_init_queue = Instruction {
-        program_id: PROGRAM,
-        accounts: vec![
-            AccountMeta::new(payer, true),
-            AccountMeta::new(queue, false),
-            AccountMeta::new(queue_permission, false),
-            AccountMeta::new_readonly(mint, false),
-            AccountMeta::new_readonly(validator, false),
-            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
-            AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
-        ],
-        data: queue_init_data,
-    };
 
     let ix_init_destination_ata = Instruction {
         program_id: utils::associated_token_program_id(),
@@ -145,7 +110,7 @@ async fn setup_fixture(items: Option<u32>) -> Fixture {
     };
 
     let tx_init = Transaction::new_signed_with_payer(
-        &[ix_init_vault, ix_init_queue, ix_init_destination_ata],
+        &[ix_init_queue, ix_init_destination_ata],
         Some(&payer),
         &[&payer_kp],
         context.last_blockhash,
@@ -1013,7 +978,6 @@ async fn deposit_and_queue_transfer_return_to_shuttle() {
     let shuttle_id = 42_u32;
     let (shuttle_ephemeral_ata, _) =
         ShuttleMetadata::find_pda(&fixture.payer, &fixture.mint, shuttle_id);
-    let (_shuttle_eata, _) = EphemeralAta::find_pda(&shuttle_ephemeral_ata, &fixture.mint);
     let shuttle_wallet_ata =
         utils::derive_associated_token_address(shuttle_ephemeral_ata, fixture.mint);
     let ix_init_ata = Instruction {

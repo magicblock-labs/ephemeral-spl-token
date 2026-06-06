@@ -935,6 +935,8 @@ export async function buildInitializeMintTransaction(
         transferQueue,
         mint,
         validator,
+        undefined,
+        tokenProgram,
       ),
       initRentPdaIx(
         payer,

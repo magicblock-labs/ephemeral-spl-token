@@ -29,7 +29,7 @@ use crate::processor::internal::shuttle_delegation::{
 };
 #[cfg(not(feature = "no-fees"))]
 use crate::processor::utils::read_mint_decimals;
-use crate::processor::utils::MAGIC_VAULT_ID;
+use crate::processor::utils::{get_associated_token_address, MAGIC_VAULT_ID};
 use dlp_api::{args::PostDelegationActions, compact::ClearTextWithInsertable};
 use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
 
@@ -308,6 +308,11 @@ fn private_transfer_action_encrypted(
         group_id,
     )
     .0;
+    let queue_vault_token_info = get_associated_token_address(
+        queue_info.address(),
+        common_accounts.mint_info.address(),
+        common_accounts.token_program_info.address(),
+    );
     Ok(PostDelegationActions {
         inserted_signers: 0,
         inserted_non_signers: 0,
@@ -315,12 +320,12 @@ fn private_transfer_action_encrypted(
         non_signers: alloc::vec![
             MaybeEncryptedPubkey::ClearText(crate::ID.to_bytes()), // 1
             MaybeEncryptedPubkey::ClearText(queue_info.address().to_bytes()), // 2
-            MaybeEncryptedPubkey::ClearText(common_accounts.global_vault_info.address().to_bytes()), // 3
+            MaybeEncryptedPubkey::ClearText(queue_info.address().to_bytes()), // 3
             MaybeEncryptedPubkey::ClearText(common_accounts.mint_info.address().to_bytes()), // 4
             MaybeEncryptedPubkey::ClearText(
                 common_accounts.owner_source_token_info.address().to_bytes()
             ), // 5
-            MaybeEncryptedPubkey::ClearText(common_accounts.vault_token_info.address().to_bytes()), // 6
+            MaybeEncryptedPubkey::ClearText(queue_vault_token_info.to_bytes()), // 6
             MaybeEncryptedPubkey::Encrypted(EncryptedBuffer::new(encrypted_destination.into())), // 7
             MaybeEncryptedPubkey::ClearText(
                 common_accounts.token_program_info.address().to_bytes()
@@ -336,7 +341,7 @@ fn private_transfer_action_encrypted(
             program_id: 1,
             accounts: alloc::vec![
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(2, false)), // queue_info
-                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(3, false)), // global_vault_info
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(3, false)), // queue vault authority
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(4, false)), // mint_info
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(5, false)), // owner_source_token_info
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(6, false)), // vault_token_info
