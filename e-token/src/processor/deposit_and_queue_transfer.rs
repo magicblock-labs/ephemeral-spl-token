@@ -1,5 +1,7 @@
 use crate::processor::internal::group_receipt::derive_group_receipt_id;
-use crate::processor::internal::token_vault::transfer_to_vault_for_mint;
+use crate::processor::internal::token_vault::{
+    transfer_to_queue_vault_for_mint, transfer_to_vault_for_mint, validate_queue_vault_for_mint,
+};
 use crate::processor::utils::{
     group_receipt_create, read_mint_decimals, token_program_kind, GroupReceiptAccounts,
 };
@@ -31,7 +33,7 @@ const MILLIS_PER_SECOND: u64 = 1_000;
 /// Accounts:
 ///
 ///  0: [writable]          - PDA     : Transfer queue account (PDA derived from [QUEUE_SEED, mint, validator]).
-///  1: []                  - PDA     : Global vault account (PDA derived from [mint]).
+///  1: []                  - PDA     : Vault authority account (global vault or transfer queue).
 ///  2: []                  - SPL     : Mint account.
 ///  3: [writable]          - SPL     : User source token account.
 ///  4: [writable]          - SPL     : Vault destination token account.
@@ -141,16 +143,43 @@ pub fn process_deposit_and_queue_transfer(
         ProgramError::InvalidAccountData
     );
 
-    transfer_to_vault_for_mint(
-        vault_info,
-        mint_info,
-        user_source_token_acc,
-        vault_token_acc,
-        user_authority,
-        token_program_info,
-        mint_info.address(),
-        amount,
-    )?;
+    if address_eq(vault_info.address(), queue_info.address()) {
+        let queue_vault = validate_queue_vault_for_mint(
+            queue_info,
+            mint_info,
+            vault_token_acc,
+            token_program_info,
+            mint_info.address(),
+        )?;
+        require!(
+            validator == queue_vault.validator && bump == queue_vault.bump,
+            ProgramError::InvalidAccountData
+        );
+
+        transfer_to_queue_vault_for_mint(
+            queue_info,
+            mint_info,
+            user_source_token_acc,
+            vault_token_acc,
+            user_authority,
+            token_program_info,
+            mint_info.address(),
+            amount,
+        )?;
+    } else {
+        // Backward compatibility for old clients that still pass the global vault/ATA.
+        // TODO: remove this global-vault path after the queue-vault migration window.
+        transfer_to_vault_for_mint(
+            vault_info,
+            mint_info,
+            user_source_token_acc,
+            vault_token_acc,
+            user_authority,
+            token_program_info,
+            mint_info.address(),
+            amount,
+        )?;
+    }
 
     let source = *user_authority.address();
     let destination_owner = *destination_info.address();

@@ -53,7 +53,7 @@ Important behavior:
 - if `fromBalance` is `"base"`, the blockhash is fetched from the base RPC
 - if `fromBalance` is `"ephemeral"`, the blockhash is fetched from the ephemeral RPC
 - `getBalance` reads the owner ATA on the base RPC
-- `getPrivateBalance` returns `0` unless the owner's eATA is delegated to the selected ephemeral RPC
+- `getPrivateBalance` returns `0` when the owner's eATA is undelegated and returns an error when it is delegated to another validator
 
 ## Stack
 
@@ -93,6 +93,8 @@ Variables:
 - `EPHEMERAL_RPC_URL`: mainnet ephemeral RPC used when `cluster` is omitted or set to `mainnet`
 - `BASE_DEVNET_RPC_URL`: devnet base Solana RPC used when `cluster=devnet`
 - `EPHEMERAL_DEVNET_RPC_URL`: devnet ephemeral RPC used when `cluster=devnet`
+- `TRANSFER_QUEUE_CRANK_RPC_URL`: optional RPC used only to submit background transfer queue crank transactions for mainnet
+- `TRANSFER_QUEUE_DEVNET_CRANK_RPC_URL`: optional RPC used only to submit background transfer queue crank transactions for devnet
 - `METIS_SWAP_API_URL`: optional Triton Metis Swap API base URL, including your private token and the `/metis` suffix
 - `PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE`: optional mainnet LUT override for private `base -> base` transfers
 - `PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE`: optional devnet LUT override for private `base -> base` transfers
@@ -105,7 +107,9 @@ Example:
 BASE_RPC_URL=https://rpc.magicblock.app/mainnet
 EPHEMERAL_RPC_URL=https://mainnet.magicblock.app
 BASE_DEVNET_RPC_URL=https://rpc.magicblock.app/devnet
-EPHEMERAL_DEVNET_RPC_URL=https://devnet.magicblock.app
+EPHEMERAL_DEVNET_RPC_URL=https://devnet-tee.magicblock.app
+# TRANSFER_QUEUE_CRANK_RPC_URL=
+# TRANSFER_QUEUE_DEVNET_CRANK_RPC_URL=
 METIS_SWAP_API_URL=https://<endpoint>.rpcpool.com/<private_token>/metis
 # PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE=
 # PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE=
@@ -704,7 +708,7 @@ Response shape:
 
 ### `GET /v1/spl/private-balance`
 
-Returns the owner private balance from the ephemeral RPC only when the owner's eATA is delegated to the selected ephemeral RPC. If `cluster` is omitted, the API uses `mainnet`.
+Returns the owner private balance from the ephemeral RPC only when the owner's eATA is delegated to the selected ephemeral RPC. Returns `0` when the eATA is undelegated and an error when it is delegated to another validator. If `cluster` is omitted, the API uses `mainnet`.
 
 Example:
 

@@ -2,9 +2,16 @@
 //! `dead_code` for the rest.
 #![allow(dead_code)]
 
+use ephemeral_rollups_pinocchio::acl::permission_pda_from_permissioned_account;
+use ephemeral_rollups_pinocchio::pda::{
+    delegate_buffer_pda_from_delegated_account_and_owner_program,
+    delegation_metadata_pda_from_delegated_account, delegation_record_pda_from_delegated_account,
+};
 use ephemeral_spl_api::state::group_receipt::GroupReceipt;
-use ephemeral_spl_api::ID as PROGRAM;
+use ephemeral_spl_api::{instruction, ID as PROGRAM};
+use ephemeral_token_program::InitializeTransferQueueArgs;
 use solana_account::Account;
+use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
 use solana_program::{
     account_info::AccountInfo,
@@ -23,7 +30,7 @@ use solana_pubkey::{pubkey, Pubkey};
 use solana_signer::Signer;
 use solana_system_interface::instruction::create_account;
 use solana_transaction::Transaction;
-use spl_token_interface::instruction::{initialize_account, initialize_account3, initialize_mint};
+use spl_token_interface::instruction::{initialize_account, initialize_mint, TokenInstruction};
 use spl_token_interface::state::{Account as SplAccount, Mint};
 
 // this must be same as ESplInternalInstruction
@@ -191,7 +198,8 @@ fn process_associated_token_program_mock(
     if *system_program.key != solana_system_interface::program::ID {
         return Err(ProgramError::IncorrectProgramId);
     }
-    if *token_program.key != spl_token_interface::ID {
+    let token_2022_program = Pubkey::new_from_array(pinocchio_token_2022::ID.to_bytes());
+    if *token_program.key != spl_token_interface::ID && *token_program.key != token_2022_program {
         return Err(ProgramError::IncorrectProgramId);
     }
 
@@ -238,8 +246,14 @@ fn process_associated_token_program_mock(
         &[ata_signer_seeds],
     )?;
 
-    let mut init_ix = initialize_account3(token_program.key, ata.key, mint.key, wallet.key)?;
-    init_ix.program_id = *token_program.key;
+    let init_ix = Instruction {
+        program_id: *token_program.key,
+        accounts: vec![
+            AccountMeta::new(*ata.key, false),
+            AccountMeta::new_readonly(*mint.key, false),
+        ],
+        data: TokenInstruction::InitializeAccount3 { owner: *wallet.key }.pack(),
+    };
     invoke(&init_ix, &[ata.clone(), mint.clone()])?;
 
     Ok(())
@@ -313,15 +327,69 @@ pub fn pre_create_group_receipt(
 }
 
 pub fn derive_associated_token_address(wallet: Pubkey, mint: Pubkey) -> Pubkey {
+    derive_associated_token_address_with_program(wallet, mint, spl_token_interface::ID)
+}
+
+pub fn derive_associated_token_address_with_program(
+    wallet: Pubkey,
+    mint: Pubkey,
+    token_program: Pubkey,
+) -> Pubkey {
     Pubkey::find_program_address(
-        &[
-            wallet.as_ref(),
-            spl_token_interface::ID.as_ref(),
-            mint.as_ref(),
-        ],
+        &[wallet.as_ref(), token_program.as_ref(), mint.as_ref()],
         &ASSOCIATED_TOKEN_PROGRAM_ID,
     )
     .0
+}
+
+pub fn derive_ephemeral_ata(program: Pubkey, owner: Pubkey, mint: Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[owner.as_ref(), mint.as_ref()], &program)
+}
+
+pub fn build_initialize_transfer_queue_ix(
+    payer: Pubkey,
+    queue: Pubkey,
+    mint: Pubkey,
+    validator: Pubkey,
+    requested_items: Option<u32>,
+    token_program: Pubkey,
+) -> Instruction {
+    let queue_permission = permission_pda_from_permissioned_account(&queue);
+    let (queue_ephemeral_ata, _) = derive_ephemeral_ata(PROGRAM, queue, mint);
+    let queue_vault_ata = derive_associated_token_address_with_program(queue, mint, token_program);
+    let delegate_buffer = delegate_buffer_pda_from_delegated_account_and_owner_program(
+        &queue_ephemeral_ata,
+        &PROGRAM,
+    );
+    let delegation_record = delegation_record_pda_from_delegated_account(&queue_ephemeral_ata);
+    let delegation_metadata = delegation_metadata_pda_from_delegated_account(&queue_ephemeral_ata);
+
+    Instruction {
+        program_id: PROGRAM,
+        accounts: vec![
+            AccountMeta::new(payer, true),
+            AccountMeta::new(queue, false),
+            AccountMeta::new(queue_permission, false),
+            AccountMeta::new_readonly(mint, false),
+            AccountMeta::new_readonly(validator, false),
+            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+            AccountMeta::new_readonly(permission_program_id(), false),
+            AccountMeta::new(queue_ephemeral_ata, false),
+            AccountMeta::new(queue_vault_ata, false),
+            AccountMeta::new_readonly(token_program, false),
+            AccountMeta::new_readonly(associated_token_program_id(), false),
+            AccountMeta::new_readonly(PROGRAM, false),
+            AccountMeta::new(delegate_buffer, false),
+            AccountMeta::new(delegation_record, false),
+            AccountMeta::new(delegation_metadata, false),
+            AccountMeta::new_readonly(ephemeral_rollups_pinocchio::ID, false),
+        ],
+        data: instruction::ESplInstruction::InitializeTransferQueue.with_data(
+            &InitializeTransferQueueArgs { requested_items }
+                .encode()
+                .unwrap(),
+        ),
+    }
 }
 
 #[allow(dead_code)]
