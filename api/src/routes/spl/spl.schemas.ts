@@ -22,7 +22,7 @@ export const transferFeesSchema = z.object({
 export type TransferFees = z.infer<typeof transferFeesSchema>;
 
 export const transactionResponseSchema = z.object({
-  kind: z.enum(["deposit", "withdraw", "transfer", "initializeMint"]),
+  kind: z.enum(["deposit", "withdraw", "transfer", "initializeMint", "undelegateEphemeralAta"]),
   version: z.enum(["legacy", "v0"]),
   transactionBase64: z.string(),
   sendTo: balanceLocationSchema,
@@ -98,6 +98,31 @@ export const initializeMintResponseSchema = transactionResponseSchema.extend({
   rentPda: publicKeySchema,
 }).openapi("InitializeMintResponse");
 export type InitializeMintResponse = z.infer<typeof initializeMintResponseSchema>;
+
+export const undelegateEphemeralAtaRequestSchema = z.object({
+  payer: publicKeySchema.openapi({
+    example: DEPOSIT_EXAMPLE_OWNER,
+  }),
+  mint: publicKeySchema.openapi({
+    example: DEFAULT_DEPOSIT_MINT,
+    description: "SPL mint for the eATA to undelegate.",
+  }),
+  cluster: clusterSchema.optional(),
+}).openapi("UndelegateEphemeralAtaRequest", {
+  example: {
+    payer: DEPOSIT_EXAMPLE_OWNER,
+    mint: DEFAULT_DEPOSIT_MINT,
+  },
+});
+export type UndelegateEphemeralAtaRequest = z.infer<typeof undelegateEphemeralAtaRequestSchema>;
+
+export const undelegateEphemeralAtaResponseSchema = transactionResponseSchema.extend({
+  kind: z.literal("undelegateEphemeralAta"),
+  sendRpcEndpoint: z.string().url().openapi({
+    description: "Exact ephemeral RPC endpoint where the signed undelegation transaction should be submitted.",
+  }),
+}).openapi("UndelegateEphemeralAtaResponse");
+export type UndelegateEphemeralAtaResponse = z.infer<typeof undelegateEphemeralAtaResponseSchema>;
 
 export const depositRequestSchema = z.object({
   owner: publicKeySchema.openapi({

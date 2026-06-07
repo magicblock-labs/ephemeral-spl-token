@@ -15,6 +15,8 @@ pub enum EphemeralSplError {
     VaultTokenAccountMismatch = 5,
     // too many accounts were passed to the instruction
     TooManyAccountKeys = 6,
+    // ephemeral ATA is already delegated to another validator
+    EphemeralAtaValidatorMismatch = 7,
     // internal invariant / unreachable conversion failure
     InfallibleError = 255,
 }
@@ -36,6 +38,7 @@ impl ToStr for EphemeralSplError {
             MintMismatch => "EphemeralSplError::MintMismatch",
             VaultTokenAccountMismatch => "EphemeralSplError::VaultTokenAccountMismatch",
             TooManyAccountKeys => "EphemeralSplError::TooManyAccountKeys",
+            EphemeralAtaValidatorMismatch => "EphemeralSplError::EphemeralAtaValidatorMismatch",
             InfallibleError => "EphemeralSplError::InfallibleError",
         }
     }
@@ -51,6 +54,7 @@ impl core::convert::TryFrom<u32> for EphemeralSplError {
             4 => Ok(EphemeralSplError::MintMismatch),
             5 => Ok(EphemeralSplError::VaultTokenAccountMismatch),
             6 => Ok(EphemeralSplError::TooManyAccountKeys),
+            7 => Ok(EphemeralSplError::EphemeralAtaValidatorMismatch),
             255 => Ok(EphemeralSplError::InfallibleError),
             _ => Err(ProgramError::InvalidArgument),
         }

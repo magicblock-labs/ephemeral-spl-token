@@ -11,6 +11,7 @@ import {
   mintInitializationHandler,
   privateBalanceHandler,
   transferHandler,
+  undelegateEphemeralAtaHandler,
   withdrawHandler,
 } from "./spl.handlers";
 import {
@@ -22,6 +23,7 @@ import {
   mintInitializationRoute,
   privateBalanceRoute,
   transferRoute,
+  undelegateEphemeralAtaRoute,
   withdrawRoute,
 } from "./spl.routes";
 
@@ -33,6 +35,7 @@ app.openapi(depositRoute, depositHandler);
 app.openapi(withdrawRoute, withdrawHandler);
 app.openapi(initializeMintRoute, initializeMintHandler);
 app.openapi(transferRoute, transferHandler);
+app.openapi(undelegateEphemeralAtaRoute, undelegateEphemeralAtaHandler);
 app.openapi(balanceRoute, balanceHandler);
 app.openapi(privateBalanceRoute, privateBalanceHandler);
 app.openapi(mintInitializationRoute, mintInitializationHandler);
