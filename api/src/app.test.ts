@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import {
@@ -201,6 +201,12 @@ function createExecutionContext(): TestExecutionContext {
 }
 
 describe("app", () => {
+  beforeEach(() => {
+    vi.spyOn(Connection.prototype, "getMultipleAccountsInfo").mockImplementation(
+      async addresses => addresses.map(() => null),
+    );
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -231,6 +237,7 @@ describe("app", () => {
     expect(json.paths["/v1/spl/login"]).toBeDefined();
     expect(json.paths["/v1/spl/is-mint-initialized"]).toBeDefined();
     expect(json.paths["/v1/spl/initialize-mint"]).toBeDefined();
+    expect(json.paths["/v1/spl/undelegate-ephemeral-ata"]).toBeDefined();
     expect(json.paths["/v1/swap/quote"]).toBeDefined();
     expect(json.paths["/v1/swap/swap"]).toBeDefined();
     expect(json.tags).toEqual(
@@ -1856,6 +1863,256 @@ describe("app", () => {
     );
   });
 
+  it("builds an unsigned eATA undelegation transaction", async () => {
+    const mint = new PublicKey(DEVNET_USDC_MINT);
+    const payer = new PublicKey(owner);
+    const [ephemeralAta] = deriveEphemeralAta(payer, mint);
+    const ata = deriveAssociatedTokenAddress(mint.toBase58(), owner);
+    const sendRpcEndpoint = "https://devnet-tee.magicblock.app";
+
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockImplementation(
+      async function getLatestBlockhash(this: Connection & { _rpcEndpoint: string }) {
+        expect((this as Connection & { _rpcEndpoint: string })._rpcEndpoint).toBe(
+          `${sendRpcEndpoint}/?token=${MOCK_AUTH_TOKEN}`,
+        );
+        return {
+          blockhash: "11111111111111111111111111111111",
+          lastValidBlockHeight: 123,
+        };
+      },
+    );
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockResolvedValue(
+      createMintAccountInfo(TOKEN_PROGRAM_ID),
+    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      expect(String(input)).toBe("https://devnet-router.magicblock.app/");
+      const body = JSON.parse(String(init?.body)) as {
+        method?: string;
+        params?: string[];
+      };
+      expect(body.method).toBe("getDelegationStatus");
+      expect(body.params).toEqual([ephemeralAta.toBase58()]);
+
+      return new Response(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          result: {
+            isDelegated: true,
+            fqdn: `${sendRpcEndpoint}/`,
+          },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      );
+    });
+
+    const response = await app.request(
+      "/v1/spl/undelegate-ephemeral-ata",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${MOCK_AUTH_TOKEN}`,
+        },
+        body: JSON.stringify({
+          payer: owner,
+          mint: mint.toBase58(),
+          cluster: "devnet",
+        }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(200);
+
+    const json = (await response.json()) as {
+      kind: string;
+      sendTo: string;
+      sendRpcEndpoint: string;
+      transactionBase64: string;
+      recentBlockhash: string;
+      requiredSigners: string[];
+    };
+
+    expect(json.kind).toBe("undelegateEphemeralAta");
+    expect(json.sendTo).toBe("ephemeral");
+    expect(json.sendRpcEndpoint).toBe(sendRpcEndpoint);
+    expect(json.recentBlockhash).toBe("11111111111111111111111111111111");
+    expect(json.requiredSigners).toContain(owner);
+
+    const transaction = Transaction.from(
+      Buffer.from(json.transactionBase64, "base64"),
+    );
+    expect(transaction.instructions).toHaveLength(1);
+
+    const instruction = transaction.instructions[0]!;
+    expect(instruction.programId.equals(EPHEMERAL_SPL_TOKEN_PROGRAM_ID)).toBe(true);
+    expect([...instruction.data]).toEqual([5]);
+    expect(instruction.keys[0]).toEqual(expect.objectContaining({
+      pubkey: payer,
+      isSigner: true,
+      isWritable: true,
+    }));
+    expect(instruction.keys[1]).toEqual(expect.objectContaining({
+      pubkey: new PublicKey(ata),
+      isSigner: false,
+      isWritable: true,
+    }));
+    expect(instruction.keys[2]).toEqual(expect.objectContaining({
+      pubkey: ephemeralAta,
+      isSigner: false,
+      isWritable: false,
+    }));
+  });
+
+  it("falls back to the hardcoded TEE endpoint when router delegation status has no fqdn", async () => {
+    const mint = new PublicKey(DEVNET_USDC_MINT);
+    const payer = new PublicKey(owner);
+    const [ephemeralAta] = deriveEphemeralAta(payer, mint);
+    const delegationRecord = delegationRecordPdaFromDelegatedAccount(ephemeralAta);
+    const teeValidator = new PublicKey("MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo");
+    const sendRpcEndpoint = "https://mainnet-tee.magicblock.app";
+    const calls: string[] = [];
+
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockImplementation(
+      async function getLatestBlockhash(this: Connection & { _rpcEndpoint: string }) {
+        calls.push("blockhash");
+        expect((this as Connection & { _rpcEndpoint: string })._rpcEndpoint).toBe(
+          `${sendRpcEndpoint}/?token=${MOCK_AUTH_TOKEN}`,
+        );
+        return {
+          blockhash: "11111111111111111111111111111111",
+          lastValidBlockHeight: 123,
+        };
+      },
+    );
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(
+      async (address) => {
+        if (address.equals(mint)) {
+          calls.push("mint");
+          return createMintAccountInfo(TOKEN_PROGRAM_ID);
+        }
+
+        if (address.equals(delegationRecord)) {
+          calls.push("delegationRecord");
+          return createDelegationAccountInfo(teeValidator);
+        }
+
+        return null;
+      },
+    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      calls.push("router");
+      return new Response(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          result: {
+            isDelegated: true,
+          },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      );
+    });
+
+    const response = await app.request(
+      "/v1/spl/undelegate-ephemeral-ata",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${MOCK_AUTH_TOKEN}`,
+        },
+        body: JSON.stringify({
+          payer: owner,
+          mint: mint.toBase58(),
+        }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(200);
+
+    const json = (await response.json()) as {
+      sendRpcEndpoint: string;
+    };
+
+    expect(json.sendRpcEndpoint).toBe(sendRpcEndpoint);
+    expect(calls).toEqual(["mint", "router", "delegationRecord", "blockhash"]);
+  });
+
+  it("returns an error when the undelegation endpoint cannot be resolved", async () => {
+    const mint = new PublicKey(DEVNET_USDC_MINT);
+    const payer = new PublicKey(owner);
+    const [ephemeralAta] = deriveEphemeralAta(payer, mint);
+    const delegationRecord = delegationRecordPdaFromDelegatedAccount(ephemeralAta);
+    const getLatestBlockhashSpy = vi.spyOn(Connection.prototype, "getLatestBlockhash");
+
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(
+      async (address) => {
+        if (address.equals(mint)) {
+          return createMintAccountInfo(TOKEN_PROGRAM_ID);
+        }
+
+        if (address.equals(delegationRecord)) {
+          return null;
+        }
+
+        return null;
+      },
+    );
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          result: {
+            isDelegated: true,
+          },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+
+    const response = await app.request(
+      "/v1/spl/undelegate-ephemeral-ata",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${MOCK_AUTH_TOKEN}`,
+        },
+        body: JSON.stringify({
+          payer: owner,
+          mint: mint.toBase58(),
+          cluster: "devnet",
+        }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(400);
+    expect(getLatestBlockhashSpy).not.toHaveBeenCalled();
+
+    const json = (await response.json()) as {
+      error: {
+        code: string;
+        message: string;
+      };
+    };
+    expect(json.error.code).toBe("EPHEMERAL_ENDPOINT_UNRESOLVED");
+    expect(json.error.message).toBe("Ephemeral RPC endpoint cannot be retrieved");
+  });
+
   it("returns MINT_NOT_FOUND when a deposit mint account is missing", async () => {
     const mint = new PublicKey("2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo");
     const getAccountInfoSpy = vi
@@ -2736,6 +2993,96 @@ describe("app", () => {
       lamports: "2039280",
       tokens: "5000",
     });
+  });
+
+  it("rejects private base transfers when the source eATA is delegated to another validator", async () => {
+    const transferEnv = {
+      ...env,
+      EPHEMERAL_RPC_URL: "https://ephemeral.transfer.mismatch.rpc.test",
+    };
+    const mint = DEVNET_USDC_MINT;
+    const currentValidator = Keypair.generate().publicKey;
+    const selectedValidator = new PublicKey(resolvedValidator);
+    const delegationRecord = deriveEataDelegationRecord(owner, mint);
+    const [sourceEata] = deriveEphemeralAta(new PublicKey(owner), new PublicKey(mint));
+    const sourceAta = deriveAssociatedTokenAddress(mint, owner);
+
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockResolvedValue(
+      createMintAccountInfo(TOKEN_PROGRAM_ID),
+    );
+    const getMultipleAccountsInfoSpy = vi
+      .spyOn(Connection.prototype, "getMultipleAccountsInfo")
+      .mockImplementation(async function getMultipleAccountsInfo(
+        this: Connection & { _rpcEndpoint: string },
+        addresses,
+      ) {
+        const endpoint = (this as Connection & { _rpcEndpoint: string })
+          ._rpcEndpoint;
+        expect(endpoint).toBe(transferEnv.BASE_RPC_URL);
+        expect(addresses.map(address => address.toBase58())).toEqual([
+          delegationRecord.toBase58(),
+        ]);
+        return [createDelegationAccountInfo(currentValidator)];
+      });
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(transferEnv.EPHEMERAL_RPC_URL);
+      return createIdentityResponse(selectedValidator.toBase58());
+    });
+
+    const response = await app.request(
+      "/v1/spl/transfer",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          from: owner,
+          to: destination,
+          mint,
+          amount: 5_000_000,
+          visibility: "private",
+          fromBalance: "base",
+          toBalance: "base",
+          minDelayMs: "0",
+          maxDelayMs: "0",
+          split: 1,
+        }),
+      },
+      transferEnv,
+    );
+
+    expect(response.status).toBe(400);
+    expect(getMultipleAccountsInfoSpy).toHaveBeenCalledOnce();
+
+    const json = (await response.json()) as {
+      error: {
+        code: string;
+        details: {
+          accounts: Array<{
+            role: string;
+            ata: string;
+            eata: string;
+            currentValidator: string;
+            selectedValidator: string;
+          }>;
+        };
+      };
+    };
+
+    expect(json.error.code).toBe("EATA_VALIDATOR_MISMATCH");
+    expect(json.error.details.accounts).toEqual([
+      {
+        role: "source",
+        owner,
+        mint,
+        ata: sourceAta,
+        eata: sourceEata.toBase58(),
+        delegationRecord: delegationRecord.toBase58(),
+        currentValidator: currentValidator.toBase58(),
+        selectedValidator: selectedValidator.toBase58(),
+      },
+    ]);
   });
 
   it("uses the mint token program when initializing a transfer vault", async () => {
