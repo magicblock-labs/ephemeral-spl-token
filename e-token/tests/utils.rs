@@ -30,7 +30,7 @@ use solana_pubkey::{pubkey, Pubkey};
 use solana_signer::Signer;
 use solana_system_interface::instruction::create_account;
 use solana_transaction::Transaction;
-use spl_token_interface::instruction::{initialize_account, initialize_account3, initialize_mint};
+use spl_token_interface::instruction::{initialize_account, initialize_mint, TokenInstruction};
 use spl_token_interface::state::{Account as SplAccount, Mint};
 
 // this must be same as ESplInternalInstruction
@@ -198,7 +198,8 @@ fn process_associated_token_program_mock(
     if *system_program.key != solana_system_interface::program::ID {
         return Err(ProgramError::IncorrectProgramId);
     }
-    if *token_program.key != spl_token_interface::ID {
+    let token_2022_program = Pubkey::new_from_array(pinocchio_token_2022::ID.to_bytes());
+    if *token_program.key != spl_token_interface::ID && *token_program.key != token_2022_program {
         return Err(ProgramError::IncorrectProgramId);
     }
 
@@ -245,8 +246,14 @@ fn process_associated_token_program_mock(
         &[ata_signer_seeds],
     )?;
 
-    let mut init_ix = initialize_account3(token_program.key, ata.key, mint.key, wallet.key)?;
-    init_ix.program_id = *token_program.key;
+    let init_ix = Instruction {
+        program_id: *token_program.key,
+        accounts: vec![
+            AccountMeta::new(*ata.key, false),
+            AccountMeta::new_readonly(*mint.key, false),
+        ],
+        data: TokenInstruction::InitializeAccount3 { owner: *wallet.key }.pack(),
+    };
     invoke(&init_ix, &[ata.clone(), mint.clone()])?;
 
     Ok(())

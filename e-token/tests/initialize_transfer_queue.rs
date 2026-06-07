@@ -1,8 +1,9 @@
 use ephemeral_spl_api::state::transfer_queue::{
-    capacity_from_data_len, TransferQueue, TransferQueueHeader, HEADER_LEN, ITEM_LEN,
-    TRANSFER_QUEUE_VERSION,
+    capacity_from_data_len, SplTokenProgram, TransferQueue, TransferQueueHeader, HEADER_LEN,
+    ITEM_LEN, TRANSFER_QUEUE_VERSION,
 };
 use ephemeral_spl_api::ID as PROGRAM;
+use solana_program_pack::Pack;
 use {
     solana_program_test::tokio, solana_pubkey::Pubkey, solana_signer::Signer,
     solana_transaction::Transaction,
@@ -73,6 +74,71 @@ async fn initialize_transfer_queue_default_size() {
         ephemeral_spl_api::Address::new_from_array(mint.to_bytes())
     );
     assert_eq!(header.length, 0);
+}
+
+#[tokio::test]
+async fn initialize_transfer_queue_token_2022_uses_token_program_ata() {
+    let mut context = utils::start_program_test(PROGRAM).await;
+    let payer_kp = utils::fixed_payer_keypair();
+    let payer = payer_kp.pubkey();
+    let mint = utils::test_keypair("initialize_transfer_queue_token_2022::mint").pubkey();
+    let token_program = Pubkey::new_from_array(pinocchio_token_2022::ID.to_bytes());
+
+    let rent = context.banks_client.get_rent().await.unwrap();
+    let mut mint_data = vec![0u8; spl_token_interface::state::Mint::LEN];
+    let mint_decimals_offset = 36 + 8;
+    mint_data[mint_decimals_offset] = 6;
+    mint_data[mint_decimals_offset + 1] = 1;
+    context.set_account(
+        &mint,
+        &solana_account::Account {
+            lamports: rent.minimum_balance(mint_data.len()),
+            data: mint_data,
+            owner: token_program,
+            executable: false,
+            rent_epoch: 0,
+        }
+        .into(),
+    );
+
+    let (queue, _) = TransferQueue::find_pda(&mint, &VALIDATOR);
+    let ix = utils::build_initialize_transfer_queue_ix(
+        payer,
+        queue,
+        mint,
+        VALIDATOR,
+        None,
+        token_program,
+    );
+    let blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&payer), &[&payer_kp], blockhash);
+    context.banks_client.process_transaction(tx).await.unwrap();
+
+    let queue_account = context
+        .banks_client
+        .get_account(queue)
+        .await
+        .unwrap()
+        .expect("queue account must exist");
+    let header = read_header_unaligned(&queue_account.data);
+    assert_eq!(
+        header.token_program_kind().unwrap().value(),
+        SplTokenProgram::Token2022.value()
+    );
+
+    let queue_vault_ata =
+        utils::derive_associated_token_address_with_program(queue, mint, token_program);
+    let queue_vault_ata_account = context
+        .banks_client
+        .get_account(queue_vault_ata)
+        .await
+        .unwrap()
+        .expect("queue vault ATA must exist");
+    assert_eq!(queue_vault_ata_account.owner, token_program);
+    let queue_vault_ata_state =
+        spl_token_interface::state::Account::unpack(&queue_vault_ata_account.data).unwrap();
+    assert_eq!(queue_vault_ata_state.mint, mint);
+    assert_eq!(queue_vault_ata_state.owner, queue);
 }
 
 #[tokio::test]
