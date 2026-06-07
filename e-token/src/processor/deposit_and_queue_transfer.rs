@@ -167,6 +167,8 @@ pub fn process_deposit_and_queue_transfer(
             amount,
         )?;
     } else {
+        // Backward compatibility for old clients that still pass the global vault/ATA.
+        // TODO: remove this global-vault path after the queue-vault migration window.
         transfer_to_vault_for_mint(
             vault_info,
             mint_info,
