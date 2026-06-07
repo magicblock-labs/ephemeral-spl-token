@@ -10,6 +10,9 @@ export const sendTransactionRequestSchema = z.object({
   sendTo: balanceLocationSchema.openapi({
     description: "RPC target for submission. Use the `sendTo` value returned by transaction-builder endpoints.",
   }),
+  sendRpcEndpoint: z.string().url().optional().openapi({
+    description: "Optional exact ephemeral RPC endpoint returned by transaction-builder endpoints. Only valid when `sendTo` is `ephemeral`.",
+  }),
   cluster: clusterSchema.optional(),
   confirm: z.boolean().optional().openapi({
     example: false,

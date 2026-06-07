@@ -5,6 +5,7 @@ import {
   buildDepositTransaction,
   buildInitializeMintTransaction,
   buildTransferTransaction,
+  buildUndelegateEphemeralAtaTransaction,
   buildWithdrawTransaction,
   getBaseBalance,
   getMintInitializationStatus,
@@ -19,6 +20,7 @@ import {
   mintInitializationRoute,
   privateBalanceRoute,
   transferRoute,
+  undelegateEphemeralAtaRoute,
   withdrawRoute,
 } from "./spl.routes";
 import {
@@ -29,6 +31,7 @@ import {
   LoginRequest,
   MintInitializationRequest,
   TransferRequest,
+  UndelegateEphemeralAtaRequest,
   WithdrawRequest,
 } from "./spl.schemas";
 import { getChallenge, login, parseAuthToken } from "../../lib/auth";
@@ -72,6 +75,14 @@ export const transferHandler: RouteHandler<typeof transferRoute, RouteEnv> = asy
   const body = c.req.valid("json") as TransferRequest;
   const authToken = parseAuthToken(c.req.header());
   const response = await buildTransferTransaction(env, body, authToken);
+  return c.json(response, 200);
+};
+
+export const undelegateEphemeralAtaHandler: RouteHandler<typeof undelegateEphemeralAtaRoute, RouteEnv> = async (c) => {
+  const env = getEnv(c.env);
+  const body = c.req.valid("json") as UndelegateEphemeralAtaRequest;
+  const authToken = parseAuthToken(c.req.header());
+  const response = await buildUndelegateEphemeralAtaTransaction(env, body, authToken);
   return c.json(response, 200);
 };
 

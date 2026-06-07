@@ -2,14 +2,16 @@ use ephemeral_rollups_pinocchio::pda::{
     delegate_buffer_pda_from_delegated_account_and_owner_program,
     delegation_metadata_pda_from_delegated_account, delegation_record_pda_from_delegated_account,
 };
+use ephemeral_spl_api::error::EphemeralSplError;
 use ephemeral_spl_api::state::RawType;
 use ephemeral_spl_api::ID as PROGRAM;
 use ephemeral_spl_api::{instruction, state::ephemeral_ata::EphemeralAta};
 use ephemeral_token_program::DelegateArgs;
 use solana_instruction::{AccountMeta, Instruction};
+use solana_program::instruction::InstructionError;
 use solana_program_test::tokio;
 use solana_signer::Signer;
-use solana_transaction::Transaction;
+use solana_transaction::{Transaction, TransactionError};
 
 mod common;
 mod utils;
@@ -24,6 +26,8 @@ async fn delegate_ephemeral_ata_succeeds() {
 
     let mint_kp = utils::test_keypair("delegate_ephemeral_ata_succeeds::mint");
     let mint = mint_kp.pubkey();
+    let validator = utils::test_pubkey("delegate_ephemeral_ata_succeeds::validator");
+    let other_validator = utils::test_pubkey("delegate_ephemeral_ata_succeeds::other_validator");
 
     // Derive the PDAs for our program and setup token accounts
     let pdas = utils::derive_pdas(PROGRAM, user, mint);
@@ -104,8 +108,13 @@ async fn delegate_ephemeral_ata_succeeds() {
             AccountMeta::new_readonly(ephemeral_rollups_pinocchio::ID, false), // delegation program
             AccountMeta::new_readonly(solana_system_interface::program::ID, false), // system program
         ],
-        data: instruction::ESplInstruction::DelegateEphemeralAta
-            .with_data(&DelegateArgs { validator: None }.encode().unwrap()),
+        data: instruction::ESplInstruction::DelegateEphemeralAta.with_data(
+            &DelegateArgs {
+                validator: Some(validator.to_bytes()),
+            }
+            .encode()
+            .unwrap(),
+        ),
     };
 
     let tx = Transaction::new_signed_with_payer(
@@ -122,7 +131,7 @@ async fn delegate_ephemeral_ata_succeeds() {
     let redelegate_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
 
     let tx_redelegate = Transaction::new_signed_with_payer(
-        &[ix_delegate],
+        &[ix_delegate.clone()],
         Some(&payer),
         &[&payer_kp],
         redelegate_blockhash,
@@ -131,10 +140,50 @@ async fn delegate_ephemeral_ata_succeeds() {
     common::metrics::process_transaction_record_cu(
         &context.banks_client,
         tx_redelegate,
-        "del_eata::redelegate",
+        "del_eata::redelegate_same_validator",
     )
     .await
     .unwrap();
+
+    let ix_redelegate_other_validator = Instruction {
+        data: instruction::ESplInstruction::DelegateEphemeralAta.with_data(
+            &DelegateArgs {
+                validator: Some(other_validator.to_bytes()),
+            }
+            .encode()
+            .unwrap(),
+        ),
+        ..ix_delegate
+    };
+
+    let redelegate_other_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
+
+    let tx_redelegate_other = Transaction::new_signed_with_payer(
+        &[ix_redelegate_other_validator],
+        Some(&payer),
+        &[&payer_kp],
+        redelegate_other_blockhash,
+    );
+
+    let redelegate_other_result = common::metrics::process_transaction_with_metadata_recorded(
+        &context.banks_client,
+        tx_redelegate_other,
+        "del_eata::redelegate_other_validator",
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        redelegate_other_result.result.unwrap_err(),
+        TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(EphemeralSplError::EphemeralAtaValidatorMismatch as u32),
+        )
+    );
+    let logs = redelegate_other_result
+        .metadata
+        .expect("failed transaction should include metadata")
+        .log_messages;
+    assert!(logs.iter().any(|log| log.contains(&validator.to_string())));
 
     // Assert ATA is owned by delegation program after delegation
     let ata_account = context

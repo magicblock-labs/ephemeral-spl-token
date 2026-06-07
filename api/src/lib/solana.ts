@@ -3,6 +3,7 @@ import {
   DELEGATION_PROGRAM_ID,
   DelegationStatus,
   delegateTransferQueueIx,
+  delegationRecordPdaFromDelegatedAccount,
   deriveRentPda,
   deriveTransferQueue,
   delegateSpl,
@@ -14,6 +15,7 @@ import {
   initTransferQueueIx,
   magicFeeVaultPdaFromValidator,
   transferSpl,
+  undelegateIx,
   withdrawSpl, initVaultIx, initVaultAtaIx, delegateEphemeralAtaIx, deriveVault, deriveEphemeralAta, deriveVaultAta,
 } from "@magicblock-labs/ephemeral-rollups-sdk";
 import {
@@ -30,7 +32,7 @@ import nacl from "tweetnacl";
 
 import type { AppEnv } from "../env";
 import { ApiError } from "./errors";
-import { BalanceRequest, BalanceResponse, DepositRequest, InitializeMintRequest, InitializeMintResponse, MintInitializationRequest, MintInitializationResponse, TransactionResponse, TransferRequest, WithdrawRequest } from "../routes/spl/spl.schemas";
+import { BalanceRequest, BalanceResponse, DepositRequest, InitializeMintRequest, InitializeMintResponse, MintInitializationRequest, MintInitializationResponse, TransactionResponse, TransferRequest, UndelegateEphemeralAtaRequest, UndelegateEphemeralAtaResponse, WithdrawRequest } from "../routes/spl/spl.schemas";
 import { SendTransactionRequest, SendTransactionResponse } from "../routes/transaction.schemas";
 import { getCachedAddressLookupTable, getConnection } from "./rpc-cache";
 
@@ -56,6 +58,15 @@ const MAINNET_USDT_MINT = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
 const DEFAULT_FALLBACK_VALIDATOR = new PublicKey(
   "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57",
 );
+const TEE_VALIDATOR = new PublicKey(
+  "MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo",
+);
+const DEVNET_TEE_RPC_URL = "https://devnet-tee.magicblock.app";
+const MAINNET_TEE_RPC_URL = "https://mainnet-tee.magicblock.app";
+const DELEGATION_ROUTER_RPC_URLS = {
+  mainnet: "https://router.magicblock.app/",
+  devnet: "https://devnet-router.magicblock.app/",
+} as const;
 const TRANSFER_QUEUE_RENT_LAMPORTS = LAMPORTS_PER_SOL / 50;
 const PRIVATE_TRANSFER_MAX_DELAY_MS_LIMIT = 10n * 60n * 1000n;
 const TRANSFER_QUEUE_RECENT_SIGNATURE_LIMIT = 5;
@@ -99,11 +110,35 @@ type RpcIdentityResponse = {
   };
 };
 
+type DelegationStatusRpcResponse = {
+  result?: {
+    isDelegated?: boolean;
+    fqdn?: unknown;
+  };
+  error?: {
+    message?: string;
+  };
+};
+
+type DelegationEndpointResolution = {
+  endpoint?: string;
+  error?: string;
+  isDelegated?: boolean;
+};
+
 type BackgroundTaskScheduler = {
   waitUntil: (promise: Promise<unknown>) => void;
 };
 
 type TransferFees = NonNullable<TransactionResponse["fees"]>;
+type ProjectedWritableAta = {
+  role: string;
+  owner: PublicKey;
+  mint: PublicKey;
+  ata: PublicKey;
+  eata: PublicKey;
+  delegationRecord: PublicKey;
+};
 
 function getBaseConnection(config: RpcConfig) {
   return getConnection(config.baseRpcUrl);
@@ -413,6 +448,215 @@ function isProcessPendingTransferQueueRefillInstruction(instruction: Transaction
     && instruction.data.readInt8(0) === 28;
 }
 
+function readDelegatedValidator(accountInfo: { owner: PublicKey; lamports: number; data: Buffer | Uint8Array } | null) {
+  if (
+    !accountInfo
+    || accountInfo.lamports === 0
+    || !accountInfo.owner.equals(DELEGATION_PROGRAM_ID)
+    || accountInfo.data.length < 40
+  ) {
+    return undefined;
+  }
+
+  return new PublicKey(Buffer.from(accountInfo.data).subarray(8, 40));
+}
+
+function normalizeRpcEndpoint(value: unknown) {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(value.trim());
+
+    if (!["http:", "https:"].includes(url.protocol)) {
+      return undefined;
+    }
+
+    if (url.pathname === "/" && !url.search && !url.hash) {
+      return url.origin;
+    }
+
+    return url.toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function getDelegationRouterRpcUrl(cluster: RpcConfig["cluster"]) {
+  return cluster === "mainnet" || cluster === "devnet"
+    ? DELEGATION_ROUTER_RPC_URLS[cluster]
+    : undefined;
+}
+
+async function tryResolveDelegationEndpointFromRouter(
+  config: RpcConfig,
+  delegatedAccount: PublicKey,
+): Promise<DelegationEndpointResolution> {
+  const routerRpcUrl = getDelegationRouterRpcUrl(config.cluster);
+
+  if (!routerRpcUrl) {
+    return {
+      error: `No delegation router configured for cluster=${config.cluster}`,
+    };
+  }
+
+  try {
+    const response = await fetch(routerRpcUrl, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "getDelegationStatus",
+        params: [delegatedAccount.toBase58()],
+      }),
+    });
+
+    if (!response.ok) {
+      return {
+        error: `Delegation router returned HTTP ${response.status}`,
+      };
+    }
+
+    const payload = await response.json() as DelegationStatusRpcResponse;
+
+    if (payload.error) {
+      return {
+        error: payload.error.message ?? "Delegation router returned an error",
+      };
+    }
+
+    const endpoint = payload.result?.isDelegated
+      ? normalizeRpcEndpoint(payload.result.fqdn)
+      : undefined;
+
+    return {
+      endpoint,
+      isDelegated: payload.result?.isDelegated,
+      error: payload.result?.isDelegated && !endpoint
+        ? "Delegation router did not return a usable fqdn"
+        : undefined,
+    };
+  } catch (error) {
+    return {
+      error: getSanitizedErrorMessage(error),
+    };
+  }
+}
+
+function getHardcodedTeeRpcEndpoint(cluster: RpcConfig["cluster"], validator: PublicKey | undefined) {
+  if (!validator?.equals(TEE_VALIDATOR)) {
+    return undefined;
+  }
+
+  if (cluster === "devnet") {
+    return DEVNET_TEE_RPC_URL;
+  }
+
+  if (cluster === "mainnet") {
+    return MAINNET_TEE_RPC_URL;
+  }
+
+  return undefined;
+}
+
+async function resolveUndelegateEphemeralRpcEndpoint(
+  config: RpcConfig,
+  delegatedAccount: PublicKey,
+) {
+  const routerResolution = await tryResolveDelegationEndpointFromRouter(config, delegatedAccount);
+
+  if (routerResolution.endpoint) {
+    return routerResolution.endpoint;
+  }
+
+  const delegationRecord = delegationRecordPdaFromDelegatedAccount(delegatedAccount);
+  let delegationAccount: Awaited<ReturnType<Connection["getAccountInfo"]>>;
+  try {
+    delegationAccount = await getBaseConnection(config).getAccountInfo(delegationRecord, "confirmed");
+  } catch (error) {
+    throw new ApiError(502, "RPC_ERROR", "Failed to fetch delegation record", {
+      delegatedAccount: delegatedAccount.toBase58(),
+      delegationRecord: delegationRecord.toBase58(),
+      message: getSanitizedErrorMessage(error),
+    });
+  }
+
+  const delegatedValidator = readDelegatedValidator(delegationAccount);
+  const hardcodedEndpoint = getHardcodedTeeRpcEndpoint(config.cluster, delegatedValidator);
+
+  if (hardcodedEndpoint) {
+    return hardcodedEndpoint;
+  }
+
+  throw new ApiError(
+    400,
+    "EPHEMERAL_ENDPOINT_UNRESOLVED",
+    "Ephemeral RPC endpoint cannot be retrieved",
+    {
+      cluster: config.cluster,
+      delegatedAccount: delegatedAccount.toBase58(),
+      delegationRecord: delegationRecord.toBase58(),
+      delegatedValidator: delegatedValidator?.toBase58(),
+      routerIsDelegated: routerResolution.isDelegated,
+      routerError: routerResolution.error,
+    },
+  );
+}
+
+async function assertProjectedWritableAtaValidators(
+  config: RpcConfig,
+  accounts: ProjectedWritableAta[],
+  validator: PublicKey,
+) {
+  if (accounts.length === 0) {
+    return;
+  }
+
+  let delegationAccounts: Awaited<ReturnType<Connection["getMultipleAccountsInfo"]>>;
+  try {
+    delegationAccounts = await getBaseConnection(config).getMultipleAccountsInfo(
+      accounts.map(account => account.delegationRecord),
+      "confirmed",
+    );
+  } catch (error) {
+    throw new ApiError(502, "RPC_ERROR", "Failed to fetch delegation records", {
+      message: getSanitizedErrorMessage(error),
+    });
+  }
+
+  const mismatchedAccounts = accounts.flatMap((account, index) => {
+    const delegatedValidator = readDelegatedValidator(delegationAccounts[index]);
+
+    if (!delegatedValidator || delegatedValidator.equals(validator)) {
+      return [];
+    }
+
+    return [{
+      role: account.role,
+      owner: account.owner.toBase58(),
+      mint: account.mint.toBase58(),
+      ata: account.ata.toBase58(),
+      eata: account.eata.toBase58(),
+      delegationRecord: account.delegationRecord.toBase58(),
+      currentValidator: delegatedValidator.toBase58(),
+      selectedValidator: validator.toBase58(),
+    }];
+  });
+
+  if (mismatchedAccounts.length > 0) {
+    throw new ApiError(
+      400,
+      "EATA_VALIDATOR_MISMATCH",
+      "Projected token account is delegated to another validator",
+      { accounts: mismatchedAccounts },
+    );
+  }
+}
+
 function createRandomShuttleId() {
   return crypto.getRandomValues(new Uint32Array(1))[0] & 0x7fffffff;
 }
@@ -495,11 +739,10 @@ async function resolveRequiredValidator(config: RpcConfig, explicitValidator?: s
   return validator;
 }
 
-async function getBlockhash(config: RpcConfig, source: SendTarget, authToken?: string): Promise<BlockhashResult> {
-  const connection = source === "base"
-    ? getBaseConnection(config)
-    : getEphemeralConnection(config, authToken);
-
+async function getBlockhashFromConnection(
+  connection: Connection,
+  source: SendTarget,
+): Promise<BlockhashResult> {
   try {
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
     return { blockhash, lastValidBlockHeight };
@@ -509,6 +752,52 @@ async function getBlockhash(config: RpcConfig, source: SendTarget, authToken?: s
       message: getSanitizedErrorMessage(error),
     });
   }
+}
+
+async function getBlockhash(config: RpcConfig, source: SendTarget, authToken?: string): Promise<BlockhashResult> {
+  const connection = source === "base"
+    ? getBaseConnection(config)
+    : getEphemeralConnection(config, authToken);
+
+  return getBlockhashFromConnection(connection, source);
+}
+
+async function getBlockhashFromRpcEndpoint(
+  rpcEndpoint: string,
+  source: SendTarget,
+  authToken?: string,
+): Promise<BlockhashResult> {
+  return getBlockhashFromConnection(
+    getConnectionWithOptionalAuthToken(rpcEndpoint, authToken),
+    source,
+  );
+}
+
+function getTransactionSendRpcEndpoint(config: RpcConfig, input: SendTransactionRequest) {
+  if (input.sendRpcEndpoint !== undefined) {
+    if (input.sendTo !== "ephemeral") {
+      throw new ApiError(
+        400,
+        "INVALID_SEND_RPC_ENDPOINT",
+        "sendRpcEndpoint can only be used when sendTo is ephemeral",
+      );
+    }
+
+    const endpoint = normalizeRpcEndpoint(input.sendRpcEndpoint);
+    if (!endpoint) {
+      throw new ApiError(
+        400,
+        "INVALID_SEND_RPC_ENDPOINT",
+        "sendRpcEndpoint must be a valid http(s) URL",
+      );
+    }
+
+    return endpoint;
+  }
+
+  return input.sendTo === "base"
+    ? config.baseRpcUrl
+    : config.ephemeralRpcUrl;
 }
 
 function decodeTransactionBase64(value: string) {
@@ -544,12 +833,11 @@ export async function sendSignedTransaction(
   authToken?: string,
 ): Promise<SendTransactionResponse> {
   const config = resolveRpcConfig(env, input.cluster);
+  const rpcEndpoint = getTransactionSendRpcEndpoint(config, input);
   const connection = input.sendTo === "base"
     ? getBaseConnection(config)
-    : getEphemeralConnection(config, authToken);
-  const confirmationRpcEndpoint = input.sendTo === "base"
-    ? config.baseRpcUrl
-    : config.ephemeralRpcUrl;
+    : getConnectionWithOptionalAuthToken(rpcEndpoint, authToken);
+  const confirmationRpcEndpoint = rpcEndpoint;
   const confirmationRequiresAuthToken = input.sendTo === "ephemeral";
   const transaction = decodeTransactionBase64(input.transactionBase64);
   const options: SendOptions = {
@@ -985,6 +1273,48 @@ export async function buildInitializeMintTransaction(
   }
 }
 
+export async function buildUndelegateEphemeralAtaTransaction(
+  env: AppEnv,
+  input: UndelegateEphemeralAtaRequest,
+  authToken?: string,
+): Promise<UndelegateEphemeralAtaResponse> {
+  try {
+    const config = resolveRpcConfig(env, input.cluster);
+    const payer = parsePublicKey(input.payer, "payer");
+    const mint = parsePublicKey(input.mint, "mint");
+    await resolveMintTokenProgram(config, mint);
+    const [ephemeralAta] = deriveEphemeralAta(payer, mint);
+    const sendRpcEndpoint = await resolveUndelegateEphemeralRpcEndpoint(config, ephemeralAta);
+    const blockhash = await getBlockhashFromRpcEndpoint(sendRpcEndpoint, "ephemeral", authToken);
+    const instructions = [
+      undelegateIx(payer, mint),
+    ];
+
+    const response = serializeTransaction(
+      "undelegateEphemeralAta",
+      "ephemeral",
+      instructions,
+      payer,
+      blockhash,
+    );
+
+    return {
+      ...response,
+      kind: "undelegateEphemeralAta",
+      version: "legacy",
+      sendTo: "ephemeral",
+      sendRpcEndpoint,
+      recentBlockhash: blockhash.blockhash,
+      lastValidBlockHeight: blockhash.lastValidBlockHeight,
+      instructionCount: instructions.length,
+      requiredSigners: response.requiredSigners,
+      transactionBase64: response.transactionBase64,
+    };
+  } catch (error) {
+    throwTransactionBuildError(error);
+  }
+}
+
 export async function buildTransferTransaction(env: AppEnv, input: TransferRequest, authToken?: string) {
   try {
     const config = resolveRpcConfig(env, input.cluster);
@@ -1081,6 +1411,23 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       : undefined;
 
     const tokenProgram = await resolveMintTokenProgram(config, mint);
+    if (validator && isPrivateBaseToBaseTransfer(input)) {
+      const sourceAta = getAssociatedTokenAddressSync(mint, from, true, tokenProgram);
+      const [sourceEata] = deriveEphemeralAta(from, mint);
+      await assertProjectedWritableAtaValidators(
+        config,
+        [{
+          role: "source",
+          owner: from,
+          mint,
+          ata: sourceAta,
+          eata: sourceEata,
+          delegationRecord: delegationRecordPdaFromDelegatedAccount(sourceEata),
+        }],
+        validator,
+      );
+    }
+
     const gaslessFeeInstructions = sponsor
       ? [
           createTokenTransferInstruction(
