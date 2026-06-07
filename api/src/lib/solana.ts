@@ -754,6 +754,33 @@ async function getBlockhashFromRpcEndpoint(
   );
 }
 
+function getTransactionSendRpcEndpoint(config: RpcConfig, input: SendTransactionRequest) {
+  if (input.sendRpcEndpoint !== undefined) {
+    if (input.sendTo !== "ephemeral") {
+      throw new ApiError(
+        400,
+        "INVALID_SEND_RPC_ENDPOINT",
+        "sendRpcEndpoint can only be used when sendTo is ephemeral",
+      );
+    }
+
+    const endpoint = normalizeRpcEndpoint(input.sendRpcEndpoint);
+    if (!endpoint) {
+      throw new ApiError(
+        400,
+        "INVALID_SEND_RPC_ENDPOINT",
+        "sendRpcEndpoint must be a valid http(s) URL",
+      );
+    }
+
+    return endpoint;
+  }
+
+  return input.sendTo === "base"
+    ? config.baseRpcUrl
+    : config.ephemeralRpcUrl;
+}
+
 function decodeTransactionBase64(value: string) {
   const transactionBase64 = value.trim();
 
@@ -787,12 +814,11 @@ export async function sendSignedTransaction(
   authToken?: string,
 ): Promise<SendTransactionResponse> {
   const config = resolveRpcConfig(env, input.cluster);
+  const rpcEndpoint = getTransactionSendRpcEndpoint(config, input);
   const connection = input.sendTo === "base"
     ? getBaseConnection(config)
-    : getEphemeralConnection(config, authToken);
-  const confirmationRpcEndpoint = input.sendTo === "base"
-    ? config.baseRpcUrl
-    : config.ephemeralRpcUrl;
+    : getConnectionWithOptionalAuthToken(rpcEndpoint, authToken);
+  const confirmationRpcEndpoint = rpcEndpoint;
   const confirmationRequiresAuthToken = input.sendTo === "ephemeral";
   const transaction = decodeTransactionBase64(input.transactionBase64);
   const options: SendOptions = {

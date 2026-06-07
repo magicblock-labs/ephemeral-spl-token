@@ -364,6 +364,10 @@ describe("app", () => {
       json.components?.schemas as Record<string, any>
     )?.UnsignedTransactionResponse;
     expect(transactionResponseSchema?.properties?.fees).toBeDefined();
+    const sendTransactionRequestSchema = (
+      json.components?.schemas as Record<string, any>
+    )?.SendTransactionRequest;
+    expect(sendTransactionRequestSchema?.properties?.sendRpcEndpoint).toBeDefined();
     expect(
       json.paths["/v1/spl/withdraw"]?.post?.responses?.["200"]?.content?.[
         "application/json"
@@ -481,6 +485,108 @@ describe("app", () => {
       confirmationRpcEndpoint: env.EPHEMERAL_DEVNET_RPC_URL,
       confirmationRequiresAuthToken: true,
     });
+  });
+
+  it("sends and confirms a signed ephemeral transaction to the provided RPC endpoint", async () => {
+    const transaction = Buffer.from([5, 6, 7, 8]);
+    const sendRpcEndpoint = "https://devnet-tee.magicblock.app";
+    const blockhash = "11111111111111111111111111111111";
+
+    vi.spyOn(Connection.prototype, "sendRawTransaction").mockImplementation(
+      async function sendRawTransaction(
+        this: Connection & { _rpcEndpoint: string },
+        raw,
+      ) {
+        expect((this as Connection & { _rpcEndpoint: string })._rpcEndpoint).toBe(
+          `${sendRpcEndpoint}/?token=private-token`,
+        );
+        expect(Buffer.from(raw as Uint8Array)).toEqual(transaction);
+        return "endpoint-signature";
+      },
+    );
+    vi.spyOn(Connection.prototype, "confirmTransaction").mockImplementation(
+      async function confirmTransaction(this: Connection & { _rpcEndpoint: string }) {
+        expect((this as Connection & { _rpcEndpoint: string })._rpcEndpoint).toBe(
+          `${sendRpcEndpoint}/?token=private-token`,
+        );
+        return {
+          context: { slot: 1 },
+          value: { err: null },
+        };
+      },
+    );
+
+    const response = await app.request(
+      "/v1/transaction/send",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "Authorization": "Bearer private-token",
+        },
+        body: JSON.stringify({
+          transactionBase64: transaction.toString("base64"),
+          sendTo: "ephemeral",
+          sendRpcEndpoint,
+          cluster: "devnet",
+          confirm: true,
+          recentBlockhash: blockhash,
+          lastValidBlockHeight: 123,
+        }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(200);
+
+    const json = (await response.json()) as {
+      signature: string;
+      sendTo: string;
+      confirmed: boolean;
+      confirmationRpcEndpoint: string;
+      confirmationRequiresAuthToken: boolean;
+    };
+
+    expect(json).toEqual({
+      signature: "endpoint-signature",
+      sendTo: "ephemeral",
+      confirmed: true,
+      confirmationRpcEndpoint: sendRpcEndpoint,
+      confirmationRequiresAuthToken: true,
+    });
+  });
+
+  it("rejects a send RPC endpoint override for base transactions", async () => {
+    const sendRawTransactionSpy = vi.spyOn(
+      Connection.prototype,
+      "sendRawTransaction",
+    );
+
+    const response = await app.request(
+      "/v1/transaction/send",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          transactionBase64: Buffer.from([1, 2, 3]).toString("base64"),
+          sendTo: "base",
+          sendRpcEndpoint: "https://devnet-tee.magicblock.app",
+        }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(400);
+    expect(sendRawTransactionSpy).not.toHaveBeenCalled();
+
+    const json = (await response.json()) as {
+      error: {
+        code: string;
+      };
+    };
+    expect(json.error.code).toBe("INVALID_SEND_RPC_ENDPOINT");
   });
 
   it("confirms a sent transaction when requested", async () => {
@@ -1915,7 +2021,7 @@ describe("app", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          authorization: `Bearer ${MOCK_AUTH_TOKEN}`,
+          "authorization": `Bearer ${MOCK_AUTH_TOKEN}`,
         },
         body: JSON.stringify({
           payer: owner,
@@ -2027,7 +2133,7 @@ describe("app", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          authorization: `Bearer ${MOCK_AUTH_TOKEN}`,
+          "authorization": `Bearer ${MOCK_AUTH_TOKEN}`,
         },
         body: JSON.stringify({
           payer: owner,
@@ -2089,7 +2195,7 @@ describe("app", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          authorization: `Bearer ${MOCK_AUTH_TOKEN}`,
+          "authorization": `Bearer ${MOCK_AUTH_TOKEN}`,
         },
         body: JSON.stringify({
           payer: owner,
