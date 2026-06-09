@@ -71,7 +71,7 @@ pub fn process_update_stealth_pool(
         require_eq_keys!(
             &existing.authority,
             authority_info.address(),
-            ProgramError::MissingRequiredSignature
+            ProgramError::IncorrectAuthority
         );
     }
 

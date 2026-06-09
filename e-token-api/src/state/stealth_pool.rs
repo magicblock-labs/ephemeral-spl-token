@@ -127,6 +127,6 @@ impl StealthPoolFlags {
     }
 
     pub const fn is_valid(flags: u8) -> bool {
-        flags <= Self::MAX
+        flags >= Self::MIN && flags <= Self::MAX
     }
 }
