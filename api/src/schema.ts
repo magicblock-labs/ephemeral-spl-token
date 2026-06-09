@@ -30,9 +30,9 @@ export const publicKeySchema = z
     example: "So11111111111111111111111111111111111111112",
   });
 
-export const amountSchema = z.number().int().safe().min(1).openapi({
+export const amountSchema = z.number().int().safe().nonnegative().openapi({
   example: 1000000,
-  description: "Base-unit amount as an integer JSON value with minimum 1.",
+  description: "Base-unit amount as a non-negative integer JSON value.",
 });
 
 export const depositAmountSchema = z.number().int().safe().min(1).openapi({
@@ -87,7 +87,7 @@ export const optionalBooleanSchema = z.preprocess((value) => {
 
 export const clusterSchema = z
   .union([
-    z.enum(["mainnet", "devnet"]),
+    z.enum(["mainnet", "devnet", "mainnet-private", "devnet-private"]),
     z
       .string()
       .url()
@@ -102,7 +102,7 @@ export const clusterSchema = z
   .openapi({
     example: "mainnet",
     description:
-      "Optional. Use `mainnet` for BASE_RPC_URL and EPHEMERAL_RPC_URL, `devnet` for BASE_DEVNET_RPC_URL and EPHEMERAL_DEVNET_RPC_URL, or provide a custom http(s) RPC URL to override the base RPC while keeping the configured ephemeral RPC.",
+      "Optional. Use `mainnet` for BASE_RPC_URL and EPHEMERAL_RPC_URL, `devnet` for BASE_DEVNET_RPC_URL and EPHEMERAL_DEVNET_RPC_URL, `mainnet-private` for BASE_RPC_URL and EPHEMERAL_TEE_RPC_URL, `devnet-private` for BASE_DEVNET_RPC_URL and EPHEMERAL_DEVNET_TEE_RPC_URL, or provide a custom http(s) RPC URL to override the base RPC while keeping the configured ephemeral RPC.",
   });
 
 export const visibilitySchema = z
