@@ -26,6 +26,9 @@ export const transactionResponseSchema = z.object({
   version: z.enum(["legacy", "v0"]),
   transactionBase64: z.string(),
   sendTo: balanceLocationSchema,
+  sendRpcEndpoint: z.string().url().optional().openapi({
+    description: "Exact ephemeral RPC endpoint where the signed transaction should be submitted. Present when `sendTo` is `ephemeral`.",
+  }),
   from: balanceLocationSchema.optional(),
   recentBlockhash: z.string(),
   lastValidBlockHeight: z.number().int(),
@@ -131,7 +134,7 @@ export const depositRequestSchema = z.object({
   cluster: clusterSchema.optional(),
   mint: publicKeySchema.openapi({
     example: DEFAULT_DEPOSIT_MINT,
-    description: `Optional. Defaults to Solana USDC on mainnet: ${DEFAULT_DEPOSIT_MINT}. On devnet it defaults to devnet USDC: ${DEFAULT_DEPOSIT_DEVNET_MINT}.`,
+    description: `Optional. Defaults to Solana USDC on mainnet: ${DEFAULT_DEPOSIT_MINT}. On devnet and devnet-private it defaults to devnet USDC: ${DEFAULT_DEPOSIT_DEVNET_MINT}.`,
   }).optional(),
   amount: depositAmountSchema,
   validator: publicKeySchema.openapi({
@@ -142,6 +145,10 @@ export const depositRequestSchema = z.object({
   initVaultIfMissing: z.boolean().optional(),
   initAtasIfMissing: z.boolean().optional(),
   idempotent: z.boolean().optional(),
+  private: z.boolean().openapi({
+    example: true,
+    description: "Optional. Defaults to true. When true, adds the private eATA permission instruction.",
+  }).optional(),
 }).openapi("DepositRequest", {
   example: {
     owner: DEPOSIT_EXAMPLE_OWNER,
@@ -150,6 +157,7 @@ export const depositRequestSchema = z.object({
     initVaultIfMissing: false,
     initAtasIfMissing: true,
     idempotent: true,
+    private: true,
   },
 });
 export type DepositRequest = z.infer<typeof depositRequestSchema>;

@@ -75,8 +75,8 @@ const TRANSFER_QUEUE_AUTH_ERROR_FORCE_INTERVAL = 100;
 const SOLANA_WIRE_TRANSACTION_SIZE_LIMIT = 1232;
 // Keep these defaults aligned with scripts/create-private-transfer-lut.js. Updating them requires a redeploy.
 const PRIVATE_BASE_TO_BASE_TRANSFER_LOOKUP_TABLES = {
-  mainnet: new PublicKey("2J2Pw639kU7U6rj7qUXY5sVXdJqyt4DjEcVxzqmFrFds"),
-  devnet: new PublicKey("HFmj4QbofPjhXP2vdnDARDQFw1AucSQTKVAs8df4tkUy"),
+  mainnet: new PublicKey("54M1BrqVSg1UGTmhH44gQPsPVyuMpmcVBkaY2wYNSVZB"),
+  devnet: new PublicKey("E26JGdRsdKkGe6oRU4Un24agZjBF2Bg9z1ctfZByETRo"),
 } as const;
 const PRIVATE_TRANSFER_SETUP_LAMPORTS = 2_039_280n;
 const PRIVATE_TRANSFER_FEE_BASIS_POINTS = 10n;
@@ -99,7 +99,14 @@ type RpcConfig = {
   ephemeralRpcUrl: string;
   transferQueueCrankRpcUrl: string;
   cluster: "mainnet" | "devnet" | "custom";
+  teeRpcUrl?: string;
 };
+
+type ClusterConfigEnvVar
+  = "BASE_DEVNET_RPC_URL"
+    | "EPHEMERAL_DEVNET_RPC_URL"
+    | "EPHEMERAL_TEE_RPC_URL"
+    | "EPHEMERAL_DEVNET_TEE_RPC_URL";
 
 type RpcIdentityResponse = {
   result?: {
@@ -196,17 +203,17 @@ async function resolveMintTokenProgram(config: RpcConfig, mint: PublicKey) {
   });
 }
 
-function createClusterConfigError(missingVars: Array<"BASE_DEVNET_RPC_URL" | "EPHEMERAL_DEVNET_RPC_URL">) {
+function createClusterConfigError(cluster: string, missingVars: ClusterConfigEnvVar[]) {
   return new ApiError(
     500,
     "CONFIG_ERROR",
-    "Missing worker environment variables for cluster=devnet",
+    `Missing worker environment variables for cluster=${cluster}`,
     {
       issues: missingVars.map(name => ({
         path: [name],
-        message: "Required for cluster=devnet",
+        message: `Required for cluster=${cluster}`,
       })),
-      hint: "Set BASE_DEVNET_RPC_URL and EPHEMERAL_DEVNET_RPC_URL before using cluster=devnet.",
+      hint: `Set ${missingVars.join(" and ")} before using cluster=${cluster}.`,
     },
   );
 }
@@ -251,15 +258,7 @@ function getGaslessSponsorKeypair(env: AppEnv) {
 }
 
 export function resolveRpcConfig(env: AppEnv, cluster?: string): RpcConfig {
-  if (!cluster) {
-    return {
-      baseRpcUrl: env.BASE_RPC_URL,
-      ephemeralRpcUrl: env.EPHEMERAL_RPC_URL,
-      transferQueueCrankRpcUrl: env.TRANSFER_QUEUE_CRANK_RPC_URL ?? env.EPHEMERAL_RPC_URL,
-      cluster: env.CLUSTER,
-    };
-  }
-  const value = cluster.trim();
+  const value = (cluster ?? env.CLUSTER).trim();
   const normalized = value?.toLowerCase();
   if (!value || normalized === "mainnet") {
     return {
@@ -270,6 +269,24 @@ export function resolveRpcConfig(env: AppEnv, cluster?: string): RpcConfig {
     };
   }
 
+  if (normalized === "mainnet-private") {
+    const missingVars = [
+      ...(!env.EPHEMERAL_TEE_RPC_URL ? ["EPHEMERAL_TEE_RPC_URL" as const] : []),
+    ];
+
+    if (missingVars.length > 0) {
+      throw createClusterConfigError("mainnet-private", missingVars);
+    }
+
+    return {
+      baseRpcUrl: env.BASE_RPC_URL,
+      ephemeralRpcUrl: env.EPHEMERAL_TEE_RPC_URL!,
+      transferQueueCrankRpcUrl: env.TRANSFER_QUEUE_CRANK_RPC_URL ?? env.EPHEMERAL_TEE_RPC_URL!,
+      cluster: "mainnet",
+      teeRpcUrl: env.EPHEMERAL_TEE_RPC_URL!,
+    };
+  }
+
   if (normalized === "devnet") {
     const missingVars = [
       ...(!env.BASE_DEVNET_RPC_URL ? ["BASE_DEVNET_RPC_URL" as const] : []),
@@ -277,7 +294,7 @@ export function resolveRpcConfig(env: AppEnv, cluster?: string): RpcConfig {
     ];
 
     if (missingVars.length > 0) {
-      throw createClusterConfigError(missingVars);
+      throw createClusterConfigError("devnet", missingVars);
     }
 
     return {
@@ -285,6 +302,34 @@ export function resolveRpcConfig(env: AppEnv, cluster?: string): RpcConfig {
       ephemeralRpcUrl: env.EPHEMERAL_DEVNET_RPC_URL!,
       transferQueueCrankRpcUrl: env.TRANSFER_QUEUE_DEVNET_CRANK_RPC_URL ?? env.EPHEMERAL_DEVNET_RPC_URL!,
       cluster: "devnet",
+    };
+  }
+
+  if (normalized === "devnet-private") {
+    const missingVars = [
+      ...(!env.BASE_DEVNET_RPC_URL ? ["BASE_DEVNET_RPC_URL" as const] : []),
+      ...(!env.EPHEMERAL_DEVNET_TEE_RPC_URL ? ["EPHEMERAL_DEVNET_TEE_RPC_URL" as const] : []),
+    ];
+
+    if (missingVars.length > 0) {
+      throw createClusterConfigError("devnet-private", missingVars);
+    }
+
+    return {
+      baseRpcUrl: env.BASE_DEVNET_RPC_URL!,
+      ephemeralRpcUrl: env.EPHEMERAL_DEVNET_TEE_RPC_URL!,
+      transferQueueCrankRpcUrl: env.TRANSFER_QUEUE_DEVNET_CRANK_RPC_URL ?? env.EPHEMERAL_DEVNET_TEE_RPC_URL!,
+      cluster: "devnet",
+      teeRpcUrl: env.EPHEMERAL_DEVNET_TEE_RPC_URL!,
+    };
+  }
+
+  if (cluster === undefined && normalized === "custom") {
+    return {
+      baseRpcUrl: env.BASE_RPC_URL,
+      ephemeralRpcUrl: env.EPHEMERAL_RPC_URL,
+      transferQueueCrankRpcUrl: env.TRANSFER_QUEUE_CRANK_RPC_URL ?? env.EPHEMERAL_RPC_URL,
+      cluster: "custom",
     };
   }
 
@@ -302,7 +347,7 @@ export function resolveRpcConfig(env: AppEnv, cluster?: string): RpcConfig {
       cluster: "custom",
     };
   } catch {
-    throw new ApiError(400, "INVALID_CLUSTER", "cluster must be \"mainnet\", \"devnet\", or a valid http(s) URL");
+    throw new ApiError(400, "INVALID_CLUSTER", "cluster must be \"mainnet\", \"devnet\", \"mainnet-private\", \"devnet-private\", or a valid http(s) URL");
   }
 }
 
@@ -328,24 +373,35 @@ function parsePublicKey(value: string, fieldName: string) {
   }
 }
 
-function parseAmount(value: string | number, fieldName: string) {
+function parseAmount(
+  value: string | number,
+  fieldName: string,
+  options?: { allowZero?: boolean },
+) {
   try {
+    const allowZero = options?.allowZero ?? false;
     const amount = typeof value === "number"
       ? (() => {
-          if (!Number.isSafeInteger(value) || value <= 0) {
-            throw new Error("non-positive");
+          if (!Number.isSafeInteger(value) || value < 0 || (!allowZero && value === 0)) {
+            throw new Error("invalid amount");
           }
 
           return BigInt(value);
         })()
       : BigInt(value);
 
-    if (amount <= 0n) {
-      throw new Error("non-positive");
+    if (amount < 0n || (!allowZero && amount === 0n)) {
+      throw new Error("invalid amount");
     }
     return amount;
   } catch {
-    throw new ApiError(400, "INVALID_AMOUNT", `${fieldName} must be a positive integer string`);
+    throw new ApiError(
+      400,
+      "INVALID_AMOUNT",
+      options?.allowZero
+        ? `${fieldName} must be a non-negative integer string`
+        : `${fieldName} must be a positive integer string`,
+    );
   }
 }
 
@@ -547,16 +603,20 @@ async function tryResolveDelegationEndpointFromRouter(
   }
 }
 
-function getHardcodedTeeRpcEndpoint(cluster: RpcConfig["cluster"], validator: PublicKey | undefined) {
+function getHardcodedTeeRpcEndpoint(config: RpcConfig, validator: PublicKey | undefined) {
   if (!validator?.equals(TEE_VALIDATOR)) {
     return undefined;
   }
 
-  if (cluster === "devnet") {
+  if (config.teeRpcUrl) {
+    return config.teeRpcUrl;
+  }
+
+  if (config.cluster === "devnet") {
     return DEVNET_TEE_RPC_URL;
   }
 
-  if (cluster === "mainnet") {
+  if (config.cluster === "mainnet") {
     return MAINNET_TEE_RPC_URL;
   }
 
@@ -586,7 +646,7 @@ async function resolveUndelegateEphemeralRpcEndpoint(
   }
 
   const delegatedValidator = readDelegatedValidator(delegationAccount);
-  const hardcodedEndpoint = getHardcodedTeeRpcEndpoint(config.cluster, delegatedValidator);
+  const hardcodedEndpoint = getHardcodedTeeRpcEndpoint(config, delegatedValidator);
 
   if (hardcodedEndpoint) {
     return hardcodedEndpoint;
@@ -1021,6 +1081,7 @@ function serializeTransaction(
   partialSigners: Keypair[] = [],
   from?: SendTarget,
   fees?: TransferFees,
+  sendRpcEndpoint?: string,
 ): TransactionResponse {
   const transaction = createUnsignedTransaction(instructions, feePayer, blockhash);
   if (partialSigners.length > 0) {
@@ -1037,6 +1098,7 @@ function serializeTransaction(
       }),
     ).toString("base64"),
     sendTo,
+    sendRpcEndpoint,
     from,
     recentBlockhash: blockhash.blockhash,
     lastValidBlockHeight: blockhash.lastValidBlockHeight,
@@ -1149,6 +1211,7 @@ export async function buildDepositTransaction(env: AppEnv, input: DepositRequest
       shuttleId: createRandomShuttleId(),
       escrowIndex: 0,
       idempotent: input.idempotent,
+      private: input.private ?? true,
     });
 
     return serializeTransaction(
@@ -1321,7 +1384,12 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
     const from = parsePublicKey(input.from, "from");
     const to = parsePublicKey(input.to, "to");
     const mint = parsePublicKey(input.mint, "mint");
-    const amount = parseAmount(input.amount, "amount");
+    const allowZeroAmount = input.visibility === "private"
+      && input.fromBalance === "base"
+      && input.toBalance === "ephemeral";
+    const amount = parseAmount(input.amount, "amount", {
+      allowZero: allowZeroAmount,
+    });
     const shuttleId = createRandomShuttleId();
 
     const minDelayMs = parseOptionalAmount(input.minDelayMs, "minDelayMs");
@@ -1329,8 +1397,6 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
     const clientRefId = parseOptionalAmount(input.clientRefId, "clientRefId");
     const split = input.split;
     const exactOut = input.exactOut;
-
-    console.log("input: ", input);
 
     if (minDelayMs !== undefined && minDelayMs < 0n) {
       throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "minDelayMs must be non-negative");
@@ -1505,8 +1571,6 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
         return versionedResponse;
       }
     }
-    console.log("instructions: ", instructions);
-
     return serializeTransaction(
       "transfer",
       sendTo,
@@ -1517,6 +1581,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       sponsor ? [sponsor] : [],
       input.fromBalance,
       fees,
+      sendTo === "ephemeral" ? config.ephemeralRpcUrl : undefined,
     );
   } catch (error) {
     throwTransactionBuildError(error);

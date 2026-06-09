@@ -341,6 +341,13 @@ describe("app", () => {
       kind: "deposit",
       instructionCount: 3,
     });
+    const depositRequestSchema = (
+      json.components?.schemas as Record<string, any>
+    )?.DepositRequest;
+    expect(depositRequestSchema?.properties?.private).toMatchObject({
+      type: "boolean",
+      example: true,
+    });
     const transferRequestSchema = (
       json.components?.schemas as Record<string, any>
     )?.TransferRequest;
@@ -364,6 +371,7 @@ describe("app", () => {
       json.components?.schemas as Record<string, any>
     )?.UnsignedTransactionResponse;
     expect(transactionResponseSchema?.properties?.fees).toBeDefined();
+    expect(transactionResponseSchema?.properties?.sendRpcEndpoint).toBeDefined();
     const sendTransactionRequestSchema = (
       json.components?.schemas as Record<string, any>
     )?.SendTransactionRequest;
@@ -1899,10 +1907,53 @@ describe("app", () => {
       Buffer.from(json.transactionBase64, "base64"),
     );
     expect(transaction.instructions.length).toBeGreaterThan(0);
+    const privatePermissionIx = transaction.instructions.find(
+      ix => ix.programId.equals(EPHEMERAL_SPL_TOKEN_PROGRAM_ID) && ix.data[0] === 6,
+    );
     const depositIx
       = transaction.instructions[transaction.instructions.length - 1]!;
+    expect(privatePermissionIx).toBeDefined();
     expect(depositIx.data[0]).toBe(24);
     expect(depositIx.data.length).toBe(45);
+  });
+
+  it("builds a public deposit transaction when private is false", async () => {
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123,
+    });
+
+    const response = await app.request(
+      "/v1/spl/deposit",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          owner,
+          amount: 1,
+          validator: resolvedValidator,
+          idempotent: true,
+          private: false,
+        }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(200);
+
+    const json = (await response.json()) as {
+      transactionBase64: string;
+    };
+    const transaction = Transaction.from(
+      Buffer.from(json.transactionBase64, "base64"),
+    );
+    const privatePermissionIx = transaction.instructions.find(
+      ix => ix.programId.equals(EPHEMERAL_SPL_TOKEN_PROGRAM_ID) && ix.data[0] === 6,
+    );
+
+    expect(privatePermissionIx).toBeUndefined();
   });
 
   it("uses the mint token program when building a deposit", async () => {
@@ -2480,6 +2531,109 @@ describe("app", () => {
     ).toBe(true);
   });
 
+  it("uses the devnet TEE RPC endpoint when cluster=devnet-private", async () => {
+    const devnetPrivateEnv = {
+      ...env,
+      EPHEMERAL_DEVNET_RPC_URL: "https://ephemeral.deposit.devnet.rpc.test",
+      EPHEMERAL_DEVNET_TEE_RPC_URL: "https://ephemeral-tee.deposit.devnet.rpc.test",
+    };
+
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockImplementation(
+      async function getLatestBlockhash(
+        this: Connection & { _rpcEndpoint: string },
+      ) {
+        const endpoint = (this as Connection & { _rpcEndpoint: string })
+          ._rpcEndpoint;
+        return endpoint.includes("base.devnet.rpc.test")
+          ? {
+              blockhash: "So11111111111111111111111111111111111111112",
+              lastValidBlockHeight: 321,
+            }
+          : {
+              blockhash: "11111111111111111111111111111111",
+              lastValidBlockHeight: 123,
+            };
+      },
+    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(devnetPrivateEnv.EPHEMERAL_DEVNET_TEE_RPC_URL);
+      return createIdentityResponse(resolvedValidator);
+    });
+
+    const response = await app.request(
+      "/v1/spl/deposit",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          owner,
+          amount: 1,
+          cluster: "devnet-private",
+        }),
+      },
+      devnetPrivateEnv,
+    );
+
+    expect(response.status).toBe(200);
+
+    const json = (await response.json()) as {
+      recentBlockhash: string;
+      validator: string;
+      transactionBase64: string;
+    };
+
+    expect(json.recentBlockhash).toBe(
+      "So11111111111111111111111111111111111111112",
+    );
+    expect(json.validator).toBe(resolvedValidator);
+
+    const transaction = Transaction.from(
+      Buffer.from(json.transactionBase64, "base64"),
+    );
+    expect(
+      transaction.instructions.some(instruction =>
+        instruction.keys.some(
+          key => key.pubkey.toBase58() === DEVNET_USDC_MINT,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("uses the mainnet TEE RPC endpoint when cluster=mainnet-private", async () => {
+    const mainnetPrivateEnv = {
+      ...env,
+      EPHEMERAL_TEE_RPC_URL: "https://ephemeral-tee.challenge.rpc.test",
+    };
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(
+        `${mainnetPrivateEnv.EPHEMERAL_TEE_RPC_URL}/auth/challenge?pubkey=${owner}`,
+      );
+      return new Response(
+        JSON.stringify({ challenge: "mainnet-private-challenge" }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json",
+          },
+        },
+      );
+    });
+
+    const response = await app.request(
+      `/v1/spl/challenge?pubkey=${owner}&cluster=mainnet-private`,
+      {},
+      mainnetPrivateEnv,
+    );
+
+    expect(response.status).toBe(200);
+
+    const json = (await response.json()) as { challenge: string };
+    expect(json.challenge).toBe("mainnet-private-challenge");
+  });
+
   it("defaults the worker cluster binding to mainnet when it is omitted", async () => {
     vi.spyOn(Connection.prototype, "getAccountInfo").mockResolvedValue(
       createAccountInfo(3n),
@@ -2923,6 +3077,38 @@ describe("app", () => {
     );
   });
 
+  it("returns a config error when devnet-private TEE RPC env vars are missing", async () => {
+    const response = await app.request(
+      `/v1/spl/challenge?pubkey=${owner}&cluster=devnet-private`,
+      {},
+      env,
+    );
+
+    expect(response.status).toBe(500);
+
+    const json = (await response.json()) as {
+      error: {
+        code: string;
+        message: string;
+        details?: {
+          issues?: Array<{
+            path?: string[];
+          }>;
+        };
+      };
+    };
+
+    expect(json.error.code).toBe("CONFIG_ERROR");
+    expect(json.error.message).toBe(
+      "Missing worker environment variables for cluster=devnet-private",
+    );
+    expect(json.error.details?.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: ["EPHEMERAL_DEVNET_TEE_RPC_URL"] }),
+      ]),
+    );
+  });
+
   it("exposes the SPL tools over MCP", async () => {
     vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
       blockhash: "11111111111111111111111111111111",
@@ -3013,6 +3199,7 @@ describe("app", () => {
 
     const json = (await response.json()) as {
       sendTo: string;
+      sendRpcEndpoint: string;
       from: string;
       recentBlockhash: string;
       instructionCount: number;
@@ -3023,6 +3210,7 @@ describe("app", () => {
     };
 
     expect(json.sendTo).toBe("ephemeral");
+    expect(json.sendRpcEndpoint).toBe(env.EPHEMERAL_RPC_URL);
     expect(json.from).toBe("ephemeral");
     expect(json.recentBlockhash).toBe("11111111111111111111111111111111");
     expect(json.instructionCount).toBe(1);
@@ -3784,7 +3972,7 @@ describe("app", () => {
             EPHEMERAL_SPL_TOKEN_PROGRAM_ID,
             SystemProgram.programId,
           ],
-          new PublicKey("HFmj4QbofPjhXP2vdnDARDQFw1AucSQTKVAs8df4tkUy"),
+          new PublicKey("E26JGdRsdKkGe6oRU4Un24agZjBF2Bg9z1ctfZByETRo"),
         ),
       ),
     );
@@ -4378,6 +4566,65 @@ describe("app", () => {
     expect(json.error.code).toBe("UNSUPPORTED_TRANSFER_ROUTE");
   });
 
+  it("builds a zero-amount private base-to-ephemeral setup transfer", async () => {
+    const setupEnv = {
+      ...env,
+      EPHEMERAL_RPC_URL: "https://ephemeral.zero-setup.rpc.test",
+    };
+
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123,
+    });
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockResolvedValue(
+      createMintAccountInfo(TOKEN_PROGRAM_ID),
+    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(setupEnv.EPHEMERAL_RPC_URL);
+      return createIdentityResponse(resolvedValidator);
+    });
+
+    const response = await app.request(
+      "/v1/spl/transfer",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          from: owner,
+          to: destination,
+          mint: "So11111111111111111111111111111111111111112",
+          amount: 0,
+          visibility: "private",
+          fromBalance: "base",
+          toBalance: "ephemeral",
+          initIfMissing: true,
+          initAtasIfMissing: true,
+          initVaultIfMissing: true,
+        }),
+      },
+      setupEnv,
+    );
+
+    expect(response.status).toBe(200);
+
+    const json = (await response.json()) as {
+      sendTo: string;
+      transactionBase64: string;
+    };
+    const transaction = Transaction.from(
+      Buffer.from(json.transactionBase64, "base64"),
+    );
+    const setupInstruction = transaction.instructions.find(
+      ix => ix.programId.equals(EPHEMERAL_SPL_TOKEN_PROGRAM_ID) && ix.data[0] === 24,
+    );
+
+    expect(json.sendTo).toBe("base");
+    expect(setupInstruction).toBeDefined();
+    expect(setupInstruction?.data.readBigUInt64LE(5)).toBe(0n);
+  });
+
   it("returns base and private balances from different RPCs", async () => {
     const mint = "So11111111111111111111111111111111111111112";
     const balanceEnv = {
@@ -4748,6 +4995,46 @@ describe("app", () => {
 
     const json = (await response.json()) as { token: string };
     expect(json.token).toBe(MOCK_AUTH_TOKEN);
+  });
+
+  it("maps upstream login rate limits to 429", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(`${env.EPHEMERAL_RPC_URL}/auth/login`);
+      return new Response(
+        JSON.stringify({
+          error:
+            "Unexpected Range status: 429 Too Many Requests; body={\"message\":\"Too many requests\",\"statusCode\":429}",
+        }),
+        {
+          status: 400,
+          statusText: "Bad Request",
+          headers: {
+            "content-type": "text/plain",
+          },
+        },
+      );
+    });
+
+    const response = await app.request(
+      "/v1/spl/login",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          pubkey: owner,
+          challenge: "c1",
+          signature: "s1",
+        }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(429);
+
+    const json = (await response.json()) as { error: { message: string } };
+    expect(json.error.message).toBe("Failed to login: Too Many Requests");
   });
 
   it("redacts RPC URLs from balance error details", async () => {

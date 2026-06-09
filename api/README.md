@@ -48,6 +48,8 @@ Important behavior:
 - every SPL endpoint accepts an optional `cluster` parameter
 - `cluster=mainnet` uses `BASE_RPC_URL` and `EPHEMERAL_RPC_URL`
 - `cluster=devnet` uses `BASE_DEVNET_RPC_URL` and `EPHEMERAL_DEVNET_RPC_URL`
+- `cluster=mainnet-private` uses `BASE_RPC_URL` and `EPHEMERAL_TEE_RPC_URL`
+- `cluster=devnet-private` uses `BASE_DEVNET_RPC_URL` and `EPHEMERAL_DEVNET_TEE_RPC_URL`
 - any other valid `cluster` value is treated as a custom RPC URL and used only for the base RPC, while the configured ephemeral RPC is kept
 - the API fetches the recent blockhash itself
 - if `fromBalance` is `"base"`, the blockhash is fetched from the base RPC
@@ -93,6 +95,8 @@ Variables:
 - `EPHEMERAL_RPC_URL`: mainnet ephemeral RPC used when `cluster` is omitted or set to `mainnet`
 - `BASE_DEVNET_RPC_URL`: devnet base Solana RPC used when `cluster=devnet`
 - `EPHEMERAL_DEVNET_RPC_URL`: devnet ephemeral RPC used when `cluster=devnet`
+- `EPHEMERAL_TEE_RPC_URL`: mainnet TEE ephemeral RPC used when `cluster=mainnet-private`
+- `EPHEMERAL_DEVNET_TEE_RPC_URL`: devnet TEE ephemeral RPC used when `cluster=devnet-private`
 - `TRANSFER_QUEUE_CRANK_RPC_URL`: optional RPC used only to submit background transfer queue crank transactions for mainnet
 - `TRANSFER_QUEUE_DEVNET_CRANK_RPC_URL`: optional RPC used only to submit background transfer queue crank transactions for devnet
 - `METIS_SWAP_API_URL`: optional Triton Metis Swap API base URL, including your private token and the `/metis` suffix
@@ -108,11 +112,13 @@ BASE_RPC_URL=https://rpc.magicblock.app/mainnet
 EPHEMERAL_RPC_URL=https://mainnet.magicblock.app
 BASE_DEVNET_RPC_URL=https://rpc.magicblock.app/devnet
 EPHEMERAL_DEVNET_RPC_URL=https://devnet-tee.magicblock.app
+EPHEMERAL_TEE_RPC_URL=https://mainnet-tee.magicblock.app
+EPHEMERAL_DEVNET_TEE_RPC_URL=https://devnet-tee.magicblock.app
 # TRANSFER_QUEUE_CRANK_RPC_URL=
 # TRANSFER_QUEUE_DEVNET_CRANK_RPC_URL=
 METIS_SWAP_API_URL=https://<endpoint>.rpcpool.com/<private_token>/metis
-# PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE=
-# PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE=
+PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE=54M1BrqVSg1UGTmhH44gQPsPVyuMpmcVBkaY2wYNSVZB
+PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE=E26JGdRsdKkGe6oRU4Un24agZjBF2Bg9z1ctfZByETRo
 # GASLESS_SPONSOR_SECRET_KEY=
 CORS_ORIGIN=*
 ```
@@ -131,7 +137,7 @@ Create local env:
 cp .dev.vars.example .dev.vars
 ```
 
-If you see `CONFIG_ERROR`, check that `.dev.vars` exists in this directory and contains `BASE_RPC_URL` and `EPHEMERAL_RPC_URL`. If you use `cluster=devnet`, also set `BASE_DEVNET_RPC_URL` and `EPHEMERAL_DEVNET_RPC_URL`.
+If you see `CONFIG_ERROR`, check that `.dev.vars` exists in this directory and contains `BASE_RPC_URL` and `EPHEMERAL_RPC_URL`. If you use `cluster=devnet`, also set `BASE_DEVNET_RPC_URL` and `EPHEMERAL_DEVNET_RPC_URL`. If you use `cluster=mainnet-private` or `cluster=devnet-private`, also set `EPHEMERAL_TEE_RPC_URL` or `EPHEMERAL_DEVNET_TEE_RPC_URL`.
 
 Start the worker locally:
 
@@ -169,7 +175,7 @@ curl http://127.0.0.1:8787/reference
 - `yarn typecheck`: TypeScript check
 - `yarn test`: run Vitest suite
 - `yarn deploy`: deploy with Wrangler, uploading Worker secrets from `.prod.vars`
-- `yarn create:private-transfer-lut -- [options]`: create a reusable address lookup table for private `base -> base` transfers covering SOL and USDC
+- `yarn create:private-transfer-lut -- [options]`: create a reusable address lookup table for private `base -> base` transfers covering SOL, USDC, and USDT
 
 ## Private Transfer LUT Script
 
@@ -179,11 +185,12 @@ Defaults:
 
 - loads RPC URLs from `.dev.vars`
 - targets `mainnet` unless `--cluster devnet` is passed
-- resolves `validator` from the selected ephemeral RPC unless `--validator` is provided
-- includes SOL and USDC mint-specific accounts plus the shared program/global accounts
+- resolves validators from both the regular and TEE ephemeral RPCs for the selected base cluster unless `--validator` is provided
+- accepts multiple `--validator` values, either repeated or comma-separated
+- includes SOL, USDC, and USDT mint-specific accounts for every resolved validator, including queue ATA/eATA and queue permission/eATA permission PDAs, plus the shared program/global accounts
 - leaves the LUT mutable by default; pass `--freeze` to freeze it after extending
 
-After the script succeeds, copy the `lookupTable` value from its JSON output into `PRIVATE_BASE_TO_BASE_TRANSFER_LOOKUP_TABLES` in `src/lib/solana.ts`, or set the matching `PRIVATE_BASE_TO_BASE_TRANSFER_<CLUSTER>_LOOKUP_TABLE` worker env var before redeploying. Until one of those is updated, the API will not use the new LUT.
+After the script succeeds, copy the `lookupTable` value from its JSON output into `PRIVATE_BASE_TO_BASE_TRANSFER_LOOKUP_TABLES` in `src/lib/solana.ts`, or set the matching `PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE` or `PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE` worker env var before redeploying. Until one of those is updated, the API will not use the new LUT.
 
 Examples:
 
@@ -200,7 +207,8 @@ yarn create:private-transfer-lut -- \
   --cluster mainnet \
   --payer ~/.config/solana/id.json \
   --authority ~/.config/solana/lut-authority.json \
-  --validator <VALIDATOR_PUBKEY>
+  --validator <VALIDATOR_PUBKEY> \
+  --validator <TEE_VALIDATOR_PUBKEY>
 ```
 
 ## API Documentation
@@ -465,6 +473,8 @@ http://127.0.0.1:6274
 - `cluster` is optional:
   - omit it or use `mainnet` to use `BASE_RPC_URL` and `EPHEMERAL_RPC_URL`
   - use `devnet` to use `BASE_DEVNET_RPC_URL` and `EPHEMERAL_DEVNET_RPC_URL`
+  - use `mainnet-private` to use `BASE_RPC_URL` and `EPHEMERAL_TEE_RPC_URL`
+  - use `devnet-private` to use `BASE_DEVNET_RPC_URL` and `EPHEMERAL_DEVNET_TEE_RPC_URL`
   - use any other valid http(s) URL to override only the base RPC and keep the configured ephemeral RPC
 - amount encoding depends on the route:
   - deposit, withdraw, and transfer: integer JSON values with minimum `1`, for example `1` or `1000000`

@@ -16,6 +16,8 @@ use ephemeral_spl_api::debug_log;
 use ephemeral_spl_api::instruction::ESplInstruction;
 use ephemeral_spl_api::state::transfer_queue::{queue_views, TransferQueue};
 use ephemeral_spl_api::{consts, require, require_eq_keys, require_n_accounts};
+#[cfg(feature = "logging")]
+use pinocchio::Address;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 #[cfg(not(feature = "no-fees"))]
 use solana_instruction::{AccountMeta, Instruction};
@@ -195,12 +197,17 @@ pub(crate) fn process_with_merge_and_private_transfer_inner(
 
     let total_amount = private_transfer_amount + fee_amount;
 
-    debug_log!(
-        "exact_out:  {}, fee_amount: {}, private_transfer_amount: {}",
-        exact_out,
-        fee_amount,
-        private_transfer_amount
-    );
+    debug_log!({
+        let validator = validator.map(|validator| Address::new_from_array(*validator).to_string());
+        let validator = validator.as_deref().unwrap_or("none");
+        pinocchio_log::log!(
+            "exact_out:  {}, fee_amount: {}, private_transfer_amount: {}, validator: {}",
+            exact_out,
+            fee_amount,
+            private_transfer_amount,
+            validator
+        );
+    });
 
     let actions = {
         let private_transfer = private_transfer_action_encrypted(
