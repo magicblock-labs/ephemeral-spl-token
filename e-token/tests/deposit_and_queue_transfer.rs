@@ -1198,8 +1198,13 @@ async fn deposit_and_queue_transfer_resolves_stealth_pool_destination() {
         utils::test_keypair("stealth_pool::destination_0").pubkey(),
         utils::test_keypair("stealth_pool::destination_1").pubkey(),
     ];
-    let (stealth_pool, init_ix) =
-        build_update_stealth_pool_ix(fixture.payer, fixture.payer, handle_hash, 0, &destinations);
+    let (stealth_pool, init_ix) = build_update_stealth_pool_ix(
+        fixture.payer,
+        fixture.payer,
+        handle_hash,
+        StealthPoolFlags::Empty.value(),
+        &destinations,
+    );
     pre_create_stealth_pool(&mut fixture.context, stealth_pool);
     let split = 3;
     let group_id: u32 = 1;

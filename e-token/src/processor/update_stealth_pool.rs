@@ -100,7 +100,7 @@ pub fn process_update_stealth_pool(
 pub struct UpdateStealthPoolArgs {
     pub handle_hash: [u8; 32],
     // TODO (snawaz): support enum based flags in data-layout
-    pub flags: u8,
+    pub flags: u8, // StealthPoolFlags
     #[flexible = 1]
     pub destinations: Vec<[u8; 32]>,
 }

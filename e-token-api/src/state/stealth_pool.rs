@@ -107,15 +107,19 @@ impl StealthPool {
     }
 }
 
+///
+/// BitMask Flags
+///
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StealthPoolFlags {
-    SplitAcrossKeys = 1 << 0,
+    Empty = 0x00, // means no flags
+    SplitAcrossKeys = 0x01,
 }
 
 impl StealthPoolFlags {
-    pub const MIN: u8 = StealthPoolFlags::SplitAcrossKeys.value();
-    pub const MAX: u8 = StealthPoolFlags::SplitAcrossKeys.value();
+    pub const MASK: u8 =
+        StealthPoolFlags::Empty.value() | StealthPoolFlags::SplitAcrossKeys.value();
 
     #[inline(always)]
     pub const fn value(self) -> u8 {
@@ -127,6 +131,37 @@ impl StealthPoolFlags {
     }
 
     pub const fn is_valid(flags: u8) -> bool {
-        flags >= Self::MIN && flags <= Self::MAX
+        flags & !Self::MASK == 0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::StealthPoolFlags;
+
+    #[test]
+    fn stealth_pool_flags_accept_empty_and_known_bits() {
+        assert!(StealthPoolFlags::is_valid(StealthPoolFlags::Empty.value()));
+        assert!(StealthPoolFlags::is_valid(
+            StealthPoolFlags::SplitAcrossKeys.value()
+        ));
+        assert!(StealthPoolFlags::is_valid(
+            StealthPoolFlags::Empty.value() | StealthPoolFlags::SplitAcrossKeys.value()
+        ));
+    }
+
+    #[test]
+    fn stealth_pool_flags_reject_unknown_bits() {
+        assert!(!StealthPoolFlags::is_valid(1 << 1));
+        assert!(!StealthPoolFlags::is_valid(
+            StealthPoolFlags::SplitAcrossKeys.value() | (1 << 1)
+        ));
+        assert!(!StealthPoolFlags::is_valid(u8::MAX));
+    }
+
+    #[test]
+    fn stealth_pool_flags_check_membership_by_bit() {
+        assert!(!StealthPoolFlags::SplitAcrossKeys.is_in(StealthPoolFlags::Empty.value()));
+        assert!(StealthPoolFlags::SplitAcrossKeys.is_in(StealthPoolFlags::SplitAcrossKeys.value()));
     }
 }
