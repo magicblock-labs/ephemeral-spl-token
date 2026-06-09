@@ -26,7 +26,7 @@ use crate::processor::internal::transfer_queue_refill::{
     MARK_TRANSFER_QUEUE_REFILL_PENDING_COMPUTE_UNITS,
     MARK_TRANSFER_QUEUE_REFILL_PENDING_ESCROW_INDEX,
 };
-use crate::processor::utils::{
+use crate::processor::internal::{
     get_associated_token_address, token_program_for_kind, CALLBACK_SIGNER, MAGIC_VAULT_ID,
 };
 

@@ -1,8 +1,8 @@
 use crate::processor::internal::group_receipt;
 use crate::processor::internal::group_receipt::{TransferCallbackArgs, TransferCallbackArgsView};
 #[cfg(feature = "logging")]
-use crate::processor::utils::group_receipt_log;
-use crate::processor::utils::{group_receipt_close, GroupReceiptAccounts, CALLBACK_SIGNER};
+use crate::processor::internal::group_receipt_log;
+use crate::processor::internal::{group_receipt_close, GroupReceiptAccounts, CALLBACK_SIGNER};
 use ephemeral_spl_api::state::group_receipt::{GroupReceipt, TransferReceipt};
 use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, TransferQueueHeader};
 use ephemeral_spl_api::{

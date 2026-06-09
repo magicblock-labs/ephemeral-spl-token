@@ -1,6 +1,7 @@
 use crate::utils::{pre_create_group_receipt, pre_create_stealth_pool};
 use bytemuck::Zeroable;
 use ephemeral_spl_api::instruction;
+use ephemeral_spl_api::instructions::{DepositAndQueueTransferArgs, UpdateStealthPoolArgs};
 use ephemeral_spl_api::state::group_receipt::GroupReceiptHeader;
 use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
 use ephemeral_spl_api::state::stealth_pool::{StealthPool, StealthPoolFlags};
@@ -8,7 +9,6 @@ use ephemeral_spl_api::state::transfer_queue::{
     queue_views_checked, QueuedTransfer, TransferQueue, TransferQueueHeader, HEADER_LEN, ITEM_LEN,
 };
 use ephemeral_spl_api::ID as PROGRAM;
-use ephemeral_token_program::{DepositAndQueueTransferArgs, UpdateStealthPoolArgs};
 use serial_test::serial;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::clock::Clock;

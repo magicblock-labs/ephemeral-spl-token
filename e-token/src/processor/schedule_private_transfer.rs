@@ -28,7 +28,7 @@ use solana_pubkey::Pubkey;
 use crate::processor::internal::private_transfer::SCHEDULED_PT_ACCOUNTS;
 use crate::processor::internal::rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED};
 use crate::processor::internal::{derive_ata, derive_hydra_seed};
-use crate::processor::utils::{get_associated_token_address, is_supported_token_program};
+use crate::processor::internal::{get_associated_token_address, is_supported_token_program};
 
 const SETUP_LAMPORTS: u64 = ephemeral_spl_api::consts::SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS
     + ephemeral_spl_api::consts::SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS;

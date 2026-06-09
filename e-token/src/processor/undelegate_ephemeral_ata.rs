@@ -2,7 +2,7 @@ use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_initialized};
 use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
-use crate::processor::utils::validate_token_account;
+use crate::processor::internal::validate_token_account;
 
 fn commit_and_undelegate_accounts(
     payer: &AccountView,

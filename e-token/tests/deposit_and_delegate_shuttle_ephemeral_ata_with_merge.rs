@@ -4,11 +4,11 @@ use ephemeral_rollups_pinocchio::pda::{
     delegation_metadata_pda_from_delegated_account, delegation_record_pda_from_delegated_account,
 };
 use ephemeral_spl_api::instruction;
+use ephemeral_spl_api::instructions::DepositAndDelegateShuttleArgs;
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::load_initialized;
 use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
 use ephemeral_spl_api::ID as PROGRAM;
-use ephemeral_token_program::DepositAndDelegateShuttleArgs;
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::rent::Rent;

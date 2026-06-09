@@ -1,5 +1,5 @@
 use crate::processor::internal::shuttle_delegation::DEFAULT_ESCROW_INDEX;
-use crate::processor::utils::{get_associated_token_address, validate_token_account};
+use crate::processor::internal::{get_associated_token_address, validate_token_account};
 use ephemeral_rollups_pinocchio::intent_bundle::{
     ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
 };

@@ -4,7 +4,7 @@ use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::cpi::Signer;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
-use crate::processor::utils::{read_mint_decimals, validate_token_account};
+use crate::processor::internal::{read_mint_decimals, validate_token_account};
 
 ///
 /// Executes on: ER only

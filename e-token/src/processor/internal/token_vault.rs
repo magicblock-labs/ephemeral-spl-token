@@ -1,4 +1,4 @@
-use crate::processor::utils::{get_associated_token_address, read_mint_decimals};
+use crate::processor::internal::{get_associated_token_address, read_mint_decimals};
 use ephemeral_spl_api::{
     error::EphemeralSplError, require, require_eq_keys, state::load_initialized,
 };

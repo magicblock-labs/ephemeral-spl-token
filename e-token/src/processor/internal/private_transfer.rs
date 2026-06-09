@@ -18,15 +18,15 @@ use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use solana_instruction::{AccountMeta, Instruction};
 
 use crate::processor::internal::group_receipt::derive_group_receipt_id;
+#[cfg(not(feature = "no-fees"))]
+use crate::processor::internal::read_mint_decimals;
 use crate::processor::internal::shuttle_delegation::{
     merge_shuttle_into_token_account_action,
     process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions,
     undelegate_and_close_shuttle_action, CloseStashArgs, DepositAndDelegateShuttleAccounts,
     DepositAndDelegateShuttleCommonArgs,
 };
-#[cfg(not(feature = "no-fees"))]
-use crate::processor::utils::read_mint_decimals;
-use crate::processor::utils::{get_associated_token_address, MAGIC_VAULT_ID};
+use crate::processor::internal::{get_associated_token_address, MAGIC_VAULT_ID};
 
 #[cfg(not(feature = "no-fees"))]
 const TRANSFER_CHECKED_DISCRIMINATOR: u8 = 12;

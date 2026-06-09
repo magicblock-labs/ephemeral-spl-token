@@ -19,7 +19,7 @@ use pinocchio_token_2022::instructions::{CloseAccount, TransferChecked};
 use crate::processor::internal::derive_hydra_seed;
 use crate::processor::internal::private_transfer::SCHEDULED_PT_INNER_ACCOUNTS;
 use crate::processor::internal::rent_pda::RENT_PDA;
-use crate::processor::utils::{
+use crate::processor::internal::{
     get_associated_token_address, is_supported_token_program, read_mint_decimals,
     validate_token_account,
 };

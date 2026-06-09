@@ -20,8 +20,8 @@ use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_system::instructions::{CreateAccount, Transfer};
 
 use crate::processor::internal::ephemeral_ata::initialize_ephemeral_ata_with_sponsor;
-use crate::processor::utils::get_associated_token_address;
-use crate::processor::utils::token_program_kind;
+use crate::processor::internal::get_associated_token_address;
+use crate::processor::internal::token_program_kind;
 
 pub const DEFAULT_TRANSFER_QUEUE_ITEMS: u32 = 100;
 /// Default queue size in bytes. (HEADER_LEN + ITEM_LEN * DEFAULT_TRANSFER_QUEUE_ITEMS)

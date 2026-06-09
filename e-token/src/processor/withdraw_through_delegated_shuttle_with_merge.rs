@@ -17,7 +17,7 @@ use crate::processor::{
         delegate_sponsored_shuttle_with_post_actions, prepare_sponsored_shuttle_delegation,
         DepositAndDelegateShuttleCommonArgs,
     },
-    utils::{read_mint_decimals, validate_token_account},
+    internal::{read_mint_decimals, validate_token_account},
 };
 
 struct WithdrawThroughDelegatedShuttleAccounts<'a> {

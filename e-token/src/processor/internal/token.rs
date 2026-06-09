@@ -49,7 +49,7 @@ pub(crate) fn read_mint_decimals(
 }
 
 #[inline(always)]
-pub fn read_token_account(account: &AccountView) -> Result<&TokenAccount, ProgramError> {
+pub(crate) fn read_token_account(account: &AccountView) -> Result<&TokenAccount, ProgramError> {
     let token_data = unsafe { account.borrow_unchecked() };
     require!(
         token_data.len() >= TokenAccount::BASE_LEN,
@@ -92,7 +92,7 @@ pub(crate) fn validate_token_account<'a>(
 }
 
 #[inline(always)]
-pub fn get_associated_token_address(
+pub(crate) fn get_associated_token_address(
     wallet: &Address,
     mint: &Address,
     token_program: &Address,

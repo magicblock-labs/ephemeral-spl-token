@@ -2,7 +2,7 @@ use crate::processor::internal::group_receipt::derive_group_receipt_id;
 use crate::processor::internal::token_vault::{
     transfer_to_queue_vault_for_mint, transfer_to_vault_for_mint, validate_queue_vault_for_mint,
 };
-use crate::processor::utils::{
+use crate::processor::internal::{
     group_receipt_create, read_mint_decimals, token_program_kind, GroupReceiptAccounts,
 };
 use core::convert::TryFrom;

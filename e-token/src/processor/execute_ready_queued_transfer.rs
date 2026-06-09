@@ -7,9 +7,9 @@ use {
 };
 
 use crate::processor::{
+    internal::read_mint_decimals,
     internal::rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
     internal::token_vault::validate_vault_for_mint,
-    utils::read_mint_decimals,
 };
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
