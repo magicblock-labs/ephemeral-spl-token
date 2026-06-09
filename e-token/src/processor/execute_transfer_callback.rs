@@ -38,17 +38,17 @@ pub fn process_execute_transfer_callback(
     instruction_data: &[u8],
 ) -> ProgramResult {
     let [
-        callback_signer,
+        callback_signer, // force multi-line
         group_receipt,
         queue_info,
-        _, // vault
+        _vault,
         mint,
-        _, // vault token account
+        _vault_token_account,
         source,
-        _, // source token account
-        _, // token program
+        _source_token_account,
+        _token_program,
         magic_vault,
-        magic_program
+        magic_program,
     ] = require_n_accounts!(accounts, 11);
 
     // Verify validator & queue info
@@ -122,6 +122,17 @@ fn handle_group_receipt(
     args: &TransferCallbackArgsView<'_>,
     response: &MagicResponseView,
 ) -> ProgramResult {
+    debug_log!({
+        use alloc::string::ToString;
+        pinocchio_log::log!(
+            256,
+            "ExecuteTransferCallback group_receipt address: {} data_len: {} owner: {}",
+            group_receipt_info.address().to_string().as_str(),
+            group_receipt_info.data_len(),
+            unsafe { group_receipt_info.owner() }.to_string().as_str()
+        );
+    });
+
     if !group_receipt_info.owned_by(&crate::ID) {
         debug_log!("Group receipt expected to be initialized");
         return Err(ProgramError::InvalidAccountOwner);
