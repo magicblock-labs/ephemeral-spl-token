@@ -3,6 +3,7 @@ use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use wheels::layout::Decodable as _;
 
 use crate::processor::internal::lamports_pda::derive_lamports_pda;
 

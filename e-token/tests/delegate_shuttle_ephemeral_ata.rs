@@ -11,6 +11,7 @@ use solana_instruction::{AccountMeta, Instruction};
 use solana_program_test::tokio;
 use solana_signer::Signer;
 use solana_transaction::Transaction;
+use wheels::layout::Encodable as _;
 
 mod common;
 mod utils;

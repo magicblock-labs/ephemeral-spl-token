@@ -1,4 +1,5 @@
 use std::u64;
+use wheels::layout::Encodable as _;
 
 use dlp_api::state::DelegationRecord;
 use ephemeral_rollups_pinocchio::pda::{

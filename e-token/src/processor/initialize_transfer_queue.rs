@@ -18,6 +18,7 @@ use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_system::instructions::{CreateAccount, Transfer};
+use wheels::layout::Decodable as _;
 
 use crate::processor::internal::ephemeral_ata::initialize_ephemeral_ata_with_sponsor;
 use crate::processor::internal::get_associated_token_address;

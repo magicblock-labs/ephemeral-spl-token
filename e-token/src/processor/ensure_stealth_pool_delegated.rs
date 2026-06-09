@@ -9,6 +9,7 @@ use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
 use pinocchio_system::instructions::CreateAccount;
+use wheels::layout::Decodable as _;
 
 ///
 /// Executes on: base.

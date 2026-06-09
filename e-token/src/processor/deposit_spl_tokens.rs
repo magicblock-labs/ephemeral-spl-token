@@ -1,6 +1,7 @@
 use ephemeral_spl_api::instructions::DepositArgs;
 use ephemeral_spl_api::state::{load_initialized, load_mut_initialized};
 use ephemeral_spl_api::{require, require_n_accounts};
+use wheels::layout::Decodable as _;
 
 use {
     ephemeral_spl_api::state::ephemeral_ata::EphemeralAta,

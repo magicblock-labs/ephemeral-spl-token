@@ -34,6 +34,7 @@ use solana_system_interface::instruction::create_account;
 use solana_transaction::Transaction;
 use spl_token_interface::instruction::{initialize_account, initialize_mint, TokenInstruction};
 use spl_token_interface::state::{Account as SplAccount, Mint};
+use wheels::layout::Encodable as _;
 
 // this must be same as ESplInternalInstruction
 #[repr(u8)]

@@ -1,5 +1,6 @@
 #[cfg(feature = "logging")]
 use alloc::string::ToString;
+use wheels::layout::Decodable as _;
 
 use dlp_api::compact::ClearText;
 use ephemeral_spl_api::debug_log;

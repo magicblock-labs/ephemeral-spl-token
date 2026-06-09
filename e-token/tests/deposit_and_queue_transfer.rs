@@ -14,6 +14,7 @@ use solana_instruction::{AccountMeta, Instruction};
 use solana_program::clock::Clock;
 use solana_program_pack::Pack;
 use spl_token_interface::state::Account;
+use wheels::layout::Encodable as _;
 use {
     solana_keypair::Keypair,
     solana_program_test::{processor, tokio, ProgramTestContext},

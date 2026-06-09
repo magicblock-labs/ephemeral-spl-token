@@ -1,4 +1,5 @@
 use std::sync::{Mutex, OnceLock};
+use wheels::layout::Encodable as _;
 
 use common::magic_mock::{
     clear_all_captured, clear_captured_cancels, clear_captured_intent_bundles,

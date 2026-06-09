@@ -1,6 +1,7 @@
 use ephemeral_spl_api::instructions::InitializeShuttleEphemeralAtaArgs;
 use ephemeral_spl_api::{require, require_n_accounts};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use wheels::layout::Decodable as _;
 
 use crate::processor::internal::ephemeral_ata::initialize_shuttle_ephemeral_ata_with_sponsor;
 

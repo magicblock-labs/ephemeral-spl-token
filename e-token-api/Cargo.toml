@@ -12,7 +12,6 @@ logging = []
 no-fees = []
 
 [dependencies]
-data-layout = { path = "../data-layout" }
 pinocchio = { workspace = true }
 pinocchio-log = { workspace = true }
 pinocchio-pubkey = { workspace = true }
@@ -21,6 +20,7 @@ solana-signature = { workspace = true, features = ["bytemuck"] }
 ephemeral-rollups-pinocchio = { workspace = true }
 bytemuck = { workspace = true }
 static_assertions = { workspace = true }
+wheels = { workspace = true }
 
 [lints]
 workspace = true
