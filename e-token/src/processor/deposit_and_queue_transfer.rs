@@ -222,6 +222,17 @@ pub fn process_deposit_and_queue_transfer(
         group_id,
         args.split(),
     )?;
+    debug_log!({
+        use alloc::string::ToString;
+
+        pinocchio_log::log!(
+            256,
+            "DepositAndQueueTransfer group_receipt address: {} data_len: {} owner: {}",
+            group_receipt_info.address().to_string().as_str(),
+            group_receipt_info.data_len(),
+            unsafe { group_receipt_info.owner() }.to_string().as_str()
+        );
+    });
 
     Ok(())
 }

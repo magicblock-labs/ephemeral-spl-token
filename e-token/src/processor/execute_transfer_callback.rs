@@ -5,9 +5,7 @@ use crate::processor::utils::group_receipt_log;
 use crate::processor::utils::{group_receipt_close, GroupReceiptAccounts, CALLBACK_SIGNER};
 use ephemeral_spl_api::state::group_receipt::{GroupReceipt, TransferReceipt};
 use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, TransferQueueHeader};
-use ephemeral_spl_api::{
-    debug_log, require, require_eq_keys, require_n_accounts, require_owned_by,
-};
+use ephemeral_spl_api::{debug_log, require_eq_keys, require_n_accounts, require_owned_by};
 use pinocchio::error::ProgramError;
 use pinocchio::{AccountView, ProgramResult};
 use solana_signature::Signature;
@@ -38,15 +36,15 @@ pub fn process_execute_transfer_callback(
     instruction_data: &[u8],
 ) -> ProgramResult {
     let [
-        callback_signer,
+        callback_signer, // force multi-line
         group_receipt,
         queue_info,
-        _, // vault
+        _vault,
         mint,
-        _, // vault token account
+        _vault_token_account,
         source,
-        _, // source token account
-        _, // token program
+        _source_token_account,
+        _token_program,
         magic_vault,
         magic_program
     ] = require_n_accounts!(accounts, 11);
@@ -122,6 +120,17 @@ fn handle_group_receipt(
     args: &TransferCallbackArgsView<'_>,
     response: &MagicResponseView,
 ) -> ProgramResult {
+    debug_log!({
+        use alloc::string::ToString;
+        pinocchio_log::log!(
+            256,
+            "ExecuteTransferCallback group_receipt address: {} data_len: {} owner: {}",
+            group_receipt_info.address().to_string().as_str(),
+            group_receipt_info.data_len(),
+            unsafe { group_receipt_info.owner() }.to_string().as_str()
+        );
+    });
+
     if !group_receipt_info.owned_by(&crate::ID) {
         debug_log!("Group receipt expected to be initialized");
         return Err(ProgramError::InvalidAccountOwner);
@@ -138,8 +147,9 @@ fn handle_group_receipt(
         source.address(),
         group_receipt.id(),
     );
-    require!(
-        expected_group_receipt.eq(group_receipt_info.address()),
+    require_eq_keys!(
+        &expected_group_receipt,
+        group_receipt_info.address(),
         ProgramError::InvalidAccountData
     );
 
