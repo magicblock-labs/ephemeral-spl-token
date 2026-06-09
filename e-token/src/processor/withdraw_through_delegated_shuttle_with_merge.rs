@@ -3,6 +3,7 @@ use alloc::string::ToString;
 
 use dlp_api::compact::ClearText;
 use ephemeral_spl_api::debug_log;
+use ephemeral_spl_api::instructions::DepositAndDelegateShuttleArgs;
 use ephemeral_spl_api::require_n_accounts;
 use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
@@ -14,7 +15,7 @@ use crate::processor::{
     internal::shuttle_delegation::{
         build_undelegate_and_close_shuttle_instruction,
         delegate_sponsored_shuttle_with_post_actions, prepare_sponsored_shuttle_delegation,
-        DepositAndDelegateShuttleArgs,
+        DepositAndDelegateShuttleCommonArgs,
     },
     utils::{read_mint_decimals, validate_token_account},
 };
@@ -178,7 +179,11 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
         accounts.delegation_record,
         accounts.delegation_metadata,
         accounts.system_program,
-        args.common_args(),
+        DepositAndDelegateShuttleCommonArgs {
+            shuttle_id: args.shuttle_id(),
+            total_amount: args.amount(),
+            validator: args.validator(),
+        },
         &prepared.mint,
         shuttle_eata.bump,
         post_actions.cleartext(),

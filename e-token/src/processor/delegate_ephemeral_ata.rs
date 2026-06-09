@@ -1,10 +1,8 @@
 use alloc::string::ToString;
-use alloc::vec;
-use alloc::vec::Vec;
-use data_layout::variable_offset_layout;
 use dlp_api::{requires::require_initialized_delegation_record, state::DelegationRecord};
 use ephemeral_rollups_pinocchio::instruction::DelegateAccountCpiBuilder;
 use ephemeral_rollups_pinocchio::types::DelegateConfig;
+use ephemeral_spl_api::instructions::DelegateArgs;
 use ephemeral_spl_api::require_n_accounts;
 use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_initialized};
 use ephemeral_spl_api::{debug_log, error::EphemeralSplError};
@@ -115,10 +113,3 @@ pub fn process_delegate_ephemeral_ata(
     .config(config)
     .invoke()
 }
-
-#[variable_offset_layout(buffer_offset = 1, option = implicit)]
-pub struct DelegateArgs {
-    pub validator: Option<[u8; 32]>,
-}
-
-static_assertions::const_assert!(matches!(DelegateArgs::DATA_LENS, [0, 32]));

@@ -1,8 +1,5 @@
 #[cfg(feature = "logging")]
 use alloc::string::ToString;
-use alloc::vec;
-use alloc::vec::Vec;
-use data_layout::variable_offset_layout;
 
 use core::mem::MaybeUninit;
 use dlp_api::args::PostDelegationActions;
@@ -33,10 +30,12 @@ use solana_instruction::{AccountMeta, Instruction};
 use solana_pubkey::Pubkey;
 
 use crate::processor::{
-    initialize_rent_pda::{RENT_PDA, RENT_PDA_BUMP},
     internal::ephemeral_ata::initialize_shuttle_ephemeral_ata_with_sponsor,
+    internal::rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
     internal::token_vault::transfer_to_vault_for_mint,
 };
+
+pub(crate) const DEFAULT_ESCROW_INDEX: u8 = u8::MAX;
 
 pub(crate) struct DepositAndDelegateShuttleAccounts<'a> {
     pub(crate) payer_info: &'a AccountView,
@@ -67,26 +66,6 @@ pub(crate) struct DepositAndDelegateShuttleCommonArgs<'a> {
     pub(crate) shuttle_id: u32,
     pub(crate) total_amount: u64,
     pub(crate) validator: Option<&'a [u8; 32]>,
-}
-
-#[variable_offset_layout(buffer_offset = 1, option = implicit)]
-pub struct DepositAndDelegateShuttleArgs {
-    pub shuttle_id: u32,
-    pub amount: u64,
-    pub validator: Option<[u8; 32]>,
-}
-
-static_assertions::const_assert!(matches!(DepositAndDelegateShuttleArgs::DATA_LENS, [12, 44]));
-
-impl DepositAndDelegateShuttleArgsView<'_> {
-    #[inline]
-    pub(crate) fn common_args(&self) -> DepositAndDelegateShuttleCommonArgs<'_> {
-        DepositAndDelegateShuttleCommonArgs {
-            shuttle_id: self.shuttle_id(),
-            total_amount: self.amount(),
-            validator: self.validator(),
-        }
-    }
 }
 
 pub(crate) fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions(
@@ -215,10 +194,7 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
     .invoke()?;
 
     let rent_bump_seed = [RENT_PDA_BUMP];
-    let rent_signer_seed = [
-        Seed::from(crate::processor::initialize_rent_pda::RENT_PDA_SEED),
-        Seed::from(&rent_bump_seed),
-    ];
+    let rent_signer_seed = [Seed::from(RENT_PDA_SEED), Seed::from(&rent_bump_seed)];
     let rent_signer = Signer::from(&rent_signer_seed);
 
     initialize_shuttle_ephemeral_ata_with_sponsor(
@@ -307,10 +283,7 @@ pub(crate) fn delegate_sponsored_shuttle_with_post_actions(
     post_actions: PostDelegationActions,
 ) -> ProgramResult {
     let rent_bump_seed = [RENT_PDA_BUMP];
-    let rent_signer_seed = [
-        Seed::from(crate::processor::initialize_rent_pda::RENT_PDA_SEED),
-        Seed::from(&rent_bump_seed),
-    ];
+    let rent_signer_seed = [Seed::from(RENT_PDA_SEED), Seed::from(&rent_bump_seed)];
     let rent_signer = Signer::from(&rent_signer_seed);
 
     let seeds: &[&[u8]] = &[shuttle_info.address().as_ref(), mint.as_ref()];
@@ -410,7 +383,7 @@ pub(crate) fn build_undelegate_and_close_shuttle_instruction(
     let mut data = ESplInstruction::UndelegateAndCloseShuttleToOwner.to_vec();
     if let Some(close) = close_stash {
         // Explicit escrow_index byte: the parser would otherwise consume `user[0]` as it.
-        data.push(crate::processor::undelegate_and_close_shuttle_to_owner::DEFAULT_ESCROW_INDEX);
+        data.push(DEFAULT_ESCROW_INDEX);
         data.extend_from_slice(&close.user);
         data.push(close.stash_bump);
     }

@@ -1,12 +1,13 @@
 use alloc::borrow::ToOwned;
-use alloc::vec;
 use alloc::vec::Vec;
 
-use data_layout::variable_offset_layout;
 use ephemeral_rollups_pinocchio::consts::{
     BUFFER, DELEGATION_METADATA, DELEGATION_PROGRAM_ID, DELEGATION_RECORD,
 };
 use ephemeral_spl_api::instruction::ESplInstruction;
+use ephemeral_spl_api::instructions::{
+    ExecuteScheduledPrivateTransferArgs, SchedulePrivateTransferArgs,
+};
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::global_vault::GlobalVault;
 use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
@@ -24,10 +25,8 @@ use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
 use pinocchio_system::instructions::Transfer;
 use solana_pubkey::Pubkey;
 
-use crate::processor::execute_scheduled_private_transfer::{
-    ExecuteScheduledPrivateTransferArgs, SCHEDULED_PT_ACCOUNTS,
-};
-use crate::processor::initialize_rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED};
+use crate::processor::internal::private_transfer::SCHEDULED_PT_ACCOUNTS;
+use crate::processor::internal::rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED};
 use crate::processor::internal::{derive_ata, derive_hydra_seed};
 use crate::processor::utils::{get_associated_token_address, is_supported_token_program};
 
@@ -257,34 +256,4 @@ pub fn process_schedule_private_transfer(
     .invoke_signed(&[rent_signer])?;
 
     Ok(())
-}
-
-#[variable_offset_layout(buffer_offset = 1)]
-pub struct SchedulePrivateTransferArgs {
-    pub shuttle_id: u32,
-    pub stash_bump: u8,
-    pub mint: [u8; 32],
-    pub shuttle_bump: u8,
-    pub shuttle_eata_bump: u8,
-    pub shuttle_wallet_ata_bump: u8,
-    pub buffer_bump: u8,
-    pub delegation_record_bump: u8,
-    pub delegation_metadata_bump: u8,
-    pub global_vault_bump: u8,
-    pub vault_token_bump: u8,
-    pub stash_ata_bump: u8,
-    pub queue_bump: u8,
-    pub validator: [u8; 32],
-    pub encrypted_destination: [u8; 80],
-    #[flexible = 1]
-    pub encrypted_data_suffix: Vec<u8>,
-}
-
-impl SchedulePrivateTransferArgsView<'_> {
-    fn validator_address(&self) -> &Address {
-        unsafe { &*(self.validator().as_ptr() as *const Address) }
-    }
-    fn mint_address(&self) -> &Address {
-        unsafe { &*(self.mint().as_ptr() as *const Address) }
-    }
 }

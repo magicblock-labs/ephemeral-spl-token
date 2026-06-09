@@ -12,8 +12,6 @@ use pinocchio::error::ProgramError;
 use pinocchio::{AccountView, ProgramResult};
 use solana_signature::Signature;
 
-pub const GROUP_RECEIPT_SEED: &[u8] = b"group-receipt";
-
 ///
 /// Executes on: ER only.
 ///

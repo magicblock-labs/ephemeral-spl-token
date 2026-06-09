@@ -1,12 +1,9 @@
-use alloc::vec;
-use alloc::vec::Vec;
-use data_layout::variable_offset_layout;
-
+use ephemeral_spl_api::instructions::DepositAndDelegateShuttleWithPrivateTransferAndStashCloseArgs;
 use ephemeral_spl_api::state::stash::StashPda;
 use ephemeral_spl_api::{require_eq_keys, require_n_accounts};
 use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
 
-use crate::processor::deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer::process_with_merge_and_private_transfer_inner;
+use crate::processor::internal::private_transfer::process_with_merge_and_private_transfer_inner;
 use crate::processor::internal::shuttle_delegation::CloseStashArgs;
 
 ///
@@ -53,16 +50,4 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
         args.encrypted_data_suffix(),
         Some(close_stash),
     )
-}
-
-#[variable_offset_layout(buffer_offset = 1)]
-pub struct DepositAndDelegateShuttleWithPrivateTransferAndStashCloseArgs {
-    pub shuttle_id: u32,
-    pub amount: u64,
-    pub exact_out: bool,
-    pub encrypted_destination: [u8; 80],
-    pub validator: Option<[u8; 32]>,
-    pub stash_close_seeds: [u8; 33],
-    #[flexible = 1]
-    pub encrypted_data_suffix: Vec<u8>,
 }

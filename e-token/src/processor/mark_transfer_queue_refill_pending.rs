@@ -11,7 +11,7 @@ use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
 use pinocchio_system::instructions::{Allocate, Assign, CreateAccount, Transfer};
 
 use crate::processor::{
-    initialize_rent_pda::{RENT_PDA_BUMP, RENT_PDA_SEED},
+    internal::rent_pda::{RENT_PDA_BUMP, RENT_PDA_SEED},
     internal::transfer_queue_refill::{
         validate_queue_account, validate_queue_refill_state_address, validate_rent_pda,
     },

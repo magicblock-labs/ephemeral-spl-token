@@ -3,9 +3,7 @@ use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
 
-use crate::processor::{
-    initialize_rent_pda::RENT_PDA, internal::lamports_pda::derive_lamports_pda,
-};
+use crate::processor::{internal::lamports_pda::derive_lamports_pda, internal::rent_pda::RENT_PDA};
 
 const DLP_EPHEMERAL_BALANCE_TAG: &[u8] = b"balance";
 

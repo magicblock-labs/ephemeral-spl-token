@@ -1,9 +1,7 @@
-use alloc::vec;
-use alloc::vec::Vec;
-use data_layout::variable_offset_layout;
 use ephemeral_rollups_pinocchio::instruction::DelegateAccountCpiBuilder;
 use ephemeral_rollups_pinocchio::types::DelegateConfig;
 use ephemeral_spl_api::debug_log;
+use ephemeral_spl_api::instructions::DelegateShuttleArgs;
 use ephemeral_spl_api::state::{
     ephemeral_ata::EphemeralAta, load_initialized, shuttle_ephemeral_ata::ShuttleMetadata,
 };
@@ -108,10 +106,3 @@ pub fn process_delegate_shuttle_ephemeral_ata(
     .config(config)
     .invoke()
 }
-
-#[variable_offset_layout(buffer_offset = 1, option = implicit)]
-pub struct DelegateShuttleArgs {
-    pub validator: Option<[u8; 32]>,
-}
-
-static_assertions::const_assert!(matches!(DelegateShuttleArgs::DATA_LENS, [0, 32]));

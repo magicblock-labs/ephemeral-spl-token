@@ -1850,12 +1850,14 @@ name = "ephemeral-spl-api"
 version = "0.0.0"
 dependencies = [
  "bytemuck",
+ "data-layout",
  "ephemeral-rollups-pinocchio",
  "pinocchio 0.10.1",
  "pinocchio-log",
  "pinocchio-pubkey",
  "solana-address 2.6.0",
  "solana-signature 3.1.0",
+ "static_assertions",
 ]
 
 [[package]]

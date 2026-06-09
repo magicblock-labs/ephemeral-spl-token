@@ -41,49 +41,31 @@ pub(crate) mod utils;
 pub mod withdraw_spl_tokens;
 pub mod withdraw_through_delegated_shuttle_with_merge;
 
-pub use internal::{AmountAndSaltArgs, DepositAndDelegateShuttleArgs};
-
 pub use allocate_transfer_queue::process_allocate_transfer_queue;
 pub use close_ephemeral_ata::process_close_ephemeral_ata;
 pub use close_lamports_pda_intent::process_close_lamports_pda_intent;
 pub use close_shuttle_ata_intent::process_close_shuttle_ata_intent;
 pub use create_ephemeral_ata_permission::process_create_ephemeral_ata_permission;
-pub use delegate_ephemeral_ata::{process_delegate_ephemeral_ata, DelegateArgs};
+pub use delegate_ephemeral_ata::process_delegate_ephemeral_ata;
 pub use delegate_ephemeral_ata_permission::process_delegate_ephemeral_ata_permission;
-pub use delegate_shuttle_ephemeral_ata::{
-    process_delegate_shuttle_ephemeral_ata, DelegateShuttleArgs,
-};
+pub use delegate_shuttle_ephemeral_ata::process_delegate_shuttle_ephemeral_ata;
 pub use delegate_transfer_queue::process_delegate_transfer_queue;
 pub use deposit_and_delegate_shuttle_ephemeral_ata_with_merge::process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge;
-pub use deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer::{
-    process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer,
-    DepositAndDelegateShuttleWithPrivateTransferArgs,
-};
-pub use deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer_and_stash_close::{
-    process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer_and_stash_close,
-    DepositAndDelegateShuttleWithPrivateTransferAndStashCloseArgs,
-};
-pub use deposit_and_queue_transfer::{
-    process_deposit_and_queue_transfer, DepositAndQueueTransferArgs,
-};
+pub use deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer::process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer;
+pub use deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer_and_stash_close::process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer_and_stash_close;
+pub use deposit_and_queue_transfer::process_deposit_and_queue_transfer;
 pub use deposit_spl_tokens::process_deposit_spl_tokens;
-pub use ensure_stealth_pool_delegated::{
-    process_ensure_stealth_pool_delegated, EnsureStealthPoolDelegatedArgs,
-};
+pub use ensure_stealth_pool_delegated::process_ensure_stealth_pool_delegated;
 pub use ensure_transfer_queue_crank::process_ensure_transfer_queue_crank;
 pub use execute_pending_transfer_queue_refill::process_execute_pending_transfer_queue_refill;
-pub use execute_ready_queued_transfer::{
-    process_execute_ready_queued_transfer, ExecuteQueuedTransferArgs,
-};
+pub use execute_ready_queued_transfer::process_execute_ready_queued_transfer;
 pub use execute_scheduled_private_transfer::process_execute_scheduled_private_transfer;
-pub use execute_transfer_callback::{process_execute_transfer_callback};
+pub use execute_transfer_callback::process_execute_transfer_callback;
 pub use initialize_ephemeral_ata::process_initialize_ephemeral_ata;
 pub use initialize_global_vault::process_initialize_global_vault;
 pub use initialize_rent_pda::process_initialize_rent_pda;
 pub use initialize_shuttle_ephemeral_ata::process_initialize_shuttle_ephemeral_ata;
-pub use initialize_transfer_queue::{
-    process_initialize_transfer_queue, InitializeTransferQueueArgs,
-};
+pub use initialize_transfer_queue::process_initialize_transfer_queue;
 pub use mark_transfer_queue_refill_pending::process_mark_transfer_queue_refill_pending;
 pub use merge_shuttle_into_ephemeral_ata::process_merge_shuttle_into_ephemeral_ata;
 pub use reset_ephemeral_ata_permission::process_reset_ephemeral_ata_permission;
@@ -91,7 +73,7 @@ pub use schedule_private_transfer::process_schedule_private_transfer;
 pub use sponsored_lamports_transfer::process_sponsored_lamports_transfer;
 pub use transfer_lamports_pda::process_transfer_lamports_pda;
 pub use transfer_queue_tick::process_transfer_queue_tick;
-pub use update_stealth_pool::{process_update_stealth_pool, UpdateStealthPoolArgs};
+pub use update_stealth_pool::process_update_stealth_pool;
 pub use undelegate_and_close_shuttle_to_owner::process_undelegate_and_close_shuttle_to_owner;
 pub use undelegate_ephemeral_ata::process_undelegate_ephemeral_ata;
 pub use undelegate_ephemeral_ata_permission::process_undelegate_ephemeral_ata_permission;

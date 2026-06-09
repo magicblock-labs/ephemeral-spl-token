@@ -1,4 +1,4 @@
-use crate::processor::initialize_rent_pda::RENT_PDA;
+use crate::processor::internal::rent_pda::RENT_PDA;
 use crate::processor::internal::token_vault::withdraw_ephemeral_ata_tokens;
 use crate::processor::utils::{get_associated_token_address, validate_token_account};
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;

@@ -1,8 +1,9 @@
-use crate::processor::execute_transfer_callback::GROUP_RECEIPT_SEED;
 use alloc::vec;
 use alloc::vec::Vec;
 use data_layout::variable_offset_layout;
 use ephemeral_spl_api::Address;
+
+pub(crate) const GROUP_RECEIPT_SEED: &[u8] = b"group-receipt";
 
 pub(crate) fn derive_group_receipt_id(
     queue_address: &Address,

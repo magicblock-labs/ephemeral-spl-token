@@ -1,4 +1,4 @@
-use crate::processor::execute_transfer_callback::GROUP_RECEIPT_SEED;
+use crate::processor::internal::group_receipt::GROUP_RECEIPT_SEED;
 use crate::processor::utils::ephemeral_account::{
     close_ephemeral_account, create_ephemeral_account,
 };
