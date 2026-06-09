@@ -443,7 +443,7 @@ fn create_action_callback_accounts(
         },
         ShortAccountMeta {
             pubkey: queued_transfer.source,
-            is_writable: true,
+            is_writable: false,
         },
         ShortAccountMeta {
             pubkey: source_token_account,
