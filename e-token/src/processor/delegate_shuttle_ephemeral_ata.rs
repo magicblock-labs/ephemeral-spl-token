@@ -70,9 +70,7 @@ pub fn process_delegate_shuttle_ephemeral_ata(
             shuttle_info.address(),
             ProgramError::InvalidAccountData
         );
-        #[allow(clippy::clone_on_copy)]
-        let mint = ephemeral_ata.mint.clone();
-        (mint, ephemeral_ata.bump)
+        (ephemeral_ata.mint, ephemeral_ata.bump)
     };
 
     let derived_ephemeral_ata = EphemeralAta::derive_pda(shuttle_info.address(), &mint, eata_bump)?;

@@ -127,8 +127,7 @@ pub(crate) fn process_with_merge_and_private_transfer_inner(
     });
 
     let (bump, queue_validator) = {
-        let data = unsafe { queue_info.borrow_unchecked() };
-        let (header, _) = queue_views(data)?;
+        let (header, _) = queue_views(unsafe { queue_info.borrow_unchecked() })?;
         (header.bump, header.validator)
     };
     let derived_queue =

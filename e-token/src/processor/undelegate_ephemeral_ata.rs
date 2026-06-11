@@ -53,9 +53,7 @@ pub fn process_undelegate_ephemeral_ata(
     let (mint, bump) = {
         let eata_data =
             load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
-        #[allow(clippy::clone_on_copy)]
-        let mint = eata_data.mint.clone();
-        (mint, eata_data.bump)
+        (eata_data.mint, eata_data.bump)
     };
 
     // Derive PDA: seeds = [payer, mint], program id = e-token program id (ephemeral_spl_api::program::ID)

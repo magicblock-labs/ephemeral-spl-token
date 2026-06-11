@@ -141,11 +141,12 @@ pub fn read_ephemeral_ata_compat(
 ) -> Result<(Address, Address, u64, u8), ProgramError> {
     if bytes.len() == EphemeralAta::LEN {
         let ephemeral_ata = load_initialized::<EphemeralAta>(bytes)?;
-        #[allow(clippy::clone_on_copy)]
-        let owner = ephemeral_ata.owner.clone();
-        #[allow(clippy::clone_on_copy)]
-        let mint = ephemeral_ata.mint.clone();
-        return Ok((owner, mint, ephemeral_ata.amount, ephemeral_ata.bump));
+        return Ok((
+            ephemeral_ata.owner,
+            ephemeral_ata.mint,
+            ephemeral_ata.amount,
+            ephemeral_ata.bump,
+        ));
     }
 
     if bytes.len() == LEGACY_EPHEMERAL_ATA_LEN {
@@ -153,15 +154,11 @@ pub fn read_ephemeral_ata_compat(
         if address_eq(&ephemeral_ata.mint, &Address::default()) {
             return Err(ProgramError::UninitializedAccount);
         }
-        #[allow(clippy::clone_on_copy)]
-        let owner = ephemeral_ata.owner.clone();
-        #[allow(clippy::clone_on_copy)]
-        let mint = ephemeral_ata.mint.clone();
         return Ok((
-            owner,
-            mint,
+            ephemeral_ata.owner,
+            ephemeral_ata.mint,
             ephemeral_ata.amount,
-            EphemeralAta::find_pda(&owner, &mint).1,
+            EphemeralAta::find_pda(&ephemeral_ata.owner, &ephemeral_ata.mint).1,
         ));
     }
 

@@ -43,9 +43,11 @@ pub fn process_close_ephemeral_ata(
         );
         require!(ephemeral_ata.amount == 0, ProgramError::InvalidArgument);
 
-        #[allow(clippy::clone_on_copy)]
-        let mint = ephemeral_ata.mint.clone();
-        (mint, ephemeral_ata_info.lamports(), ephemeral_ata.bump)
+        (
+            ephemeral_ata.mint,
+            ephemeral_ata_info.lamports(),
+            ephemeral_ata.bump,
+        )
     };
 
     let derived_pda = EphemeralAta::derive_pda(owner_info.address(), &mint, bump)?;

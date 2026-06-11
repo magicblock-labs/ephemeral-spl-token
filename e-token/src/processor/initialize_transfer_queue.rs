@@ -211,8 +211,7 @@ pub fn process_initialize_transfer_queue(
         queue_set_token_program_kind_from_data(data, token_program_kind)?;
     }
 
-    let data = unsafe { queue_info.borrow_unchecked() };
-    let (header, _) = queue_views_checked(data)?;
+    let (header, _) = queue_views_checked(unsafe { queue_info.borrow_unchecked() })?;
     require!(
         header.bump == bump
             && header.mint == *mint_info.address()

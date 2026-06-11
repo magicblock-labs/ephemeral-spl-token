@@ -77,8 +77,7 @@ pub fn process_ensure_transfer_queue_crank(
     );
 
     let (mint, bump, validator) = {
-        let data = unsafe { queue_info.borrow_unchecked() };
-        let (header, _) = queue_views_checked(data)?;
+        let (header, _) = queue_views_checked(unsafe { queue_info.borrow_unchecked() })?;
         (header.mint, header.bump, header.validator)
     };
 
@@ -198,9 +197,7 @@ pub fn process_ensure_transfer_queue_crank(
         &queue_signers,
     )?;
 
-    let data = unsafe { queue_info.borrow_unchecked_mut() };
-    queue_set_crank_task_id_from_data(data, crank_task_id)?;
-    Ok(())
+    queue_set_crank_task_id_from_data(unsafe { queue_info.borrow_unchecked_mut() }, crank_task_id)
 }
 
 //

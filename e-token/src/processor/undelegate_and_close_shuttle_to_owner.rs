@@ -104,9 +104,7 @@ pub fn process_undelegate_and_close_shuttle_to_owner(
             shuttle_info.address(),
             ProgramError::InvalidAccountData
         );
-        #[allow(clippy::clone_on_copy)]
-        let mint = shuttle_ephemeral_ata.mint.clone();
-        mint
+        shuttle_ephemeral_ata.mint
     };
 
     let (derived_shuttle_ephemeral_ata, _) = ephemeral_spl_api::Address::find_program_address(

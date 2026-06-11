@@ -54,8 +54,7 @@ pub fn process_delegate_transfer_queue(
     );
 
     let (bump, validator) = {
-        let data = unsafe { queue_info.borrow_unchecked() };
-        let (header, _) = queue_views_checked(data)?;
+        let (header, _) = queue_views_checked(unsafe { queue_info.borrow_unchecked() })?;
         require_eq_keys!(
             &header.mint,
             mint_info.address(),

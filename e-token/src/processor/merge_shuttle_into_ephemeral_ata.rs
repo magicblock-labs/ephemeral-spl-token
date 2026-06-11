@@ -60,9 +60,7 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
             owner_info.address(),
             ProgramError::IncorrectAuthority
         );
-        #[allow(clippy::clone_on_copy)]
-        let owner = shuttle.owner.clone();
-        (owner, shuttle.id, shuttle.bump)
+        (shuttle.owner, shuttle.id, shuttle.bump)
     };
 
     let shuttle_id_seed = shuttle_id.to_le_bytes();
