@@ -441,34 +441,24 @@ pub(crate) fn delegate_account_with_actions_from_sponsor(
     }
     .invoke_signed(&[sponsor_signer.clone(), buffer_signer])?;
 
-    {
-        let pda_ro = pda_acc.try_borrow()?;
-        let mut buf_data = buffer_acc.try_borrow_mut()?;
-        buf_data.copy_from_slice(&pda_ro);
-    }
-    {
-        let mut pda_mut = pda_acc.try_borrow_mut()?;
-        for b in pda_mut.iter_mut().take(data_len) {
-            *b = 0;
-        }
-    }
+    buffer_acc
+        .try_borrow_mut()?
+        .copy_from_slice(&pda_acc.try_borrow()?);
+    pda_acc.try_borrow_mut()?.fill(0);
 
     let mut seed_buf = make_seed_buf();
     let filled = fill_seeds(&mut seed_buf, seeds, &bump);
     let delegate_signer = Signer::from(filled);
 
-    let current_owner = unsafe { pda_acc.owner() };
-    if current_owner != &pinocchio_system::ID {
+    if unsafe { pda_acc.owner() } != &pinocchio_system::ID {
         unsafe { pda_acc.assign(&pinocchio_system::ID) };
     }
-    let current_owner = unsafe { pda_acc.owner() };
-    if current_owner != &DELEGATION_PROGRAM_ID {
-        Assign {
-            account: pda_acc,
-            owner: &DELEGATION_PROGRAM_ID,
-        }
-        .invoke_signed(core::slice::from_ref(&delegate_signer))?;
+
+    Assign {
+        account: pda_acc,
+        owner: &DELEGATION_PROGRAM_ID,
     }
+    .invoke_signed(core::slice::from_ref(&delegate_signer))?;
 
     let delegate_args = DelegateAccountArgs {
         commit_frequency_ms: config.commit_frequency_ms,
