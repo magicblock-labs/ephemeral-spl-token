@@ -65,7 +65,7 @@ pub(crate) struct PreparedShuttleDelegation {
 pub(crate) struct DepositAndDelegateShuttleCommonArgs<'a> {
     pub(crate) shuttle_id: u32,
     pub(crate) total_amount: u64,
-    pub(crate) validator: Option<&'a [u8; 32]>,
+    pub(crate) validator: Option<&'a Address>,
 }
 
 pub(crate) fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions(
@@ -288,7 +288,7 @@ pub(crate) fn delegate_sponsored_shuttle_with_post_actions(
 
     let seeds: &[&[u8]] = &[shuttle_info.address().as_ref(), mint.as_ref()];
     let config = DelegateConfig {
-        validator: args.validator.map(|slice| Address::new_from_array(*slice)),
+        validator: args.validator.copied(),
         ..DelegateConfig::default()
     };
 

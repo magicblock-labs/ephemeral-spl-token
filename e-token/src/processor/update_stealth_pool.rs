@@ -31,12 +31,10 @@ pub fn process_update_stealth_pool(
     ] = require_n_accounts!(accounts, 4);
 
     let args = UpdateStealthPoolArgs::decode(instruction_data)?;
-    let destination_addresses = bytemuck::try_cast_slice::<[u8; 32], Address>(args.destinations())
-        .map_err(|_| ProgramError::InvalidInstructionData)?;
-    let destination_count = destination_addresses.len();
 
     require!(
-        destination_count != 0 && destination_count <= StealthPool::MAX_DESTINATIONS,
+        args.destinations().len() != 0
+            && args.destinations().len() <= StealthPool::MAX_DESTINATIONS,
         ProgramError::InvalidInstructionData
     );
     require!(
@@ -81,13 +79,13 @@ pub fn process_update_stealth_pool(
     *pool = StealthPool {
         discriminator: StealthPool::DISCRIMINATOR,
         bump,
-        destination_count: destination_count as u8,
+        destination_count: args.destinations().len() as u8,
         flags: args.flags(),
         authority: *authority_info.address(),
         handle_hash: *args.handle_hash(),
         destinations: {
             let mut destinations = [Address::default(); StealthPool::MAX_DESTINATIONS];
-            destinations[..destination_count].copy_from_slice(destination_addresses);
+            destinations[..args.destinations().len()].copy_from_slice(args.destinations());
             destinations
         },
     };

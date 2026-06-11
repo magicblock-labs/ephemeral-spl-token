@@ -7,7 +7,7 @@ use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::cpi::Signer;
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
-use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_system::instructions::CreateAccount;
 use wheels::layout::Decodable as _;
 
@@ -100,9 +100,7 @@ pub fn process_ensure_stealth_pool_delegated(
     );
 
     let config = DelegateConfig {
-        validator: args
-            .validator()
-            .map(|slice| Address::new_from_array(*slice)),
+        validator: args.validator().copied(),
         ..DelegateConfig::default()
     };
     let seeds = StealthPool::seeds(args.handle_hash());

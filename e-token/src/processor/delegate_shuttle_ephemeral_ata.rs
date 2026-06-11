@@ -6,7 +6,7 @@ use ephemeral_spl_api::state::{
     ephemeral_ata::EphemeralAta, load_initialized, shuttle_ephemeral_ata::ShuttleMetadata,
 };
 use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
-use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use wheels::layout::Decodable as _;
 
 ///
@@ -85,9 +85,7 @@ pub fn process_delegate_shuttle_ephemeral_ata(
     let seeds: &[&[u8]] = &[shuttle_info.address().as_ref(), mint.as_ref()];
 
     let config = DelegateConfig {
-        validator: args
-            .validator()
-            .map(|slice| Address::new_from_array(*slice)),
+        validator: args.validator().copied(),
         ..DelegateConfig::default()
     };
 

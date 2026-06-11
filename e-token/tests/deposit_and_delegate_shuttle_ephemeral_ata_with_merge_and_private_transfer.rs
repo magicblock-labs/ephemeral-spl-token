@@ -224,7 +224,7 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
         shuttle_id,
         amount: DEPOSIT_AMOUNT,
         exact_out,
-        validator: Some(validator.as_array().to_owned()),
+        validator: Some(validator),
         encrypted_destination: dlp_api::encryption::encrypt_ed25519_recipient(
             destination_owner.as_array(),
             &validator.to_bytes(),

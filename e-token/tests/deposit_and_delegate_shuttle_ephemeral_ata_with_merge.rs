@@ -182,7 +182,7 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_deposits_and_stor
             &DepositAndDelegateShuttleArgs {
                 shuttle_id,
                 amount: DEPOSIT_AMOUNT,
-                validator: Some(validator.to_bytes()),
+                validator: Some(validator),
             }
             .encode()
             .unwrap(),

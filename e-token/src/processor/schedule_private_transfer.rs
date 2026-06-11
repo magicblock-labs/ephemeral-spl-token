@@ -75,8 +75,7 @@ pub fn process_schedule_private_transfer(
 
     let args = SchedulePrivateTransferArgs::decode(instruction_data)?;
 
-    let derived_stash =
-        StashPda::derive_pda(user_info.address(), args.mint_address(), args.stash_bump())?;
+    let derived_stash = StashPda::derive_pda(user_info.address(), args.mint(), args.stash_bump())?;
     require_eq_keys!(
         &derived_stash,
         stash_pda_info.address(),
@@ -107,16 +106,15 @@ pub fn process_schedule_private_transfer(
 
     let shuttle = ShuttleMetadata::derive_pda(
         stash_pda_info.address(),
-        args.mint_address(),
+        args.mint(),
         args.shuttle_id(),
         args.shuttle_bump(),
     )?;
-    let shuttle_eata =
-        EphemeralAta::derive_pda(&shuttle, args.mint_address(), args.shuttle_eata_bump())?;
+    let shuttle_eata = EphemeralAta::derive_pda(&shuttle, args.mint(), args.shuttle_eata_bump())?;
     let shuttle_wallet_ata = derive_ata(
         &shuttle,
         &token_program_id,
-        args.mint_address(),
+        args.mint(),
         args.shuttle_wallet_ata_bump(),
     )?;
     let buffer = Address::create_program_address(
@@ -139,26 +137,22 @@ pub fn process_schedule_private_transfer(
         ],
         &DELEGATION_PROGRAM_ID,
     )?;
-    let global_vault = GlobalVault::derive_pda(args.mint_address(), args.global_vault_bump())?;
+    let global_vault = GlobalVault::derive_pda(args.mint(), args.global_vault_bump())?;
     let vault_token = derive_ata(
         &global_vault,
         &token_program_id,
-        args.mint_address(),
+        args.mint(),
         args.vault_token_bump(),
     )?;
     let stash_ata = derive_ata(
         stash_pda_info.address(),
         &token_program_id,
-        args.mint_address(),
+        args.mint(),
         args.stash_ata_bump(),
     )?;
     let user_ata =
-        get_associated_token_address(user_info.address(), args.mint_address(), &token_program_id);
-    let queue = TransferQueue::derive_pda(
-        &args.mint_address(),
-        args.validator_address(),
-        args.queue_bump(),
-    )?;
+        get_associated_token_address(user_info.address(), args.mint(), &token_program_id);
+    let queue = TransferQueue::derive_pda(args.mint(), args.validator(), args.queue_bump())?;
 
     // Slots 0..18 mirror ix 31's layout. Slot 5 aliases slot 0 (stash PDA).
     // Slot 20 aliases Trigger's crank account; the flag must match Solana's
@@ -177,7 +171,7 @@ pub fn process_schedule_private_transfer(
         (&DELEGATION_PROGRAM_ID, false),
         (&pinocchio_associated_token_account::ID, false),
         (system_program_info.address(), false),
-        (&args.mint_address(), false),
+        (args.mint(), false),
         (&token_program_id, false),
         (&global_vault, false),
         (&stash_ata, true),
@@ -222,10 +216,10 @@ pub fn process_schedule_private_transfer(
             scheduled_metas: &sched_metas_vec,
             scheduled_data: &ESplInstruction::ExecuteScheduledPrivateTransfer.with_data(
                 &ExecuteScheduledPrivateTransferArgs {
-                    user: user_info.address().to_bytes(),
+                    user: *user_info.address(),
                     stash_bump: args.stash_bump(),
                     shuttle_id: args.shuttle_id(),
-                    validator: args.validator().to_owned(),
+                    validator: *args.validator(),
                     encrypted_destination: args.encrypted_destination().to_owned(),
                     encrypted_data_suffix: args.encrypted_data_suffix().to_owned(),
                 }
