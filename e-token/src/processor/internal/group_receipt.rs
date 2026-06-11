@@ -1,4 +1,4 @@
-use pinocchio::Address;
+use solana_address::Address;
 use wheels::variable_offset_layout;
 
 pub(crate) const GROUP_RECEIPT_SEED: &[u8] = b"group-receipt";

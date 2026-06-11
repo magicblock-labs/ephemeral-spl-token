@@ -1,5 +1,6 @@
-use pinocchio::{cpi::Seed, error::ProgramError, Address};
+use pinocchio::{cpi::Seed, error::ProgramError};
 use solana_address::address_eq;
+use solana_address::Address;
 
 use crate::state::load_mut;
 

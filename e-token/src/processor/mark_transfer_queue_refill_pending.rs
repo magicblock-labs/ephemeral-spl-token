@@ -7,8 +7,9 @@ use ephemeral_spl_api::state::transfer_queue_refill::{
 use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::{rent::Rent, Sysvar};
-use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_system::instructions::{Allocate, Assign, CreateAccount, Transfer};
+use solana_address::Address;
 
 use crate::processor::{
     internal::rent_pda::{RENT_PDA_BUMP, RENT_PDA_SEED},

@@ -3,7 +3,8 @@ use ephemeral_spl_api::instructions::AmountAndSaltArgs;
 use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::cpi::{invoke_signed_with_bounds, Seed, Signer};
 use pinocchio::instruction::{InstructionAccount, InstructionView};
-use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use solana_address::Address;
 use wheels::layout::Encodable as _;
 
 use crate::processor::internal::{

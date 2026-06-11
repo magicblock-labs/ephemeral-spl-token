@@ -23,7 +23,8 @@ pub(crate) use token::{
     token_program_for_kind, token_program_kind, validate_token_account,
 };
 
-use pinocchio::{error::ProgramError, Address};
+use pinocchio::error::ProgramError;
+use solana_address::Address;
 /// seed is created by overwriting the first 4-bytes of stash_pda with shuttle_id bytes
 #[inline(always)]
 pub(crate) fn derive_hydra_seed(stash_pda: &Address, shuttle_id: u32) -> [u8; 32] {

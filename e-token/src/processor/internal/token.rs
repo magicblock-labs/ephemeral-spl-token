@@ -1,7 +1,8 @@
 use ephemeral_spl_api::require;
 use ephemeral_spl_api::state::transfer_queue::SplTokenProgram;
-use pinocchio::{address::address_eq, error::ProgramError, AccountView, Address};
+use pinocchio::{error::ProgramError, AccountView};
 use pinocchio_token_2022::state::{Mint, TokenAccount};
+use solana_address::{address_eq, Address};
 use spl_token_interface::ID as SPL_TOKEN_PROGRAM_ID;
 
 #[inline(always)]
@@ -97,7 +98,7 @@ pub(crate) fn get_associated_token_address(
     mint: &Address,
     token_program: &Address,
 ) -> Address {
-    pinocchio::Address::find_program_address(
+    Address::find_program_address(
         &[wallet.as_ref(), token_program.as_ref(), mint.as_ref()],
         &pinocchio_associated_token_account::ID,
     )

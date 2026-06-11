@@ -11,7 +11,8 @@ use ephemeral_spl_api::debug_log;
 use ephemeral_spl_api::instruction::ESplInstruction;
 use ephemeral_spl_api::state::transfer_queue::{queue_views, TransferQueue};
 use ephemeral_spl_api::{consts, require, require_eq_keys, require_n_accounts};
-use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use solana_address::Address;
 #[cfg(not(feature = "no-fees"))]
 use solana_instruction::{AccountMeta, Instruction};
 

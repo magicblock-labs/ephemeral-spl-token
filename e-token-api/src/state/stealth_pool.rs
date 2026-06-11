@@ -1,5 +1,6 @@
 use bytemuck::{Pod, Zeroable};
-use pinocchio::{cpi::Seed, error::ProgramError, Address};
+use pinocchio::{cpi::Seed, error::ProgramError};
+use solana_address::Address;
 
 use crate::{
     require, require_eq_keys,

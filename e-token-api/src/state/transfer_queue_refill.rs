@@ -1,4 +1,4 @@
-use pinocchio::Address;
+use solana_address::Address;
 
 use super::RawType;
 

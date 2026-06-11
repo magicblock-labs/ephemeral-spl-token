@@ -11,6 +11,7 @@ use ephemeral_spl_api::state::transfer_queue::{
     TransferQueue, TransferQueueHeader, HEADER_LEN, TRANSFER_QUEUE_VERSION,
 };
 use ephemeral_spl_api::ID as PROGRAM;
+use solana_address::Address;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program_test::tokio;
 use solana_pubkey::Pubkey;
@@ -143,10 +144,7 @@ async fn delegate_transfer_queue_succeeds_and_is_idempotent() {
     let header = read_header_unaligned(&queue_account.data);
     assert_eq!(header.version, TRANSFER_QUEUE_VERSION);
     assert_eq!(header.bump, bump);
-    assert_eq!(
-        header.mint,
-        pinocchio::Address::new_from_array(mint.to_bytes())
-    );
+    assert_eq!(header.mint, Address::new_from_array(mint.to_bytes()));
     assert_eq!(header.length, 0);
     assert_eq!(
         &delegation_record.authority.to_bytes(),

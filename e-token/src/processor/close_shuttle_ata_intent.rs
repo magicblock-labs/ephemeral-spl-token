@@ -9,9 +9,10 @@ use ephemeral_spl_api::state::{
 };
 use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts, require_some};
 use pinocchio::cpi::Signer;
-use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_system::instructions::Transfer;
 use pinocchio_token_2022::instructions::CloseAccount;
+use solana_address::Address;
 const DLP_EPHEMERAL_BALANCE_TAG: &[u8] = b"balance";
 
 const CLOSE_STASH_DATA_LEN: usize = 33;
@@ -83,7 +84,7 @@ pub fn process_close_shuttle_ata_intent(
     );
 
     let escrow_index_seed = [*escrow_index];
-    let (expected_escrow, _) = pinocchio::Address::find_program_address(
+    let (expected_escrow, _) = Address::find_program_address(
         &[
             DLP_EPHEMERAL_BALANCE_TAG,
             escrow_authority.address().as_ref(),

@@ -19,11 +19,11 @@ use ephemeral_spl_api::state::transfer_queue::{
 };
 use ephemeral_spl_api::state::RawType;
 use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
-use pinocchio::address::address_eq;
 use pinocchio::sysvars::clock::Clock;
 use pinocchio::sysvars::Sysvar;
-use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_token_2022::instructions::TransferChecked;
+use solana_address::{address_eq, Address};
 use wheels::layout::Decodable as _;
 
 const MILLIS_PER_SECOND: u64 = 1_000;
@@ -538,7 +538,7 @@ fn choose_split_delay_ms(
     min_delay_ms: u64,
     max_delay_ms: u64,
     queue_position: usize,
-    destination: &pinocchio::Address,
+    destination: &Address,
 ) -> Result<u64, ProgramError> {
     if min_delay_ms == max_delay_ms {
         return Ok(min_delay_ms);
@@ -559,7 +559,7 @@ fn choose_split_delay_ms(
 }
 
 #[inline(always)]
-fn hash_delay_seed(destination: &pinocchio::Address, queue_position: u64) -> u64 {
+fn hash_delay_seed(destination: &Address, queue_position: u64) -> u64 {
     let mut hash = 0xcbf2_9ce4_8422_2325_u64;
     for byte in destination.as_ref().iter() {
         hash ^= u64::from(*byte);

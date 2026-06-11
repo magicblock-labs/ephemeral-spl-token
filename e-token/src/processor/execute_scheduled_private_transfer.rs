@@ -13,9 +13,10 @@ use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::cpi::{invoke_signed_with_bounds, Signer};
 use pinocchio::instruction::{InstructionAccount, InstructionView};
 use pinocchio::sysvars::{clock::Clock, Sysvar};
-use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_system::instructions::Transfer;
 use pinocchio_token_2022::instructions::{CloseAccount, TransferChecked};
+use solana_address::Address;
 
 use crate::processor::internal::derive_hydra_seed;
 use crate::processor::internal::private_transfer::SCHEDULED_PT_INNER_ACCOUNTS;

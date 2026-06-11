@@ -5,7 +5,8 @@ use ephemeral_spl_api::state::{
 };
 use ephemeral_spl_api::{require, require_eq_keys};
 use pinocchio::sysvars::{rent::Rent, Sysvar};
-use pinocchio::{error::ProgramError, AccountView, Address};
+use pinocchio::{error::ProgramError, AccountView};
+use solana_address::Address;
 
 use crate::processor::internal::rent_pda::RENT_PDA;
 
