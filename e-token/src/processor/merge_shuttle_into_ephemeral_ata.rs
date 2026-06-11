@@ -115,7 +115,5 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
         amount: shuttle_amount,
         decimals,
     }
-    .invoke_signed(&[signer])?;
-
-    Ok(())
+    .invoke_signed(&[signer])
 }

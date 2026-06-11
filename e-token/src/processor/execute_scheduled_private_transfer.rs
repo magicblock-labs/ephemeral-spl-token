@@ -350,9 +350,7 @@ pub fn process_execute_scheduled_private_transfer(
         &instruction,
         &account_refs,
         core::slice::from_ref(&stash_signer),
-    )?;
-
-    Ok(())
+    )
 }
 
 #[inline(always)]

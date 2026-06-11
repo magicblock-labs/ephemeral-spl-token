@@ -248,7 +248,5 @@ pub fn process_schedule_private_transfer(
         to: hydra_crank_pda_info,
         lamports: CRANKER_REWARD,
     }
-    .invoke_signed(&[rent_signer])?;
-
-    Ok(())
+    .invoke_signed(&[rent_signer])
 }

@@ -480,9 +480,7 @@ pub(crate) fn delegate_account_with_actions_from_sponsor(
         &[sponsor_signer.clone(), delegate_signer],
     )?;
 
-    close_pda_acc(sponsor_info, buffer_acc)?;
-
-    Ok(())
+    close_pda_acc(sponsor_info, buffer_acc)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -600,7 +598,5 @@ fn cpi_delegate_with_actions_from_sponsor(
         &instruction,
         &account_refs[..num_accounts],
         signers,
-    )?;
-
-    Ok(())
+    )
 }

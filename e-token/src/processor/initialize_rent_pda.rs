@@ -66,9 +66,7 @@ pub fn process_initialize_rent_pda(
         lamports: required_lamports,
         owner: &pinocchio_system::ID,
     }
-    .invoke_signed(&[signer])?;
-
-    Ok(())
+    .invoke_signed(&[signer])
 }
 
 #[inline(always)]

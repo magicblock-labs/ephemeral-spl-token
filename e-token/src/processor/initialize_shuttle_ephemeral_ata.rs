@@ -58,7 +58,5 @@ pub fn process_initialize_shuttle_ephemeral_ata(
         token_program_info,
         system_program_info,
         args.shuttle_id(),
-    )?;
-
-    Ok(())
+    )
 }

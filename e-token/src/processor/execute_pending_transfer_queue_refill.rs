@@ -178,6 +178,5 @@ fn close_program_account_to_recipient(
         .ok_or(ProgramError::InvalidArgument)?;
     recipient.set_lamports(updated_recipient_lamports);
     account.set_lamports(0);
-    account.close()?;
-    Ok(())
+    account.close()
 }

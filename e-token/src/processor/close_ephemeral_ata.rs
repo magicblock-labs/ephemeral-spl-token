@@ -68,7 +68,5 @@ pub fn process_close_ephemeral_ata(
         .ok_or(ProgramError::InvalidArgument)?;
     recipient_info.set_lamports(updated_recipient_lamports);
     ephemeral_ata_info.set_lamports(0);
-    ephemeral_ata_info.close()?;
-
-    Ok(())
+    ephemeral_ata_info.close()
 }
