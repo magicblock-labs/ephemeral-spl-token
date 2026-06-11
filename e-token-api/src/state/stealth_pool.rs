@@ -72,7 +72,7 @@ impl StealthPool {
     }
 
     #[inline(always)]
-    pub fn seeds<'a>(handle_hash: &'a [u8; 32]) -> [&'a [u8]; 2] {
+    pub fn seeds(handle_hash: &[u8; 32]) -> [&[u8]; 2] {
         [Self::SEED, handle_hash.as_ref()]
     }
 

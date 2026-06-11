@@ -361,11 +361,11 @@ fn create_action_accounts(
     // why EXECUTE_READY_QUEUED_TRANSFER receives 12 accounts (not 9).
     [
         ShortAccountMeta {
-            pubkey: vault.clone(),
+            pubkey: *vault,
             is_writable: false,
         },
         ShortAccountMeta {
-            pubkey: mint.clone(),
+            pubkey: *mint,
             is_writable: false,
         },
         ShortAccountMeta {
@@ -425,15 +425,15 @@ fn create_action_callback_accounts(
             is_writable: true,
         },
         ShortAccountMeta {
-            pubkey: queue_address.clone(),
+            pubkey: *queue_address,
             is_writable: true,
         },
         ShortAccountMeta {
-            pubkey: vault.clone(),
+            pubkey: *vault,
             is_writable: false,
         },
         ShortAccountMeta {
-            pubkey: mint.clone(),
+            pubkey: *mint,
             is_writable: false,
         },
         ShortAccountMeta {

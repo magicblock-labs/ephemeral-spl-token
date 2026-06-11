@@ -1,5 +1,3 @@
-use core::u64;
-
 #[cfg(feature = "logging")]
 use alloc::string::ToString;
 

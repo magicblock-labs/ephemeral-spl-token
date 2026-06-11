@@ -89,16 +89,15 @@ pub fn process_create_ephemeral_ata_permission(
         members: Some(&members_buf),
     };
 
-    let builder = CreatePermissionCpiBuilder::new(
+    CreatePermissionCpiBuilder::new(
         ephemeral_ata_info,
         permission_info,
         payer_info,
         system_program,
         &PERMISSION_PROGRAM_ID,
-    );
-    builder
-        .seeds(&[ephemeral_ata.owner.as_ref(), ephemeral_ata.mint.as_ref()])
-        .bump(ephemeral_ata.bump)
-        .members(members_args)
-        .invoke()
+    )
+    .seeds(&[ephemeral_ata.owner.as_ref(), ephemeral_ata.mint.as_ref()])
+    .bump(ephemeral_ata.bump)
+    .members(members_args)
+    .invoke()
 }

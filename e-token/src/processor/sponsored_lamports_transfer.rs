@@ -98,7 +98,7 @@ pub fn process_sponsored_lamports_transfer(
     let (derived_lamports_pda, lamports_pda_bump) = derive_lamports_pda(
         payer_info.address(),
         destination_info.address(),
-        &args.salt(),
+        args.salt(),
     );
     require_eq_keys!(
         &derived_lamports_pda,

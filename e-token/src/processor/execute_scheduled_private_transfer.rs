@@ -349,7 +349,7 @@ pub fn process_execute_scheduled_private_transfer(
     invoke_signed_with_bounds::<SCHEDULED_PT_INNER_ACCOUNTS>(
         &instruction,
         &account_refs,
-        &[stash_signer.clone()],
+        core::slice::from_ref(&stash_signer),
     )?;
 
     Ok(())
