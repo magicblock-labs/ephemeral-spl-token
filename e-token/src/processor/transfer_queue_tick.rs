@@ -33,8 +33,7 @@ use crate::processor::internal::{
 
 const EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX: u8 = 0;
 
-const ASSOCIATED_TOKEN_PROGRAM_ID: ephemeral_spl_api::Address =
-    pinocchio_associated_token_account::ID;
+const ASSOCIATED_TOKEN_PROGRAM_ID: pinocchio::Address = pinocchio_associated_token_account::ID;
 const EXECUTE_READY_QUEUED_TRANSFER_COMPUTE_UNITS: u32 = 140_000;
 const MAGIC_INTENT_BUNDLE_DATA_LEN: usize = 512;
 const MILLIS_PER_SECOND: i64 = 1_000;
@@ -47,11 +46,11 @@ struct TickAccounts<'a> {
 }
 
 struct QueueTickState {
-    mint: ephemeral_spl_api::Address,
+    mint: pinocchio::Address,
     queue_bump: u8,
     queue_len: usize,
-    token_program: ephemeral_spl_api::Address,
-    validator: ephemeral_spl_api::Address,
+    token_program: pinocchio::Address,
+    validator: pinocchio::Address,
     queued_transfer: Option<QueuedTransfer>,
 }
 
@@ -118,7 +117,7 @@ pub fn process_transfer_queue_tick(
 #[inline(always)]
 fn read_queue_tick_state(
     queue_info: &AccountView,
-    program_id: &ephemeral_spl_api::Address,
+    program_id: &pinocchio::Address,
 ) -> Result<QueueTickState, ProgramError> {
     let data = unsafe { queue_info.borrow_unchecked() };
     let (header, _) = queue_views_checked(data)?;
@@ -127,7 +126,7 @@ fn read_queue_tick_state(
     let validator = header.validator;
     let queue_len = header.length as usize;
 
-    let (derived_queue, queue_bump) = ephemeral_spl_api::Address::find_program_address(
+    let (derived_queue, queue_bump) = pinocchio::Address::find_program_address(
         &[QUEUE_SEED, mint.as_ref(), validator.as_ref()],
         program_id,
     );
@@ -223,7 +222,7 @@ fn schedule_execute_ready_transfer(
     tick_accounts: &TickAccounts<'_>,
     queue_state: &QueueTickState,
     queued_transfer: &QueuedTransfer,
-    program_id: &ephemeral_spl_api::Address,
+    program_id: &pinocchio::Address,
 ) -> ProgramResult {
     require!(
         tick_accounts.queue_info.owned_by(program_id),
@@ -236,7 +235,7 @@ fn schedule_execute_ready_transfer(
     );
 
     let (vault, _) =
-        ephemeral_spl_api::Address::find_program_address(&[queue_state.mint.as_ref()], program_id);
+        pinocchio::Address::find_program_address(&[queue_state.mint.as_ref()], program_id);
 
     // Create action callback
     let mut callback_data = [0_u8; 13];
@@ -348,9 +347,9 @@ fn pop_executed_transfer(
 
 fn create_action_accounts(
     queued_transfer: &QueuedTransfer,
-    vault: &ephemeral_spl_api::Address,
-    mint: &ephemeral_spl_api::Address,
-    token_program: &ephemeral_spl_api::Address,
+    vault: &pinocchio::Address,
+    mint: &pinocchio::Address,
+    token_program: &pinocchio::Address,
 ) -> [ShortAccountMeta; 9] {
     let vault_token_account = get_associated_token_address(vault, mint, token_program);
     let destination_token_account =
@@ -401,11 +400,11 @@ fn create_action_accounts(
 
 #[inline(never)]
 fn create_action_callback_accounts(
-    queue_address: &ephemeral_spl_api::Address,
+    queue_address: &pinocchio::Address,
     queued_transfer: &QueuedTransfer,
-    vault: &ephemeral_spl_api::Address,
-    mint: &ephemeral_spl_api::Address,
-    token_program: &ephemeral_spl_api::Address,
+    vault: &pinocchio::Address,
+    mint: &pinocchio::Address,
+    token_program: &pinocchio::Address,
 ) -> [ShortAccountMeta; 11] {
     let vault_token_account = get_associated_token_address(vault, mint, token_program);
     let source_token_account =

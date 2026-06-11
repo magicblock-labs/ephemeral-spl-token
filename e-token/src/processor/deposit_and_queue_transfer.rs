@@ -538,7 +538,7 @@ fn choose_split_delay_ms(
     min_delay_ms: u64,
     max_delay_ms: u64,
     queue_position: usize,
-    destination: &ephemeral_spl_api::Address,
+    destination: &pinocchio::Address,
 ) -> Result<u64, ProgramError> {
     if min_delay_ms == max_delay_ms {
         return Ok(min_delay_ms);
@@ -559,7 +559,7 @@ fn choose_split_delay_ms(
 }
 
 #[inline(always)]
-fn hash_delay_seed(destination: &ephemeral_spl_api::Address, queue_position: u64) -> u64 {
+fn hash_delay_seed(destination: &pinocchio::Address, queue_position: u64) -> u64 {
     let mut hash = 0xcbf2_9ce4_8422_2325_u64;
     for byte in destination.as_ref().iter() {
         hash ^= u64::from(*byte);

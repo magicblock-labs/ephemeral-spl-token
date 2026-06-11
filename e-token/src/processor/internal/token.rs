@@ -97,7 +97,7 @@ pub(crate) fn get_associated_token_address(
     mint: &Address,
     token_program: &Address,
 ) -> Address {
-    ephemeral_spl_api::Address::find_program_address(
+    pinocchio::Address::find_program_address(
         &[wallet.as_ref(), token_program.as_ref(), mint.as_ref()],
         &pinocchio_associated_token_account::ID,
     )

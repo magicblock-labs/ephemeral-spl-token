@@ -145,7 +145,7 @@ async fn delegate_transfer_queue_succeeds_and_is_idempotent() {
     assert_eq!(header.bump, bump);
     assert_eq!(
         header.mint,
-        ephemeral_spl_api::Address::new_from_array(mint.to_bytes())
+        pinocchio::Address::new_from_array(mint.to_bytes())
     );
     assert_eq!(header.length, 0);
     assert_eq!(

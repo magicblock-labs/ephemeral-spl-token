@@ -412,7 +412,7 @@ pub(crate) fn delegate_account_with_actions_from_sponsor(
     action_signer_accounts: &[&AccountView],
 ) -> ProgramResult {
     let pda_key_bytes = pda_acc.address().as_array();
-    let (_, buffer_pda_bump) = ephemeral_spl_api::Address::find_program_address(
+    let (_, buffer_pda_bump) = pinocchio::Address::find_program_address(
         &[BUFFER, pda_key_bytes.as_ref()],
         owner_program.address(), // which must be same as crate::ID
     );

@@ -83,7 +83,7 @@ pub fn process_close_shuttle_ata_intent(
     );
 
     let escrow_index_seed = [*escrow_index];
-    let (expected_escrow, _) = ephemeral_spl_api::Address::find_program_address(
+    let (expected_escrow, _) = pinocchio::Address::find_program_address(
         &[
             DLP_EPHEMERAL_BALANCE_TAG,
             escrow_authority.address().as_ref(),

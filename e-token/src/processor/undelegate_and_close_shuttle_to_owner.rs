@@ -107,7 +107,7 @@ pub fn process_undelegate_and_close_shuttle_to_owner(
         shuttle_ephemeral_ata.mint
     };
 
-    let (derived_shuttle_ephemeral_ata, _) = ephemeral_spl_api::Address::find_program_address(
+    let (derived_shuttle_ephemeral_ata, _) = pinocchio::Address::find_program_address(
         &[shuttle_info.address().as_ref(), mint.as_ref()],
         &crate::ID,
     );
@@ -190,8 +190,7 @@ fn schedule_shuttle_close_after_undelegate(
     escrow_index: u8,
     close_stash: Option<&CloseStashForward>,
 ) -> ProgramResult {
-    let (vault_info, _) =
-        ephemeral_spl_api::Address::find_program_address(&[mint.as_ref()], &crate::ID);
+    let (vault_info, _) = pinocchio::Address::find_program_address(&[mint.as_ref()], &crate::ID);
     let vault_token_info =
         get_associated_token_address(&vault_info, mint, token_program_info.address());
     let mut close_handler_data =
