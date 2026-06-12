@@ -111,9 +111,9 @@ pub enum ESplInstruction {
     UpdateStealthPool = 21,
 
     /// 22 - EnsureStealthPoolDelegated: ensure the zeroed stealth-pool PDA
-    ///      exists on base and is delegated. Destination keys are not part of
-    ///      this instruction; they are written later inside the ER via
-    ///      UpdateStealthPool.
+    ///      and its ACL permission PDA exist on base, then ensure the pool is
+    ///      delegated. Destination keys are not part of this instruction; they
+    ///      are written later inside the ER via UpdateStealthPool.
     EnsureStealthPoolDelegated = 22,
 
     /// 23 - InitializeRentPda: initialize the global rent-sponsoring PDA derived from ["rent"]
