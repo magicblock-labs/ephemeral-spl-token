@@ -2,10 +2,7 @@ use dlp_api::pda::{fees_vault_pda, validator_fees_vault_pda_from_validator};
 use ephemeral_rollups_pinocchio::{
     acl::permission_pda_from_permissioned_account,
     consts::DELEGATION_PROGRAM_ID,
-    pda::{
-        delegation_metadata_pda_from_delegated_account,
-        delegation_record_pda_from_delegated_account,
-    },
+    pda::{delegation_metadata_pda_from_delegated_account, delegation_record_pda_from_delegated_account},
     spl::EphemeralAta,
 };
 use ephemeral_spl_api::ID as PROGRAM;
@@ -43,8 +40,7 @@ async fn undelegate_ephemeral_ata_permission_callback() {
 
         let seeds: [&[u8]; 2] = [b"permission:", ephemeral_ata.as_ref()];
 
-        let mut delegation_record_data =
-            vec![0u8; dlp_api::state::DelegationRecord::size_with_discriminator()];
+        let mut delegation_record_data = vec![0u8; dlp_api::state::DelegationRecord::size_with_discriminator()];
         let delegation_record = dlp_api::state::DelegationRecord {
             authority: payer_pubkey.to_bytes().into(),
             owner: PROGRAM.to_bytes().into(),
@@ -141,13 +137,9 @@ async fn undelegate_ephemeral_ata_permission_callback() {
         context.last_blockhash,
     );
 
-    common::metrics::process_transaction_record_cu(
-        &context.banks_client,
-        tx,
-        "undel_perm_cb::undelegate",
-    )
-    .await
-    .unwrap();
+    common::metrics::process_transaction_record_cu(&context.banks_client, tx, "undel_perm_cb::undelegate")
+        .await
+        .unwrap();
 
     let delegation_pda = delegation_record_pda_from_delegated_account(&permission_pda);
     let delegation_metadata_pda = delegation_metadata_pda_from_delegated_account(&permission_pda);
@@ -158,26 +150,14 @@ async fn undelegate_ephemeral_ata_permission_callback() {
         .await
         .unwrap()
         .expect("permission account must exist");
-    let delegation_account = context
-        .banks_client
-        .get_account(delegation_pda)
-        .await
-        .unwrap();
-    let delegation_metadata_account = context
-        .banks_client
-        .get_account(delegation_metadata_pda)
-        .await
-        .unwrap();
+    let delegation_account = context.banks_client.get_account(delegation_pda).await.unwrap();
+    let delegation_metadata_account = context.banks_client.get_account(delegation_metadata_pda).await.unwrap();
 
     assert_eq!(permission_account.owner, PROGRAM);
-    assert!(
-        delegation_account.is_none() || delegation_account.unwrap().owner != DELEGATION_PROGRAM_ID
-    );
+    assert!(delegation_account.is_none() || delegation_account.unwrap().owner != DELEGATION_PROGRAM_ID);
 
     if let Some(account) = delegation_metadata_account {
-        let metadata =
-            dlp_api::state::DelegationMetadata::try_from_bytes_with_discriminator(&account.data)
-                .unwrap();
+        let metadata = dlp_api::state::DelegationMetadata::try_from_bytes_with_discriminator(&account.data).unwrap();
         assert!(!metadata.is_undelegatable);
     }
 }

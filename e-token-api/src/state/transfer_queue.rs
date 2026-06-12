@@ -112,16 +112,9 @@ pub struct TransferQueue;
 
 impl TransferQueue {
     #[inline(always)]
-    pub fn derive_pda(
-        mint: &Address,
-        validator: &Address,
-        bump_seed: u8,
-    ) -> Result<Address, ProgramError> {
+    pub fn derive_pda(mint: &Address, validator: &Address, bump_seed: u8) -> Result<Address, ProgramError> {
         let bump = [bump_seed];
-        let pda = Address::create_program_address(
-            &Self::seeds_with_bump(mint, validator, &bump),
-            &crate::ID,
-        )?;
+        let pda = Address::create_program_address(&Self::seeds_with_bump(mint, validator, &bump), &crate::ID)?;
         Ok(pda)
     }
 
@@ -136,20 +129,12 @@ impl TransferQueue {
     }
 
     #[inline(always)]
-    pub fn seeds_with_bump<'a>(
-        mint: &'a Address,
-        validator: &'a Address,
-        bump: &'a [u8],
-    ) -> [&'a [u8]; 4] {
+    pub fn seeds_with_bump<'a>(mint: &'a Address, validator: &'a Address, bump: &'a [u8]) -> [&'a [u8]; 4] {
         [QUEUE_SEED, mint.as_ref(), validator.as_ref(), bump]
     }
 
     #[inline(always)]
-    pub fn signer_seeds<'a>(
-        mint: &'a Address,
-        validator: &'a Address,
-        bump: &'a [u8],
-    ) -> [Seed<'a>; 4] {
+    pub fn signer_seeds<'a>(mint: &'a Address, validator: &'a Address, bump: &'a [u8]) -> [Seed<'a>; 4] {
         [
             Seed::from(QUEUE_SEED),
             Seed::from(mint.as_ref()),
@@ -167,9 +152,7 @@ impl QueuedTransfer {
 
     #[inline(always)]
     pub fn group_id(&self) -> u32 {
-        u32::from(self.group_id[0])
-            | (u32::from(self.group_id[1]) << 8)
-            | (u32::from(self.group_id[2]) << 16)
+        u32::from(self.group_id[0]) | (u32::from(self.group_id[1]) << 8) | (u32::from(self.group_id[2]) << 16)
     }
 
     #[inline(always)]
@@ -204,13 +187,13 @@ pub fn queue_views(data: &[u8]) -> Result<(&TransferQueueHeader, &[QueuedTransfe
     }
 
     let (header_bytes, rest) = data.split_at(HEADER_LEN);
-    let header = bytemuck::try_from_bytes::<TransferQueueHeader>(header_bytes)
-        .map_err(|_| ProgramError::InvalidAccountData)?;
+    let header =
+        bytemuck::try_from_bytes::<TransferQueueHeader>(header_bytes).map_err(|_| ProgramError::InvalidAccountData)?;
 
     let cap = rest.len() / ITEM_LEN;
     let items_bytes = &rest[..cap * ITEM_LEN];
-    let items = bytemuck::try_cast_slice::<u8, QueuedTransfer>(items_bytes)
-        .map_err(|_| ProgramError::InvalidAccountData)?;
+    let items =
+        bytemuck::try_cast_slice::<u8, QueuedTransfer>(items_bytes).map_err(|_| ProgramError::InvalidAccountData)?;
 
     Ok((header, items))
 }
@@ -219,9 +202,7 @@ pub fn queue_views(data: &[u8]) -> Result<(&TransferQueueHeader, &[QueuedTransfe
 ///
 /// Returns `(header, full_capacity_items)`, where active heap elements are in
 /// `items[..header.length as usize]`.
-pub fn queue_views_mut(
-    data: &mut [u8],
-) -> Result<(&mut TransferQueueHeader, &mut [QueuedTransfer]), ProgramError> {
+pub fn queue_views_mut(data: &mut [u8]) -> Result<(&mut TransferQueueHeader, &mut [QueuedTransfer]), ProgramError> {
     if data.len() < HEADER_LEN {
         return Err(ProgramError::InvalidAccountData);
     }
@@ -239,10 +220,7 @@ pub fn queue_views_mut(
 }
 
 #[inline(always)]
-pub fn queue_set_token_program_kind_from_data(
-    data: &mut [u8],
-    kind: SplTokenProgram,
-) -> Result<(), ProgramError> {
+pub fn queue_set_token_program_kind_from_data(data: &mut [u8], kind: SplTokenProgram) -> Result<(), ProgramError> {
     let (header, _) = queue_views_mut_checked(data)?;
     header.set_token_program_kind(kind);
     Ok(())
@@ -250,12 +228,7 @@ pub fn queue_set_token_program_kind_from_data(
 
 /// Initializes an uninitialized queue (version == 0).
 /// Idempotent when already initialized with the same version.
-pub fn init_queue(
-    data: &mut [u8],
-    bump: u8,
-    mint: Address,
-    validator: Address,
-) -> Result<(), ProgramError> {
+pub fn init_queue(data: &mut [u8], bump: u8, mint: Address, validator: Address) -> Result<(), ProgramError> {
     let (header, items) = queue_views_mut(data)?;
     if items.is_empty() {
         return Err(ProgramError::InvalidAccountData);
@@ -291,10 +264,7 @@ fn checked_active_len(length: u32, capacity: usize) -> Result<usize, ProgramErro
 }
 
 #[inline(always)]
-fn validate_header_and_active_len(
-    header: &TransferQueueHeader,
-    capacity: usize,
-) -> Result<(), ProgramError> {
+fn validate_header_and_active_len(header: &TransferQueueHeader, capacity: usize) -> Result<(), ProgramError> {
     if header.version != TRANSFER_QUEUE_VERSION {
         return Err(ProgramError::InvalidAccountData);
     }
@@ -321,19 +291,13 @@ fn next_group_id(group_id: u32) -> u32 {
 }
 
 #[inline(always)]
-fn group_id_in_use(
-    items: &[QueuedTransfer],
-    length: u32,
-    group_id: u32,
-) -> Result<bool, ProgramError> {
+fn group_id_in_use(items: &[QueuedTransfer], length: u32, group_id: u32) -> Result<bool, ProgramError> {
     let len = checked_active_len(length, items.len())?;
     Ok(items[..len].iter().any(|item| item.group_id() == group_id))
 }
 
 #[inline(always)]
-pub fn queue_views_checked(
-    data: &[u8],
-) -> Result<(&TransferQueueHeader, &[QueuedTransfer]), ProgramError> {
+pub fn queue_views_checked(data: &[u8]) -> Result<(&TransferQueueHeader, &[QueuedTransfer]), ProgramError> {
     let (header, items) = queue_views(data)?;
     validate_header_and_active_len(header, items.len())?;
     Ok((header, items))
@@ -416,11 +380,7 @@ fn right(i: usize) -> usize {
     2 * i + 2
 }
 
-fn heap_push(
-    items: &mut [QueuedTransfer],
-    length: &mut u32,
-    transfer: QueuedTransfer,
-) -> Result<(), ProgramError> {
+fn heap_push(items: &mut [QueuedTransfer], length: &mut u32, transfer: QueuedTransfer) -> Result<(), ProgramError> {
     // TODO (snawaz): simplify it (and make it performant avoiding the swap)
     let len = checked_active_len(*length, items.len())?;
     if len >= items.len() {
@@ -474,9 +434,7 @@ fn heap_pop(items: &mut [QueuedTransfer], length: &mut u32) -> Option<QueuedTran
         }
 
         let right_index = right(hole_index);
-        let best_index = if right_index < new_len
-            && items[right_index].has_higher_priority_than(&items[left_index])
-        {
+        let best_index = if right_index < new_len && items[right_index].has_higher_priority_than(&items[left_index]) {
             right_index
         } else {
             left_index
@@ -500,10 +458,7 @@ fn heap_pop(items: &mut [QueuedTransfer], length: &mut u32) -> Option<QueuedTran
 }
 
 /// Push one transfer into the queue account.
-pub fn queue_push_from_data(
-    data: &mut [u8],
-    mut transfer: QueuedTransfer,
-) -> Result<(), ProgramError> {
+pub fn queue_push_from_data(data: &mut [u8], mut transfer: QueuedTransfer) -> Result<(), ProgramError> {
     let (header, items) = queue_views_mut_checked(data)?;
     if header.length as usize >= items.len() {
         return Err(ProgramError::AccountDataTooSmall);
@@ -513,9 +468,7 @@ pub fn queue_push_from_data(
     transfer.task_id = task_id;
 
     heap_push(items, &mut header.length, transfer)?;
-    header.next_task_id = task_id
-        .checked_add(1)
-        .ok_or(ProgramError::InvalidArgument)?;
+    header.next_task_id = task_id.checked_add(1).ok_or(ProgramError::InvalidArgument)?;
     Ok(())
 }
 
@@ -548,10 +501,7 @@ pub fn queue_crank_task_id_from_data(data: &[u8]) -> Result<Option<i64>, Program
     }
 }
 
-pub fn queue_set_crank_task_id_from_data(
-    data: &mut [u8],
-    task_id: i64,
-) -> Result<(), ProgramError> {
+pub fn queue_set_crank_task_id_from_data(data: &mut [u8], task_id: i64) -> Result<(), ProgramError> {
     let (header, _) = queue_views_mut_checked(data)?;
     header.crank_task_id = task_id;
     Ok(())
@@ -566,13 +516,7 @@ mod tests {
         Address::new_from_array([byte; 32])
     }
 
-    fn item(
-        source: u8,
-        destination: u8,
-        amount: u64,
-        ready_at: i64,
-        client_ref_id: u64,
-    ) -> QueuedTransfer {
+    fn item(source: u8, destination: u8, amount: u64, ready_at: i64, client_ref_id: u64) -> QueuedTransfer {
         QueuedTransfer {
             source: addr(source),
             destination_owner: addr(destination),

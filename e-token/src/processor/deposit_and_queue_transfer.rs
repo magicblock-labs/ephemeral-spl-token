@@ -10,9 +10,8 @@ use ephemeral_spl_api::{
     state::{
         stealth_pool::StealthPool,
         transfer_queue::{
-            queue_len_and_bump_for_mint_with_capacity, queue_push_from_data,
-            queue_set_token_program_kind_from_data, QueuedTransfer, TransferQueue,
-            QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
+            queue_len_and_bump_for_mint_with_capacity, queue_push_from_data, queue_set_token_program_kind_from_data,
+            QueuedTransfer, TransferQueue, QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
         },
         RawType,
     },
@@ -29,9 +28,7 @@ use wheels::layout::Decodable as _;
 use crate::processor::internal::{
     group_receipt::derive_group_receipt_id,
     group_receipt_create, read_mint_decimals, token_program_kind,
-    token_vault::{
-        transfer_to_queue_vault_for_mint, transfer_to_vault_for_mint, validate_queue_vault_for_mint,
-    },
+    token_vault::{transfer_to_queue_vault_for_mint, transfer_to_vault_for_mint, validate_queue_vault_for_mint},
     GroupReceiptAccounts,
 };
 
@@ -58,10 +55,7 @@ const MILLIS_PER_SECOND: u64 = 1_000;
 /// Instruction Data: DepositAndQueueTransferArgs
 ///
 #[inline(always)]
-pub fn process_deposit_and_queue_transfer(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_deposit_and_queue_transfer(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         queue_info, // force multi-line
         vault_info,
@@ -87,26 +81,15 @@ pub fn process_deposit_and_queue_transfer(
         group_receipt.eq(group_receipt_info.address()),
         ProgramError::InvalidInstructionData
     );
-    require!(
-        user_authority.is_signer(),
-        ProgramError::MissingRequiredSignature
-    );
-    require!(
-        queue_info.owned_by(&crate::ID),
-        ProgramError::InvalidAccountOwner
-    );
+    require!(user_authority.is_signer(), ProgramError::MissingRequiredSignature);
+    require!(queue_info.owned_by(&crate::ID), ProgramError::InvalidAccountOwner);
     require!(
         magic_program.address().eq(&MAGIC_PROGRAM_ID),
         ProgramError::IncorrectProgramId
     );
 
     let amount = args.amount();
-    validate_deposit_and_queue_transfer_params(
-        amount,
-        args.min_delay_ms(),
-        args.max_delay_ms(),
-        args.split(),
-    )?;
+    validate_deposit_and_queue_transfer_params(amount, args.min_delay_ms(), args.max_delay_ms(), args.split())?;
 
     let split = args.split() as usize;
     let decimals = read_mint_decimals(mint_info, token_program_info)?;
@@ -137,16 +120,11 @@ pub fn process_deposit_and_queue_transfer(
     };
 
     let derived_queue = TransferQueue::derive_pda(mint_info.address(), &validator, bump)?;
-    require_eq_keys!(
-        &derived_queue,
-        queue_info.address(),
-        ProgramError::InvalidSeeds
-    );
+    require_eq_keys!(&derived_queue, queue_info.address(), ProgramError::InvalidSeeds);
 
     let now_ms = queue_timestamp_now()?;
 
-    let destination_resolution =
-        DestinationResolution::from_account(destination_info, token_program_info.address())?;
+    let destination_resolution = DestinationResolution::from_account(destination_info, token_program_info.address())?;
 
     if address_eq(vault_info.address(), queue_info.address()) {
         let queue_vault = validate_queue_vault_for_mint(
@@ -192,12 +170,8 @@ pub fn process_deposit_and_queue_transfer(
 
     let data = unsafe { queue_info.borrow_unchecked_mut() };
     queue_set_token_program_kind_from_data(data, queue_token_program_kind)?;
-    let group_destination_owner = destination_resolution.group_destination(
-        &source,
-        group_id,
-        queue_len_before,
-        client_ref_id,
-    )?;
+    let group_destination_owner =
+        destination_resolution.group_destination(&source, group_id, queue_len_before, client_ref_id)?;
     for index in 0..split {
         let queued_amount = split_plan.amount_for_index(index);
         let queue_position = queue_len_before
@@ -293,20 +267,15 @@ enum DestinationResolution {
 
 impl DestinationResolution {
     #[inline(always)]
-    fn from_account(
-        destination_info: &AccountView,
-        token_program: &Address,
-    ) -> Result<Self, ProgramError> {
+    fn from_account(destination_info: &AccountView, token_program: &Address) -> Result<Self, ProgramError> {
         require!(
             !address_eq(unsafe { destination_info.owner() }, token_program),
             ProgramError::InvalidAccountData
         );
 
-        if destination_info.owned_by(&crate::ID) && destination_info.data_len() == StealthPool::LEN
-        {
+        if destination_info.owned_by(&crate::ID) && destination_info.data_len() == StealthPool::LEN {
             let data = unsafe { destination_info.borrow_unchecked() };
-            let pool = bytemuck::try_from_bytes::<StealthPool>(data)
-                .map_err(|_| ProgramError::InvalidAccountData)?;
+            let pool = bytemuck::try_from_bytes::<StealthPool>(data).map_err(|_| ProgramError::InvalidAccountData)?;
             if pool.discriminator == StealthPool::DISCRIMINATOR {
                 pool.validate_pda(destination_info.address())?;
                 return Ok(Self::StealthPool(*pool));
@@ -340,14 +309,8 @@ impl DestinationResolution {
                     return Ok(None);
                 }
 
-                let selected = hash_stealth_pool_seed(
-                    pool,
-                    source,
-                    group_id,
-                    queue_position,
-                    client_ref_id,
-                    0,
-                ) % destination_count as u64;
+                let selected = hash_stealth_pool_seed(pool, source, group_id, queue_position, client_ref_id, 0)
+                    % destination_count as u64;
                 Ok(Some(pool.destinations[selected as usize]))
             }
         }
@@ -375,14 +338,9 @@ impl DestinationResolution {
                 //  - round_robin_stealth_pool_index()
                 // since hash_stealth_pool_seed() seems to be expensive, measure CU consumption and
                 // make decision.
-                let selected = hash_stealth_pool_seed(
-                    pool,
-                    source,
-                    group_id,
-                    queue_position,
-                    client_ref_id,
-                    split_index,
-                ) % destination_count as u64;
+                let selected =
+                    hash_stealth_pool_seed(pool, source, group_id, queue_position, client_ref_id, split_index)
+                        % destination_count as u64;
                 Ok(pool.destinations[selected as usize])
             }
             _ => group_destination.ok_or(ProgramError::InvalidAccountData),
@@ -401,10 +359,7 @@ fn validate_deposit_and_queue_transfer_params(
         amount != 0 && split != 0 && (split as u64) <= amount,
         ProgramError::InvalidInstructionData
     );
-    require!(
-        max_delay_ms >= min_delay_ms,
-        ProgramError::InvalidInstructionData
-    );
+    require!(max_delay_ms >= min_delay_ms, ProgramError::InvalidInstructionData);
 
     Ok(())
 }
@@ -488,11 +443,7 @@ fn preferred_multiple_of_five_quantum(decimals: u8) -> Option<u64> {
 }
 
 #[inline(always)]
-fn preferred_equal_chunk(
-    amount: u64,
-    split: usize,
-    preferred_quantum: u64,
-) -> Result<Option<u64>, ProgramError> {
+fn preferred_equal_chunk(amount: u64, split: usize, preferred_quantum: u64) -> Result<Option<u64>, ProgramError> {
     let split = u64::try_from(split).map_err(|_| ProgramError::InvalidInstructionData)?;
     let chunk_amount = largest_multiple_not_exceeding(amount / split, preferred_quantum);
     if chunk_amount == 0 {
@@ -511,13 +462,8 @@ fn preferred_equal_chunk(
 }
 
 #[inline(always)]
-fn preferred_prefix_chunk(
-    amount: u64,
-    split: usize,
-    preferred_quantum: u64,
-) -> Result<Option<u64>, ProgramError> {
-    let prefix_count =
-        u64::try_from(split - 1).map_err(|_| ProgramError::InvalidInstructionData)?;
+fn preferred_prefix_chunk(amount: u64, split: usize, preferred_quantum: u64) -> Result<Option<u64>, ProgramError> {
+    let prefix_count = u64::try_from(split - 1).map_err(|_| ProgramError::InvalidInstructionData)?;
     let chunk_amount = largest_multiple_not_exceeding(amount / prefix_count, preferred_quantum);
     if chunk_amount == 0 {
         return Ok(None);
@@ -556,11 +502,8 @@ fn choose_split_delay_ms(
     let delay_span = max_delay_ms
         .checked_sub(min_delay_ms)
         .ok_or(ProgramError::InvalidInstructionData)?;
-    let sample_space = delay_span
-        .checked_add(1)
-        .ok_or(ProgramError::InvalidInstructionData)?;
-    let queue_position =
-        u64::try_from(queue_position).map_err(|_| ProgramError::InvalidInstructionData)?;
+    let sample_space = delay_span.checked_add(1).ok_or(ProgramError::InvalidInstructionData)?;
+    let queue_position = u64::try_from(queue_position).map_err(|_| ProgramError::InvalidInstructionData)?;
 
     min_delay_ms
         .checked_add(hash_delay_seed(destination, queue_position) % sample_space)
@@ -618,11 +561,7 @@ fn hash_stealth_pool_seed(
 
 #[allow(dead_code)]
 #[inline(always)]
-fn round_robin_stealth_pool_index(
-    group_id: u32,
-    split_index: usize,
-    destination_count: usize,
-) -> usize {
+fn round_robin_stealth_pool_index(group_id: u32, split_index: usize, destination_count: usize) -> usize {
     // Candidate lower-CU selector for stealth pools.
     //
     // `group_id` is allocated once per enqueue group, so it naturally rotates

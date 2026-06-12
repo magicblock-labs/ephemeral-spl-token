@@ -14,8 +14,8 @@ use ephemeral_spl_api::{
         ephemeral_ata::EphemeralAta,
         load_initialized,
         transfer_queue::{
-            capacity_from_data_len, init_queue, queue_set_token_program_kind_from_data,
-            queue_views_checked, TransferQueue, HEADER_LEN, ITEM_LEN,
+            capacity_from_data_len, init_queue, queue_set_token_program_kind_from_data, queue_views_checked,
+            TransferQueue, HEADER_LEN, ITEM_LEN,
         },
     },
 };
@@ -29,8 +29,7 @@ use pinocchio_system::instructions::{CreateAccount, Transfer};
 use wheels::layout::Decodable as _;
 
 use crate::processor::internal::{
-    ephemeral_ata::initialize_ephemeral_ata_with_sponsor, get_associated_token_address,
-    token_program_kind,
+    ephemeral_ata::initialize_ephemeral_ata_with_sponsor, get_associated_token_address, token_program_kind,
 };
 
 pub const DEFAULT_TRANSFER_QUEUE_ITEMS: u32 = 100;
@@ -63,10 +62,7 @@ pub const DEFAULT_TRANSFER_QUEUE_SIZE_BYTES: u64 =
 /// Instruction Data: InitializeTransferQueueArgs
 ///
 #[inline(always)]
-pub fn process_initialize_transfer_queue(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_initialize_transfer_queue(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         payer_info, // force multi-line
         queue_info,
@@ -112,21 +108,13 @@ pub fn process_initialize_transfer_queue(
     let (requested_items, queue_size) = if let Some(items) = args.requested_items() {
         (items, HEADER_LEN + ITEM_LEN * items as usize)
     } else {
-        (
-            DEFAULT_TRANSFER_QUEUE_ITEMS,
-            DEFAULT_TRANSFER_QUEUE_SIZE_BYTES as usize,
-        )
+        (DEFAULT_TRANSFER_QUEUE_ITEMS, DEFAULT_TRANSFER_QUEUE_SIZE_BYTES as usize)
     };
     require!(requested_items != 0, ProgramError::InvalidInstructionData);
 
     let program_id = crate::ID;
-    let (derived_queue, bump) =
-        TransferQueue::find_pda(mint_info.address(), validator_info.address());
-    require_eq_keys!(
-        &derived_queue,
-        queue_info.address(),
-        ProgramError::InvalidSeeds
-    );
+    let (derived_queue, bump) = TransferQueue::find_pda(mint_info.address(), validator_info.address());
+    require_eq_keys!(&derived_queue, queue_info.address(), ProgramError::InvalidSeeds);
 
     // permission_program_info is needed by CreatePermissionCpiBuilder
     require_eq_keys!(
@@ -157,14 +145,10 @@ pub fn process_initialize_transfer_queue(
     let delegation_program = ephemeral_spl_api::program::DELEGATION_PROGRAM_ID;
     if !queue_info.owned_by(&program_id) && !queue_info.owned_by(&delegation_program) {
         require!(queue_info.lamports() == 0, ProgramError::IllegalOwner);
-        require!(
-            payer_info.is_signer(),
-            ProgramError::MissingRequiredSignature
-        );
+        require!(payer_info.is_signer(), ProgramError::MissingRequiredSignature);
 
         let bump_seed = [bump];
-        let signer_seeds =
-            TransferQueue::signer_seeds(mint_info.address(), validator_info.address(), &bump_seed);
+        let signer_seeds = TransferQueue::signer_seeds(mint_info.address(), validator_info.address(), &bump_seed);
         let signer = Signer::from(&signer_seeds);
 
         CreateAccount {
@@ -178,10 +162,7 @@ pub fn process_initialize_transfer_queue(
     }
 
     if !queue_permission_exists {
-        require!(
-            payer_info.is_signer(),
-            ProgramError::MissingRequiredSignature
-        );
+        require!(payer_info.is_signer(), ProgramError::MissingRequiredSignature);
         CreatePermissionCpiBuilder::new(
             queue_info,
             queue_permission_info,
@@ -190,10 +171,7 @@ pub fn process_initialize_transfer_queue(
             &PERMISSION_PROGRAM_ID,
         )
         .members(MembersArgs { members: Some(&[]) })
-        .seeds(&TransferQueue::seeds(
-            mint_info.address(),
-            validator_info.address(),
-        ))
+        .seeds(&TransferQueue::seeds(mint_info.address(), validator_info.address()))
         .bump(bump)
         .invoke()?;
     }
@@ -210,10 +188,7 @@ pub fn process_initialize_transfer_queue(
         }
 
         let data_len = queue_info.data_len();
-        require!(
-            capacity_from_data_len(data_len) != 0,
-            ProgramError::InvalidAccountData
-        );
+        require!(capacity_from_data_len(data_len) != 0, ProgramError::InvalidAccountData);
 
         let data = unsafe { queue_info.borrow_unchecked_mut() };
         init_queue(data, bump, *mint_info.address(), *validator_info.address())?;
@@ -229,19 +204,10 @@ pub fn process_initialize_transfer_queue(
         ProgramError::InvalidAccountData
     );
 
-    initialize_ephemeral_ata_with_sponsor(
-        queue_ephemeral_ata_info,
-        payer_info,
-        None,
-        queue_info,
-        mint_info,
-    )?;
+    initialize_ephemeral_ata_with_sponsor(queue_ephemeral_ata_info, payer_info, None, queue_info, mint_info)?;
 
-    let expected_queue_vault_ata = get_associated_token_address(
-        queue_info.address(),
-        mint_info.address(),
-        token_program_info.address(),
-    );
+    let expected_queue_vault_ata =
+        get_associated_token_address(queue_info.address(), mint_info.address(), token_program_info.address());
     require_eq_keys!(
         &expected_queue_vault_ata,
         queue_vault_ata_info.address(),
@@ -259,9 +225,8 @@ pub fn process_initialize_transfer_queue(
     .invoke()?;
 
     if !queue_ephemeral_ata_info.owned_by(&delegation_program) {
-        let queue_ephemeral_ata = load_initialized::<EphemeralAta>(unsafe {
-            queue_ephemeral_ata_info.borrow_unchecked()
-        })?;
+        let queue_ephemeral_ata =
+            load_initialized::<EphemeralAta>(unsafe { queue_ephemeral_ata_info.borrow_unchecked() })?;
         let seeds: &[&[u8]] = &[queue_info.address().as_ref(), mint_info.address().as_ref()];
         let config = DelegateConfig {
             validator: Some(*validator_info.address()),

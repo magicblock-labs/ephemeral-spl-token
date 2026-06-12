@@ -29,10 +29,7 @@ use wheels::layout::Decodable as _;
 ///
 /// Instruction Data: EnsureStealthPoolDelegatedArgs
 ///
-pub fn process_ensure_stealth_pool_delegated(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_ensure_stealth_pool_delegated(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         payer_info, // force multi-line
         stealth_pool_info,
@@ -46,17 +43,10 @@ pub fn process_ensure_stealth_pool_delegated(
 
     let args = EnsureStealthPoolDelegatedArgs::decode(instruction_data)?;
 
-    require!(
-        payer_info.is_signer(),
-        ProgramError::MissingRequiredSignature
-    );
+    require!(payer_info.is_signer(), ProgramError::MissingRequiredSignature);
 
     let (derived_pool, bump) = StealthPool::find_pda(args.handle_hash());
-    require_eq_keys!(
-        &derived_pool,
-        stealth_pool_info.address(),
-        ProgramError::InvalidSeeds
-    );
+    require_eq_keys!(&derived_pool, stealth_pool_info.address(), ProgramError::InvalidSeeds);
 
     let delegation_program = ephemeral_spl_api::program::DELEGATION_PROGRAM_ID;
     if stealth_pool_info.owned_by(&delegation_program) {
@@ -64,10 +54,7 @@ pub fn process_ensure_stealth_pool_delegated(
     }
 
     if !stealth_pool_info.owned_by(&crate::ID) {
-        require!(
-            stealth_pool_info.lamports() == 0,
-            ProgramError::IllegalOwner
-        );
+        require!(stealth_pool_info.lamports() == 0, ProgramError::IllegalOwner);
 
         let rent = Rent::get()?;
         let lamports = rent.try_minimum_balance(StealthPool::LEN)?;
@@ -90,11 +77,7 @@ pub fn process_ensure_stealth_pool_delegated(
         );
     }
 
-    require_eq_keys!(
-        owner_program.address(),
-        &crate::ID,
-        ProgramError::IncorrectProgramId
-    );
+    require_eq_keys!(owner_program.address(), &crate::ID, ProgramError::IncorrectProgramId);
     require_eq_keys!(
         system_program.address(),
         &pinocchio_system::ID,

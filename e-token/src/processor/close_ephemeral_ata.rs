@@ -16,28 +16,21 @@ use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 /// Instruction Data: None
 ///
 #[inline(always)]
-pub fn process_close_ephemeral_ata(
-    accounts: &[AccountView],
-    _instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_close_ephemeral_ata(accounts: &[AccountView], _instruction_data: &[u8]) -> ProgramResult {
     let [
         owner_info, // force multi-line
         ephemeral_ata_info,
         recipient_info,
     ] = require_n_accounts!(accounts, 3);
 
-    require!(
-        owner_info.is_signer(),
-        ProgramError::MissingRequiredSignature
-    );
+    require!(owner_info.is_signer(), ProgramError::MissingRequiredSignature);
     require!(
         ephemeral_ata_info.owned_by(&crate::ID),
         ProgramError::InvalidAccountOwner
     );
 
     let (mint, lamports_to_refund, bump) = {
-        let ephemeral_ata =
-            load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
+        let ephemeral_ata = load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
         require_eq_keys!(
             &ephemeral_ata.owner,
             owner_info.address(),
@@ -45,19 +38,11 @@ pub fn process_close_ephemeral_ata(
         );
         require!(ephemeral_ata.amount == 0, ProgramError::InvalidArgument);
 
-        (
-            ephemeral_ata.mint,
-            ephemeral_ata_info.lamports(),
-            ephemeral_ata.bump,
-        )
+        (ephemeral_ata.mint, ephemeral_ata_info.lamports(), ephemeral_ata.bump)
     };
 
     let derived_pda = EphemeralAta::derive_pda(owner_info.address(), &mint, bump)?;
-    require_eq_keys!(
-        &derived_pda,
-        ephemeral_ata_info.address(),
-        ProgramError::InvalidSeeds
-    );
+    require_eq_keys!(&derived_pda, ephemeral_ata_info.address(), ProgramError::InvalidSeeds);
 
     require!(
         recipient_info.address() != ephemeral_ata_info.address(),

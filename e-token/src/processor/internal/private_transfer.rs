@@ -3,8 +3,8 @@ use alloc::string::ToString;
 
 use dlp_api::{
     args::{
-        EncryptedBuffer, MaybeEncryptedAccountMeta, MaybeEncryptedInstruction,
-        MaybeEncryptedIxData, MaybeEncryptedPubkey, PostDelegationActions,
+        EncryptedBuffer, MaybeEncryptedAccountMeta, MaybeEncryptedInstruction, MaybeEncryptedIxData,
+        MaybeEncryptedPubkey, PostDelegationActions,
     },
     compact::{self, ClearTextWithInsertable},
 };
@@ -26,8 +26,7 @@ use crate::processor::internal::{
     get_associated_token_address,
     group_receipt::derive_group_receipt_id,
     shuttle_delegation::{
-        merge_shuttle_into_token_account_action,
-        process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions,
+        merge_shuttle_into_token_account_action, process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions,
         undelegate_and_close_shuttle_action, CloseStashArgs, DepositAndDelegateShuttleAccounts,
         DepositAndDelegateShuttleCommonArgs,
     },
@@ -107,15 +106,9 @@ pub(crate) fn process_with_merge_and_private_transfer_inner(
     debug_log!({
         let shuttle = common_accounts.shuttle_info.address().to_string();
         let shuttle_eata = common_accounts.shuttle_eata_info.address().to_string();
-        let shuttle_ata = common_accounts
-            .shuttle_wallet_ata_info
-            .address()
-            .to_string();
+        let shuttle_ata = common_accounts.shuttle_wallet_ata_info.address().to_string();
         let mint = common_accounts.mint_info.address().to_string();
-        let owner_source = common_accounts
-            .owner_source_token_info
-            .address()
-            .to_string();
+        let owner_source = common_accounts.owner_source_token_info.address().to_string();
         let vault_token = common_accounts.vault_token_info.address().to_string();
         let queue = queue_info.address().to_string();
 
@@ -136,13 +129,8 @@ pub(crate) fn process_with_merge_and_private_transfer_inner(
         let (header, _) = queue_views(unsafe { queue_info.borrow_unchecked() })?;
         (header.bump, header.validator)
     };
-    let derived_queue =
-        TransferQueue::derive_pda(common_accounts.mint_info.address(), &queue_validator, bump)?;
-    require_eq_keys!(
-        &derived_queue,
-        queue_info.address(),
-        ProgramError::InvalidSeeds
-    );
+    let derived_queue = TransferQueue::derive_pda(common_accounts.mint_info.address(), &queue_validator, bump)?;
+    require_eq_keys!(&derived_queue, queue_info.address(), ProgramError::InvalidSeeds);
 
     let fee_amount = private_transfer_fee_amount(amount)?;
     let private_transfer_amount = if exact_out {
@@ -178,21 +166,11 @@ pub(crate) fn process_with_merge_and_private_transfer_inner(
 
         #[cfg(not(feature = "no-fees"))]
         {
-            let mint_decimals = read_mint_decimals(
-                common_accounts.mint_info,
-                common_accounts.token_program_info,
-            )?;
-            post_actions.push(private_transfer_fee_action(
-                &common_accounts,
-                fee_amount,
-                mint_decimals,
-            ));
+            let mint_decimals = read_mint_decimals(common_accounts.mint_info, common_accounts.token_program_info)?;
+            post_actions.push(private_transfer_fee_action(&common_accounts, fee_amount, mint_decimals));
         }
 
-        post_actions.push(undelegate_and_close_shuttle_action(
-            &common_accounts,
-            close_stash,
-        ));
+        post_actions.push(undelegate_and_close_shuttle_action(&common_accounts, close_stash));
         post_actions.cleartext_with_insertable(private_transfer, 1)
     };
 
@@ -220,15 +198,9 @@ fn private_transfer_action_encrypted(
         encrypted_destination[1],
         encrypted_destination[2],
     ];
-    let group_id = u32::from(group_id_raw[0])
-        | (u32::from(group_id_raw[1]) << 8)
-        | (u32::from(group_id_raw[2]) << 16);
-    let group_receipt_info = derive_group_receipt_id(
-        queue_info.address(),
-        common_accounts.owner_info.address(),
-        group_id,
-    )
-    .0;
+    let group_id = u32::from(group_id_raw[0]) | (u32::from(group_id_raw[1]) << 8) | (u32::from(group_id_raw[2]) << 16);
+    let group_receipt_info =
+        derive_group_receipt_id(queue_info.address(), common_accounts.owner_info.address(), group_id).0;
     let queue_vault_token_info = get_associated_token_address(
         queue_info.address(),
         common_accounts.mint_info.address(),
@@ -243,17 +215,11 @@ fn private_transfer_action_encrypted(
             MaybeEncryptedPubkey::ClearText(queue_info.address().to_bytes()),
             MaybeEncryptedPubkey::ClearText(queue_info.address().to_bytes()),
             MaybeEncryptedPubkey::ClearText(common_accounts.mint_info.address().to_bytes()),
-            MaybeEncryptedPubkey::ClearText(
-                common_accounts.owner_source_token_info.address().to_bytes()
-            ),
+            MaybeEncryptedPubkey::ClearText(common_accounts.owner_source_token_info.address().to_bytes()),
             MaybeEncryptedPubkey::ClearText(queue_vault_token_info.to_bytes()),
             MaybeEncryptedPubkey::Encrypted(EncryptedBuffer::new(encrypted_destination.into())),
-            MaybeEncryptedPubkey::ClearText(
-                common_accounts.token_program_info.address().to_bytes()
-            ),
-            MaybeEncryptedPubkey::ClearText(
-                common_accounts.shuttle_wallet_ata_info.address().to_bytes()
-            ),
+            MaybeEncryptedPubkey::ClearText(common_accounts.token_program_info.address().to_bytes()),
+            MaybeEncryptedPubkey::ClearText(common_accounts.shuttle_wallet_ata_info.address().to_bytes()),
             MaybeEncryptedPubkey::ClearText(group_receipt_info.to_bytes()),
             MaybeEncryptedPubkey::ClearText(MAGIC_VAULT_ID.to_bytes()),
             MaybeEncryptedPubkey::ClearText(MAGIC_PROGRAM_ID.to_bytes()),
@@ -275,9 +241,8 @@ fn private_transfer_action_encrypted(
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(12, false)),
             ],
             data: MaybeEncryptedIxData {
-                prefix: ESplInstruction::DepositAndQueueTransfer.with_data(
-                    &[amount.to_le_bytes().as_slice(), group_id_raw.as_slice()].concat(),
-                ),
+                prefix: ESplInstruction::DepositAndQueueTransfer
+                    .with_data(&[amount.to_le_bytes().as_slice(), group_id_raw.as_slice()].concat(),),
                 suffix: EncryptedBuffer::new(encrypted_data_suffix.into()),
             },
         }],

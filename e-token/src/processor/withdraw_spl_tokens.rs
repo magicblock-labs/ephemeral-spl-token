@@ -20,10 +20,7 @@ use crate::processor::internal::token_vault::withdraw_ephemeral_ata_tokens;
 /// Instruction Data: WithdrawArgs
 ///
 #[inline(always)]
-pub fn process_withdraw_spl_tokens(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_withdraw_spl_tokens(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         owner, // force multi-line
         ephemeral_ata_info,

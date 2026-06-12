@@ -17,9 +17,8 @@ const TRANSFER_CHECKED_DISCRIMINATOR: u8 = 12;
 use crate::processor::internal::{
     read_mint_decimals,
     shuttle_delegation::{
-        build_undelegate_and_close_shuttle_instruction,
-        delegate_sponsored_shuttle_with_post_actions, prepare_sponsored_shuttle_delegation,
-        DepositAndDelegateShuttleCommonArgs,
+        build_undelegate_and_close_shuttle_instruction, delegate_sponsored_shuttle_with_post_actions,
+        prepare_sponsored_shuttle_delegation, DepositAndDelegateShuttleCommonArgs,
     },
     validate_token_account,
 };
@@ -124,17 +123,10 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
 
     debug_log!(
         "Shuttle wallet ata: {}",
-        accounts
-            .shuttle_wallet_ata_info
-            .address()
-            .to_string()
-            .as_str()
+        accounts.shuttle_wallet_ata_info.address().to_string().as_str()
     );
 
-    debug_log!(
-        "Shuttle: {}",
-        accounts.shuttle_info.address().to_string().as_str()
-    );
+    debug_log!("Shuttle: {}", accounts.shuttle_info.address().to_string().as_str());
 
     if prepared.already_delegated {
         return Ok(());
@@ -169,8 +161,7 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
     ];
 
     // Shuttle has been initialized above
-    let shuttle_eata =
-        load::<EphemeralAta>(unsafe { accounts.shuttle_eata_info.borrow_unchecked() })?;
+    let shuttle_eata = load::<EphemeralAta>(unsafe { accounts.shuttle_eata_info.borrow_unchecked() })?;
 
     delegate_sponsored_shuttle_with_post_actions(
         accounts.payer_info,

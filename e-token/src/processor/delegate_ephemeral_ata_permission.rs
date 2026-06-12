@@ -27,10 +27,7 @@ use pinocchio::{cpi::Signer, error::ProgramError, AccountView, ProgramResult};
 /// Instruction Data: None
 ///
 #[inline(always)]
-pub fn process_delegate_ephemeral_ata_permission(
-    accounts: &[AccountView],
-    _instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_delegate_ephemeral_ata_permission(accounts: &[AccountView], _instruction_data: &[u8]) -> ProgramResult {
     let [
         payer_info, // force multi-line
         ephemeral_ata_info,
@@ -44,10 +41,7 @@ pub fn process_delegate_ephemeral_ata_permission(
         validator,
     ] = require_n_accounts!(accounts, 10);
 
-    require!(
-        payer_info.is_signer(),
-        ProgramError::MissingRequiredSignature
-    );
+    require!(payer_info.is_signer(), ProgramError::MissingRequiredSignature);
 
     require_eq_keys!(
         &PERMISSION_PROGRAM_ID,
@@ -61,11 +55,9 @@ pub fn process_delegate_ephemeral_ata_permission(
         return Ok(());
     }
 
-    let ephemeral_ata =
-        load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
+    let ephemeral_ata = load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
 
-    let expected_permission =
-        permission_pda_from_permissioned_account(ephemeral_ata_info.address());
+    let expected_permission = permission_pda_from_permissioned_account(ephemeral_ata_info.address());
 
     require_eq_keys!(
         &expected_permission,

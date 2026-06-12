@@ -26,10 +26,7 @@ use wheels::layout::Decodable as _;
 /// Instruction Data: CreateEphemeralAtaPermissionArgs
 ///
 #[inline(always)]
-pub fn process_create_ephemeral_ata_permission(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_create_ephemeral_ata_permission(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         ephemeral_ata_info, // force multi-line
         permission_info,
@@ -40,10 +37,7 @@ pub fn process_create_ephemeral_ata_permission(
 
     let args = CreateEphemeralAtaPermissionArgs::decode(instruction_data)?;
 
-    require!(
-        payer_info.is_signer(),
-        ProgramError::MissingRequiredSignature
-    );
+    require!(payer_info.is_signer(), ProgramError::MissingRequiredSignature);
 
     require_eq_keys!(
         &PERMISSION_PROGRAM_ID,
@@ -51,8 +45,7 @@ pub fn process_create_ephemeral_ata_permission(
         ProgramError::InvalidAccountData
     );
 
-    let ephemeral_ata =
-        load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
+    let ephemeral_ata = load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
 
     let flag_byte = args.flag_byte();
 
@@ -64,8 +57,7 @@ pub fn process_create_ephemeral_ata_permission(
         ProgramError::IncorrectAuthority
     );
 
-    let expected_permission =
-        permission_pda_from_permissioned_account(ephemeral_ata_info.address());
+    let expected_permission = permission_pda_from_permissioned_account(ephemeral_ata_info.address());
     require_eq_keys!(
         &expected_permission,
         permission_info.address(),

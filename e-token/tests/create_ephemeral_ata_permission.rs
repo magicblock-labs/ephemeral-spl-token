@@ -20,8 +20,7 @@ async fn create_ephemeral_ata_permission() {
     let user = payer;
     let mint = utils::test_pubkey("create_ephemeral_ata_permission::mint");
 
-    let (ephemeral_ata, _) =
-        Pubkey::find_program_address(&[user.as_ref(), mint.as_ref()], &PROGRAM);
+    let (ephemeral_ata, _) = Pubkey::find_program_address(&[user.as_ref(), mint.as_ref()], &PROGRAM);
     let permission_pda = permission_pda_from_permissioned_account(&ephemeral_ata);
 
     let ix_init = Instruction {
@@ -46,8 +45,7 @@ async fn create_ephemeral_ata_permission() {
             AccountMeta::new_readonly(permission_program_id, false),
         ],
         data: {
-            let flag =
-                ephemeral_rollups_pinocchio::acl::types::MemberFlags::default().to_acl_flag_byte();
+            let flag = ephemeral_rollups_pinocchio::acl::types::MemberFlags::default().to_acl_flag_byte();
             instruction::ESplInstruction::CreateEphemeralAtaPermission.with_data(&[flag])
         },
     };
@@ -58,13 +56,9 @@ async fn create_ephemeral_ata_permission() {
         &[&payer_kp],
         context.last_blockhash,
     );
-    common::metrics::process_transaction_record_cu(
-        &context.banks_client,
-        tx,
-        "create_eata_perm::default",
-    )
-    .await
-    .unwrap();
+    common::metrics::process_transaction_record_cu(&context.banks_client, tx, "create_eata_perm::default")
+        .await
+        .unwrap();
 
     let permission_account = context
         .banks_client
@@ -88,12 +82,9 @@ async fn create_ephemeral_ata_permission_permissionless_default() {
     let user = utils::test_pubkey("create_ephemeral_ata_permission_permissionless_default::user");
     let mint = utils::test_pubkey("create_ephemeral_ata_permission_permissionless_default::mint");
 
-    let (ephemeral_ata, _) =
-        Pubkey::find_program_address(&[user.as_ref(), mint.as_ref()], &PROGRAM);
-    let (permission_pda, _) = Pubkey::find_program_address(
-        &[b"permission:", ephemeral_ata.as_ref()],
-        &permission_program_id,
-    );
+    let (ephemeral_ata, _) = Pubkey::find_program_address(&[user.as_ref(), mint.as_ref()], &PROGRAM);
+    let (permission_pda, _) =
+        Pubkey::find_program_address(&[b"permission:", ephemeral_ata.as_ref()], &permission_program_id);
 
     let ix_init = Instruction {
         program_id: PROGRAM,
@@ -117,8 +108,7 @@ async fn create_ephemeral_ata_permission_permissionless_default() {
             AccountMeta::new_readonly(permission_program_id, false),
         ],
         data: {
-            let flag =
-                ephemeral_rollups_pinocchio::acl::types::MemberFlags::default().to_acl_flag_byte();
+            let flag = ephemeral_rollups_pinocchio::acl::types::MemberFlags::default().to_acl_flag_byte();
             instruction::ESplInstruction::CreateEphemeralAtaPermission.with_data(&[flag])
         },
     };
@@ -129,13 +119,9 @@ async fn create_ephemeral_ata_permission_permissionless_default() {
         &[&payer_kp],
         context.last_blockhash,
     );
-    common::metrics::process_transaction_record_cu(
-        &context.banks_client,
-        tx,
-        "create_eata_perm::permissionless",
-    )
-    .await
-    .unwrap();
+    common::metrics::process_transaction_record_cu(&context.banks_client, tx, "create_eata_perm::permissionless")
+        .await
+        .unwrap();
 
     let permission_account = context
         .banks_client

@@ -16,9 +16,7 @@ use solana_address::Address;
 
 use crate::processor::internal::{
     rent_pda::{RENT_PDA_BUMP, RENT_PDA_SEED},
-    transfer_queue_refill::{
-        validate_queue_account, validate_queue_refill_state_address, validate_rent_pda,
-    },
+    transfer_queue_refill::{validate_queue_account, validate_queue_refill_state_address, validate_rent_pda},
 };
 
 ///
@@ -36,10 +34,7 @@ use crate::processor::internal::{
 /// Instruction Data: escrow_index (u8)
 ///
 #[inline(never)]
-pub fn process_mark_transfer_queue_refill_pending(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_mark_transfer_queue_refill_pending(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         rent_pda_info, // force multi-line
         refill_state_info,
@@ -56,27 +51,14 @@ pub fn process_mark_transfer_queue_refill_pending(
         &pinocchio_system::ID,
         ProgramError::IncorrectProgramId
     );
-    require_eq_keys!(
-        source_program.address(),
-        &crate::ID,
-        ProgramError::IncorrectAuthority
-    );
-    require!(
-        escrow_signer.is_signer(),
-        ProgramError::MissingRequiredSignature
-    );
+    require_eq_keys!(source_program.address(), &crate::ID, ProgramError::IncorrectAuthority);
+    require!(escrow_signer.is_signer(), ProgramError::MissingRequiredSignature);
 
-    let expected_escrow =
-        ephemeral_balance_pda_from_payer(escrow_authority.address(), escrow_index);
-    require_eq_keys!(
-        &expected_escrow,
-        escrow_signer.address(),
-        ProgramError::InvalidSeeds
-    );
+    let expected_escrow = ephemeral_balance_pda_from_payer(escrow_authority.address(), escrow_index);
+    require_eq_keys!(&expected_escrow, escrow_signer.address(), ProgramError::InvalidSeeds);
 
     validate_queue_account(escrow_authority)?;
-    let (_, refill_state_bump) =
-        validate_queue_refill_state_address(refill_state_info, escrow_authority.address())?;
+    let (_, refill_state_bump) = validate_queue_refill_state_address(refill_state_info, escrow_authority.address())?;
     ensure_queue_refill_state_exists(
         rent_pda_info,
         refill_state_info,
@@ -87,10 +69,7 @@ pub fn process_mark_transfer_queue_refill_pending(
 
 #[inline(always)]
 fn parse_escrow_index(instruction_data: &[u8]) -> Result<u8, ProgramError> {
-    require!(
-        instruction_data.len() == 1,
-        ProgramError::InvalidInstructionData
-    );
+    require!(instruction_data.len() == 1, ProgramError::InvalidInstructionData);
 
     Ok(instruction_data[0])
 }

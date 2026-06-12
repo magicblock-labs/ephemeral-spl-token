@@ -24,11 +24,7 @@ pub fn take_execute_callbacks() -> Vec<Instruction> {
     std::mem::take(captured_execute_callbacks().lock().unwrap().as_mut())
 }
 
-pub fn process(
-    _program_id: &Pubkey,
-    accounts: &[AccountInfo],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process(_program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: &[u8]) -> ProgramResult {
     let ix: CallbackInstruction =
         bincode::deserialize(instruction_data).map_err(|_| ProgramError::InvalidInstructionData)?;
 
@@ -51,10 +47,7 @@ pub fn process(
                 &[&[CALLBACK_SEED, &[CALLBACK_SIGNER_BUMP]]],
             )?;
 
-            captured_execute_callbacks()
-                .lock()
-                .unwrap()
-                .push(instruction.clone());
+            captured_execute_callbacks().lock().unwrap().push(instruction.clone());
 
             Ok(())
         }

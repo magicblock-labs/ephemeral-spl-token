@@ -33,16 +33,9 @@ impl Initializable for EphemeralAta {
 
 impl EphemeralAta {
     #[inline(always)]
-    pub fn derive_pda(
-        owner: &Address,
-        mint: &Address,
-        bump_seed: u8,
-    ) -> Result<Address, ProgramError> {
+    pub fn derive_pda(owner: &Address, mint: &Address, bump_seed: u8) -> Result<Address, ProgramError> {
         let bump_seed = [bump_seed];
-        let pda = Address::create_program_address(
-            &Self::seeds_with_bump(owner, mint, &bump_seed),
-            &crate::ID,
-        )?;
+        let pda = Address::create_program_address(&Self::seeds_with_bump(owner, mint, &bump_seed), &crate::ID)?;
         Ok(pda)
     }
 
@@ -57,25 +50,13 @@ impl EphemeralAta {
     }
 
     #[inline(always)]
-    pub fn seeds_with_bump<'a>(
-        owner: &'a Address,
-        mint: &'a Address,
-        bump: &'a [u8],
-    ) -> [&'a [u8]; 3] {
+    pub fn seeds_with_bump<'a>(owner: &'a Address, mint: &'a Address, bump: &'a [u8]) -> [&'a [u8]; 3] {
         [owner.as_ref(), mint.as_ref(), bump]
     }
 
     #[inline(always)]
-    pub fn signer_seeds<'a>(
-        owner: &'a Address,
-        mint: &'a Address,
-        bump: &'a [u8],
-    ) -> [Seed<'a>; 3] {
-        [
-            Seed::from(owner.as_ref()),
-            Seed::from(mint.as_ref()),
-            Seed::from(bump),
-        ]
+    pub fn signer_seeds<'a>(owner: &'a Address, mint: &'a Address, bump: &'a [u8]) -> [Seed<'a>; 3] {
+        [Seed::from(owner.as_ref()), Seed::from(mint.as_ref()), Seed::from(bump)]
     }
 }
 
@@ -135,9 +116,7 @@ impl EphemeralAtaCompatMut<'_> {
 }
 
 #[inline(always)]
-pub fn read_ephemeral_ata_compat(
-    bytes: &[u8],
-) -> Result<(Address, Address, u64, u8), ProgramError> {
+pub fn read_ephemeral_ata_compat(bytes: &[u8]) -> Result<(Address, Address, u64, u8), ProgramError> {
     if bytes.len() == EphemeralAta::LEN {
         let ephemeral_ata = load_initialized::<EphemeralAta>(bytes)?;
         return Ok((
@@ -165,19 +144,21 @@ pub fn read_ephemeral_ata_compat(
 }
 
 #[inline(always)]
-pub fn load_ephemeral_ata_compat_mut(
-    bytes: &mut [u8],
-) -> Result<EphemeralAtaCompatMut<'_>, ProgramError> {
+pub fn load_ephemeral_ata_compat_mut(bytes: &mut [u8]) -> Result<EphemeralAtaCompatMut<'_>, ProgramError> {
     if bytes.len() == EphemeralAta::LEN {
-        return Ok(EphemeralAtaCompatMut(EphemeralAtaCompatMutInner::Current(
-            load_mut::<EphemeralAta>(bytes)?,
-        )));
+        return Ok(EphemeralAtaCompatMut(EphemeralAtaCompatMutInner::Current(load_mut::<
+            EphemeralAta,
+        >(
+            bytes
+        )?)));
     }
 
     if bytes.len() == LEGACY_EPHEMERAL_ATA_LEN {
-        return Ok(EphemeralAtaCompatMut(EphemeralAtaCompatMutInner::Legacy(
-            load_mut::<LegacyEphemeralAta>(bytes)?,
-        )));
+        return Ok(EphemeralAtaCompatMut(EphemeralAtaCompatMutInner::Legacy(load_mut::<
+            LegacyEphemeralAta,
+        >(
+            bytes
+        )?)));
     }
 
     Err(ProgramError::InvalidAccountData)

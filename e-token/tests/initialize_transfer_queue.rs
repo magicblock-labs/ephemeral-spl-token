@@ -1,7 +1,7 @@
 use ephemeral_spl_api::{
     state::transfer_queue::{
-        capacity_from_data_len, SplTokenProgram, TransferQueue, TransferQueueHeader, HEADER_LEN,
-        ITEM_LEN, TRANSFER_QUEUE_VERSION,
+        capacity_from_data_len, SplTokenProgram, TransferQueue, TransferQueueHeader, HEADER_LEN, ITEM_LEN,
+        TRANSFER_QUEUE_VERSION,
     },
     ID as PROGRAM,
 };
@@ -33,21 +33,9 @@ async fn initialize_transfer_queue_default_size() {
     utils::setup_mint_and_token_accounts(&mut context, &payer_kp, &mint_kp, 6, 0, 1).await;
 
     let (queue, bump) = TransferQueue::find_pda(&mint, &VALIDATOR);
-    let ix = utils::build_initialize_transfer_queue_ix(
-        payer,
-        queue,
-        mint,
-        VALIDATOR,
-        None,
-        spl_token_interface::ID,
-    );
+    let ix = utils::build_initialize_transfer_queue_ix(payer, queue, mint, VALIDATOR, None, spl_token_interface::ID);
 
-    let tx = Transaction::new_signed_with_payer(
-        &[ix],
-        Some(&payer),
-        &[&payer_kp],
-        context.last_blockhash,
-    );
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&payer), &[&payer_kp], context.last_blockhash);
     common::metrics::process_transaction_record_cu(&context.banks_client, tx, "init_tq::default")
         .await
         .unwrap();
@@ -102,14 +90,7 @@ async fn initialize_transfer_queue_token_2022_uses_token_program_ata() {
     );
 
     let (queue, _) = TransferQueue::find_pda(&mint, &VALIDATOR);
-    let ix = utils::build_initialize_transfer_queue_ix(
-        payer,
-        queue,
-        mint,
-        VALIDATOR,
-        None,
-        token_program,
-    );
+    let ix = utils::build_initialize_transfer_queue_ix(payer, queue, mint, VALIDATOR, None, token_program);
     let blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
     let tx = Transaction::new_signed_with_payer(&[ix], Some(&payer), &[&payer_kp], blockhash);
     context.banks_client.process_transaction(tx).await.unwrap();
@@ -126,8 +107,7 @@ async fn initialize_transfer_queue_token_2022_uses_token_program_ata() {
         SplTokenProgram::Token2022.value()
     );
 
-    let queue_vault_ata =
-        utils::derive_associated_token_address_with_program(queue, mint, token_program);
+    let queue_vault_ata = utils::derive_associated_token_address_with_program(queue, mint, token_program);
     let queue_vault_ata_account = context
         .banks_client
         .get_account(queue_vault_ata)
@@ -135,8 +115,7 @@ async fn initialize_transfer_queue_token_2022_uses_token_program_ata() {
         .unwrap()
         .expect("queue vault ATA must exist");
     assert_eq!(queue_vault_ata_account.owner, token_program);
-    let queue_vault_ata_state =
-        spl_token_interface::state::Account::unpack(&queue_vault_ata_account.data).unwrap();
+    let queue_vault_ata_state = spl_token_interface::state::Account::unpack(&queue_vault_ata_account.data).unwrap();
     assert_eq!(queue_vault_ata_state.mint, mint);
     assert_eq!(queue_vault_ata_state.owner, queue);
 }
@@ -153,44 +132,19 @@ async fn initialize_transfer_queue_custom_size_is_idempotent() {
     let (queue, bump) = TransferQueue::find_pda(&mint, &VALIDATOR);
 
     let items = 4_u32;
-    let ix_init_custom = utils::build_initialize_transfer_queue_ix(
-        payer,
-        queue,
-        mint,
-        VALIDATOR,
-        Some(items),
-        spl_token_interface::ID,
-    );
+    let ix_init_custom =
+        utils::build_initialize_transfer_queue_ix(payer, queue, mint, VALIDATOR, Some(items), spl_token_interface::ID);
 
-    let tx_custom = Transaction::new_signed_with_payer(
-        &[ix_init_custom],
-        Some(&payer),
-        &[&payer_kp],
-        context.last_blockhash,
-    );
-    common::metrics::process_transaction_record_cu(
-        &context.banks_client,
-        tx_custom,
-        "init_tq::custom",
-    )
-    .await
-    .unwrap();
+    let tx_custom =
+        Transaction::new_signed_with_payer(&[ix_init_custom], Some(&payer), &[&payer_kp], context.last_blockhash);
+    common::metrics::process_transaction_record_cu(&context.banks_client, tx_custom, "init_tq::custom")
+        .await
+        .unwrap();
 
     let second_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
-    let ix_noop = utils::build_initialize_transfer_queue_ix(
-        payer,
-        queue,
-        mint,
-        VALIDATOR,
-        None,
-        spl_token_interface::ID,
-    );
-    let tx_noop = Transaction::new_signed_with_payer(
-        &[ix_noop],
-        Some(&payer),
-        &[&payer_kp],
-        second_blockhash,
-    );
+    let ix_noop =
+        utils::build_initialize_transfer_queue_ix(payer, queue, mint, VALIDATOR, None, spl_token_interface::ID);
+    let tx_noop = Transaction::new_signed_with_payer(&[ix_noop], Some(&payer), &[&payer_kp], second_blockhash);
     common::metrics::process_transaction_record_cu(&context.banks_client, tx_noop, "init_tq::noop")
         .await
         .unwrap();
@@ -202,10 +156,7 @@ async fn initialize_transfer_queue_custom_size_is_idempotent() {
         .unwrap()
         .expect("queue account must exist after idempotent init");
 
-    assert_eq!(
-        queue_account.data.len(),
-        HEADER_LEN + ITEM_LEN * items as usize
-    );
+    assert_eq!(queue_account.data.len(), HEADER_LEN + ITEM_LEN * items as usize);
     assert!(capacity_from_data_len(queue_account.data.len()) >= 1);
 
     let header = read_header_unaligned(&queue_account.data);

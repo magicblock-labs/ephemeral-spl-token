@@ -2,16 +2,13 @@ use dlp_api::state::DelegationRecord;
 use ephemeral_rollups_pinocchio::{
     acl::{permission_pda_from_permissioned_account, PERMISSION_PROGRAM_ID},
     pda::{
-        delegate_buffer_pda_from_delegated_account_and_owner_program,
-        delegation_metadata_pda_from_delegated_account,
+        delegate_buffer_pda_from_delegated_account_and_owner_program, delegation_metadata_pda_from_delegated_account,
         delegation_record_pda_from_delegated_account,
     },
 };
 use ephemeral_spl_api::{
     instruction,
-    state::transfer_queue::{
-        TransferQueue, TransferQueueHeader, HEADER_LEN, TRANSFER_QUEUE_VERSION,
-    },
+    state::transfer_queue::{TransferQueue, TransferQueueHeader, HEADER_LEN, TRANSFER_QUEUE_VERSION},
     ID as PROGRAM,
 };
 use solana_address::Address;
@@ -43,26 +40,12 @@ async fn delegate_transfer_queue_succeeds_and_is_idempotent() {
     let (queue, bump) = TransferQueue::find_pda(&mint, &VALIDATOR);
     let queue_permission = permission_pda_from_permissioned_account(&queue);
 
-    let ix_init_queue = utils::build_initialize_transfer_queue_ix(
-        payer,
-        queue,
-        mint,
-        VALIDATOR,
-        None,
-        spl_token_interface::ID,
-    );
+    let ix_init_queue =
+        utils::build_initialize_transfer_queue_ix(payer, queue, mint, VALIDATOR, None, spl_token_interface::ID);
 
-    let tx_init = Transaction::new_signed_with_payer(
-        &[ix_init_queue],
-        Some(&payer),
-        &[&payer_kp],
-        context.last_blockhash,
-    );
-    context
-        .banks_client
-        .process_transaction(tx_init)
-        .await
-        .unwrap();
+    let tx_init =
+        Transaction::new_signed_with_payer(&[ix_init_queue], Some(&payer), &[&payer_kp], context.last_blockhash);
+    context.banks_client.process_transaction(tx_init).await.unwrap();
 
     let queue_permission_account = context
         .banks_client
@@ -99,28 +82,16 @@ async fn delegate_transfer_queue_succeeds_and_is_idempotent() {
         &[&payer_kp],
         context.last_blockhash,
     );
-    common::metrics::process_transaction_record_cu(
-        &context.banks_client,
-        tx_delegate,
-        "del_tq::delegate",
-    )
-    .await
-    .unwrap();
+    common::metrics::process_transaction_record_cu(&context.banks_client, tx_delegate, "del_tq::delegate")
+        .await
+        .unwrap();
 
     let redelegate_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
-    let tx_redelegate = Transaction::new_signed_with_payer(
-        &[ix_delegate],
-        Some(&payer),
-        &[&payer_kp],
-        redelegate_blockhash,
-    );
-    common::metrics::process_transaction_record_cu(
-        &context.banks_client,
-        tx_redelegate,
-        "del_tq::redelegate",
-    )
-    .await
-    .unwrap();
+    let tx_redelegate =
+        Transaction::new_signed_with_payer(&[ix_delegate], Some(&payer), &[&payer_kp], redelegate_blockhash);
+    common::metrics::process_transaction_record_cu(&context.banks_client, tx_redelegate, "del_tq::redelegate")
+        .await
+        .unwrap();
 
     let queue_account = context
         .banks_client
@@ -129,10 +100,7 @@ async fn delegate_transfer_queue_succeeds_and_is_idempotent() {
         .unwrap()
         .expect("queue account must exist");
 
-    assert_eq!(
-        queue_account.owner,
-        ephemeral_spl_api::program::DELEGATION_PROGRAM_ID
-    );
+    assert_eq!(queue_account.owner, ephemeral_spl_api::program::DELEGATION_PROGRAM_ID);
 
     let delegation_record = context
         .banks_client
@@ -140,17 +108,13 @@ async fn delegate_transfer_queue_succeeds_and_is_idempotent() {
         .await
         .unwrap()
         .expect("delegation record must exist");
-    let delegation_record =
-        DelegationRecord::try_from_bytes_with_discriminator(&delegation_record.data)
-            .expect("delegation record must deserialize");
+    let delegation_record = DelegationRecord::try_from_bytes_with_discriminator(&delegation_record.data)
+        .expect("delegation record must deserialize");
 
     let header = read_header_unaligned(&queue_account.data);
     assert_eq!(header.version, TRANSFER_QUEUE_VERSION);
     assert_eq!(header.bump, bump);
     assert_eq!(header.mint, Address::new_from_array(mint.to_bytes()));
     assert_eq!(header.length, 0);
-    assert_eq!(
-        &delegation_record.authority.to_bytes(),
-        VALIDATOR.as_array()
-    );
+    assert_eq!(&delegation_record.authority.to_bytes(), VALIDATOR.as_array());
 }

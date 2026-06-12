@@ -21,10 +21,7 @@ use crate::processor::internal::{read_mint_decimals, validate_token_account};
 /// Instruction Data: None
 ///
 #[inline(always)]
-pub fn process_merge_shuttle_into_ephemeral_ata(
-    accounts: &[AccountView],
-    _instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_merge_shuttle_into_ephemeral_ata(accounts: &[AccountView], _instruction_data: &[u8]) -> ProgramResult {
     let [
         owner_info, // force multi-line
         destination_token_info,
@@ -34,15 +31,9 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
         token_program_info,
     ] = require_n_accounts!(accounts, 6);
 
-    require!(
-        owner_info.is_signer(),
-        ProgramError::MissingRequiredSignature
-    );
+    require!(owner_info.is_signer(), ProgramError::MissingRequiredSignature);
 
-    require!(
-        shuttle_info.owned_by(&crate::ID),
-        ProgramError::InvalidAccountOwner
-    );
+    require!(shuttle_info.owned_by(&crate::ID), ProgramError::InvalidAccountOwner);
     require!(
         shuttle_wallet_ata_info.owned_by(token_program_info.address()),
         ProgramError::InvalidAccountOwner
@@ -53,24 +44,14 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
     );
 
     let (shuttle_owner, shuttle_id, bump) = {
-        let shuttle =
-            load_initialized::<ShuttleMetadata>(unsafe { shuttle_info.borrow_unchecked() })?;
-        require_eq_keys!(
-            &shuttle.owner,
-            owner_info.address(),
-            ProgramError::IncorrectAuthority
-        );
+        let shuttle = load_initialized::<ShuttleMetadata>(unsafe { shuttle_info.borrow_unchecked() })?;
+        require_eq_keys!(&shuttle.owner, owner_info.address(), ProgramError::IncorrectAuthority);
         (shuttle.owner, shuttle.id, shuttle.bump)
     };
 
     let shuttle_id_seed = shuttle_id.to_le_bytes();
-    let derived_shuttle =
-        ShuttleMetadata::derive_pda(&shuttle_owner, mint_info.address(), shuttle_id, bump)?;
-    require_eq_keys!(
-        &derived_shuttle,
-        shuttle_info.address(),
-        ProgramError::InvalidSeeds
-    );
+    let derived_shuttle = ShuttleMetadata::derive_pda(&shuttle_owner, mint_info.address(), shuttle_id, bump)?;
+    require_eq_keys!(&derived_shuttle, shuttle_info.address(), ProgramError::InvalidSeeds);
 
     let shuttle_amount = {
         let shuttle_ata = validate_token_account(
@@ -98,12 +79,7 @@ pub fn process_merge_shuttle_into_ephemeral_ata(
     let decimals = read_mint_decimals(mint_info, token_program_info)?;
 
     let bump_seed = [bump];
-    let seeds = ShuttleMetadata::signer_seeds(
-        &shuttle_owner,
-        mint_info.address(),
-        &shuttle_id_seed,
-        &bump_seed,
-    );
+    let seeds = ShuttleMetadata::signer_seeds(&shuttle_owner, mint_info.address(), &shuttle_id_seed, &bump_seed);
     let signer = Signer::from(&seeds);
 
     pinocchio_token_2022::instructions::TransferChecked {

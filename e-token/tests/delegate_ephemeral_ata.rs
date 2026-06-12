@@ -1,6 +1,6 @@
 use ephemeral_rollups_pinocchio::pda::{
-    delegate_buffer_pda_from_delegated_account_and_owner_program,
-    delegation_metadata_pda_from_delegated_account, delegation_record_pda_from_delegated_account,
+    delegate_buffer_pda_from_delegated_account_and_owner_program, delegation_metadata_pda_from_delegated_account,
+    delegation_record_pda_from_delegated_account,
 };
 use ephemeral_spl_api::{
     error::EphemeralSplError,
@@ -34,8 +34,7 @@ async fn delegate_ephemeral_ata_succeeds() {
 
     // Derive the PDAs for our program and setup token accounts
     let pdas = utils::derive_pdas(PROGRAM, user, mint);
-    let setup =
-        utils::setup_mint_and_token_accounts(&mut context, &payer_kp, &mint_kp, 6, 1_000, 1).await;
+    let setup = utils::setup_mint_and_token_accounts(&mut context, &payer_kp, &mint_kp, 6, 1_000, 1).await;
 
     // Initialize the Ephemeral ATA and Global Vault (required by the program state)
     let ix_init_ata = Instruction {
@@ -74,18 +73,10 @@ async fn delegate_ephemeral_ata_succeeds() {
         &[&payer_kp],
         context.last_blockhash,
     );
-    context
-        .banks_client
-        .process_transaction(tx_init)
-        .await
-        .unwrap();
+    context.banks_client.process_transaction(tx_init).await.unwrap();
 
     // Verify the Ephemeral ATA was initialized
-    let ephemeral_ata_account = context
-        .banks_client
-        .get_account(pdas.ephemeral_ata)
-        .await
-        .unwrap();
+    let ephemeral_ata_account = context.banks_client.get_account(pdas.ephemeral_ata).await.unwrap();
     assert!(ephemeral_ata_account.is_some());
     assert_eq!(
         ephemeral_ata_account.unwrap().data.len(),
@@ -93,20 +84,18 @@ async fn delegate_ephemeral_ata_succeeds() {
     );
 
     // Derive required PDAs
-    let buffer_pda =
-        delegate_buffer_pda_from_delegated_account_and_owner_program(&pdas.ephemeral_ata, &PROGRAM);
+    let buffer_pda = delegate_buffer_pda_from_delegated_account_and_owner_program(&pdas.ephemeral_ata, &PROGRAM);
     let delegation_record_pda = delegation_record_pda_from_delegated_account(&pdas.ephemeral_ata);
-    let delegation_metadata_pda =
-        delegation_metadata_pda_from_delegated_account(&pdas.ephemeral_ata);
+    let delegation_metadata_pda = delegation_metadata_pda_from_delegated_account(&pdas.ephemeral_ata);
 
     let ix_delegate = Instruction {
         program_id: PROGRAM,
         accounts: vec![
-            AccountMeta::new_readonly(payer, true),      // payer (signer)
-            AccountMeta::new(pdas.ephemeral_ata, false), // ephemeral_ata (PDA)
-            AccountMeta::new_readonly(PROGRAM, false),   // owner_program (this program)
-            AccountMeta::new(buffer_pda, false),         // buffer PDA (created in CPI)
-            AccountMeta::new(delegation_record_pda, false), // delegation record PDA
+            AccountMeta::new_readonly(payer, true),           // payer (signer)
+            AccountMeta::new(pdas.ephemeral_ata, false),      // ephemeral_ata (PDA)
+            AccountMeta::new_readonly(PROGRAM, false),        // owner_program (this program)
+            AccountMeta::new(buffer_pda, false),              // buffer PDA (created in CPI)
+            AccountMeta::new(delegation_record_pda, false),   // delegation record PDA
             AccountMeta::new(delegation_metadata_pda, false), // delegation metadata PDA
             AccountMeta::new_readonly(ephemeral_rollups_pinocchio::ID, false), // delegation program
             AccountMeta::new_readonly(solana_system_interface::program::ID, false), // system program
@@ -133,12 +122,8 @@ async fn delegate_ephemeral_ata_succeeds() {
 
     let redelegate_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
 
-    let tx_redelegate = Transaction::new_signed_with_payer(
-        &[ix_delegate.clone()],
-        Some(&payer),
-        &[&payer_kp],
-        redelegate_blockhash,
-    );
+    let tx_redelegate =
+        Transaction::new_signed_with_payer(&[ix_delegate.clone()], Some(&payer), &[&payer_kp], redelegate_blockhash);
 
     common::metrics::process_transaction_record_cu(
         &context.banks_client,
@@ -189,11 +174,7 @@ async fn delegate_ephemeral_ata_succeeds() {
     assert!(logs.iter().any(|log| log.contains(&validator.to_string())));
 
     // Assert ATA is owned by delegation program after delegation
-    let ata_account = context
-        .banks_client
-        .get_account(pdas.ephemeral_ata)
-        .await
-        .unwrap();
+    let ata_account = context.banks_client.get_account(pdas.ephemeral_ata).await.unwrap();
     assert!(ata_account.is_some());
     assert_eq!(
         ata_account.unwrap().owner,
@@ -215,19 +196,10 @@ async fn delegate_ephemeral_ata_succeeds() {
 
     let reinit_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
 
-    let tx_reinit = Transaction::new_signed_with_payer(
-        &[ix_reinit],
-        Some(&payer),
-        &[&payer_kp],
-        reinit_blockhash,
-    );
-    common::metrics::process_transaction_record_cu(
-        &context.banks_client,
-        tx_reinit,
-        "del_eata::reinit",
-    )
-    .await
-    .unwrap();
+    let tx_reinit = Transaction::new_signed_with_payer(&[ix_reinit], Some(&payer), &[&payer_kp], reinit_blockhash);
+    common::metrics::process_transaction_record_cu(&context.banks_client, tx_reinit, "del_eata::reinit")
+        .await
+        .unwrap();
 
     let ata_account_after_reinit = context
         .banks_client
@@ -255,8 +227,7 @@ async fn delegate_ephemeral_ata_non_owner_succeeds() {
     let mint = mint_kp.pubkey();
 
     let pdas = utils::derive_pdas(PROGRAM, user, mint);
-    let setup =
-        utils::setup_mint_and_token_accounts(&mut context, &payer_kp, &mint_kp, 6, 1_000, 1).await;
+    let setup = utils::setup_mint_and_token_accounts(&mut context, &payer_kp, &mint_kp, 6, 1_000, 1).await;
 
     let ix_init_ata = Instruction {
         program_id: PROGRAM,
@@ -294,17 +265,11 @@ async fn delegate_ephemeral_ata_non_owner_succeeds() {
         &[&payer_kp],
         context.last_blockhash,
     );
-    context
-        .banks_client
-        .process_transaction(tx_init)
-        .await
-        .unwrap();
+    context.banks_client.process_transaction(tx_init).await.unwrap();
 
-    let buffer_pda =
-        delegate_buffer_pda_from_delegated_account_and_owner_program(&pdas.ephemeral_ata, &PROGRAM);
+    let buffer_pda = delegate_buffer_pda_from_delegated_account_and_owner_program(&pdas.ephemeral_ata, &PROGRAM);
     let delegation_record_pda = delegation_record_pda_from_delegated_account(&pdas.ephemeral_ata);
-    let delegation_metadata_pda =
-        delegation_metadata_pda_from_delegated_account(&pdas.ephemeral_ata);
+    let delegation_metadata_pda = delegation_metadata_pda_from_delegated_account(&pdas.ephemeral_ata);
 
     let ix_delegate = Instruction {
         program_id: PROGRAM,
@@ -322,26 +287,13 @@ async fn delegate_ephemeral_ata_non_owner_succeeds() {
             .with_data(&DelegateArgs { validator: None }.encode().unwrap()),
     };
 
-    let tx = Transaction::new_signed_with_payer(
-        &[ix_delegate],
-        Some(&payer),
-        &[&payer_kp],
-        context.last_blockhash,
-    );
+    let tx = Transaction::new_signed_with_payer(&[ix_delegate], Some(&payer), &[&payer_kp], context.last_blockhash);
 
-    common::metrics::process_transaction_record_cu(
-        &context.banks_client,
-        tx,
-        "del_eata::non_owner",
-    )
-    .await
-    .unwrap();
-
-    let ata_account = context
-        .banks_client
-        .get_account(pdas.ephemeral_ata)
+    common::metrics::process_transaction_record_cu(&context.banks_client, tx, "del_eata::non_owner")
         .await
         .unwrap();
+
+    let ata_account = context.banks_client.get_account(pdas.ephemeral_ata).await.unwrap();
     assert!(ata_account.is_some());
     assert_eq!(
         ata_account.unwrap().owner,

@@ -29,15 +29,8 @@ async fn deposit_spl_tokens_increments_ephemeral_amount() {
 
     // Derive PDAs and setup mint/accounts via utils
     let pdas = utils::derive_pdas(PROGRAM, user, mint);
-    let setup = utils::setup_mint_and_token_accounts(
-        &mut context,
-        &payer_kp,
-        &mint_kp,
-        DECIMALS,
-        STARTING_BALANCE,
-        1,
-    )
-    .await;
+    let setup =
+        utils::setup_mint_and_token_accounts(&mut context, &payer_kp, &mint_kp, DECIMALS, STARTING_BALANCE, 1).await;
 
     let ephemeral_ata = pdas.ephemeral_ata;
     let vault = pdas.vault;
@@ -91,11 +84,7 @@ async fn deposit_spl_tokens_increments_ephemeral_amount() {
         &[&payer_kp],
         context.last_blockhash,
     );
-    context
-        .banks_client
-        .process_transaction(tx_init)
-        .await
-        .unwrap();
+    context.banks_client.process_transaction(tx_init).await.unwrap();
 
     let vault_token_acc_before = context
         .banks_client
@@ -114,23 +103,18 @@ async fn deposit_spl_tokens_increments_ephemeral_amount() {
     let ix_deposit = Instruction {
         program_id: PROGRAM,
         accounts: vec![
-            AccountMeta::new(ephemeral_ata, false), // [writable] Ephemeral ATA data
+            AccountMeta::new(ephemeral_ata, false),  // [writable] Ephemeral ATA data
             AccountMeta::new_readonly(vault, false), // [] Global vault data
-            AccountMeta::new_readonly(mint, false), // [] Mint pubkey (seed/consistency)
-            AccountMeta::new(user_ata, false),      // [writable] user source token acc
-            AccountMeta::new(vault_ata, false),     // [writable] vault token acc
-            AccountMeta::new_readonly(payer, true), // [signer] user authority
+            AccountMeta::new_readonly(mint, false),  // [] Mint pubkey (seed/consistency)
+            AccountMeta::new(user_ata, false),       // [writable] user source token acc
+            AccountMeta::new(vault_ata, false),      // [writable] vault token acc
+            AccountMeta::new_readonly(payer, true),  // [signer] user authority
             AccountMeta::new_readonly(spl_token_interface::ID, false), // [] token program id (readonly)
         ],
         data,
     };
 
-    let tx = Transaction::new_signed_with_payer(
-        &[ix_deposit],
-        Some(&payer),
-        &[&payer_kp],
-        context.last_blockhash,
-    );
+    let tx = Transaction::new_signed_with_payer(&[ix_deposit], Some(&payer), &[&payer_kp], context.last_blockhash);
     common::metrics::process_transaction_record_cu(&context.banks_client, tx, "dep_spl::deposit")
         .await
         .unwrap();

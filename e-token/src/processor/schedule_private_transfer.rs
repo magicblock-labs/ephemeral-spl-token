@@ -1,15 +1,13 @@
 use alloc::{borrow::ToOwned, vec::Vec};
 
-use ephemeral_rollups_pinocchio::consts::{
-    BUFFER, DELEGATION_METADATA, DELEGATION_PROGRAM_ID, DELEGATION_RECORD,
-};
+use ephemeral_rollups_pinocchio::consts::{BUFFER, DELEGATION_METADATA, DELEGATION_PROGRAM_ID, DELEGATION_RECORD};
 use ephemeral_spl_api::{
     instruction::ESplInstruction,
     instructions::{ExecuteScheduledPrivateTransferArgs, SchedulePrivateTransferArgs},
     require, require_eq_keys, require_n_accounts,
     state::{
-        ephemeral_ata::EphemeralAta, global_vault::GlobalVault,
-        shuttle_ephemeral_ata::ShuttleMetadata, stash::StashPda, transfer_queue::TransferQueue,
+        ephemeral_ata::EphemeralAta, global_vault::GlobalVault, shuttle_ephemeral_ata::ShuttleMetadata,
+        stash::StashPda, transfer_queue::TransferQueue,
     },
 };
 use hydra_api::{
@@ -62,10 +60,7 @@ const SETUP_LAMPORTS: u64 = ephemeral_spl_api::consts::SPONSORED_SHUTTLE_DELEGAT
 /// Instruction Data: SchedulePrivateTransferArgs
 ///
 #[inline(never)]
-pub fn process_schedule_private_transfer(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_schedule_private_transfer(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         user_info,
         stash_pda_info,
@@ -79,16 +74,8 @@ pub fn process_schedule_private_transfer(
     let args = SchedulePrivateTransferArgs::decode(instruction_data)?;
 
     let derived_stash = StashPda::derive_pda(user_info.address(), args.mint(), args.stash_bump())?;
-    require_eq_keys!(
-        &derived_stash,
-        stash_pda_info.address(),
-        ProgramError::InvalidSeeds
-    );
-    require_eq_keys!(
-        rent_pda_info.address(),
-        &RENT_PDA,
-        ProgramError::InvalidSeeds
-    );
+    require_eq_keys!(&derived_stash, stash_pda_info.address(), ProgramError::InvalidSeeds);
+    require_eq_keys!(rent_pda_info.address(), &RENT_PDA, ProgramError::InvalidSeeds);
 
     let token_program_id = *token_program_info.address();
     require!(
@@ -114,16 +101,8 @@ pub fn process_schedule_private_transfer(
         args.shuttle_bump(),
     )?;
     let shuttle_eata = EphemeralAta::derive_pda(&shuttle, args.mint(), args.shuttle_eata_bump())?;
-    let shuttle_wallet_ata = derive_ata(
-        &shuttle,
-        &token_program_id,
-        args.mint(),
-        args.shuttle_wallet_ata_bump(),
-    )?;
-    let buffer = Address::create_program_address(
-        &[BUFFER, shuttle_eata.as_ref(), &[args.buffer_bump()]],
-        &crate::ID,
-    )?;
+    let shuttle_wallet_ata = derive_ata(&shuttle, &token_program_id, args.mint(), args.shuttle_wallet_ata_bump())?;
+    let buffer = Address::create_program_address(&[BUFFER, shuttle_eata.as_ref(), &[args.buffer_bump()]], &crate::ID)?;
     let delegation_record = Address::create_program_address(
         &[
             DELEGATION_RECORD,
@@ -141,20 +120,14 @@ pub fn process_schedule_private_transfer(
         &DELEGATION_PROGRAM_ID,
     )?;
     let global_vault = GlobalVault::derive_pda(args.mint(), args.global_vault_bump())?;
-    let vault_token = derive_ata(
-        &global_vault,
-        &token_program_id,
-        args.mint(),
-        args.vault_token_bump(),
-    )?;
+    let vault_token = derive_ata(&global_vault, &token_program_id, args.mint(), args.vault_token_bump())?;
     let stash_ata = derive_ata(
         stash_pda_info.address(),
         &token_program_id,
         args.mint(),
         args.stash_ata_bump(),
     )?;
-    let user_ata =
-        get_associated_token_address(user_info.address(), args.mint(), &token_program_id);
+    let user_ata = get_associated_token_address(user_info.address(), args.mint(), &token_program_id);
     let queue = TransferQueue::derive_pda(args.mint(), args.validator(), args.queue_bump())?;
 
     // Slots 0..18 mirror ix 31's layout. Slot 5 aliases slot 0 (stash PDA).

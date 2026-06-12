@@ -5,8 +5,7 @@
 use ephemeral_rollups_pinocchio::{
     acl::permission_pda_from_permissioned_account,
     pda::{
-        delegate_buffer_pda_from_delegated_account_and_owner_program,
-        delegation_metadata_pda_from_delegated_account,
+        delegate_buffer_pda_from_delegated_account_and_owner_program, delegation_metadata_pda_from_delegated_account,
         delegation_record_pda_from_delegated_account,
     },
 };
@@ -140,11 +139,7 @@ pub fn permission_program_id() -> Pubkey {
 }
 
 /// Load a BPF `.so` from `tests/fixtures` (or `BPF_OUT_DIR`) as an executable account.
-pub fn add_executable_bpf_fixture(
-    pt: &mut ProgramTest,
-    program_address: Pubkey,
-    fixture_path: &str,
-) {
+pub fn add_executable_bpf_fixture(pt: &mut ProgramTest, program_address: Pubkey, fixture_path: &str) {
     let data = read_file(fixture_path);
     let rent = Rent::default();
     pt.add_account(
@@ -213,11 +208,7 @@ fn process_associated_token_program_mock(
     }
 
     let (expected_ata, bump_seed) = Pubkey::find_program_address(
-        &[
-            wallet.key.as_ref(),
-            token_program.key.as_ref(),
-            mint.key.as_ref(),
-        ],
+        &[wallet.key.as_ref(), token_program.key.as_ref(), mint.key.as_ref()],
         &ASSOCIATED_TOKEN_PROGRAM_ID,
     );
     if expected_ata != *ata.key {
@@ -355,11 +346,7 @@ pub fn derive_associated_token_address(wallet: Pubkey, mint: Pubkey) -> Pubkey {
     derive_associated_token_address_with_program(wallet, mint, spl_token_interface::ID)
 }
 
-pub fn derive_associated_token_address_with_program(
-    wallet: Pubkey,
-    mint: Pubkey,
-    token_program: Pubkey,
-) -> Pubkey {
+pub fn derive_associated_token_address_with_program(wallet: Pubkey, mint: Pubkey, token_program: Pubkey) -> Pubkey {
     Pubkey::find_program_address(
         &[wallet.as_ref(), token_program.as_ref(), mint.as_ref()],
         &ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -382,10 +369,7 @@ pub fn build_initialize_transfer_queue_ix(
     let queue_permission = permission_pda_from_permissioned_account(&queue);
     let (queue_ephemeral_ata, _) = derive_ephemeral_ata(PROGRAM, queue, mint);
     let queue_vault_ata = derive_associated_token_address_with_program(queue, mint, token_program);
-    let delegate_buffer = delegate_buffer_pda_from_delegated_account_and_owner_program(
-        &queue_ephemeral_ata,
-        &PROGRAM,
-    );
+    let delegate_buffer = delegate_buffer_pda_from_delegated_account_and_owner_program(&queue_ephemeral_ata, &PROGRAM);
     let delegation_record = delegation_record_pda_from_delegated_account(&queue_ephemeral_ata);
     let delegation_metadata = delegation_metadata_pda_from_delegated_account(&queue_ephemeral_ata);
 
@@ -409,39 +393,23 @@ pub fn build_initialize_transfer_queue_ix(
             AccountMeta::new(delegation_metadata, false),
             AccountMeta::new_readonly(ephemeral_rollups_pinocchio::ID, false),
         ],
-        data: instruction::ESplInstruction::InitializeTransferQueue.with_data(
-            &InitializeTransferQueueArgs { requested_items }
-                .encode()
-                .unwrap(),
-        ),
+        data: instruction::ESplInstruction::InitializeTransferQueue
+            .with_data(&InitializeTransferQueueArgs { requested_items }.encode().unwrap()),
     }
 }
 
 #[allow(dead_code)]
 pub fn derive_pdas(program: Pubkey, owner: Pubkey, mint: Pubkey) -> Pdas {
-    let (ephemeral_ata, _) = Pubkey::find_program_address(
-        &[owner.to_bytes().as_slice(), mint.to_bytes().as_slice()],
-        &program,
-    );
+    let (ephemeral_ata, _) =
+        Pubkey::find_program_address(&[owner.to_bytes().as_slice(), mint.to_bytes().as_slice()], &program);
     let (vault, _) = Pubkey::find_program_address(&[mint.to_bytes().as_slice()], &program);
-    Pdas {
-        ephemeral_ata,
-        vault,
-    }
+    Pdas { ephemeral_ata, vault }
 }
 
 #[allow(dead_code)]
-pub fn derive_shuttle_ephemeral_ata(
-    program: Pubkey,
-    owner: Pubkey,
-    mint: Pubkey,
-    shuttle_id: u32,
-) -> (Pubkey, u8) {
+pub fn derive_shuttle_ephemeral_ata(program: Pubkey, owner: Pubkey, mint: Pubkey, shuttle_id: u32) -> (Pubkey, u8) {
     let shuttle_id_seed = shuttle_id.to_le_bytes();
-    Pubkey::find_program_address(
-        &[owner.as_ref(), mint.as_ref(), shuttle_id_seed.as_ref()],
-        &program,
-    )
+    Pubkey::find_program_address(&[owner.as_ref(), mint.as_ref(), shuttle_id_seed.as_ref()], &program)
 }
 
 #[allow(dead_code)]
@@ -462,10 +430,7 @@ pub async fn setup_mint_and_token_accounts(
     starting_balance: u64,
     user_accounts: usize,
 ) -> TokenSetup {
-    assert!(
-        user_accounts >= 1,
-        "at least one user token account required"
-    );
+    assert!(user_accounts >= 1, "at least one user token account required");
 
     let payer = payer_signer.pubkey();
     let mint = mint_kp.pubkey();
@@ -487,14 +452,7 @@ pub async fn setup_mint_and_token_accounts(
         &spl_token_interface::ID,
     ));
 
-    let mut init_mint_ix = initialize_mint(
-        &spl_token_interface::ID,
-        &mint,
-        &payer,
-        Some(&payer),
-        decimals,
-    )
-    .unwrap();
+    let mut init_mint_ix = initialize_mint(&spl_token_interface::ID, &mint, &payer, Some(&payer), decimals).unwrap();
     init_mint_ix.program_id = spl_token_interface::ID;
     instructions.push(init_mint_ix);
 
@@ -522,8 +480,7 @@ pub async fn setup_mint_and_token_accounts(
             &spl_token_interface::ID,
         ));
 
-        let mut init_user_ix =
-            initialize_account(&spl_token_interface::ID, &pk, &mint, &payer).unwrap();
+        let mut init_user_ix = initialize_account(&spl_token_interface::ID, &pk, &mint, &payer).unwrap();
         init_user_ix.program_id = spl_token_interface::ID;
         instructions.push(init_user_ix);
     }
@@ -548,12 +505,7 @@ pub async fn setup_mint_and_token_accounts(
     instructions.push(mint_to_ix);
 
     // Submit transaction
-    let tx = Transaction::new_signed_with_payer(
-        &instructions,
-        Some(&payer),
-        &signers,
-        context.last_blockhash,
-    );
+    let tx = Transaction::new_signed_with_payer(&instructions, Some(&payer), &signers, context.last_blockhash);
 
     context.banks_client.process_transaction(tx).await.unwrap();
 

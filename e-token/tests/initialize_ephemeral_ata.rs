@@ -36,12 +36,7 @@ async fn initialize_ephemeral_ata() {
         data: instruction::ESplInstruction::InitializeEphemeralAta.to_vec(), // instruction data: discriminator
     };
 
-    let tx = Transaction::new_signed_with_payer(
-        &[ix],
-        Some(&payer),
-        &[&payer_kp],
-        context.last_blockhash,
-    );
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&payer), &[&payer_kp], context.last_blockhash);
     common::metrics::process_transaction_record_cu(&context.banks_client, tx, "init_eata::init")
         .await
         .unwrap();

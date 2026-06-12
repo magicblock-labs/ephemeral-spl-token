@@ -288,9 +288,7 @@ impl TryFrom<u8> for ESplInstruction {
             28 => Ok(Self::ExecutePendingTransferQueueRefill),
             29 => Ok(Self::SchedulePrivateTransfer),
             30 => Ok(Self::ExecuteScheduledPrivateTransfer),
-            31 => Ok(
-                Self::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransferAndStashClose,
-            ),
+            31 => Ok(Self::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransferAndStashClose),
             _ => Err(()),
         }
     }

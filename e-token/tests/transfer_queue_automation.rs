@@ -1,9 +1,8 @@
 use std::sync::{Mutex, OnceLock};
 
 use common::magic_mock::{
-    clear_all_captured, clear_captured_cancels, clear_captured_intent_bundles,
-    clear_captured_schedules, peek_captured_intent_bundles, take_captured_cancels,
-    take_captured_schedules, CapturedScheduleAccount,
+    clear_all_captured, clear_captured_cancels, clear_captured_intent_bundles, clear_captured_schedules,
+    peek_captured_intent_bundles, take_captured_cancels, take_captured_schedules, CapturedScheduleAccount,
 };
 use dlp_api::pda::magic_fee_vault_pda_from_validator;
 use ephemeral_spl_api::{
@@ -12,8 +11,7 @@ use ephemeral_spl_api::{
     state::{
         ephemeral_ata::EphemeralAta,
         transfer_queue::{
-            QueuedTransfer, SplTokenProgram, TransferQueue, TransferQueueHeader, HEADER_LEN,
-            ITEM_LEN, QUEUE_SEED,
+            QueuedTransfer, SplTokenProgram, TransferQueue, TransferQueueHeader, HEADER_LEN, ITEM_LEN, QUEUE_SEED,
         },
     },
     ID as PROGRAM,
@@ -65,11 +63,7 @@ fn process_noop_program_mock(
 
 fn add_noop_program_mock(pt: &mut ProgramTest, program_id: Pubkey) {
     pt.prefer_bpf(false);
-    pt.add_program(
-        "noop_program_mock",
-        program_id,
-        processor!(process_noop_program_mock),
-    );
+    pt.add_program("noop_program_mock", program_id, processor!(process_noop_program_mock));
     pt.prefer_bpf(true);
 }
 
@@ -85,16 +79,10 @@ fn read_item_unaligned(data: &[u8], index: usize) -> QueuedTransfer {
 }
 
 fn magic_fee_vault(validator: &Pubkey) -> Pubkey {
-    Pubkey::new_from_array(
-        magic_fee_vault_pda_from_validator(&validator.to_bytes().into()).to_bytes(),
-    )
+    Pubkey::new_from_array(magic_fee_vault_pda_from_validator(&validator.to_bytes().into()).to_bytes())
 }
 
-fn derive_associated_token_address_with_program(
-    wallet: Pubkey,
-    mint: Pubkey,
-    token_program: Pubkey,
-) -> Pubkey {
+fn derive_associated_token_address_with_program(wallet: Pubkey, mint: Pubkey, token_program: Pubkey) -> Pubkey {
     Pubkey::find_program_address(
         &[wallet.as_ref(), token_program.as_ref(), mint.as_ref()],
         &utils::associated_token_program_id(),
@@ -146,9 +134,8 @@ async fn latest_blockhash(context: &mut ProgramTestContext) -> solana_program::h
 }
 
 async fn setup_fixture() -> Fixture {
-    let magic_program = solana_pubkey::Pubkey::new_from_array(
-        ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID.to_bytes(),
-    );
+    let magic_program =
+        solana_pubkey::Pubkey::new_from_array(ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID.to_bytes());
     let magic_context = convert_magic_pubkey(MAGIC_CONTEXT_PUBKEY);
     clear_all_captured(magic_program);
 
@@ -174,15 +161,8 @@ async fn setup_fixture() -> Fixture {
     let validator = automation_validator();
     let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
 
-    let setup = utils::setup_mint_and_token_accounts(
-        &mut context,
-        &payer_kp,
-        &mint_kp,
-        DECIMALS,
-        STARTING_BALANCE,
-        2,
-    )
-    .await;
+    let setup =
+        utils::setup_mint_and_token_accounts(&mut context, &payer_kp, &mint_kp, DECIMALS, STARTING_BALANCE, 2).await;
 
     let (queue, _) = TransferQueue::find_pda(&mint, &validator);
     let magic_fee_vault = magic_fee_vault(&validator);
@@ -211,16 +191,9 @@ async fn setup_fixture() -> Fixture {
         ],
         data: instruction::ESplInstruction::InitializeRentPda.to_vec(),
     };
-    let ix_fund_rent =
-        solana_system_interface::instruction::transfer(&payer, &rent_pda, 100_000_000);
-    let ix_init_queue = utils::build_initialize_transfer_queue_ix(
-        payer,
-        queue,
-        mint,
-        validator,
-        None,
-        spl_token_interface::ID,
-    );
+    let ix_fund_rent = solana_system_interface::instruction::transfer(&payer, &rent_pda, 100_000_000);
+    let ix_init_queue =
+        utils::build_initialize_transfer_queue_ix(payer, queue, mint, validator, None, spl_token_interface::ID);
     let ix_init_global_vault = initialize_global_vault_ix(payer, vault, mint);
 
     let ix_init_destination_ata = Instruction {
@@ -248,11 +221,7 @@ async fn setup_fixture() -> Fixture {
         &[&payer_kp],
         context.last_blockhash,
     );
-    context
-        .banks_client
-        .process_transaction(tx_init)
-        .await
-        .unwrap();
+    context.banks_client.process_transaction(tx_init).await.unwrap();
 
     Fixture {
         context,
@@ -281,16 +250,10 @@ async fn enqueue_transfer_with_client_ref_id(
     entry_key: &str,
 ) {
     let group_id_bytes = [2u8, 1u8, 1u8];
-    let group_id = u32::from(group_id_bytes[0])
-        | (u32::from(group_id_bytes[1]) << 8)
-        | (u32::from(group_id_bytes[2]) << 16);
-    let group_receipt = utils::pre_create_group_receipt(
-        &mut fixture.context,
-        fixture.queue,
-        fixture.payer,
-        group_id,
-        1,
-    );
+    let group_id =
+        u32::from(group_id_bytes[0]) | (u32::from(group_id_bytes[1]) << 8) | (u32::from(group_id_bytes[2]) << 16);
+    let group_receipt =
+        utils::pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, group_id, 1);
 
     let data = instruction::ESplInstruction::DepositAndQueueTransfer.with_data(
         &DepositAndQueueTransferArgs {
@@ -309,29 +272,24 @@ async fn enqueue_transfer_with_client_ref_id(
     let ix = Instruction {
         program_id: PROGRAM,
         accounts: vec![
-            AccountMeta::new(fixture.queue, false),          // 0: queue
-            AccountMeta::new_readonly(fixture.vault, false), // 1: vault
-            AccountMeta::new_readonly(fixture.mint, false),  // 2: mint
-            AccountMeta::new(fixture.source_ata, false),     // 3: user_source_token
-            AccountMeta::new(fixture.vault_ata, false),      // 4: vault_token
-            AccountMeta::new_readonly(fixture.payer, false), // 5: destination
-            AccountMeta::new_readonly(fixture.payer, true),  // 6: user_authority
+            AccountMeta::new(fixture.queue, false),                    // 0: queue
+            AccountMeta::new_readonly(fixture.vault, false),           // 1: vault
+            AccountMeta::new_readonly(fixture.mint, false),            // 2: mint
+            AccountMeta::new(fixture.source_ata, false),               // 3: user_source_token
+            AccountMeta::new(fixture.vault_ata, false),                // 4: vault_token
+            AccountMeta::new_readonly(fixture.payer, false),           // 5: destination
+            AccountMeta::new_readonly(fixture.payer, true),            // 6: user_authority
             AccountMeta::new_readonly(spl_token_interface::ID, false), // 7: token_program
-            AccountMeta::new_readonly(PROGRAM, false),       // 8: reimbursement
-            AccountMeta::new(group_receipt, false),          // 9: group_receipt
-            AccountMeta::new(utils::MAGIC_VAULT, false),     // 10: magic_vault
-            AccountMeta::new_readonly(fixture.magic_program, false), // 11: magic_program
+            AccountMeta::new_readonly(PROGRAM, false),                 // 8: reimbursement
+            AccountMeta::new(group_receipt, false),                    // 9: group_receipt
+            AccountMeta::new(utils::MAGIC_VAULT, false),               // 10: magic_vault
+            AccountMeta::new_readonly(fixture.magic_program, false),   // 11: magic_program
         ],
         data,
     };
 
     let blockhash = latest_blockhash(&mut fixture.context).await;
-    let tx = Transaction::new_signed_with_payer(
-        &[ix],
-        Some(&fixture.payer),
-        &[&fixture.payer_kp],
-        blockhash,
-    );
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&fixture.payer), &[&fixture.payer_kp], blockhash);
     common::metrics::process_transaction_record_cu(&fixture.context.banks_client, tx, entry_key)
         .await
         .unwrap();
@@ -341,10 +299,7 @@ fn ensure_queue_crank_ix(fixture: &Fixture) -> Instruction {
     ensure_queue_crank_ix_with_magic_program(fixture, fixture.magic_program)
 }
 
-fn ensure_queue_crank_ix_with_magic_program(
-    fixture: &Fixture,
-    magic_program: Pubkey,
-) -> Instruction {
+fn ensure_queue_crank_ix_with_magic_program(fixture: &Fixture, magic_program: Pubkey) -> Instruction {
     Instruction {
         program_id: PROGRAM,
         accounts: vec![
@@ -362,10 +317,7 @@ fn process_queue_tick_ix(fixture: &Fixture) -> Instruction {
     process_queue_tick_ix_with_magic_program(fixture, fixture.magic_program)
 }
 
-fn process_queue_tick_ix_with_magic_program(
-    fixture: &Fixture,
-    magic_program: Pubkey,
-) -> Instruction {
+fn process_queue_tick_ix_with_magic_program(fixture: &Fixture, magic_program: Pubkey) -> Instruction {
     Instruction {
         program_id: PROGRAM,
         accounts: vec![
@@ -409,13 +361,9 @@ async fn ensure_transfer_queue_crank_schedules_one_recurring_queue_crank() {
         &[&fixture.payer_kp],
         blockhash,
     );
-    common::metrics::process_transaction_record_cu(
-        &fixture.context.banks_client,
-        tx,
-        "tq_auto::crank_1",
-    )
-    .await
-    .unwrap();
+    common::metrics::process_transaction_record_cu(&fixture.context.banks_client, tx, "tq_auto::crank_1")
+        .await
+        .unwrap();
 
     let captured = take_captured_schedules(fixture.magic_program);
     let cancels = take_captured_cancels(fixture.magic_program);
@@ -460,27 +408,19 @@ async fn ensure_transfer_queue_crank_schedules_one_recurring_queue_crank() {
     );
     assert_eq!(captured[0].args.instructions[0].accounts.len(), 4);
     assert_eq!(
-        captured[0].args.instructions[0].accounts[0]
-            .pubkey
-            .to_bytes(),
+        captured[0].args.instructions[0].accounts[0].pubkey.to_bytes(),
         fixture.queue.to_bytes()
     );
     assert_eq!(
-        captured[0].args.instructions[0].accounts[1]
-            .pubkey
-            .to_bytes(),
+        captured[0].args.instructions[0].accounts[1].pubkey.to_bytes(),
         fixture.magic_fee_vault.to_bytes()
     );
     assert_eq!(
-        captured[0].args.instructions[0].accounts[2]
-            .pubkey
-            .to_bytes(),
+        captured[0].args.instructions[0].accounts[2].pubkey.to_bytes(),
         fixture.magic_context.to_bytes()
     );
     assert_eq!(
-        captured[0].args.instructions[0].accounts[3]
-            .pubkey
-            .to_bytes(),
+        captured[0].args.instructions[0].accounts[3].pubkey.to_bytes(),
         fixture.magic_program.to_bytes()
     );
     assert_eq!(
@@ -489,10 +429,7 @@ async fn ensure_transfer_queue_crank_schedules_one_recurring_queue_crank() {
     );
     let queue_after_first_ensure = queue_account(&mut fixture.context, fixture.queue).await;
     let header_after_first_ensure = read_header_unaligned(&queue_after_first_ensure.data);
-    assert_eq!(
-        header_after_first_ensure.crank_task_id,
-        captured[0].args.task_id
-    );
+    assert_eq!(header_after_first_ensure.crank_task_id, captured[0].args.task_id);
 
     let blockhash = latest_blockhash(&mut fixture.context).await;
     let tx = Transaction::new_signed_with_payer(
@@ -501,13 +438,9 @@ async fn ensure_transfer_queue_crank_schedules_one_recurring_queue_crank() {
         &[&fixture.payer_kp],
         blockhash,
     );
-    common::metrics::process_transaction_record_cu(
-        &fixture.context.banks_client,
-        tx,
-        "tq_auto::crank_2",
-    )
-    .await
-    .unwrap();
+    common::metrics::process_transaction_record_cu(&fixture.context.banks_client, tx, "tq_auto::crank_2")
+        .await
+        .unwrap();
     let cancels = take_captured_cancels(fixture.magic_program);
     assert_eq!(cancels.len(), 1);
     assert_eq!(cancels[0].task_id, header_after_first_ensure.crank_task_id);
@@ -528,10 +461,7 @@ async fn ensure_transfer_queue_crank_schedules_one_recurring_queue_crank() {
     );
     let rescheduled = take_captured_schedules(fixture.magic_program);
     assert_eq!(rescheduled.len(), 1);
-    assert_eq!(
-        rescheduled[0].args.task_id,
-        header_after_first_ensure.crank_task_id
-    );
+    assert_eq!(rescheduled[0].args.task_id, header_after_first_ensure.crank_task_id);
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -540,9 +470,8 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
     let fake_magic_program = utils::test_pubkey("tq_auto::fake_magic_program");
 
     let mut fixture = {
-        let magic_program = solana_pubkey::Pubkey::new_from_array(
-            ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID.to_bytes(),
-        );
+        let magic_program =
+            solana_pubkey::Pubkey::new_from_array(ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID.to_bytes());
         let magic_context = convert_magic_pubkey(MAGIC_CONTEXT_PUBKEY);
         clear_captured_schedules(magic_program);
         clear_captured_cancels(magic_program);
@@ -566,27 +495,16 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
 
         let payer_kp = utils::fixed_payer_keypair();
         let payer = payer_kp.pubkey();
-        let mint_kp =
-            utils::test_keypair("tq_auto::ensure_transfer_rejects_non_magic_program::mint");
+        let mint_kp = utils::test_keypair("tq_auto::ensure_transfer_rejects_non_magic_program::mint");
         let mint = mint_kp.pubkey();
         let validator = automation_validator();
         let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
 
-        let setup = utils::setup_mint_and_token_accounts(
-            &mut context,
-            &payer_kp,
-            &mint_kp,
-            DECIMALS,
-            STARTING_BALANCE,
-            2,
-        )
-        .await;
+        let setup =
+            utils::setup_mint_and_token_accounts(&mut context, &payer_kp, &mint_kp, DECIMALS, STARTING_BALANCE, 2)
+                .await;
 
-        let queue = Pubkey::find_program_address(
-            &[QUEUE_SEED, mint.as_ref(), validator.as_ref()],
-            &PROGRAM,
-        )
-        .0;
+        let queue = Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref(), validator.as_ref()], &PROGRAM).0;
         let magic_fee_vault = magic_fee_vault(&validator);
         context.set_account(
             &magic_fee_vault,
@@ -613,16 +531,9 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
             ],
             data: instruction::ESplInstruction::InitializeRentPda.to_vec(),
         };
-        let ix_fund_rent =
-            solana_system_interface::instruction::transfer(&payer, &rent_pda, 100_000_000);
-        let ix_init_queue = utils::build_initialize_transfer_queue_ix(
-            payer,
-            queue,
-            mint,
-            validator,
-            None,
-            spl_token_interface::ID,
-        );
+        let ix_fund_rent = solana_system_interface::instruction::transfer(&payer, &rent_pda, 100_000_000);
+        let ix_init_queue =
+            utils::build_initialize_transfer_queue_ix(payer, queue, mint, validator, None, spl_token_interface::ID);
         let ix_init_global_vault = initialize_global_vault_ix(payer, vault, mint);
 
         let ix_init_destination_ata = Instruction {
@@ -650,11 +561,7 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
             &[&payer_kp],
             context.last_blockhash,
         );
-        context
-            .banks_client
-            .process_transaction(tx_init)
-            .await
-            .unwrap();
+        context.banks_client.process_transaction(tx_init).await.unwrap();
 
         Fixture {
             context,
@@ -674,10 +581,7 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
 
     let blockhash = latest_blockhash(&mut fixture.context).await;
     let tx = Transaction::new_signed_with_payer(
-        &[ensure_queue_crank_ix_with_magic_program(
-            &fixture,
-            fake_magic_program,
-        )],
+        &[ensure_queue_crank_ix_with_magic_program(&fixture, fake_magic_program)],
         Some(&fixture.payer),
         &[&fixture.payer_kp],
         blockhash,
@@ -714,41 +618,25 @@ async fn process_transfer_queue_tick_is_noop_when_queue_is_empty() {
         &[&fixture.payer_kp],
         blockhash,
     );
-    common::metrics::process_transaction_record_cu(
-        &fixture.context.banks_client,
-        tx,
-        "tq_auto::tick_empty",
-    )
-    .await
-    .unwrap();
+    common::metrics::process_transaction_record_cu(&fixture.context.banks_client, tx, "tq_auto::tick_empty")
+        .await
+        .unwrap();
 
     assert!(peek_captured_intent_bundles(fixture.magic_program).is_empty());
-    let header = read_header_unaligned(
-        &queue_account(&mut fixture.context, fixture.queue)
-            .await
-            .data,
-    );
+    let header = read_header_unaligned(&queue_account(&mut fixture.context, fixture.queue).await.data);
     assert_eq!(header.length, 0);
-    assert_eq!(
-        token_amount(&mut fixture.context, fixture.vault_ata).await,
-        0
-    );
-    assert_eq!(
-        token_amount(&mut fixture.context, fixture.destination_ata).await,
-        0
-    );
+    assert_eq!(token_amount(&mut fixture.context, fixture.vault_ata).await, 0);
+    assert_eq!(token_amount(&mut fixture.context, fixture.destination_ata).await, 0);
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn process_transfer_queue_tick_rejects_non_magic_program() {
     let _test_guard = test_lock().lock().unwrap();
-    let fake_magic_program =
-        utils::test_pubkey("tq_auto::process_tick_rejects_non_magic_program::fake_magic");
+    let fake_magic_program = utils::test_pubkey("tq_auto::process_tick_rejects_non_magic_program::fake_magic");
 
     let mut fixture = {
-        let magic_program = solana_pubkey::Pubkey::new_from_array(
-            ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID.to_bytes(),
-        );
+        let magic_program =
+            solana_pubkey::Pubkey::new_from_array(ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID.to_bytes());
         let magic_context = convert_magic_pubkey(MAGIC_CONTEXT_PUBKEY);
         clear_captured_schedules(magic_program);
         clear_captured_cancels(magic_program);
@@ -777,15 +665,9 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
         let validator = automation_validator();
         let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
 
-        let setup = utils::setup_mint_and_token_accounts(
-            &mut context,
-            &payer_kp,
-            &mint_kp,
-            DECIMALS,
-            STARTING_BALANCE,
-            2,
-        )
-        .await;
+        let setup =
+            utils::setup_mint_and_token_accounts(&mut context, &payer_kp, &mint_kp, DECIMALS, STARTING_BALANCE, 2)
+                .await;
 
         let (queue, _) = TransferQueue::find_pda(&mint, &validator);
         let magic_fee_vault = magic_fee_vault(&validator);
@@ -814,16 +696,9 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
             ],
             data: instruction::ESplInstruction::InitializeRentPda.to_vec(),
         };
-        let ix_fund_rent =
-            solana_system_interface::instruction::transfer(&payer, &rent_pda, 100_000_000);
-        let ix_init_queue = utils::build_initialize_transfer_queue_ix(
-            payer,
-            queue,
-            mint,
-            validator,
-            None,
-            spl_token_interface::ID,
-        );
+        let ix_fund_rent = solana_system_interface::instruction::transfer(&payer, &rent_pda, 100_000_000);
+        let ix_init_queue =
+            utils::build_initialize_transfer_queue_ix(payer, queue, mint, validator, None, spl_token_interface::ID);
         let ix_init_global_vault = initialize_global_vault_ix(payer, vault, mint);
 
         let ix_init_destination_ata = Instruction {
@@ -851,11 +726,7 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
             &[&payer_kp],
             context.last_blockhash,
         );
-        context
-            .banks_client
-            .process_transaction(tx_init)
-            .await
-            .unwrap();
+        context.banks_client.process_transaction(tx_init).await.unwrap();
 
         Fixture {
             context,
@@ -875,10 +746,7 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
 
     let blockhash = latest_blockhash(&mut fixture.context).await;
     let tx = Transaction::new_signed_with_payer(
-        &[process_queue_tick_ix_with_magic_program(
-            &fixture,
-            fake_magic_program,
-        )],
+        &[process_queue_tick_ix_with_magic_program(&fixture, fake_magic_program)],
         Some(&fixture.payer),
         &[&fixture.payer_kp],
         blockhash,
@@ -912,29 +780,18 @@ async fn process_transfer_queue_tick_is_noop_when_next_transfer_is_not_ready() {
         &[&fixture.payer_kp],
         blockhash,
     );
-    common::metrics::process_transaction_record_cu(
-        &fixture.context.banks_client,
-        tx,
-        "tq_auto::tick_not_ready",
-    )
-    .await
-    .unwrap();
+    common::metrics::process_transaction_record_cu(&fixture.context.banks_client, tx, "tq_auto::tick_not_ready")
+        .await
+        .unwrap();
 
     assert!(peek_captured_intent_bundles(fixture.magic_program).is_empty());
-    let header = read_header_unaligned(
-        &queue_account(&mut fixture.context, fixture.queue)
-            .await
-            .data,
-    );
+    let header = read_header_unaligned(&queue_account(&mut fixture.context, fixture.queue).await.data);
     assert_eq!(header.length, 1);
     assert_eq!(
         token_amount(&mut fixture.context, fixture.vault_ata).await,
         QUEUED_AMOUNT
     );
-    assert_eq!(
-        token_amount(&mut fixture.context, fixture.destination_ata).await,
-        0
-    );
+    assert_eq!(token_amount(&mut fixture.context, fixture.destination_ata).await, 0);
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -954,13 +811,9 @@ async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
         &[&fixture.payer_kp],
         blockhash,
     );
-    common::metrics::process_transaction_record_cu(
-        &fixture.context.banks_client,
-        tx,
-        "tq_auto::schedule",
-    )
-    .await
-    .unwrap();
+    common::metrics::process_transaction_record_cu(&fixture.context.banks_client, tx, "tq_auto::schedule")
+        .await
+        .unwrap();
 
     let captured = take_captured_schedules(fixture.magic_program);
     assert_eq!(captured.len(), 1);
@@ -979,12 +832,7 @@ async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
         data: captured[0].args.instructions[0].data.clone(),
     };
     let blockhash = latest_blockhash(&mut fixture.context).await;
-    let tx = Transaction::new_signed_with_payer(
-        &[scheduled_ix],
-        Some(&fixture.payer),
-        &[&fixture.payer_kp],
-        blockhash,
-    );
+    let tx = Transaction::new_signed_with_payer(&[scheduled_ix], Some(&fixture.payer), &[&fixture.payer_kp], blockhash);
     common::metrics::process_transaction_record_cu(
         &fixture.context.banks_client,
         tx,
@@ -998,11 +846,7 @@ async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
     assert_eq!(captured_bundles[0].args.standalone_actions.len(), 1);
     assert_eq!(
         captured_bundles[0].schedule_accounts,
-        vec![
-            fixture.queue,
-            fixture.magic_context,
-            fixture.magic_fee_vault
-        ]
+        vec![fixture.queue, fixture.magic_context, fixture.magic_fee_vault]
     );
 
     let queue_after_scheduling = queue_account(&mut fixture.context, fixture.queue).await;
@@ -1010,10 +854,7 @@ async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
     assert_eq!(header_after_scheduling.length, 0);
 
     let standalone_action = &captured_bundles[0].args.standalone_actions[0];
-    assert_eq!(
-        standalone_action.destination_program.to_bytes(),
-        PROGRAM.to_bytes()
-    );
+    assert_eq!(standalone_action.destination_program.to_bytes(), PROGRAM.to_bytes());
     assert_eq!(standalone_action.compute_units, 140_000);
     assert_eq!(
         captured_bundles[0].schedule_accounts[standalone_action.escrow_authority as usize],
@@ -1030,8 +871,7 @@ async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
         escrow_index: EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
         flags: ephemeral_spl_api::state::transfer_queue::QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
     };
-    let expected_action_data =
-        TestInternalInstruction::ExecuteReadyQueuedTransfer.with_data(&args.encode().unwrap());
+    let expected_action_data = TestInternalInstruction::ExecuteReadyQueuedTransfer.with_data(&args.encode().unwrap());
 
     assert_eq!(standalone_action.args.data, expected_action_data);
     assert_eq!(standalone_action.accounts.len(), 9);
@@ -1040,10 +880,7 @@ async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
         standalone_action.accounts[0].pubkey.to_bytes(),
         fixture.vault.to_bytes()
     );
-    assert_eq!(
-        standalone_action.accounts[1].pubkey.to_bytes(),
-        fixture.mint.to_bytes()
-    );
+    assert_eq!(standalone_action.accounts[1].pubkey.to_bytes(), fixture.mint.to_bytes());
     assert_eq!(
         standalone_action.accounts[2].pubkey.to_bytes(),
         fixture.vault_ata.to_bytes()
@@ -1056,10 +893,7 @@ async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
         standalone_action.accounts[4].pubkey.to_bytes(),
         fixture.destination_ata.to_bytes()
     );
-    assert_eq!(
-        standalone_action.accounts[5].pubkey.to_bytes(),
-        rent_pda.to_bytes()
-    );
+    assert_eq!(standalone_action.accounts[5].pubkey.to_bytes(), rent_pda.to_bytes());
     assert_eq!(
         standalone_action.accounts[6].pubkey.to_bytes(),
         spl_token_interface::ID.to_bytes()
@@ -1080,13 +914,9 @@ async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
         &[&fixture.payer_kp],
         blockhash,
     );
-    common::metrics::process_transaction_record_cu(
-        &fixture.context.banks_client,
-        tx,
-        "tq_auto::tick_after_bundle",
-    )
-    .await
-    .unwrap();
+    common::metrics::process_transaction_record_cu(&fixture.context.banks_client, tx, "tq_auto::tick_after_bundle")
+        .await
+        .unwrap();
     assert_eq!(peek_captured_intent_bundles(fixture.magic_program).len(), 1);
 
     let queue_after = queue_account(&mut fixture.context, fixture.queue).await;
@@ -1100,10 +930,7 @@ async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
         token_amount(&mut fixture.context, fixture.vault_ata).await,
         QUEUED_AMOUNT
     );
-    assert_eq!(
-        token_amount(&mut fixture.context, fixture.destination_ata).await,
-        0
-    );
+    assert_eq!(token_amount(&mut fixture.context, fixture.destination_ata).await, 0);
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -1118,16 +945,10 @@ async fn process_transfer_queue_tick_uses_token_2022_accounts_from_queue_header(
     fixture.context.set_account(&fixture.queue, &queue.into());
 
     let token_2022_program = Pubkey::new_from_array(pinocchio_token_2022::ID.to_bytes());
-    let expected_vault_ata = derive_associated_token_address_with_program(
-        fixture.vault,
-        fixture.mint,
-        token_2022_program,
-    );
-    let expected_destination_ata = derive_associated_token_address_with_program(
-        fixture.payer,
-        fixture.mint,
-        token_2022_program,
-    );
+    let expected_vault_ata =
+        derive_associated_token_address_with_program(fixture.vault, fixture.mint, token_2022_program);
+    let expected_destination_ata =
+        derive_associated_token_address_with_program(fixture.payer, fixture.mint, token_2022_program);
 
     let blockhash = latest_blockhash(&mut fixture.context).await;
     let tx = Transaction::new_signed_with_payer(
@@ -1165,13 +986,7 @@ async fn process_transfer_queue_tick_uses_token_2022_accounts_from_queue_header(
 async fn recurring_queue_crank_includes_client_ref_id_in_execute_action_when_present() {
     let _test_guard = test_lock().lock().unwrap();
     let mut fixture = setup_fixture().await;
-    enqueue_transfer_with_client_ref_id(
-        &mut fixture,
-        0,
-        Some(42),
-        "tq_auto::enqueue_with_client_ref_id",
-    )
-    .await;
+    enqueue_transfer_with_client_ref_id(&mut fixture, 0, Some(42), "tq_auto::enqueue_with_client_ref_id").await;
 
     let queue_before = queue_account(&mut fixture.context, fixture.queue).await;
     let queued = read_item_unaligned(&queue_before.data, 0);
@@ -1210,36 +1025,23 @@ async fn recurring_queue_crank_includes_client_ref_id_in_execute_action_when_pre
         data: captured[0].args.instructions[0].data.clone(),
     };
     let blockhash = latest_blockhash(&mut fixture.context).await;
-    let tx = Transaction::new_signed_with_payer(
-        &[scheduled_ix],
-        Some(&fixture.payer),
-        &[&fixture.payer_kp],
-        blockhash,
-    );
-    common::metrics::process_transaction_record_cu(
-        &fixture.context.banks_client,
-        tx,
-        "tq_auto::run_scheduled_tick",
-    )
-    .await
-    .unwrap();
+    let tx = Transaction::new_signed_with_payer(&[scheduled_ix], Some(&fixture.payer), &[&fixture.payer_kp], blockhash);
+    common::metrics::process_transaction_record_cu(&fixture.context.banks_client, tx, "tq_auto::run_scheduled_tick")
+        .await
+        .unwrap();
 
     let captured_bundles = peek_captured_intent_bundles(fixture.magic_program);
     assert_eq!(captured_bundles.len(), 1);
     assert_eq!(captured_bundles[0].args.standalone_actions.len(), 1);
 
     let transfer_action = &captured_bundles[0].args.standalone_actions[0];
-    assert_eq!(
-        transfer_action.destination_program.to_bytes(),
-        PROGRAM.to_bytes()
-    );
+    assert_eq!(transfer_action.destination_program.to_bytes(), PROGRAM.to_bytes());
     let args = ExecuteQueuedTransferArgs {
         amount: expected_amount,
         client_ref_id: Some(42),
         escrow_index: EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
         flags: ephemeral_spl_api::state::transfer_queue::QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
     };
-    let expected_action_data =
-        TestInternalInstruction::ExecuteReadyQueuedTransfer.with_data(&args.encode().unwrap());
+    let expected_action_data = TestInternalInstruction::ExecuteReadyQueuedTransfer.with_data(&args.encode().unwrap());
     assert_eq!(transfer_action.args.data, expected_action_data);
 }

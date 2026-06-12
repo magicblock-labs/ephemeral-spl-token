@@ -1,13 +1,9 @@
-use dlp_api::{
-    compact::ClearText, requires::require_initialized_delegation_record, state::DelegationRecord,
-};
+use dlp_api::{compact::ClearText, requires::require_initialized_delegation_record, state::DelegationRecord};
 use ephemeral_rollups_pinocchio::{
     consts::{DELEGATION_PROGRAM_ID, MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID},
     types::DelegateConfig,
 };
-use ephemeral_spl_api::{
-    instructions::AmountAndSaltArgs, require, require_eq_keys, require_n_accounts,
-};
+use ephemeral_spl_api::{instructions::AmountAndSaltArgs, require, require_eq_keys, require_n_accounts};
 use pinocchio::{
     cpi::{Seed, Signer},
     error::ProgramError,
@@ -49,10 +45,7 @@ use crate::{
 /// Instruction Data: amount (u64) + salt ([u8; 32])
 ///
 #[inline(never)]
-pub fn process_sponsored_lamports_transfer(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_sponsored_lamports_transfer(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         payer_info, // force multi-line
         rent_pda_info,
@@ -70,10 +63,7 @@ pub fn process_sponsored_lamports_transfer(
     let args = AmountAndSaltArgs::decode(instruction_data)?;
 
     require!(args.amount() != 0, ProgramError::InvalidArgument);
-    require!(
-        payer_info.is_signer(),
-        ProgramError::MissingRequiredSignature
-    );
+    require!(payer_info.is_signer(), ProgramError::MissingRequiredSignature);
     require!(
         rent_pda_info.owned_by(&pinocchio_system::ID),
         ProgramError::InvalidAccountOwner
@@ -83,38 +73,20 @@ pub fn process_sponsored_lamports_transfer(
         ProgramError::InvalidAccountOwner
     );
 
-    require_eq_keys!(
-        owner_program.address(),
-        &crate::ID,
-        ProgramError::IncorrectProgramId
-    );
+    require_eq_keys!(owner_program.address(), &crate::ID, ProgramError::IncorrectProgramId);
 
-    require_eq_keys!(
-        &RENT_PDA,
-        rent_pda_info.address(),
-        ProgramError::InvalidSeeds
-    );
-    require!(
-        rent_pda_info.data_len() == 0,
-        ProgramError::InvalidAccountData
-    );
+    require_eq_keys!(&RENT_PDA, rent_pda_info.address(), ProgramError::InvalidSeeds);
+    require!(rent_pda_info.data_len() == 0, ProgramError::InvalidAccountData);
 
-    let validator =
-        read_destination_validator(destination_info, destination_delegation_record_info)?;
-    let (derived_lamports_pda, lamports_pda_bump) = derive_lamports_pda(
-        payer_info.address(),
-        destination_info.address(),
-        args.salt(),
-    );
+    let validator = read_destination_validator(destination_info, destination_delegation_record_info)?;
+    let (derived_lamports_pda, lamports_pda_bump) =
+        derive_lamports_pda(payer_info.address(), destination_info.address(), args.salt());
     require_eq_keys!(
         &derived_lamports_pda,
         lamports_pda_info.address(),
         ProgramError::InvalidSeeds
     );
-    require!(
-        lamports_pda_info.lamports() == 0,
-        ProgramError::InvalidAccountData
-    );
+    require!(lamports_pda_info.lamports() == 0, ProgramError::InvalidAccountData);
 
     Transfer {
         from: payer_info,
@@ -246,11 +218,7 @@ fn read_destination_validator(
     destination_info: &AccountView,
     destination_delegation_record_info: &AccountView,
 ) -> Result<Address, ProgramError> {
-    require_initialized_delegation_record(
-        destination_info,
-        destination_delegation_record_info,
-        false,
-    )?;
+    require_initialized_delegation_record(destination_info, destination_delegation_record_info, false)?;
 
     let destination_delegation_record_data = destination_delegation_record_info.try_borrow()?;
     let destination_delegation_record =

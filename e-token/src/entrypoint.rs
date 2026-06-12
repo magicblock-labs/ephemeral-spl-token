@@ -1,11 +1,9 @@
 use core::{mem::MaybeUninit, slice::from_raw_parts};
 
-use ephemeral_spl_api::{
-    debug_log, error::EphemeralSplError, instruction::ESplInstruction, require,
-};
+use ephemeral_spl_api::{debug_log, error::EphemeralSplError, instruction::ESplInstruction, require};
 use pinocchio::{
-    default_allocator, default_panic_handler, entrypoint::deserialize, error::ProgramError,
-    AccountView, ProgramResult, MAX_TX_ACCOUNTS, SUCCESS,
+    default_allocator, default_panic_handler, entrypoint::deserialize, error::ProgramError, AccountView, ProgramResult,
+    MAX_TX_ACCOUNTS, SUCCESS,
 };
 
 use crate::{instruction::ESplInternalInstruction, processor::*};
@@ -22,10 +20,7 @@ pub unsafe extern "C" fn entrypoint(input: *mut u8) -> u64 {
 
     let (_, count, instruction_data) = deserialize::<MAX_PROGRAM_ACCOUNTS>(input, &mut accounts);
 
-    match process_instruction(
-        from_raw_parts(accounts.as_ptr() as _, count),
-        instruction_data,
-    ) {
+    match process_instruction(from_raw_parts(accounts.as_ptr() as _, count), instruction_data) {
         Ok(()) => SUCCESS,
         Err(error) => error.into(),
     }
@@ -34,19 +29,13 @@ pub unsafe extern "C" fn entrypoint(input: *mut u8) -> u64 {
 /// Log an error.
 #[cold]
 fn log_error(error: &ProgramError) {
-    pinocchio_log::log!(
-        "Instruction failed with: {}",
-        error.to_str::<EphemeralSplError>()
-    );
+    pinocchio_log::log!("Instruction failed with: {}", error.to_str::<EphemeralSplError>());
 }
 
 /// Process an instruction.
 #[inline(never)]
 pub fn process_instruction(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
-    require!(
-        !instruction_data.is_empty(),
-        ProgramError::InvalidInstructionData
-    );
+    require!(!instruction_data.is_empty(), ProgramError::InvalidInstructionData);
 
     let result = {
         // UndelegationCallback is the first internal type, so anything less than that is public
@@ -236,15 +225,10 @@ fn process_public_instruction(accounts: &[AccountView], instruction_data: &[u8])
 
 /// Process internal instruction
 #[inline(never)]
-fn process_internal_instruction(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+fn process_internal_instruction(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let (discriminator, data) = instruction_data.split_at(1);
 
-    match ESplInternalInstruction::try_from(discriminator[0])
-        .map_err(|_| EphemeralSplError::InstructionNotFound)?
-    {
+    match ESplInternalInstruction::try_from(discriminator[0]).map_err(|_| EphemeralSplError::InstructionNotFound)? {
         ESplInternalInstruction::UndelegationCallback => {
             debug_log!("Instruction: UndelegationCallback");
             process_undelegation_callback(accounts, data)

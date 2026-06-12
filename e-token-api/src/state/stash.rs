@@ -24,14 +24,9 @@ impl StashPda {
     }
 
     #[inline(always)]
-    pub fn derive_pda(
-        user: &Address,
-        mint: &Address,
-        bump_seed: u8,
-    ) -> Result<Address, ProgramError> {
+    pub fn derive_pda(user: &Address, mint: &Address, bump_seed: u8) -> Result<Address, ProgramError> {
         let bump = [bump_seed];
-        let pda =
-            Address::create_program_address(&Self::seeds_with_bump(user, mint, &bump), &crate::ID)?;
+        let pda = Address::create_program_address(&Self::seeds_with_bump(user, mint, &bump), &crate::ID)?;
         Ok(pda)
     }
 
@@ -41,11 +36,7 @@ impl StashPda {
     }
 
     #[inline(always)]
-    pub fn seeds_with_bump<'a>(
-        user: &'a Address,
-        mint: &'a Address,
-        bump: &'a [u8],
-    ) -> [&'a [u8]; 4] {
+    pub fn seeds_with_bump<'a>(user: &'a Address, mint: &'a Address, bump: &'a [u8]) -> [&'a [u8]; 4] {
         [STASH_PDA_SEED, user.as_ref(), mint.as_ref(), bump]
     }
 

@@ -38,10 +38,7 @@ use crate::processor::internal::{
 /// Instruction Data: ExecuteQueuedTransferArgs
 ///
 #[inline(always)]
-pub fn process_execute_ready_queued_transfer(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_execute_ready_queued_transfer(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         vault_info, // force multi-line
         mint_info,
@@ -61,39 +58,20 @@ pub fn process_execute_ready_queued_transfer(
 
     // Note that accounts [source_program, escrow_authority, escrow_signer] are appended by DLP's
     // CallHandlerV2 instruction.
-    require_eq_keys!(
-        source_program.address(),
-        &crate::ID,
-        ProgramError::IncorrectAuthority
-    );
+    require_eq_keys!(source_program.address(), &crate::ID, ProgramError::IncorrectAuthority);
 
-    require!(
-        escrow_signer.is_signer(),
-        ProgramError::MissingRequiredSignature
-    );
+    require!(escrow_signer.is_signer(), ProgramError::MissingRequiredSignature);
 
-    let expected_escrow =
-        ephemeral_balance_pda_from_payer(escrow_authority.address(), args.escrow_index());
-    require_eq_keys!(
-        &expected_escrow,
-        escrow_signer.address(),
-        ProgramError::InvalidSeeds
-    );
+    let expected_escrow = ephemeral_balance_pda_from_payer(escrow_authority.address(), args.escrow_index());
+    require_eq_keys!(&expected_escrow, escrow_signer.address(), ProgramError::InvalidSeeds);
 
     if args.should_create_destination_ata_idempotent() {
         require!(
             rent_pda_info.owned_by(&SYSTEM_PROGRAM_ID),
             ProgramError::InvalidAccountOwner
         );
-        require_eq_keys!(
-            &RENT_PDA,
-            rent_pda_info.address(),
-            ProgramError::InvalidSeeds
-        );
-        require!(
-            rent_pda_info.data_len() == 0,
-            ProgramError::InvalidAccountData
-        );
+        require_eq_keys!(&RENT_PDA, rent_pda_info.address(), ProgramError::InvalidSeeds);
+        require!(rent_pda_info.data_len() == 0, ProgramError::InvalidAccountData);
         require!(
             associated_token_program_info.address() == &pinocchio_associated_token_account::ID
                 && system_program_info.address() == &SYSTEM_PROGRAM_ID,

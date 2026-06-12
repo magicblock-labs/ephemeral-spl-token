@@ -1,9 +1,6 @@
 use ephemeral_spl_api::{
     instruction,
-    state::{
-        ephemeral_ata::EphemeralAta, load_initialized, shuttle_ephemeral_ata::ShuttleMetadata,
-        RawType,
-    },
+    state::{ephemeral_ata::EphemeralAta, load_initialized, shuttle_ephemeral_ata::ShuttleMetadata, RawType},
     ID as PROGRAM,
 };
 use solana_instruction::{AccountMeta, Instruction};
@@ -36,23 +33,15 @@ async fn deposit_spl_tokens_increments_shuttle_amount() {
     let (shuttle_eata, _) = EphemeralAta::find_pda(&shuttle_ephemeral_ata, &mint);
     let shuttle_wallet_ata = utils::derive_associated_token_address(shuttle_ephemeral_ata, mint);
 
-    let setup = utils::setup_mint_and_token_accounts(
-        &mut context,
-        &payer_kp,
-        &mint_kp,
-        DECIMALS,
-        STARTING_BALANCE,
-        1,
-    )
-    .await;
+    let setup =
+        utils::setup_mint_and_token_accounts(&mut context, &payer_kp, &mint_kp, DECIMALS, STARTING_BALANCE, 1).await;
 
     let vault = pdas.vault;
     let user_ata = setup.user_tokens[0];
     let (vault_eata, _) = EphemeralAta::find_pda(&vault, &mint);
     let vault_ata = utils::derive_associated_token_address(vault, mint);
 
-    let mut shuttle_init_data =
-        instruction::ESplInstruction::InitializeShuttleEphemeralAta.to_vec();
+    let mut shuttle_init_data = instruction::ESplInstruction::InitializeShuttleEphemeralAta.to_vec();
     shuttle_init_data.extend_from_slice(&shuttle_id.to_le_bytes());
     let ix_init_shuttle = Instruction {
         program_id: PROGRAM,
@@ -91,11 +80,7 @@ async fn deposit_spl_tokens_increments_shuttle_amount() {
         &[&payer_kp],
         context.last_blockhash,
     );
-    context
-        .banks_client
-        .process_transaction(tx_init)
-        .await
-        .unwrap();
+    context.banks_client.process_transaction(tx_init).await.unwrap();
 
     let amount: u64 = 100 * 10u64.pow(DECIMALS as u32);
     let mut data = instruction::ESplInstruction::DepositSplTokens.to_vec();
@@ -115,19 +100,10 @@ async fn deposit_spl_tokens_increments_shuttle_amount() {
         data,
     };
 
-    let tx = Transaction::new_signed_with_payer(
-        &[ix_deposit],
-        Some(&payer),
-        &[&payer_kp],
-        context.last_blockhash,
-    );
-    common::metrics::process_transaction_record_cu(
-        &context.banks_client,
-        tx,
-        "dep_shuttle::deposit",
-    )
-    .await
-    .unwrap();
+    let tx = Transaction::new_signed_with_payer(&[ix_deposit], Some(&payer), &[&payer_kp], context.last_blockhash);
+    common::metrics::process_transaction_record_cu(&context.banks_client, tx, "dep_shuttle::deposit")
+        .await
+        .unwrap();
 
     let user_token_acc_after = context
         .banks_client
@@ -171,11 +147,7 @@ async fn deposit_spl_tokens_increments_shuttle_amount() {
         .expect("shuttle eata must exist");
     assert_eq!(shuttle_eata_account.data.len(), EphemeralAta::LEN);
     let mut mut_shuttle_eata = shuttle_eata_account.data.clone();
-    let shuttle_eata_data =
-        load_initialized::<EphemeralAta>(mut_shuttle_eata.as_mut_slice()).unwrap();
+    let shuttle_eata_data = load_initialized::<EphemeralAta>(mut_shuttle_eata.as_mut_slice()).unwrap();
     assert_eq!(shuttle_eata_data.amount, amount);
-    assert_eq!(
-        shuttle_eata_data.owner.as_array(),
-        &shuttle_ephemeral_ata.to_bytes()
-    );
+    assert_eq!(shuttle_eata_data.owner.as_array(), &shuttle_ephemeral_ata.to_bytes());
 }

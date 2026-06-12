@@ -21,40 +21,24 @@ use crate::processor::internal::rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEE
 /// Instruction Data: None
 ///
 #[inline(always)]
-pub fn process_initialize_rent_pda(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_initialize_rent_pda(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         payer_info, // force multi-line
         rent_pda_info,
         _system_program_info,
     ] = require_n_accounts!(accounts, 3);
 
-    require!(
-        instruction_data.is_empty(),
-        ProgramError::InvalidInstructionData
-    );
+    require!(instruction_data.is_empty(), ProgramError::InvalidInstructionData);
 
     let required_lamports = Rent::get()?.try_minimum_balance(0)?;
-    require_eq_keys!(
-        &RENT_PDA,
-        rent_pda_info.address(),
-        ProgramError::InvalidSeeds
-    );
+    require_eq_keys!(&RENT_PDA, rent_pda_info.address(), ProgramError::InvalidSeeds);
 
     if is_valid_initialized_rent_pda(rent_pda_info, required_lamports) {
         return Ok(());
     }
 
-    require!(
-        rent_pda_info.lamports() == 0,
-        ProgramError::InvalidAccountData
-    );
-    require!(
-        payer_info.is_signer(),
-        ProgramError::MissingRequiredSignature
-    );
+    require!(rent_pda_info.lamports() == 0, ProgramError::InvalidAccountData);
+    require!(payer_info.is_signer(), ProgramError::MissingRequiredSignature);
 
     let bump_seed = [RENT_PDA_BUMP];
     let signer_seeds = [Seed::from(RENT_PDA_SEED), Seed::from(&bump_seed)];

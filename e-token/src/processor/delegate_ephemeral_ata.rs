@@ -25,9 +25,8 @@ fn validate_existing_delegation(
     require_initialized_delegation_record(ephemeral_ata_info, delegation_record, true)?;
 
     let delegation_record_data = delegation_record.try_borrow()?;
-    let delegation_record =
-        DelegationRecord::try_from_bytes_with_discriminator(&delegation_record_data)
-            .map_err(|_| ProgramError::InvalidAccountData)?;
+    let delegation_record = DelegationRecord::try_from_bytes_with_discriminator(&delegation_record_data)
+        .map_err(|_| ProgramError::InvalidAccountData)?;
     let current_validator = Address::new_from_array(delegation_record.authority.to_bytes());
 
     if &current_validator == requested_validator {
@@ -61,10 +60,7 @@ fn validate_existing_delegation(
 ///
 /// Instruction Data: DelegateArgs
 ///
-pub fn process_delegate_ephemeral_ata(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_delegate_ephemeral_ata(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         payer_info, // force multi-line
         ephemeral_ata_info,
@@ -85,8 +81,7 @@ pub fn process_delegate_ephemeral_ata(
     }
 
     // Load Ephemeral ATA account
-    let ephemeral_ata =
-        load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
+    let ephemeral_ata = load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
 
     let config = DelegateConfig {
         validator: args.validator().copied(),

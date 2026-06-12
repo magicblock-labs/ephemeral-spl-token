@@ -82,10 +82,7 @@ fn load_object_map(path: &PathBuf) -> std::collections::HashMap<String, Value> {
             o.into_iter().collect()
         }
         _ => {
-            eprintln!(
-                "compare-metrics: {}: expected JSON object at root",
-                path.display()
-            );
+            eprintln!("compare-metrics: {}: expected JSON object at root", path.display());
             process::exit(1);
         }
     }

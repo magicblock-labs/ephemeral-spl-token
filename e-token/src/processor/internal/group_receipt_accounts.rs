@@ -61,9 +61,7 @@ pub(crate) fn group_receipt_create<'a>(
         accounts.queue_info,
         accounts.group_receipt_info,
         accounts.magic_vault,
-        space
-            .try_into()
-            .map_err(|_| ProgramError::ArithmeticOverflow)?,
+        space.try_into().map_err(|_| ProgramError::ArithmeticOverflow)?,
         &[queue_signer, receipt_signer],
     ));
 

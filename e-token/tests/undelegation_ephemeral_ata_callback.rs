@@ -1,10 +1,7 @@
 use dlp_api::pda::{fees_vault_pda, validator_fees_vault_pda_from_validator};
 use ephemeral_rollups_pinocchio::{
     consts::DELEGATION_PROGRAM_ID,
-    pda::{
-        delegation_metadata_pda_from_delegated_account,
-        delegation_record_pda_from_delegated_account,
-    },
+    pda::{delegation_metadata_pda_from_delegated_account, delegation_record_pda_from_delegated_account},
 };
 use ephemeral_spl_api::{
     state::{ephemeral_ata::EphemeralAta, load_mut, RawType},
@@ -49,8 +46,7 @@ async fn undelegation_callback_restores_ephemeral_ata() {
             },
         );
 
-        let mut delegation_record_data =
-            vec![0u8; dlp_api::state::DelegationRecord::size_with_discriminator()];
+        let mut delegation_record_data = vec![0u8; dlp_api::state::DelegationRecord::size_with_discriminator()];
         let delegation_record = dlp_api::state::DelegationRecord {
             authority: payer_pubkey.to_bytes().into(),
             owner: PROGRAM.to_bytes().into(),
@@ -147,13 +143,9 @@ async fn undelegation_callback_restores_ephemeral_ata() {
         context.last_blockhash,
     );
 
-    common::metrics::process_transaction_record_cu(
-        &context.banks_client,
-        tx,
-        "undel_eata_cb::undelegate",
-    )
-    .await
-    .unwrap();
+    common::metrics::process_transaction_record_cu(&context.banks_client, tx, "undel_eata_cb::undelegate")
+        .await
+        .unwrap();
 
     // Assert the delegated PDA now exists, is owned by our program, and has data equal to buffer (zeros)
 }

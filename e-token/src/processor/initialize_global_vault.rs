@@ -29,10 +29,7 @@ use crate::processor::internal::ephemeral_ata::initialize_ephemeral_ata_with_spo
 /// Instruction Data: None
 ///
 #[inline(always)]
-pub fn process_initialize_global_vault(
-    accounts: &[AccountView],
-    _instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_initialize_global_vault(accounts: &[AccountView], _instruction_data: &[u8]) -> ProgramResult {
     let [
         vault_info, // force multi-line
         payer_info,
@@ -51,11 +48,7 @@ pub fn process_initialize_global_vault(
 
     let program_id = crate::ID;
     let (vault_derived_pda, vault_bump) = GlobalVault::find_pda(mint_info.address());
-    require_eq_keys!(
-        &vault_derived_pda,
-        vault_info.address(),
-        ProgramError::InvalidSeeds
-    );
+    require_eq_keys!(&vault_derived_pda, vault_info.address(), ProgramError::InvalidSeeds);
 
     let bump = [vault_bump];
     let seed = GlobalVault::signer_seeds(mint_info.address(), &bump);
@@ -78,13 +71,7 @@ pub fn process_initialize_global_vault(
         .invoke_signed(&[signer_seeds])?;
     }
 
-    initialize_ephemeral_ata_with_sponsor(
-        vault_ephemeral_ata_info,
-        payer_info,
-        None,
-        vault_info,
-        mint_info,
-    )?;
+    initialize_ephemeral_ata_with_sponsor(vault_ephemeral_ata_info, payer_info, None, vault_info, mint_info)?;
 
     pinocchio_associated_token_account::instructions::CreateIdempotent {
         funding_account: payer_info,

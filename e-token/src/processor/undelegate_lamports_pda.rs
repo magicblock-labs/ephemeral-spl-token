@@ -1,6 +1,4 @@
-use ephemeral_rollups_pinocchio::intent_bundle::{
-    ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
-};
+use ephemeral_rollups_pinocchio::intent_bundle::{ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta};
 use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::{
     error::ProgramError,
@@ -8,9 +6,7 @@ use pinocchio::{
     AccountView, ProgramResult,
 };
 
-use crate::{
-    instruction::ESplInternalInstruction, processor::internal::lamports_pda::derive_lamports_pda,
-};
+use crate::{instruction::ESplInternalInstruction, processor::internal::lamports_pda::derive_lamports_pda};
 
 const DEFAULT_ESCROW_INDEX: u8 = u8::MAX;
 const INTENT_BUNDLE_DATA_BUF_SIZE: usize = 512;
@@ -31,10 +27,7 @@ const CLOSE_LAMPORTS_PDA_COMPUTE_UNITS: u32 = 50_000;
 /// Instruction Data: salt ([u8; 32])
 ///
 #[inline(never)]
-pub fn process_undelegate_lamports_pda(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_undelegate_lamports_pda(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         payer_info, // force multi-line
         rent_pda_info,
@@ -46,22 +39,15 @@ pub fn process_undelegate_lamports_pda(
 
     let salt = parse_salt(instruction_data)?;
 
-    require!(
-        payer_info.is_signer(),
-        ProgramError::MissingRequiredSignature
-    );
+    require!(payer_info.is_signer(), ProgramError::MissingRequiredSignature);
     require!(
         lamports_pda_info.owned_by(&crate::ID),
         ProgramError::InvalidAccountOwner
     );
 
-    require!(
-        lamports_pda_info.data_len() == 0,
-        ProgramError::InvalidAccountData
-    );
+    require!(lamports_pda_info.data_len() == 0, ProgramError::InvalidAccountData);
 
-    let (derived_lamports_pda, _) =
-        derive_lamports_pda(payer_info.address(), destination_info.address(), &salt);
+    let (derived_lamports_pda, _) = derive_lamports_pda(payer_info.address(), destination_info.address(), &salt);
     require_eq_keys!(
         &derived_lamports_pda,
         lamports_pda_info.address(),
@@ -103,14 +89,10 @@ pub fn process_undelegate_lamports_pda(
     let committed_accounts = [lamports_pda_info.clone()];
     let mut intent_bundle_data = [0u8; INTENT_BUNDLE_DATA_BUF_SIZE];
 
-    MagicIntentBundleBuilder::new(
-        payer_info.clone(),
-        magic_context.clone(),
-        magic_program.clone(),
-    )
-    .commit_and_undelegate(&committed_accounts)
-    .add_post_undelegate_actions(&close_handler)
-    .build_and_invoke(&mut intent_bundle_data)
+    MagicIntentBundleBuilder::new(payer_info.clone(), magic_context.clone(), magic_program.clone())
+        .commit_and_undelegate(&committed_accounts)
+        .add_post_undelegate_actions(&close_handler)
+        .build_and_invoke(&mut intent_bundle_data)
 }
 
 fn close_lamports_handler_data(escrow_index: u8, salt: &[u8; 32]) -> alloc::vec::Vec<u8> {
@@ -121,10 +103,7 @@ fn close_lamports_handler_data(escrow_index: u8, salt: &[u8; 32]) -> alloc::vec:
 }
 
 fn parse_salt(instruction_data: &[u8]) -> Result<[u8; 32], ProgramError> {
-    require!(
-        instruction_data.len() == 32,
-        ProgramError::InvalidInstructionData
-    );
+    require!(instruction_data.len() == 32, ProgramError::InvalidInstructionData);
 
     let mut salt = [0u8; 32];
     salt.copy_from_slice(instruction_data);

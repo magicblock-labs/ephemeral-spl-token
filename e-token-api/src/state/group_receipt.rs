@@ -116,13 +116,11 @@ impl GroupReceiptHeader {
     }
 
     pub fn from_data(data: &[u8]) -> Result<&GroupReceiptHeader, ProgramError> {
-        bytemuck::try_from_bytes::<GroupReceiptHeader>(data)
-            .map_err(|_| ProgramError::InvalidAccountData)
+        bytemuck::try_from_bytes::<GroupReceiptHeader>(data).map_err(|_| ProgramError::InvalidAccountData)
     }
 
     fn from_data_mut(data: &mut [u8]) -> Result<&mut GroupReceiptHeader, ProgramError> {
-        bytemuck::try_from_bytes_mut::<GroupReceiptHeader>(data)
-            .map_err(|_| ProgramError::InvalidAccountData)
+        bytemuck::try_from_bytes_mut::<GroupReceiptHeader>(data).map_err(|_| ProgramError::InvalidAccountData)
     }
 
     pub fn id(&self) -> u32 {
@@ -186,19 +184,10 @@ impl TransferReceipt {
     }
 }
 
-pub fn initialize_group_receipt(
-    account: &AccountView,
-    group_id: u32,
-    splits: u32,
-    bump: u8,
-) -> ProgramResult {
+pub fn initialize_group_receipt(account: &AccountView, group_id: u32, splits: u32, bump: u8) -> ProgramResult {
     let data = unsafe { account.borrow_unchecked_mut() };
     let required_size = GroupReceipt::required_size(splits as usize);
-    require_eq!(
-        data.len(),
-        required_size,
-        ProgramError::InvalidInstructionData
-    );
+    require_eq!(data.len(), required_size, ProgramError::InvalidInstructionData);
 
     let header = GroupReceiptHeader::new(group_id, bump, splits);
     data[..GroupReceiptHeader::SIZE].copy_from_slice(bytemuck::bytes_of(&header));
@@ -236,13 +225,9 @@ mod tests {
     fn record_transfer_increments_transfers_completed() {
         let mut data = init_data(1, 2, 0);
         let mut gr = unsafe { GroupReceipt::from_data_mut(&mut data) }.unwrap();
-        gr.record_transfer(TransferReceipt::new(None, 100, true))
-            .ok()
-            .unwrap();
+        gr.record_transfer(TransferReceipt::new(None, 100, true)).ok().unwrap();
         assert_eq!(gr.items().unwrap().len(), 1);
-        gr.record_transfer(TransferReceipt::new(None, 50, false))
-            .ok()
-            .unwrap();
+        gr.record_transfer(TransferReceipt::new(None, 50, false)).ok().unwrap();
         assert_eq!(gr.items().unwrap().len(), 2);
     }
 
@@ -250,12 +235,8 @@ mod tests {
     fn record_transfer_fails_when_exhausted() {
         let mut data = init_data(1, 1, 0);
         let mut gr = unsafe { GroupReceipt::from_data_mut(&mut data) }.unwrap();
-        gr.record_transfer(TransferReceipt::new(None, 100, true))
-            .ok()
-            .unwrap();
-        assert!(gr
-            .record_transfer(TransferReceipt::new(None, 50, false))
-            .is_err());
+        gr.record_transfer(TransferReceipt::new(None, 100, true)).ok().unwrap();
+        assert!(gr.record_transfer(TransferReceipt::new(None, 50, false)).is_err());
     }
 
     #[test]
@@ -274,9 +255,7 @@ mod tests {
             gr.record_transfer(TransferReceipt::new(Some(sig), 200, true))
                 .ok()
                 .unwrap();
-            gr.record_transfer(TransferReceipt::new(None, 300, false))
-                .ok()
-                .unwrap();
+            gr.record_transfer(TransferReceipt::new(None, 300, false)).ok().unwrap();
         }
         let gr = unsafe { GroupReceipt::from_data_mut(&mut data) }.unwrap();
         let items = gr.items().unwrap();
@@ -295,8 +274,6 @@ mod tests {
     fn record_transfer_fails_with_zero_splits() {
         let mut data = init_data(1, 0, 0);
         let mut gr = unsafe { GroupReceipt::from_data_mut(&mut data) }.unwrap();
-        assert!(gr
-            .record_transfer(TransferReceipt::new(None, 0, false))
-            .is_err());
+        assert!(gr.record_transfer(TransferReceipt::new(None, 0, false)).is_err());
     }
 }

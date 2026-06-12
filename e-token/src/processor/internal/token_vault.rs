@@ -24,10 +24,7 @@ pub(crate) fn transfer_to_vault_for_mint(
     expected_mint: &Address,
     amount: u64,
 ) -> ProgramResult {
-    require!(
-        vault_info.owned_by(&crate::ID),
-        ProgramError::InvalidAccountOwner
-    );
+    require!(vault_info.owned_by(&crate::ID), ProgramError::InvalidAccountOwner);
 
     let vault = load_initialized::<GlobalVault>(unsafe { vault_info.borrow_unchecked() })?;
     require!(
@@ -106,14 +103,10 @@ pub(crate) fn withdraw_ephemeral_ata_tokens(
         ephemeral_ata_info.owned_by(&crate::ID),
         ProgramError::InvalidAccountOwner
     );
-    let mut ephemeral_ata =
-        load_ephemeral_ata_compat_mut(unsafe { ephemeral_ata_info.borrow_unchecked_mut() })?;
+    let mut ephemeral_ata = load_ephemeral_ata_compat_mut(unsafe { ephemeral_ata_info.borrow_unchecked_mut() })?;
 
     // Validate vault ownership before reading raw data.
-    require!(
-        vault_info.owned_by(&crate::ID),
-        ProgramError::InvalidAccountOwner
-    );
+    require!(vault_info.owned_by(&crate::ID), ProgramError::InvalidAccountOwner);
 
     // Validate Vault data account
     let vault = load_initialized::<GlobalVault>(unsafe { vault_info.borrow_unchecked() })?;
@@ -171,21 +164,13 @@ pub(crate) fn validate_vault_for_mint(
     mint_info: &AccountView,
     vault_token_acc_info: &AccountView,
 ) -> Result<u8, ProgramError> {
-    require!(
-        vault_info.owned_by(&crate::ID),
-        ProgramError::InvalidAccountOwner
-    );
+    require!(vault_info.owned_by(&crate::ID), ProgramError::InvalidAccountOwner);
 
     let vault = load_initialized::<GlobalVault>(unsafe { vault_info.borrow_unchecked() })?;
     let derived_vault = GlobalVault::derive_pda(mint_info.address(), vault.bump)?;
-    require_eq_keys!(
-        &derived_vault,
-        vault_info.address(),
-        ProgramError::InvalidSeeds
-    );
+    require_eq_keys!(&derived_vault, vault_info.address(), ProgramError::InvalidSeeds);
     require!(
-        vault.mint == *mint_info.address()
-            && vault.token_account == *vault_token_acc_info.address(),
+        vault.mint == *mint_info.address() && vault.token_account == *vault_token_acc_info.address(),
         ProgramError::InvalidAccountData
     );
 
@@ -209,17 +194,10 @@ pub(crate) fn validate_queue_vault_for_mint(
     };
 
     let derived_queue = TransferQueue::derive_pda(mint_info.address(), &validator, bump)?;
-    require_eq_keys!(
-        &derived_queue,
-        queue_info.address(),
-        ProgramError::InvalidSeeds
-    );
+    require_eq_keys!(&derived_queue, queue_info.address(), ProgramError::InvalidSeeds);
 
-    let expected_vault_token = get_associated_token_address(
-        queue_info.address(),
-        mint_info.address(),
-        token_program_info.address(),
-    );
+    let expected_vault_token =
+        get_associated_token_address(queue_info.address(), mint_info.address(), token_program_info.address());
     require_eq_keys!(
         &expected_vault_token,
         vault_token_acc_info.address(),
