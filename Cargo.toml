@@ -44,7 +44,6 @@ pinocchio-associated-token-account = "0.3"
 
 solana-instruction = "3.0.0"
 solana-pubkey = "4.0.0"
-solana-sha256-hasher = { version = "3.1.0", default-features = false, features = ["sha2"] }
 solana-program-pack = "3.0.0"
 solana-program = "3.0.0"
 solana-program-error = "3.0.0"

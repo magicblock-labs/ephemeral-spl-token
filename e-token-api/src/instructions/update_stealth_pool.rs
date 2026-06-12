@@ -5,14 +5,12 @@ use wheels::variable_offset_layout;
 
 #[variable_offset_layout(buffer_offset = 1)]
 pub struct UpdateStealthPoolArgs {
-    pub handle_hash: [u8; 32],
+    pub handle: [u8; 65],
     // TODO (snawaz): support enum based flags in data-layout
     pub flags: u8,
-    #[flexible = 1]
-    pub handle: Vec<u8>,
     #[flexible = 1]
     pub destinations: Vec<Address>,
 }
 
-static_assertions::const_assert!(UpdateStealthPoolArgs::DATA_LEN_RANGE.0 == 35);
-static_assertions::const_assert!(UpdateStealthPoolArgs::DATA_LEN_RANGE.1 == 8450);
+static_assertions::const_assert!(UpdateStealthPoolArgs::DATA_LEN_RANGE.0 == 67);
+static_assertions::const_assert!(UpdateStealthPoolArgs::DATA_LEN_RANGE.1 == 8227);

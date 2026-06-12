@@ -5,7 +5,7 @@ use ephemeral_spl_api::{
     state::{stealth_pool::StealthPool, RawType},
 };
 use pinocchio::{
-    cpi::Signer,
+    cpi::{Seed, Signer},
     error::ProgramError,
     sysvars::{rent::Rent, Sysvar},
     AccountView, ProgramResult,
@@ -45,7 +45,8 @@ pub fn process_ensure_stealth_pool_delegated(accounts: &[AccountView], instructi
 
     require!(payer_info.is_signer(), ProgramError::MissingRequiredSignature);
 
-    let (derived_pool, bump) = StealthPool::find_pda(args.handle_hash());
+    let handle = StealthPool::handle_from_storage(args.handle())?;
+    let (derived_pool, bump) = StealthPool::find_pda(handle)?;
     require_eq_keys!(&derived_pool, stealth_pool_info.address(), ProgramError::InvalidSeeds);
 
     let delegation_program = ephemeral_spl_api::program::DELEGATION_PROGRAM_ID;
@@ -59,17 +60,40 @@ pub fn process_ensure_stealth_pool_delegated(accounts: &[AccountView], instructi
         let rent = Rent::get()?;
         let lamports = rent.try_minimum_balance(StealthPool::LEN)?;
         let bump_seed = [bump];
-        let signer_seeds = StealthPool::signer_seeds(args.handle_hash(), &bump_seed);
-        let signer = Signer::from(&signer_seeds);
+        if handle.len() <= StealthPool::MAX_HANDLE_SEED_BYTES {
+            let signer_seeds = [
+                Seed::from(StealthPool::SEED),
+                Seed::from(handle),
+                Seed::from(&bump_seed),
+            ];
+            let signer = Signer::from(&signer_seeds);
 
-        CreateAccount {
-            from: payer_info,
-            to: stealth_pool_info,
-            space: StealthPool::LEN as u64,
-            lamports,
-            owner: &crate::ID,
+            CreateAccount {
+                from: payer_info,
+                to: stealth_pool_info,
+                space: StealthPool::LEN as u64,
+                lamports,
+                owner: &crate::ID,
+            }
+            .invoke_signed(&[signer])?;
+        } else {
+            let signer_seeds = [
+                Seed::from(StealthPool::SEED),
+                Seed::from(&handle[..StealthPool::MAX_HANDLE_SEED_BYTES]),
+                Seed::from(&handle[StealthPool::MAX_HANDLE_SEED_BYTES..]),
+                Seed::from(&bump_seed),
+            ];
+            let signer = Signer::from(&signer_seeds);
+
+            CreateAccount {
+                from: payer_info,
+                to: stealth_pool_info,
+                space: StealthPool::LEN as u64,
+                lamports,
+                owner: &crate::ID,
+            }
+            .invoke_signed(&[signer])?;
         }
-        .invoke_signed(&[signer])?;
     } else {
         require!(
             stealth_pool_info.data_len() == StealthPool::LEN,
@@ -88,19 +112,41 @@ pub fn process_ensure_stealth_pool_delegated(accounts: &[AccountView], instructi
         validator: args.validator().copied(),
         ..DelegateConfig::default()
     };
-    let seeds = StealthPool::seeds(args.handle_hash());
+    if handle.len() <= StealthPool::MAX_HANDLE_SEED_BYTES {
+        let seeds = [StealthPool::SEED, handle];
 
-    DelegateAccountCpiBuilder::new(
-        payer_info,
-        stealth_pool_info,
-        owner_program,
-        buffer_acc,
-        delegation_record,
-        delegation_metadata,
-        system_program,
-    )
-    .seeds(&seeds)
-    .bump(bump)
-    .config(config)
-    .invoke()
+        DelegateAccountCpiBuilder::new(
+            payer_info,
+            stealth_pool_info,
+            owner_program,
+            buffer_acc,
+            delegation_record,
+            delegation_metadata,
+            system_program,
+        )
+        .seeds(&seeds)
+        .bump(bump)
+        .config(config)
+        .invoke()
+    } else {
+        let seeds = [
+            StealthPool::SEED,
+            &handle[..StealthPool::MAX_HANDLE_SEED_BYTES],
+            &handle[StealthPool::MAX_HANDLE_SEED_BYTES..],
+        ];
+
+        DelegateAccountCpiBuilder::new(
+            payer_info,
+            stealth_pool_info,
+            owner_program,
+            buffer_acc,
+            delegation_record,
+            delegation_metadata,
+            system_program,
+        )
+        .seeds(&seeds)
+        .bump(bump)
+        .config(config)
+        .invoke()
+    }
 }

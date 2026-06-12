@@ -36,7 +36,7 @@ import {
 
 import app from "./app";
 import {
-  deriveStealthPoolFromHash,
+  deriveStealthPoolFromHandle,
   TOKEN_2022_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
 } from "./lib/solana";
@@ -56,9 +56,15 @@ const owner = Keypair.generate().publicKey.toBase58();
 const destination = Keypair.generate().publicKey.toBase58();
 const resolvedValidator = Keypair.generate().publicKey.toBase58();
 const stealthHandle = "john.doe@magicblock.id";
-const stealthHandleHash
-  = "c76229d36cb5b94158e26526845f91decc075f7e85c0624cb988e40acec01f1e";
-const stealthPool = "U9J8KRwqDoqVN4H1qvv6GzKdxQ2k1Jq8dqczeaMyc39";
+const stealthPool = deriveStealthPoolFromHandle(stealthHandle)[0].toBase58();
+
+function createStealthHandleStorage(handle: string) {
+  const handleBytes = Buffer.from(handle, "utf8");
+  const storage = Buffer.alloc(65);
+  storage[0] = handleBytes.length;
+  storage.set(handleBytes, 1);
+  return storage;
+}
 
 function deriveAssociatedTokenAddress(mint: string, owner: string) {
   const [ata] = PublicKey.findProgramAddressSync(
@@ -133,7 +139,7 @@ function createDelegationAccountInfo(validator: PublicKey): AccountInfo<Buffer> 
 }
 
 function createStealthPoolAccountInfo(): AccountInfo<Buffer> {
-  const data = Buffer.alloc(651);
+  const data = Buffer.alloc(428);
   data.set(Buffer.from("stpool@2"), 0);
   return {
     data,
@@ -3561,7 +3567,6 @@ describe("app", () => {
       kind: string;
       sendTo: string;
       stealthPool: string;
-      handleHash: string;
       transactionBase64: string;
       requiredSigners: string[];
       setupTransaction: {
@@ -3574,7 +3579,7 @@ describe("app", () => {
     expect(json.kind).toBe("stealthPool");
     expect(json.sendTo).toBe("ephemeral");
     expect(json.stealthPool).toBe(stealthPool);
-    expect(json.handleHash).toBe(stealthHandleHash);
+    expect(json).not.toHaveProperty("handleHash");
     expect(json.requiredSigners.sort()).toEqual([authority, payer].sort());
     expect(json.setupTransaction.sendTo).toBe("base");
     expect(json.setupTransaction.requiredSigners).toEqual([payer]);
@@ -3600,9 +3605,10 @@ describe("app", () => {
       DELEGATION_PROGRAM_ID.toBase58(),
       SystemProgram.programId.toBase58(),
     ]);
+    const handleStorage = createStealthHandleStorage(stealthHandle);
     expect([...setupInstruction.data]).toEqual([
       22,
-      ...Buffer.from(stealthHandleHash, "hex"),
+      ...handleStorage,
       ...new PublicKey(json.setupTransaction.validator).toBuffer(),
     ]);
 
@@ -3619,19 +3625,14 @@ describe("app", () => {
       authority,
       SystemProgram.programId.toBase58(),
     ]);
-    const handleBytes = Buffer.from(stealthHandle, "utf8");
-    expect([...instruction.data.subarray(0, 35)]).toEqual([
+    expect([...instruction.data.subarray(0, 68)]).toEqual([
       21,
-      ...Buffer.from(stealthHandleHash, "hex"),
+      ...handleStorage,
       1,
-      handleBytes.length,
+      1,
     ]);
-    expect(instruction.data.subarray(35, 35 + handleBytes.length).toString("utf8")).toBe(
-      stealthHandle,
-    );
-    const destinationsOffset = 35 + handleBytes.length;
-    expect(instruction.data[destinationsOffset]).toBe(1);
-    expect(instruction.data.subarray(destinationsOffset + 1).toString("hex")).toBe(
+    const destinationsOffset = 68;
+    expect(instruction.data.subarray(destinationsOffset).toString("hex")).toBe(
       new PublicKey(destination).toBuffer().toString("hex"),
     );
   });
@@ -3658,16 +3659,33 @@ describe("app", () => {
 
     const json = (await response.json()) as {
       stealthPool: string;
-      handleHash: string;
       exists: boolean;
+      handleHash?: unknown;
       destinations?: unknown;
     };
     expect(json).toEqual({
       stealthPool,
-      handleHash: stealthHandleHash,
       exists: true,
     });
     expect(json.destinations).toBeUndefined();
+  });
+
+  it("derives stealth pool PDAs with two handle seeds after 32 bytes", () => {
+    const longHandle = "john.doe-long-handle-more-than-32.block";
+    const handleBytes = Buffer.from(longHandle, "utf8");
+    expect(handleBytes.length).toBeGreaterThan(32);
+
+    const [actual] = deriveStealthPoolFromHandle(longHandle);
+    const [expected] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("stealth_pool"),
+        handleBytes.subarray(0, 32),
+        handleBytes.subarray(32),
+      ],
+      EPHEMERAL_SPL_TOKEN_PROGRAM_ID,
+    );
+
+    expect(actual.toBase58()).toBe(expected.toBase58());
   });
 
   it("rejects stealth transfers from ephemeral balance", async () => {
@@ -3704,9 +3722,7 @@ describe("app", () => {
 
   it("rejects stealth transfers when the derived pool PDA is missing", async () => {
     const mint = new PublicKey("So11111111111111111111111111111111111111112");
-    const [stealthPoolPubkey] = deriveStealthPoolFromHash(
-      Buffer.from(stealthHandleHash, "hex"),
-    );
+    const [stealthPoolPubkey] = deriveStealthPoolFromHandle(stealthHandle);
     expect(stealthPoolPubkey.toBase58()).toBe(stealthPool);
     const getAccountInfo = vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(
       async function getAccountInfo(
@@ -3753,9 +3769,7 @@ describe("app", () => {
 
   it.skip("builds a base stealth transfer after verifying the derived pool PDA exists", async () => {
     const mint = new PublicKey("So11111111111111111111111111111111111111112");
-    const [stealthPoolPubkey] = deriveStealthPoolFromHash(
-      Buffer.from(stealthHandleHash, "hex"),
-    );
+    const [stealthPoolPubkey] = deriveStealthPoolFromHandle(stealthHandle);
     expect(stealthPoolPubkey.toBase58()).toBe(stealthPool);
 
     vi.spyOn(Connection.prototype, "getLatestBlockhash").mockImplementation(

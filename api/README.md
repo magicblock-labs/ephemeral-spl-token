@@ -48,7 +48,7 @@ Important behavior:
 - `deposit` always uses `escrowIndex = 0`
 - `withdraw` uses `withdrawSpl(...)`
 - `transfer` uses `transferSpl(...)`
-- stealth handles are hashed exactly as provided with SHA-256 over UTF-8 bytes
+- stealth handles are derived exactly as provided from UTF-8 bytes, capped at 64 bytes and split into 32-byte PDA seed chunks when needed
 - `transfer-stealth` uses the derived stealth-pool PDA as the virtual destination owner
 - every SPL endpoint accepts an optional `cluster` parameter
 - `cluster=mainnet` uses `BASE_RPC_URL` and `EPHEMERAL_RPC_URL`
@@ -703,7 +703,7 @@ Relevant fields:
 
 Builds an unsigned base-chain transaction that initializes or updates a stealth pool. The caller provides the exact handle string, payer, authority, and 1 to 10 destination owner keys.
 
-The API does not canonicalize the handle. For example, `John.Doe@magicblock.id` and `john.doe@magicblock.id` hash to different pools. The update transaction also stores the exact handle bytes in the stealth-pool PDA for off-chain display/lookup, capped at 255 UTF-8 bytes.
+The API does not canonicalize the handle. For example, `John.Doe@magicblock.id` and `john.doe@magicblock.id` derive different pools. The update transaction stores the exact handle bytes in the stealth-pool PDA for off-chain display/lookup, capped at 64 UTF-8 bytes.
 
 Temporary integration note: this setup transaction is currently built for base so the end-to-end handle flow can be exercised without ER auth. The ER is expected to read/clone the pool state for private transfer resolution.
 
@@ -722,7 +722,6 @@ curl -X POST http://127.0.0.1:8787/v1/spl/stealth-pool \
 Response includes:
 
 - `stealthPool`: derived PDA
-- `handleHash`: lowercase hex SHA-256 hash
 - normal unsigned transaction fields
 
 ### `GET /v1/spl/stealth-pool`
@@ -735,7 +734,7 @@ curl "http://127.0.0.1:8787/v1/spl/stealth-pool?handle=john.doe%40magicblock.id"
 
 ### `POST /v1/spl/transfer-stealth`
 
-Builds an unsigned private transfer addressed to a handle. The API hashes `toHandle`, derives the stealth-pool PDA, verifies the pool account exists, and passes that PDA as the private transfer destination owner.
+Builds an unsigned private transfer addressed to a handle. The API derives the stealth-pool PDA from `toHandle`, verifies the pool account exists, and passes that PDA as the private transfer destination owner.
 
 Missing or wrong handles are rejected before an unsigned transaction is returned.
 

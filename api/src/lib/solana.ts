@@ -102,7 +102,9 @@ const UPDATE_STEALTH_POOL_DISCRIMINATOR = 21;
 const ENSURE_STEALTH_POOL_DELEGATED_DISCRIMINATOR = 22;
 const STEALTH_POOL_SEED = Buffer.from("stealth_pool");
 const STEALTH_POOL_SPLIT_ACROSS_KEYS_FLAG = 1 << 0;
-const MAX_STEALTH_HANDLE_BYTES = 255;
+const MAX_STEALTH_HANDLE_BYTES = 64;
+const STEALTH_HANDLE_STORAGE_BYTES = 1 + MAX_STEALTH_HANDLE_BYTES;
+const MAX_STEALTH_HANDLE_SEED_BYTES = 32;
 // Keep these defaults aligned with scripts/create-private-transfer-lut.js. Updating them requires a redeploy.
 const PRIVATE_BASE_TO_BASE_TRANSFER_LOOKUP_TABLES = {
   mainnet: new PublicKey("54M1BrqVSg1UGTmhH44gQPsPVyuMpmcVBkaY2wYNSVZB"),
@@ -509,12 +511,6 @@ function createMemoInstruction(memo: string) {
   });
 }
 
-function bytesToHex(bytes: Uint8Array) {
-  return [...bytes]
-    .map(byte => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
-
 function requireAuthToken(authToken: string | undefined, message: string) {
   if (!authToken) {
     throw new ApiError(400, "MISSING_AUTH_TOKEN", message);
@@ -522,41 +518,46 @@ function requireAuthToken(authToken: string | undefined, message: string) {
 }
 
 function encodeStealthHandle(handle: string) {
-  return new TextEncoder().encode(handle);
-}
-
-export async function hashStealthHandle(handle: string) {
-  const handleBytes = encodeStealthHandle(handle);
-  if (handleBytes.length > MAX_STEALTH_HANDLE_BYTES) {
-    throw new ApiError(400, "INVALID_STEALTH_HANDLE", `handle must be ${MAX_STEALTH_HANDLE_BYTES} UTF-8 bytes or fewer`);
+  const handleBytes = new TextEncoder().encode(handle);
+  if (handleBytes.length === 0 || handleBytes.length > MAX_STEALTH_HANDLE_BYTES) {
+    throw new ApiError(400, "INVALID_STEALTH_HANDLE", `handle must be between 1 and ${MAX_STEALTH_HANDLE_BYTES} UTF-8 bytes`);
   }
 
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    handleBytes,
-  );
-
-  return new Uint8Array(digest);
+  return handleBytes;
 }
 
-export function deriveStealthPoolFromHash(handleHash: Uint8Array): [PublicKey, number] {
-  if (handleHash.length !== 32) {
-    throw new ApiError(400, "INVALID_STEALTH_HANDLE_HASH", "handle hash must be 32 bytes");
-  }
+function encodeStealthHandleStorage(handleBytes: Uint8Array) {
+  const storage = Buffer.alloc(STEALTH_HANDLE_STORAGE_BYTES);
+  storage[0] = handleBytes.length;
+  storage.set(handleBytes, 1);
+  return storage;
+}
 
+function deriveStealthPoolFromHandleBytes(handleBytes: Uint8Array): [PublicKey, number] {
+  const handleSeed = Buffer.from(handleBytes);
+  const seeds = handleBytes.length <= MAX_STEALTH_HANDLE_SEED_BYTES
+    ? [STEALTH_POOL_SEED, handleSeed]
+    : [
+        STEALTH_POOL_SEED,
+        handleSeed.subarray(0, MAX_STEALTH_HANDLE_SEED_BYTES),
+        handleSeed.subarray(MAX_STEALTH_HANDLE_SEED_BYTES),
+      ];
   return PublicKey.findProgramAddressSync(
-    [STEALTH_POOL_SEED, Buffer.from(handleHash)],
+    seeds,
     EPHEMERAL_SPL_TOKEN_PROGRAM_ID,
   );
 }
 
-async function resolveStealthPool(handle: string) {
-  const handleHash = await hashStealthHandle(handle);
-  const [stealthPool] = deriveStealthPoolFromHash(handleHash);
+export function deriveStealthPoolFromHandle(handle: string): [PublicKey, number] {
+  return deriveStealthPoolFromHandleBytes(encodeStealthHandle(handle));
+}
+
+function resolveStealthPool(handle: string) {
+  const handleBytes = encodeStealthHandle(handle);
+  const [stealthPool] = deriveStealthPoolFromHandleBytes(handleBytes);
 
   return {
-    handleHash,
-    handleHashHex: bytesToHex(handleHash),
+    handleStorage: encodeStealthHandleStorage(handleBytes),
     stealthPool,
   };
 }
@@ -598,28 +599,22 @@ function updateStealthPoolInstruction(
   payer: PublicKey,
   stealthPool: PublicKey,
   authority: PublicKey,
-  handle: string,
-  handleHash: Uint8Array,
+  handleStorage: Uint8Array,
   destinations: PublicKey[],
   flags: number,
 ) {
-  const handleBytes = encodeStealthHandle(handle);
-  if (handleBytes.length === 0 || handleBytes.length > MAX_STEALTH_HANDLE_BYTES) {
-    throw new ApiError(400, "INVALID_STEALTH_HANDLE", `handle must be between 1 and ${MAX_STEALTH_HANDLE_BYTES} UTF-8 bytes`);
+  if (handleStorage.length !== STEALTH_HANDLE_STORAGE_BYTES) {
+    throw new ApiError(400, "INVALID_STEALTH_HANDLE", "handle storage must be 65 bytes");
   }
 
-  const data = Buffer.alloc(1 + 32 + 1 + 1 + handleBytes.length + 1 + destinations.length * 32);
+  const data = Buffer.alloc(1 + STEALTH_HANDLE_STORAGE_BYTES + 1 + 1 + destinations.length * 32);
   let offset = 0;
   data[offset] = UPDATE_STEALTH_POOL_DISCRIMINATOR;
   offset += 1;
-  data.set(handleHash, offset);
-  offset += 32;
+  data.set(handleStorage, offset);
+  offset += STEALTH_HANDLE_STORAGE_BYTES;
   data[offset] = flags;
   offset += 1;
-  data[offset] = handleBytes.length;
-  offset += 1;
-  data.set(handleBytes, offset);
-  offset += handleBytes.length;
   data[offset] = destinations.length;
   offset += 1;
 
@@ -643,15 +638,19 @@ function updateStealthPoolInstruction(
 function ensureStealthPoolDelegatedInstruction(
   payer: PublicKey,
   stealthPool: PublicKey,
-  handleHash: Uint8Array,
+  handleStorage: Uint8Array,
   validator?: PublicKey,
 ) {
-  const data = Buffer.alloc(1 + 32 + (validator ? 32 : 0));
+  if (handleStorage.length !== STEALTH_HANDLE_STORAGE_BYTES) {
+    throw new ApiError(400, "INVALID_STEALTH_HANDLE", "handle storage must be 65 bytes");
+  }
+
+  const data = Buffer.alloc(1 + STEALTH_HANDLE_STORAGE_BYTES + (validator ? 32 : 0));
   let offset = 0;
   data[offset] = ENSURE_STEALTH_POOL_DELEGATED_DISCRIMINATOR;
   offset += 1;
-  data.set(handleHash, offset);
-  offset += 32;
+  data.set(handleStorage, offset);
+  offset += STEALTH_HANDLE_STORAGE_BYTES;
   if (validator) {
     data.set(validator.toBuffer(), offset);
   }
@@ -1626,7 +1625,7 @@ export async function buildUpdateStealthPoolTransaction(
     const authority = parsePublicKey(input.authority, "authority");
     const destinations = input.destinations.map((destination, index) =>
       parsePublicKey(destination, `destinations[${index}]`));
-    const { handleHash, handleHashHex, stealthPool } = await resolveStealthPool(input.handle);
+    const { handleStorage, stealthPool } = resolveStealthPool(input.handle);
     const flags = input.splitAcrossKeys ? STEALTH_POOL_SPLIT_ACROSS_KEYS_FLAG : 0;
     const validator = await resolveValidator(config, input.validator);
     const setupBlockhash = await getBlockhash(config, "base");
@@ -1635,7 +1634,7 @@ export async function buildUpdateStealthPoolTransaction(
       ensureStealthPoolDelegatedInstruction(
         payer,
         stealthPool,
-        handleHash,
+        handleStorage,
         validator,
       ),
     ];
@@ -1644,8 +1643,7 @@ export async function buildUpdateStealthPoolTransaction(
         payer,
         stealthPool,
         authority,
-        input.handle,
-        handleHash,
+        handleStorage,
         destinations,
         flags,
       ),
@@ -1673,7 +1671,6 @@ export async function buildUpdateStealthPoolTransaction(
       kind: "stealthPool",
       setupTransaction,
       stealthPool: stealthPool.toBase58(),
-      handleHash: handleHashHex,
     };
   } catch (error) {
     throwTransactionBuildError(error);
@@ -1686,7 +1683,7 @@ export async function getStealthPoolStatus(
 ): Promise<StealthPoolStatusResponse> {
   const config = resolveRpcConfig(env, input.cluster);
 
-  const { handleHashHex, stealthPool } = await resolveStealthPool(input.handle);
+  const { stealthPool } = resolveStealthPool(input.handle);
   const connection = getBaseConnection(config);
 
   try {
@@ -1695,7 +1692,6 @@ export async function getStealthPoolStatus(
 
     return {
       stealthPool: stealthPool.toBase58(),
-      handleHash: handleHashHex,
       exists,
     };
   } catch (error) {

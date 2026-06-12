@@ -8,7 +8,7 @@ const DEFAULT_DEPOSIT_DEVNET_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncD
 const DEPOSIT_EXAMPLE_OWNER = "3rXKwQ1kpjBd5tdcco32qsvqUh1BnZjcYnS5kYrP7AYE";
 const TRANSFER_EXAMPLE_TO = "Bt9oNR5cCtnfuMmXgWELd6q5i974PdEMQDUE55nBC57L";
 const BALANCE_EXAMPLE_ADDRESS = "Bt9oNR5cCtnfuMmXgWELd6q5i974PdEMQDUE55nBC57L";
-const MAX_STEALTH_HANDLE_BYTES = 255;
+const MAX_STEALTH_HANDLE_BYTES = 64;
 const textEncoder = new TextEncoder();
 
 export const transferFeesSchema = z.object({
@@ -159,7 +159,7 @@ export const stealthHandleSchema = z.string().min(1).refine(
   `Handle must be ${MAX_STEALTH_HANDLE_BYTES} UTF-8 bytes or fewer.`,
 ).openapi({
   example: "john.doe@magicblock.id",
-  description: "Exact canonical handle string, up to 255 UTF-8 bytes. The API hashes these UTF-8 bytes as-is; it does not trim, lowercase, or normalize.",
+  description: "Exact canonical handle string, up to 64 UTF-8 bytes. The API derives the stealth-pool PDA from these UTF-8 bytes as-is; it does not trim, lowercase, or normalize.",
 });
 
 export const stealthPoolRequestSchema = z.object({
@@ -202,7 +202,6 @@ export const stealthPoolResponseSchema = transactionResponseSchema.extend({
   kind: z.literal("stealthPool"),
   setupTransaction: transactionResponseSchema,
   stealthPool: publicKeySchema,
-  handleHash: z.string(),
 }).openapi("StealthPoolResponse");
 export type StealthPoolResponse = z.infer<typeof stealthPoolResponseSchema>;
 
@@ -218,7 +217,6 @@ export type StealthPoolStatusRequest = z.infer<typeof stealthPoolStatusRequestSc
 
 export const stealthPoolStatusResponseSchema = z.object({
   stealthPool: publicKeySchema,
-  handleHash: z.string(),
   exists: z.boolean(),
 }).openapi("StealthPoolStatusResponse");
 export type StealthPoolStatusResponse = z.infer<typeof stealthPoolStatusResponseSchema>;

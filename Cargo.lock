@@ -1877,7 +1877,6 @@ dependencies = [
  "solana-program-pack 3.0.0",
  "solana-program-test",
  "solana-pubkey 4.0.0",
- "solana-sha256-hasher 3.1.0",
  "solana-signature 3.1.0",
  "solana-signer 3.0.0",
  "solana-system-interface 2.0.0",
