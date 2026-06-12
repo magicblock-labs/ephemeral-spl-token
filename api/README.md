@@ -703,7 +703,7 @@ Relevant fields:
 
 Builds an unsigned base-chain transaction that initializes or updates a stealth pool. The caller provides the exact handle string, payer, authority, and 1 to 10 destination owner keys.
 
-The API does not canonicalize the handle. For example, `John.Doe@magicblock.id` and `john.doe@magicblock.id` hash to different pools.
+The API does not canonicalize the handle. For example, `John.Doe@magicblock.id` and `john.doe@magicblock.id` hash to different pools. The update transaction also stores the exact handle bytes in the stealth-pool PDA for off-chain display/lookup, capped at 255 UTF-8 bytes.
 
 Temporary integration note: this setup transaction is currently built for base so the end-to-end handle flow can be exercised without ER auth. The ER is expected to read/clone the pool state for private transfer resolution.
 

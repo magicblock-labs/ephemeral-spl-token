@@ -133,8 +133,8 @@ function createDelegationAccountInfo(validator: PublicKey): AccountInfo<Buffer> 
 }
 
 function createStealthPoolAccountInfo(): AccountInfo<Buffer> {
-  const data = Buffer.alloc(395);
-  data.set(Buffer.from("stpool@1"), 0);
+  const data = Buffer.alloc(651);
+  data.set(Buffer.from("stpool@2"), 0);
   return {
     data,
     executable: false,
@@ -3619,13 +3619,19 @@ describe("app", () => {
       authority,
       SystemProgram.programId.toBase58(),
     ]);
+    const handleBytes = Buffer.from(stealthHandle, "utf8");
     expect([...instruction.data.subarray(0, 35)]).toEqual([
       21,
       ...Buffer.from(stealthHandleHash, "hex"),
       1,
-      1,
+      handleBytes.length,
     ]);
-    expect(instruction.data.subarray(35).toString("hex")).toBe(
+    expect(instruction.data.subarray(35, 35 + handleBytes.length).toString("utf8")).toBe(
+      stealthHandle,
+    );
+    const destinationsOffset = 35 + handleBytes.length;
+    expect(instruction.data[destinationsOffset]).toBe(1);
+    expect(instruction.data.subarray(destinationsOffset + 1).toString("hex")).toBe(
       new PublicKey(destination).toBuffer().toString("hex"),
     );
   });

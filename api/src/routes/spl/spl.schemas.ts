@@ -8,6 +8,8 @@ const DEFAULT_DEPOSIT_DEVNET_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncD
 const DEPOSIT_EXAMPLE_OWNER = "3rXKwQ1kpjBd5tdcco32qsvqUh1BnZjcYnS5kYrP7AYE";
 const TRANSFER_EXAMPLE_TO = "Bt9oNR5cCtnfuMmXgWELd6q5i974PdEMQDUE55nBC57L";
 const BALANCE_EXAMPLE_ADDRESS = "Bt9oNR5cCtnfuMmXgWELd6q5i974PdEMQDUE55nBC57L";
+const MAX_STEALTH_HANDLE_BYTES = 255;
+const textEncoder = new TextEncoder();
 
 export const transferFeesSchema = z.object({
   lamports: z.string().openapi({
@@ -152,9 +154,12 @@ export const undelegateEphemeralAtaResponseSchema = transactionResponseSchema.ex
 }).openapi("UndelegateEphemeralAtaResponse");
 export type UndelegateEphemeralAtaResponse = z.infer<typeof undelegateEphemeralAtaResponseSchema>;
 
-export const stealthHandleSchema = z.string().min(1).openapi({
+export const stealthHandleSchema = z.string().min(1).refine(
+  handle => textEncoder.encode(handle).length <= MAX_STEALTH_HANDLE_BYTES,
+  `Handle must be ${MAX_STEALTH_HANDLE_BYTES} UTF-8 bytes or fewer.`,
+).openapi({
   example: "john.doe@magicblock.id",
-  description: "Exact canonical handle string. The API hashes these UTF-8 bytes as-is; it does not trim, lowercase, or normalize.",
+  description: "Exact canonical handle string, up to 255 UTF-8 bytes. The API hashes these UTF-8 bytes as-is; it does not trim, lowercase, or normalize.",
 });
 
 export const stealthPoolRequestSchema = z.object({

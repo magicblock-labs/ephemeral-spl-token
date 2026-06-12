@@ -8,6 +8,7 @@ use ephemeral_spl_api::{
 };
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use solana_address::Address;
+use solana_sha256_hasher::hash;
 use wheels::layout::Decodable as _;
 
 ///
@@ -35,6 +36,14 @@ pub fn process_update_stealth_pool(accounts: &[AccountView], instruction_data: &
 
     require!(
         args.destinations().len() != 0 && args.destinations().len() <= StealthPool::MAX_DESTINATIONS,
+        ProgramError::InvalidInstructionData
+    );
+    require!(
+        args.handle().len() != 0 && args.handle().len() <= StealthPool::MAX_HANDLE_BYTES,
+        ProgramError::InvalidInstructionData
+    );
+    require!(
+        hash(args.handle()).as_ref() == args.handle_hash(),
         ProgramError::InvalidInstructionData
     );
     require!(
@@ -74,6 +83,12 @@ pub fn process_update_stealth_pool(accounts: &[AccountView], instruction_data: &
         flags: args.flags(),
         authority: *authority_info.address(),
         handle_hash: *args.handle_hash(),
+        handle_len: args.handle().len() as u8,
+        handle: {
+            let mut handle = [0u8; StealthPool::MAX_HANDLE_BYTES];
+            handle[..args.handle().len()].copy_from_slice(args.handle());
+            handle
+        },
         destinations: {
             let mut destinations = [Address::default(); StealthPool::MAX_DESTINATIONS];
             destinations[..args.destinations().len()].copy_from_slice(args.destinations());

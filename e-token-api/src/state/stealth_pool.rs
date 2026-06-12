@@ -28,11 +28,14 @@ pub struct StealthPool {
     // Deterministic handle identifier, usually `hash(canonical_handle)`
     // where canonical_handle could be human-readable id such as `magicblock.id`
     // or `myname@mydomain`.
-    //
-    // The original handle string is not stored, so the program can route
-    // payments by handle hash but cannot recover or display the handle text.
-    //
     pub handle_hash: [u8; 32],
+    //
+    // Exact UTF-8 bytes used to derive `handle_hash`, stored for off-chain
+    // display and reverse lookup. The program treats this as opaque bytes other
+    // than the length cap and hash match enforced during updates.
+    //
+    pub handle_len: u8,
+    pub handle: [u8; 255],
     pub destination_count: u8,
     pub destinations: [Address; 10],
 }
@@ -41,6 +44,7 @@ impl Initializable for StealthPool {
     #[inline(always)]
     fn is_initialized(&self) -> bool {
         self.discriminator == StealthPool::DISCRIMINATOR
+            && self.handle_len != 0
             && self.destination_count != 0
             && self.destination_count as usize <= StealthPool::MAX_DESTINATIONS
     }
@@ -52,9 +56,11 @@ impl RawType for StealthPool {
 
 impl StealthPool {
     // The discriminator has name + version
-    pub const DISCRIMINATOR: [u8; 8] = *b"stpool@1";
+    pub const DISCRIMINATOR: [u8; 8] = *b"stpool@2";
 
     pub const SEED: &'static [u8] = b"stealth_pool";
+
+    pub const MAX_HANDLE_BYTES: usize = 255;
 
     pub const MAX_DESTINATIONS: usize = 10;
 
@@ -100,6 +106,11 @@ impl StealthPool {
         require_eq_keys!(&derived, address_of_self, ProgramError::InvalidSeeds);
 
         Ok(())
+    }
+
+    #[inline(always)]
+    pub fn handle_bytes(&self) -> &[u8] {
+        &self.handle[..self.handle_len as usize]
     }
 
     #[inline(always)]

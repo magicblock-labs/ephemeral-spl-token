@@ -9,8 +9,10 @@ pub struct UpdateStealthPoolArgs {
     // TODO (snawaz): support enum based flags in data-layout
     pub flags: u8,
     #[flexible = 1]
+    pub handle: Vec<u8>,
+    #[flexible = 1]
     pub destinations: Vec<Address>,
 }
 
-static_assertions::const_assert!(UpdateStealthPoolArgs::DATA_LEN_RANGE.0 == 34);
-static_assertions::const_assert!(UpdateStealthPoolArgs::DATA_LEN_RANGE.1 == 8194);
+static_assertions::const_assert!(UpdateStealthPoolArgs::DATA_LEN_RANGE.0 == 35);
+static_assertions::const_assert!(UpdateStealthPoolArgs::DATA_LEN_RANGE.1 == 8450);

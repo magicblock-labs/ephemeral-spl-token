@@ -102,6 +102,7 @@ const UPDATE_STEALTH_POOL_DISCRIMINATOR = 21;
 const ENSURE_STEALTH_POOL_DELEGATED_DISCRIMINATOR = 22;
 const STEALTH_POOL_SEED = Buffer.from("stealth_pool");
 const STEALTH_POOL_SPLIT_ACROSS_KEYS_FLAG = 1 << 0;
+const MAX_STEALTH_HANDLE_BYTES = 255;
 // Keep these defaults aligned with scripts/create-private-transfer-lut.js. Updating them requires a redeploy.
 const PRIVATE_BASE_TO_BASE_TRANSFER_LOOKUP_TABLES = {
   mainnet: new PublicKey("54M1BrqVSg1UGTmhH44gQPsPVyuMpmcVBkaY2wYNSVZB"),
@@ -520,10 +521,19 @@ function requireAuthToken(authToken: string | undefined, message: string) {
   }
 }
 
+function encodeStealthHandle(handle: string) {
+  return new TextEncoder().encode(handle);
+}
+
 export async function hashStealthHandle(handle: string) {
+  const handleBytes = encodeStealthHandle(handle);
+  if (handleBytes.length > MAX_STEALTH_HANDLE_BYTES) {
+    throw new ApiError(400, "INVALID_STEALTH_HANDLE", `handle must be ${MAX_STEALTH_HANDLE_BYTES} UTF-8 bytes or fewer`);
+  }
+
   const digest = await crypto.subtle.digest(
     "SHA-256",
-    new TextEncoder().encode(handle),
+    handleBytes,
   );
 
   return new Uint8Array(digest);
@@ -588,11 +598,17 @@ function updateStealthPoolInstruction(
   payer: PublicKey,
   stealthPool: PublicKey,
   authority: PublicKey,
+  handle: string,
   handleHash: Uint8Array,
   destinations: PublicKey[],
   flags: number,
 ) {
-  const data = Buffer.alloc(1 + 32 + 1 + 1 + destinations.length * 32);
+  const handleBytes = encodeStealthHandle(handle);
+  if (handleBytes.length === 0 || handleBytes.length > MAX_STEALTH_HANDLE_BYTES) {
+    throw new ApiError(400, "INVALID_STEALTH_HANDLE", `handle must be between 1 and ${MAX_STEALTH_HANDLE_BYTES} UTF-8 bytes`);
+  }
+
+  const data = Buffer.alloc(1 + 32 + 1 + 1 + handleBytes.length + 1 + destinations.length * 32);
   let offset = 0;
   data[offset] = UPDATE_STEALTH_POOL_DISCRIMINATOR;
   offset += 1;
@@ -600,6 +616,10 @@ function updateStealthPoolInstruction(
   offset += 32;
   data[offset] = flags;
   offset += 1;
+  data[offset] = handleBytes.length;
+  offset += 1;
+  data.set(handleBytes, offset);
+  offset += handleBytes.length;
   data[offset] = destinations.length;
   offset += 1;
 
@@ -1624,6 +1644,7 @@ export async function buildUpdateStealthPoolTransaction(
         payer,
         stealthPool,
         authority,
+        input.handle,
         handleHash,
         destinations,
         flags,

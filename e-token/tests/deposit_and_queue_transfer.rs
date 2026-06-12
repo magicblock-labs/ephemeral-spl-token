@@ -16,7 +16,7 @@ use serial_test::serial;
 use solana_address::Address;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
-use solana_program::clock::Clock;
+use solana_program::{clock::Clock, hash::hash};
 use solana_program_pack::Pack;
 use solana_program_test::{processor, tokio, ProgramTestContext};
 use solana_pubkey::{pubkey, Pubkey};
@@ -219,6 +219,7 @@ fn build_deposit_and_queue_ix_for_destination(
 fn build_update_stealth_pool_ix(
     payer: Pubkey,
     authority: Pubkey,
+    handle: &[u8],
     handle_hash: [u8; 32],
     flags: u8,
     destinations: &[Pubkey],
@@ -233,6 +234,7 @@ fn build_update_stealth_pool_ix(
         &UpdateStealthPoolArgs {
             handle_hash,
             flags,
+            handle: handle.to_vec(),
             destinations: destination_addresses,
         }
         .encode()
@@ -946,7 +948,8 @@ async fn deposit_and_queue_transfer_return_to_shuttle() {
 #[serial]
 async fn deposit_and_queue_transfer_resolves_stealth_pool_destination() {
     let mut fixture = setup_fixture(None).await;
-    let handle_hash = [42u8; 32];
+    let handle = b"stealth-pool-resolve.block";
+    let handle_hash = hash(handle).to_bytes();
     let destinations = [
         utils::test_keypair("stealth_pool::destination_0").pubkey(),
         utils::test_keypair("stealth_pool::destination_1").pubkey(),
@@ -954,6 +957,7 @@ async fn deposit_and_queue_transfer_resolves_stealth_pool_destination() {
     let (stealth_pool, init_ix) = build_update_stealth_pool_ix(
         fixture.payer,
         fixture.payer,
+        handle,
         handle_hash,
         StealthPoolFlags::Empty.value(),
         &destinations,
@@ -990,6 +994,18 @@ async fn deposit_and_queue_transfer_resolves_stealth_pool_destination() {
     .await
     .unwrap();
 
+    let stealth_pool_account = fixture
+        .context
+        .banks_client
+        .get_account(stealth_pool)
+        .await
+        .unwrap()
+        .expect("stealth pool account must exist");
+    let pool = bytemuck::try_from_bytes::<StealthPool>(&stealth_pool_account.data).unwrap();
+    assert_eq!(pool.handle_hash, handle_hash);
+    assert_eq!(pool.handle_len as usize, handle.len());
+    assert_eq!(&pool.handle[..handle.len()], handle);
+
     let queue_account = fixture
         .context
         .banks_client
@@ -1010,7 +1026,8 @@ async fn deposit_and_queue_transfer_resolves_stealth_pool_destination() {
 #[serial]
 async fn deposit_and_queue_transfer_can_split_stealth_pool_across_keys() {
     let mut fixture = setup_fixture(None).await;
-    let handle_hash = [77u8; 32];
+    let handle = b"stealth-pool-split.block";
+    let handle_hash = hash(handle).to_bytes();
     let destinations = [
         utils::test_keypair("stealth_pool::split_destination_0").pubkey(),
         utils::test_keypair("stealth_pool::split_destination_1").pubkey(),
@@ -1019,6 +1036,7 @@ async fn deposit_and_queue_transfer_can_split_stealth_pool_across_keys() {
     let (stealth_pool, init_ix) = build_update_stealth_pool_ix(
         fixture.payer,
         fixture.payer,
+        handle,
         handle_hash,
         StealthPoolFlags::SplitAcrossKeys.value(),
         &destinations,
