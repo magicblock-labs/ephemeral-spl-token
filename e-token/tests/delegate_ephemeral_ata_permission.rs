@@ -6,9 +6,7 @@ use ephemeral_rollups_pinocchio::{
         delegation_record_pda_from_delegated_account,
     },
 };
-use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
-use ephemeral_spl_api::ID as PROGRAM;
+use ephemeral_spl_api::{instruction, state::ephemeral_ata::EphemeralAta, ID as PROGRAM};
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::rent::Rent;

@@ -1,7 +1,6 @@
 use bytemuck::{Pod, Zeroable};
 use pinocchio::{cpi::Seed, error::ProgramError};
-use solana_address::address_eq;
-use solana_address::Address;
+use solana_address::{address_eq, Address};
 
 /// Current queue version that stores ready timestamps in milliseconds and client reference ids.
 /// Bump this value only when the on-chain layout changes or queue semantics require it.

@@ -1,10 +1,11 @@
 //! Compare two CU metrics JSON files and print an aligned table with ANSI colors.
 
-use std::collections::BTreeSet;
-use std::env;
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::process;
+use std::{
+    collections::BTreeSet,
+    env, fs,
+    path::{Path, PathBuf},
+    process,
+};
 
 use serde_json::Value;
 

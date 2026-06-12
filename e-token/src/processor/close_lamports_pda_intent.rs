@@ -1,10 +1,12 @@
 use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts_with_ignored};
-use pinocchio::sysvars::rent::Rent;
-use pinocchio::sysvars::Sysvar;
-use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use pinocchio::{
+    error::ProgramError,
+    sysvars::{rent::Rent, Sysvar},
+    AccountView, ProgramResult,
+};
 use solana_address::Address;
 
-use crate::processor::{internal::lamports_pda::derive_lamports_pda, internal::rent_pda::RENT_PDA};
+use crate::processor::internal::{lamports_pda::derive_lamports_pda, rent_pda::RENT_PDA};
 
 const DLP_EPHEMERAL_BALANCE_TAG: &[u8] = b"balance";
 

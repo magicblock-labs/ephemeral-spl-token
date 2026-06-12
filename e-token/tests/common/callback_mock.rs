@@ -1,17 +1,19 @@
 #![allow(dead_code)]
 
-use magicblock_magic_program_api::instruction::CallbackInstruction;
-use magicblock_magic_program_api::pda::{CALLBACK_SEED, CALLBACK_SIGNER_BUMP};
-use magicblock_magic_program_api::CALLBACK_PROGRAM_ID;
-use pinocchio::error::ProgramError;
-use pinocchio::ProgramResult;
+use std::{
+    collections::HashMap,
+    sync::{Mutex, OnceLock},
+};
+
+use magicblock_magic_program_api::{
+    instruction::CallbackInstruction,
+    pda::{CALLBACK_SEED, CALLBACK_SIGNER_BUMP},
+    CALLBACK_PROGRAM_ID,
+};
+use pinocchio::{error::ProgramError, ProgramResult};
 use solana_instruction::Instruction;
-use solana_program::account_info::AccountInfo;
-use solana_program::program::invoke_signed;
-use solana_program::pubkey::Pubkey;
+use solana_program::{account_info::AccountInfo, program::invoke_signed, pubkey::Pubkey};
 use solana_program_test::ProgramTest;
-use std::collections::HashMap;
-use std::sync::{Mutex, OnceLock};
 
 fn captured_execute_callbacks() -> &'static Mutex<Vec<Instruction>> {
     static S: OnceLock<Mutex<Vec<Instruction>>> = OnceLock::new();

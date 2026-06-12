@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
+
 use dlp_api::compact::ClearText;
-use ephemeral_spl_api::instructions::DepositAndDelegateShuttleArgs;
-use ephemeral_spl_api::require_n_accounts;
+use ephemeral_spl_api::{instructions::DepositAndDelegateShuttleArgs, require_n_accounts};
 use pinocchio::{AccountView, ProgramResult};
 use solana_instruction::Instruction;
 use wheels::layout::Decodable as _;

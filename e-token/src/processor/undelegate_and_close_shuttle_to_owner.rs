@@ -1,16 +1,22 @@
-use crate::processor::internal::shuttle_delegation::DEFAULT_ESCROW_INDEX;
-use crate::processor::internal::{get_associated_token_address, validate_token_account};
 use ephemeral_rollups_pinocchio::intent_bundle::{
     ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
 };
-use ephemeral_spl_api::state::{
-    ephemeral_ata::EphemeralAta, load_initialized, shuttle_ephemeral_ata::ShuttleMetadata,
+use ephemeral_spl_api::{
+    require, require_eq_keys, require_n_accounts,
+    state::{
+        ephemeral_ata::EphemeralAta, load_initialized, shuttle_ephemeral_ata::ShuttleMetadata,
+    },
 };
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use solana_address::Address;
 
-use crate::instruction::ESplInternalInstruction;
+use crate::{
+    instruction::ESplInternalInstruction,
+    processor::internal::{
+        get_associated_token_address, shuttle_delegation::DEFAULT_ESCROW_INDEX,
+        validate_token_account,
+    },
+};
 
 const INTENT_BUNDLE_DATA_BUF_SIZE: usize = 1536;
 const CLOSE_SHUTTLE_ATA_COMPUTE_UNITS: u32 = 100_000;

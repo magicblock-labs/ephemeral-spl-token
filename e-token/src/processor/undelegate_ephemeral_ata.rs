@@ -1,5 +1,7 @@
-use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_initialized};
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
+use ephemeral_spl_api::{
+    require, require_eq_keys, require_n_accounts,
+    state::{ephemeral_ata::EphemeralAta, load_initialized},
+};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
 use crate::processor::internal::validate_token_account;

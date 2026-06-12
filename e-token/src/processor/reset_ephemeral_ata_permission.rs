@@ -3,10 +3,9 @@ use ephemeral_rollups_pinocchio::acl::{
     instruction::UpdatePermissionCpiBuilder,
     types::{Member, MemberFlags, MembersArgs},
 };
-use ephemeral_spl_api::instructions::ResetEphemeralAtaPermissionArgs;
-use ephemeral_spl_api::{require, require_eq_keys};
 use ephemeral_spl_api::{
-    require_n_accounts,
+    instructions::ResetEphemeralAtaPermissionArgs,
+    require, require_eq_keys, require_n_accounts,
     state::{ephemeral_ata::EphemeralAta, load_initialized},
 };
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};

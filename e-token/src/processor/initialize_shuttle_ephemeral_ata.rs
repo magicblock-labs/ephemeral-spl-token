@@ -1,5 +1,6 @@
-use ephemeral_spl_api::instructions::InitializeShuttleEphemeralAtaArgs;
-use ephemeral_spl_api::{require, require_n_accounts};
+use ephemeral_spl_api::{
+    instructions::InitializeShuttleEphemeralAtaArgs, require, require_n_accounts,
+};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use wheels::layout::Decodable as _;
 

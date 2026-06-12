@@ -6,9 +6,11 @@
 
 #![allow(dead_code)]
 
-use std::collections::HashMap;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashMap,
+    fs,
+    path::{Path, PathBuf},
+};
 
 use fslock::LockFile;
 use serde::{Deserialize, Serialize};

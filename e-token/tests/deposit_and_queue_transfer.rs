@@ -1,28 +1,32 @@
-use crate::utils::{pre_create_group_receipt, pre_create_stealth_pool};
 use bytemuck::Zeroable;
-use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::instructions::{DepositAndQueueTransferArgs, UpdateStealthPoolArgs};
-use ephemeral_spl_api::state::group_receipt::GroupReceiptHeader;
-use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
-use ephemeral_spl_api::state::stealth_pool::{StealthPool, StealthPoolFlags};
-use ephemeral_spl_api::state::transfer_queue::{
-    queue_views_checked, QueuedTransfer, TransferQueue, TransferQueueHeader, HEADER_LEN, ITEM_LEN,
+use ephemeral_spl_api::{
+    instruction,
+    instructions::{DepositAndQueueTransferArgs, UpdateStealthPoolArgs},
+    state::{
+        group_receipt::GroupReceiptHeader,
+        shuttle_ephemeral_ata::ShuttleMetadata,
+        stealth_pool::{StealthPool, StealthPoolFlags},
+        transfer_queue::{
+            queue_views_checked, QueuedTransfer, TransferQueue, TransferQueueHeader, HEADER_LEN,
+            ITEM_LEN,
+        },
+    },
+    ID as PROGRAM,
 };
-use ephemeral_spl_api::ID as PROGRAM;
 use serial_test::serial;
 use solana_address::Address;
 use solana_instruction::{AccountMeta, Instruction};
+use solana_keypair::Keypair;
 use solana_program::clock::Clock;
 use solana_program_pack::Pack;
+use solana_program_test::{processor, tokio, ProgramTestContext};
+use solana_pubkey::{pubkey, Pubkey};
+use solana_signer::Signer;
+use solana_transaction::{InstructionError, Transaction, TransactionError};
 use spl_token_interface::state::Account;
 use wheels::layout::Encodable as _;
-use {
-    solana_keypair::Keypair,
-    solana_program_test::{processor, tokio, ProgramTestContext},
-    solana_pubkey::{pubkey, Pubkey},
-    solana_signer::Signer,
-    solana_transaction::{InstructionError, Transaction, TransactionError},
-};
+
+use crate::utils::{pre_create_group_receipt, pre_create_stealth_pool};
 
 const MAGIC_PROGRAM: Pubkey = pubkey!("Magic11111111111111111111111111111111111111");
 

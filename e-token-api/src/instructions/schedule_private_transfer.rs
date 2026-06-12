@@ -1,8 +1,7 @@
 use alloc::vec::Vec;
 
-use wheels::variable_offset_layout;
-
 use solana_address::Address;
+use wheels::variable_offset_layout;
 
 #[variable_offset_layout(buffer_offset = 1)]
 pub struct SchedulePrivateTransferArgs {

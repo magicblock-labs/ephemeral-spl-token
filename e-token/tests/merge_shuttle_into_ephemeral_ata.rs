@@ -1,12 +1,15 @@
 use ephemeral_rollups_pinocchio::spl::EphemeralAta;
-use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
-use ephemeral_spl_api::state::{load_initialized, RawType};
-use ephemeral_spl_api::ID as PROGRAM;
+use ephemeral_spl_api::{
+    instruction,
+    state::{load_initialized, shuttle_ephemeral_ata::ShuttleMetadata, RawType},
+    ID as PROGRAM,
+};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program_pack::Pack;
+use solana_program_test::tokio;
+use solana_signer::Signer;
+use solana_transaction::Transaction;
 use spl_token_interface::state::Account;
-use {solana_program_test::tokio, solana_signer::Signer, solana_transaction::Transaction};
 
 mod common;
 mod utils;

@@ -1,5 +1,4 @@
 use std::sync::{Mutex, OnceLock};
-use wheels::layout::Encodable as _;
 
 use common::magic_mock::{
     clear_all_captured, clear_captured_cancels, clear_captured_intent_bundles,
@@ -7,32 +6,32 @@ use common::magic_mock::{
     take_captured_schedules, CapturedScheduleAccount,
 };
 use dlp_api::pda::magic_fee_vault_pda_from_validator;
-use ephemeral_spl_api::instructions::{DepositAndQueueTransferArgs, ExecuteQueuedTransferArgs};
-use ephemeral_spl_api::state::{
-    ephemeral_ata::EphemeralAta,
-    transfer_queue::{
-        QueuedTransfer, SplTokenProgram, TransferQueueHeader, HEADER_LEN, ITEM_LEN, QUEUE_SEED,
+use ephemeral_spl_api::{
+    instruction,
+    instructions::{DepositAndQueueTransferArgs, ExecuteQueuedTransferArgs},
+    state::{
+        ephemeral_ata::EphemeralAta,
+        transfer_queue::{
+            QueuedTransfer, SplTokenProgram, TransferQueue, TransferQueueHeader, HEADER_LEN,
+            ITEM_LEN, QUEUE_SEED,
+        },
     },
+    ID as PROGRAM,
 };
-use ephemeral_spl_api::ID as PROGRAM;
-use ephemeral_spl_api::{instruction, state::transfer_queue::TransferQueue};
 use magicblock_magic_program_api::{Pubkey as MagicPubkey, MAGIC_CONTEXT_PUBKEY};
 use solana_account::Account as SolanaAccount;
 use solana_instruction::{AccountMeta, Instruction};
+use solana_keypair::Keypair;
 use solana_program::{account_info::AccountInfo, entrypoint::ProgramResult};
 use solana_program_pack::Pack;
+use solana_program_test::{processor, tokio, ProgramTest, ProgramTestContext};
+use solana_pubkey::Pubkey;
+use solana_signer::Signer;
+use solana_transaction::Transaction;
 use spl_token_interface::state::Account;
+use wheels::layout::Encodable as _;
 
-use crate::utils::TestInternalInstruction;
-
-use crate::common::magic_mock;
-use {
-    solana_keypair::Keypair,
-    solana_program_test::{processor, tokio, ProgramTest, ProgramTestContext},
-    solana_pubkey::Pubkey,
-    solana_signer::Signer,
-    solana_transaction::Transaction,
-};
+use crate::{common::magic_mock, utils::TestInternalInstruction};
 
 mod common;
 mod utils;

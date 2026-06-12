@@ -1,7 +1,10 @@
-use ephemeral_spl_api::state::transfer_queue::{
-    queue_views_checked, TransferQueue, HEADER_LEN, ITEM_LEN, TRANSFER_QUEUE_VERSION,
+use ephemeral_spl_api::{
+    instruction,
+    state::transfer_queue::{
+        queue_views_checked, TransferQueue, HEADER_LEN, ITEM_LEN, TRANSFER_QUEUE_VERSION,
+    },
+    ID as PROGRAM,
 };
-use ephemeral_spl_api::{instruction, ID as PROGRAM};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
 use solana_program_test::tokio;

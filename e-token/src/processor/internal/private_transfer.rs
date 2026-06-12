@@ -1,31 +1,38 @@
 #[cfg(feature = "logging")]
 use alloc::string::ToString;
 
-use dlp_api::args::{
-    EncryptedBuffer, MaybeEncryptedAccountMeta, MaybeEncryptedInstruction, MaybeEncryptedIxData,
-    MaybeEncryptedPubkey, PostDelegationActions,
+use dlp_api::{
+    args::{
+        EncryptedBuffer, MaybeEncryptedAccountMeta, MaybeEncryptedInstruction,
+        MaybeEncryptedIxData, MaybeEncryptedPubkey, PostDelegationActions,
+    },
+    compact::{self, ClearTextWithInsertable},
 };
-use dlp_api::compact::{self, ClearTextWithInsertable};
 use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
-use ephemeral_spl_api::debug_log;
-use ephemeral_spl_api::instruction::ESplInstruction;
-use ephemeral_spl_api::state::transfer_queue::{queue_views, TransferQueue};
-use ephemeral_spl_api::{consts, require, require_eq_keys, require_n_accounts};
+use ephemeral_spl_api::{
+    consts, debug_log,
+    instruction::ESplInstruction,
+    require, require_eq_keys, require_n_accounts,
+    state::transfer_queue::{queue_views, TransferQueue},
+};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use solana_address::Address;
 #[cfg(not(feature = "no-fees"))]
 use solana_instruction::{AccountMeta, Instruction};
 
-use crate::processor::internal::group_receipt::derive_group_receipt_id;
 #[cfg(not(feature = "no-fees"))]
 use crate::processor::internal::read_mint_decimals;
-use crate::processor::internal::shuttle_delegation::{
-    merge_shuttle_into_token_account_action,
-    process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions,
-    undelegate_and_close_shuttle_action, CloseStashArgs, DepositAndDelegateShuttleAccounts,
-    DepositAndDelegateShuttleCommonArgs,
+use crate::processor::internal::{
+    get_associated_token_address,
+    group_receipt::derive_group_receipt_id,
+    shuttle_delegation::{
+        merge_shuttle_into_token_account_action,
+        process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions,
+        undelegate_and_close_shuttle_action, CloseStashArgs, DepositAndDelegateShuttleAccounts,
+        DepositAndDelegateShuttleCommonArgs,
+    },
+    MAGIC_VAULT_ID,
 };
-use crate::processor::internal::{get_associated_token_address, MAGIC_VAULT_ID};
 
 #[cfg(not(feature = "no-fees"))]
 const TRANSFER_CHECKED_DISCRIMINATOR: u8 = 12;

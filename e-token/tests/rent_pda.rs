@@ -1,5 +1,4 @@
-use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::ID as PROGRAM;
+use ephemeral_spl_api::{instruction, ID as PROGRAM};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::rent::Rent;
 use solana_program_test::tokio;

@@ -1,35 +1,45 @@
 #[cfg(feature = "logging")]
 use alloc::string::ToString;
-use wheels::layout::Encodable as _;
 
-use crate::processor::internal::group_receipt::{derive_group_receipt_id, TransferCallbackArgs};
 use dlp_api::pda::magic_fee_vault_pda_from_validator;
-use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
-use ephemeral_rollups_pinocchio::intent_bundle::{
-    ActionArgs, ActionCallback, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
+use ephemeral_rollups_pinocchio::{
+    consts::MAGIC_PROGRAM_ID,
+    intent_bundle::{
+        ActionArgs, ActionCallback, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
+    },
 };
-use ephemeral_spl_api::debug_log;
-use ephemeral_spl_api::instructions::ExecuteQueuedTransferArgs;
-use ephemeral_spl_api::require_n_accounts;
-use ephemeral_spl_api::state::transfer_queue::{
-    queue_peek_from_data, queue_pop_from_data, queue_views_checked, QueuedTransfer, QUEUE_SEED,
+use ephemeral_spl_api::{
+    debug_log,
+    instructions::ExecuteQueuedTransferArgs,
+    require, require_eq_keys, require_n_accounts,
+    state::transfer_queue::{
+        queue_peek_from_data, queue_pop_from_data, queue_views_checked, QueuedTransfer, QUEUE_SEED,
+    },
 };
-use ephemeral_spl_api::{require, require_eq_keys};
-use pinocchio::cpi::{Seed, Signer};
-use pinocchio::sysvars::{clock::Clock, Sysvar};
-use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use pinocchio::{
+    cpi::{Seed, Signer},
+    error::ProgramError,
+    sysvars::{clock::Clock, Sysvar},
+    AccountView, ProgramResult,
+};
 use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
 use solana_address::Address;
+use wheels::layout::Encodable as _;
 
-use crate::instruction::ESplInternalInstruction;
-use crate::processor::internal::rent_pda::RENT_PDA;
-use crate::processor::internal::transfer_queue_refill::{
-    queue_refill_state_address, refill_transfer_queue_amounts,
-    MARK_TRANSFER_QUEUE_REFILL_PENDING_COMPUTE_UNITS,
-    MARK_TRANSFER_QUEUE_REFILL_PENDING_ESCROW_INDEX,
-};
-use crate::processor::internal::{
-    get_associated_token_address, token_program_for_kind, CALLBACK_SIGNER, MAGIC_VAULT_ID,
+use crate::{
+    instruction::ESplInternalInstruction,
+    processor::internal::{
+        get_associated_token_address,
+        group_receipt::{derive_group_receipt_id, TransferCallbackArgs},
+        rent_pda::RENT_PDA,
+        token_program_for_kind,
+        transfer_queue_refill::{
+            queue_refill_state_address, refill_transfer_queue_amounts,
+            MARK_TRANSFER_QUEUE_REFILL_PENDING_COMPUTE_UNITS,
+            MARK_TRANSFER_QUEUE_REFILL_PENDING_ESCROW_INDEX,
+        },
+        CALLBACK_SIGNER, MAGIC_VAULT_ID,
+    },
 };
 
 const EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX: u8 = 0;

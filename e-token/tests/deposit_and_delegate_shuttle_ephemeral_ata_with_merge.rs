@@ -3,12 +3,14 @@ use ephemeral_rollups_pinocchio::pda::{
     delegate_buffer_pda_from_delegated_account_and_owner_program,
     delegation_metadata_pda_from_delegated_account, delegation_record_pda_from_delegated_account,
 };
-use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::instructions::DepositAndDelegateShuttleArgs;
-use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
-use ephemeral_spl_api::state::load_initialized;
-use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
-use ephemeral_spl_api::ID as PROGRAM;
+use ephemeral_spl_api::{
+    instruction,
+    instructions::DepositAndDelegateShuttleArgs,
+    state::{
+        ephemeral_ata::EphemeralAta, load_initialized, shuttle_ephemeral_ata::ShuttleMetadata,
+    },
+    ID as PROGRAM,
+};
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::rent::Rent;

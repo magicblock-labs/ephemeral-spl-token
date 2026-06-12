@@ -1,8 +1,12 @@
-use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, TransferQueue, ITEM_LEN};
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
-use pinocchio::sysvars::rent::Rent;
-use pinocchio::sysvars::Sysvar;
-use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use ephemeral_spl_api::{
+    require, require_eq_keys, require_n_accounts,
+    state::transfer_queue::{queue_views_checked, TransferQueue, ITEM_LEN},
+};
+use pinocchio::{
+    error::ProgramError,
+    sysvars::{rent::Rent, Sysvar},
+    AccountView, ProgramResult,
+};
 
 pub const MAX_ITEMS_PER_REALLOC: usize = 10_240 / ITEM_LEN;
 

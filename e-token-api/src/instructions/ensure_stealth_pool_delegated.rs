@@ -1,6 +1,5 @@
-use wheels::variable_offset_layout;
-
 use solana_address::Address;
+use wheels::variable_offset_layout;
 
 #[variable_offset_layout(buffer_offset = 1, option = implicit)]
 pub struct EnsureStealthPoolDelegatedArgs {

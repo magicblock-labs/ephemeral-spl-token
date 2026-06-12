@@ -1,8 +1,8 @@
-use crate::require_eq;
 use bytemuck::{Pod, Zeroable};
-use pinocchio::error::ProgramError;
-use pinocchio::{AccountView, ProgramResult};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use solana_signature::Signature;
+
+use crate::require_eq;
 
 pub struct GroupReceipt<'a> {
     header: &'a mut GroupReceiptHeader,

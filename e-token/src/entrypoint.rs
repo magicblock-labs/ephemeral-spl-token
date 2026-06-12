@@ -1,16 +1,14 @@
-use ephemeral_spl_api::debug_log;
-use ephemeral_spl_api::instruction::ESplInstruction;
-use ephemeral_spl_api::{error::EphemeralSplError, require};
+use core::{mem::MaybeUninit, slice::from_raw_parts};
 
-use {
-    crate::instruction::ESplInternalInstruction,
-    crate::processor::*,
-    core::{mem::MaybeUninit, slice::from_raw_parts},
-    pinocchio::{
-        default_allocator, default_panic_handler, entrypoint::deserialize, error::ProgramError,
-        AccountView, ProgramResult, MAX_TX_ACCOUNTS, SUCCESS,
-    },
+use ephemeral_spl_api::{
+    debug_log, error::EphemeralSplError, instruction::ESplInstruction, require,
 };
+use pinocchio::{
+    default_allocator, default_panic_handler, entrypoint::deserialize, error::ProgramError,
+    AccountView, ProgramResult, MAX_TX_ACCOUNTS, SUCCESS,
+};
+
+use crate::{instruction::ESplInternalInstruction, processor::*};
 
 default_allocator!();
 default_panic_handler!();
@@ -74,9 +72,7 @@ pub fn process_instruction(accounts: &[AccountView], instruction_data: &[u8]) ->
 fn process_public_instruction(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let (discriminator, data) = instruction_data.split_at(1);
 
-    match ESplInstruction::try_from(discriminator[0])
-        .map_err(|_| EphemeralSplError::InstructionNotFound)?
-    {
+    match ESplInstruction::try_from(discriminator[0]).map_err(|_| EphemeralSplError::InstructionNotFound)? {
         ESplInstruction::__Unused0 => Err(EphemeralSplError::InstructionNotFound.into()),
         ESplInstruction::InitializeEphemeralAta => {
             debug_log!("Instruction: InitializeEphemeralAta");
@@ -154,18 +150,12 @@ fn process_public_instruction(accounts: &[AccountView], instruction_data: &[u8])
             process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge(accounts, data)
         }
         ESplInstruction::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer => {
-            debug_log!(
-                "Instruction: DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer"
-            );
+            debug_log!("Instruction: DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer");
 
-            process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer(
-                accounts, data,
-            )
+            process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer(accounts, data)
         }
         ESplInstruction::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransferAndStashClose => {
-            debug_log!(
-                "Instruction: DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransferAndStashClose"
-            );
+            debug_log!("Instruction: DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransferAndStashClose");
 
             process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer_and_stash_close(
                 accounts, data,

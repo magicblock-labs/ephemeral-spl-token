@@ -4,14 +4,19 @@ use dlp_api::pda::magic_fee_vault_pda_from_validator;
 use ephemeral_rollups_pinocchio::crank::{
     CancelCrankCpi, CrankInstruction, ScheduleCrankArgs, ScheduleCrankCpi,
 };
-use ephemeral_spl_api::state::transfer_queue::{
-    queue_crank_task_id_from_data, queue_set_crank_task_id_from_data, queue_views_checked,
-    TransferQueue,
+use ephemeral_spl_api::{
+    require, require_eq_keys, require_n_accounts,
+    state::transfer_queue::{
+        queue_crank_task_id_from_data, queue_set_crank_task_id_from_data, queue_views_checked,
+        TransferQueue,
+    },
 };
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
-use pinocchio::cpi::{invoke_signed_with_bounds, Signer};
-use pinocchio::instruction::{InstructionAccount, InstructionView};
-use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use pinocchio::{
+    cpi::{invoke_signed_with_bounds, Signer},
+    error::ProgramError,
+    instruction::{InstructionAccount, InstructionView},
+    AccountView, ProgramResult,
+};
 use solana_address::Address;
 
 use crate::instruction::ESplInternalInstruction;

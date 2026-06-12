@@ -1,8 +1,8 @@
-use ephemeral_spl_api::state::load_initialized;
-use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
-use pinocchio::cpi::Signer;
-use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use ephemeral_spl_api::{
+    require, require_eq_keys, require_n_accounts,
+    state::{load_initialized, shuttle_ephemeral_ata::ShuttleMetadata},
+};
+use pinocchio::{cpi::Signer, error::ProgramError, AccountView, ProgramResult};
 
 use crate::processor::internal::{read_mint_decimals, validate_token_account};
 

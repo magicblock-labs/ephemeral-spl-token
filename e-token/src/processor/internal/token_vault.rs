@@ -1,17 +1,16 @@
-use crate::processor::internal::{get_associated_token_address, read_mint_decimals};
 use ephemeral_spl_api::{
-    error::EphemeralSplError, require, require_eq_keys, state::load_initialized,
-};
-use pinocchio::cpi::Signer;
-
-use {
-    ephemeral_spl_api::state::{
+    error::EphemeralSplError,
+    require, require_eq_keys,
+    state::{
         ephemeral_ata::load_ephemeral_ata_compat_mut,
         global_vault::GlobalVault,
+        load_initialized,
         transfer_queue::{queue_views_checked, TransferQueue},
     },
-    pinocchio::{error::ProgramError, AccountView, Address, ProgramResult},
 };
+use pinocchio::{cpi::Signer, error::ProgramError, AccountView, Address, ProgramResult};
+
+use crate::processor::internal::{get_associated_token_address, read_mint_decimals};
 
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]

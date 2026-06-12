@@ -1,8 +1,10 @@
 use ephemeral_rollups_pinocchio::acl::{
     consts::PERMISSION_PROGRAM_ID, instruction::commit_and_undelegate_permission,
 };
-use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_initialized};
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
+use ephemeral_spl_api::{
+    require, require_eq_keys, require_n_accounts,
+    state::{ephemeral_ata::EphemeralAta, load_initialized},
+};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
 ///

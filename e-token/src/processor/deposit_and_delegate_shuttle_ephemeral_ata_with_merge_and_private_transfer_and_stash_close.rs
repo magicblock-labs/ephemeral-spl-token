@@ -1,12 +1,15 @@
-use ephemeral_spl_api::instructions::DepositAndDelegateShuttleWithPrivateTransferAndStashCloseArgs;
-use ephemeral_spl_api::state::stash::StashPda;
-use ephemeral_spl_api::{require_eq_keys, require_n_accounts};
+use ephemeral_spl_api::{
+    instructions::DepositAndDelegateShuttleWithPrivateTransferAndStashCloseArgs, require_eq_keys,
+    require_n_accounts, state::stash::StashPda,
+};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use solana_address::Address;
 use wheels::layout::Decodable as _;
 
-use crate::processor::internal::private_transfer::process_with_merge_and_private_transfer_inner;
-use crate::processor::internal::shuttle_delegation::CloseStashArgs;
+use crate::processor::internal::{
+    private_transfer::process_with_merge_and_private_transfer_inner,
+    shuttle_delegation::CloseStashArgs,
+};
 
 ///
 /// Executes on: BASE only. Self-CPI'd by `ExecuteScheduledPrivateTransfer`.

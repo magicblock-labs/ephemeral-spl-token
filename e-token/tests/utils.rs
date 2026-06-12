@@ -2,16 +2,20 @@
 //! `dead_code` for the rest.
 #![allow(dead_code)]
 
-use ephemeral_rollups_pinocchio::acl::permission_pda_from_permissioned_account;
-use ephemeral_rollups_pinocchio::pda::{
-    delegate_buffer_pda_from_delegated_account_and_owner_program,
-    delegation_metadata_pda_from_delegated_account, delegation_record_pda_from_delegated_account,
+use ephemeral_rollups_pinocchio::{
+    acl::permission_pda_from_permissioned_account,
+    pda::{
+        delegate_buffer_pda_from_delegated_account_and_owner_program,
+        delegation_metadata_pda_from_delegated_account,
+        delegation_record_pda_from_delegated_account,
+    },
 };
-use ephemeral_spl_api::instructions::InitializeTransferQueueArgs;
-use ephemeral_spl_api::state::group_receipt::GroupReceipt;
-use ephemeral_spl_api::state::stealth_pool::StealthPool;
-use ephemeral_spl_api::state::RawType;
-use ephemeral_spl_api::{instruction, ID as PROGRAM};
+use ephemeral_spl_api::{
+    instruction,
+    instructions::InitializeTransferQueueArgs,
+    state::{group_receipt::GroupReceipt, stealth_pool::StealthPool, RawType},
+    ID as PROGRAM,
+};
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
@@ -32,8 +36,10 @@ use solana_pubkey::{pubkey, Pubkey};
 use solana_signer::Signer;
 use solana_system_interface::instruction::create_account;
 use solana_transaction::Transaction;
-use spl_token_interface::instruction::{initialize_account, initialize_mint, TokenInstruction};
-use spl_token_interface::state::{Account as SplAccount, Mint};
+use spl_token_interface::{
+    instruction::{initialize_account, initialize_mint, TokenInstruction},
+    state::{Account as SplAccount, Mint},
+};
 use wheels::layout::Encodable as _;
 
 // this must be same as ESplInternalInstruction

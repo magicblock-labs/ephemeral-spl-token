@@ -1,13 +1,14 @@
-use crate::common::callback_mock::take_execute_callbacks;
-use crate::common::magic_mock::{take_captured_ephemeral_closes, take_captured_ephemeral_creates};
-use crate::common::{callback_mock, magic_mock};
 use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
-use ephemeral_spl_api::state::group_receipt::{GroupReceipt, GroupReceiptHeader};
-use ephemeral_spl_api::state::transfer_queue::{HEADER_LEN, QUEUE_SEED, TRANSFER_QUEUE_VERSION};
-use ephemeral_spl_api::ID as PROGRAM;
-use magicblock_magic_program_api::instruction::CallbackInstruction;
-use magicblock_magic_program_api::pda::CALLBACK_SIGNER;
-use magicblock_magic_program_api::CALLBACK_PROGRAM_ID;
+use ephemeral_spl_api::{
+    state::{
+        group_receipt::{GroupReceipt, GroupReceiptHeader},
+        transfer_queue::{HEADER_LEN, QUEUE_SEED, TRANSFER_QUEUE_VERSION},
+    },
+    ID as PROGRAM,
+};
+use magicblock_magic_program_api::{
+    instruction::CallbackInstruction, pda::CALLBACK_SIGNER, CALLBACK_PROGRAM_ID,
+};
 use serial_test::serial;
 use solana_account::Account as SolanaAccount;
 use solana_instruction::{AccountMeta, Instruction};
@@ -18,8 +19,14 @@ use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use solana_transaction::Transaction;
 use utils::TestInternalInstruction as internal;
-use wheels::layout::Encodable as _;
-use wheels::variable_offset_layout;
+use wheels::{layout::Encodable as _, variable_offset_layout};
+
+use crate::common::{
+    callback_mock,
+    callback_mock::take_execute_callbacks,
+    magic_mock,
+    magic_mock::{take_captured_ephemeral_closes, take_captured_ephemeral_creates},
+};
 
 mod common;
 mod utils;

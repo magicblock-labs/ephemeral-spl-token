@@ -2,11 +2,12 @@ use ephemeral_rollups_pinocchio::pda::{
     delegate_buffer_pda_from_delegated_account_and_owner_program,
     delegation_metadata_pda_from_delegated_account, delegation_record_pda_from_delegated_account,
 };
-use ephemeral_spl_api::instructions::DelegateShuttleArgs;
-use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
-use ephemeral_spl_api::state::RawType;
-use ephemeral_spl_api::ID as PROGRAM;
-use ephemeral_spl_api::{instruction, state::shuttle_ephemeral_ata::ShuttleMetadata};
+use ephemeral_spl_api::{
+    instruction,
+    instructions::DelegateShuttleArgs,
+    state::{ephemeral_ata::EphemeralAta, shuttle_ephemeral_ata::ShuttleMetadata, RawType},
+    ID as PROGRAM,
+};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program_test::tokio;
 use solana_signer::Signer;

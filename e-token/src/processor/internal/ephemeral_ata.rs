@@ -1,15 +1,17 @@
-use ephemeral_spl_api::state::{load_initialized, load_mut, RawType};
-use ephemeral_spl_api::{require, require_eq_keys};
-use pinocchio::cpi::Signer;
-use pinocchio::sysvars::rent::Rent;
-use pinocchio::sysvars::Sysvar;
-use pinocchio_system::instructions::{CreateAccount, Transfer};
-use {
-    ephemeral_spl_api::state::{
-        ephemeral_ata::EphemeralAta, shuttle_ephemeral_ata::ShuttleMetadata,
+use ephemeral_spl_api::{
+    require, require_eq_keys,
+    state::{
+        ephemeral_ata::EphemeralAta, load_initialized, load_mut,
+        shuttle_ephemeral_ata::ShuttleMetadata, RawType,
     },
-    pinocchio::{error::ProgramError, AccountView, ProgramResult},
 };
+use pinocchio::{
+    cpi::Signer,
+    error::ProgramError,
+    sysvars::{rent::Rent, Sysvar},
+    AccountView, ProgramResult,
+};
+use pinocchio_system::instructions::{CreateAccount, Transfer};
 
 const EPHEMERAL_ATA_V0_LEN: usize = 72;
 const SHUTTLE_METADATA_V0_LEN: usize = 68;

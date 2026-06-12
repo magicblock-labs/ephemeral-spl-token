@@ -1,17 +1,21 @@
-use crate::processor::internal::group_receipt;
-use crate::processor::internal::group_receipt::{TransferCallbackArgs, TransferCallbackArgsView};
-#[cfg(feature = "logging")]
-use crate::processor::internal::group_receipt_log;
-use crate::processor::internal::{group_receipt_close, GroupReceiptAccounts, CALLBACK_SIGNER};
-use ephemeral_spl_api::state::group_receipt::{GroupReceipt, TransferReceipt};
-use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, TransferQueueHeader};
 use ephemeral_spl_api::{
     debug_log, require, require_eq_keys, require_n_accounts, require_owned_by,
+    state::{
+        group_receipt::{GroupReceipt, TransferReceipt},
+        transfer_queue::{queue_views_checked, TransferQueueHeader},
+    },
 };
-use pinocchio::error::ProgramError;
-use pinocchio::{AccountView, ProgramResult};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use solana_signature::Signature;
 use wheels::layout::Decodable as _;
+
+#[cfg(feature = "logging")]
+use crate::processor::internal::group_receipt_log;
+use crate::processor::internal::{
+    group_receipt,
+    group_receipt::{TransferCallbackArgs, TransferCallbackArgsView},
+    group_receipt_close, GroupReceiptAccounts, CALLBACK_SIGNER,
+};
 
 ///
 /// Executes on: ER only.

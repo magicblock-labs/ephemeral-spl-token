@@ -1,12 +1,10 @@
-use ephemeral_spl_api::instructions::DepositArgs;
-use ephemeral_spl_api::state::{load_initialized, load_mut_initialized};
-use ephemeral_spl_api::{require, require_n_accounts};
-use wheels::layout::Decodable as _;
-
-use {
-    ephemeral_spl_api::state::ephemeral_ata::EphemeralAta,
-    pinocchio::{error::ProgramError, AccountView, ProgramResult},
+use ephemeral_spl_api::{
+    instructions::DepositArgs,
+    require, require_n_accounts,
+    state::{ephemeral_ata::EphemeralAta, load_initialized, load_mut_initialized},
 };
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use wheels::layout::Decodable as _;
 
 use crate::processor::internal::token_vault::transfer_to_vault_for_mint;
 

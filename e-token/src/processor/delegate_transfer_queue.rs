@@ -1,7 +1,8 @@
-use ephemeral_rollups_pinocchio::instruction::DelegateAccountCpiBuilder;
-use ephemeral_rollups_pinocchio::types::DelegateConfig;
-use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, TransferQueue, QUEUE_SEED};
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
+use ephemeral_rollups_pinocchio::{instruction::DelegateAccountCpiBuilder, types::DelegateConfig};
+use ephemeral_spl_api::{
+    require, require_eq_keys, require_n_accounts,
+    state::transfer_queue::{queue_views_checked, TransferQueue, QUEUE_SEED},
+};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
 ///

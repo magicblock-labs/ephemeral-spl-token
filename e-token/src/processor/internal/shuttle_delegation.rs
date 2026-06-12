@@ -1,7 +1,7 @@
 #[cfg(feature = "logging")]
 use alloc::string::ToString;
-
 use core::mem::MaybeUninit;
+
 use dlp_api::args::PostDelegationActions;
 use ephemeral_rollups_pinocchio::{
     consts::{
@@ -12,13 +12,15 @@ use ephemeral_rollups_pinocchio::{
     types::{DelegateAccountArgs, DelegateConfig},
     utils::{close_pda_acc, make_seed_buf},
 };
-use ephemeral_spl_api::debug_log;
-use ephemeral_spl_api::instruction::ESplInstruction;
-use ephemeral_spl_api::state::{
-    ephemeral_ata::EphemeralAta, load_initialized, load_mut_initialized,
-    shuttle_ephemeral_ata::ShuttleMetadata,
+use ephemeral_spl_api::{
+    debug_log,
+    instruction::ESplInstruction,
+    require, require_eq_keys, require_owned_by,
+    state::{
+        ephemeral_ata::EphemeralAta, load_initialized, load_mut_initialized,
+        shuttle_ephemeral_ata::ShuttleMetadata,
+    },
 };
-use ephemeral_spl_api::{require, require_eq_keys, require_owned_by};
 use pinocchio::{
     cpi::{invoke_signed_with_bounds, Seed, Signer},
     error::ProgramError,
@@ -29,10 +31,10 @@ use pinocchio_system::instructions::{Assign, CreateAccount, Transfer};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_pubkey::Pubkey;
 
-use crate::processor::{
-    internal::ephemeral_ata::initialize_shuttle_ephemeral_ata_with_sponsor,
-    internal::rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
-    internal::token_vault::transfer_to_vault_for_mint,
+use crate::processor::internal::{
+    ephemeral_ata::initialize_shuttle_ephemeral_ata_with_sponsor,
+    rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
+    token_vault::transfer_to_vault_for_mint,
 };
 
 pub(crate) const DEFAULT_ESCROW_INDEX: u8 = u8::MAX;

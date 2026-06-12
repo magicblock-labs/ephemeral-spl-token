@@ -2,18 +2,17 @@ use std::{
     collections::HashMap,
     sync::{Mutex, OnceLock},
 };
-use wheels::layout::Encodable as _;
 
 use dlp_api::state::DelegationRecord;
 use ephemeral_spl_api::{
     instruction,
     instructions::DepositAndDelegateShuttleArgs,
     state::{
-        ephemeral_ata::EphemeralAta, load, load_mut, shuttle_ephemeral_ata::ShuttleMetadata,
-        Initializable, RawType,
+        ephemeral_ata::EphemeralAta, load, load_initialized, load_mut,
+        shuttle_ephemeral_ata::ShuttleMetadata, Initializable, RawType,
     },
+    ID as PROGRAM,
 };
-use ephemeral_spl_api::{state::load_initialized, ID as PROGRAM};
 use magicblock_magic_program_api::{
     args::{MagicIntentBundleArgs, UndelegateTypeArgs},
     instruction::MagicBlockInstruction,
@@ -31,6 +30,7 @@ use solana_signer::Signer;
 use solana_system_interface::instruction::transfer;
 use solana_transaction::Transaction;
 use spl_token_interface::state::Account as SplAccount;
+use wheels::layout::Encodable as _;
 
 use crate::utils::TestInternalInstruction;
 

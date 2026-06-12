@@ -1,10 +1,8 @@
 use pinocchio::{cpi::Seed, error::ProgramError};
-use solana_address::address_eq;
-use solana_address::Address;
-
-use crate::state::load_mut;
+use solana_address::{address_eq, Address};
 
 use super::{load, load_initialized, Initializable, RawType};
+use crate::state::load_mut;
 
 const LEGACY_EPHEMERAL_ATA_LEN: usize = 72;
 

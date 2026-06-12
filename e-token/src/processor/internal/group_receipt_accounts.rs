@@ -1,12 +1,21 @@
-use super::ephemeral_account::{close_ephemeral_account, create_ephemeral_account};
-use super::group_receipt::GROUP_RECEIPT_SEED;
-use ephemeral_spl_api::require_ok;
-use ephemeral_spl_api::state::group_receipt;
-use ephemeral_spl_api::state::group_receipt::GroupReceipt;
-use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, QUEUE_SEED};
-use pinocchio::cpi::{Seed, Signer};
-use pinocchio::error::ProgramError;
-use pinocchio::{AccountView, ProgramResult};
+use ephemeral_spl_api::{
+    require_ok,
+    state::{
+        group_receipt,
+        group_receipt::GroupReceipt,
+        transfer_queue::{queue_views_checked, QUEUE_SEED},
+    },
+};
+use pinocchio::{
+    cpi::{Seed, Signer},
+    error::ProgramError,
+    AccountView, ProgramResult,
+};
+
+use super::{
+    ephemeral_account::{close_ephemeral_account, create_ephemeral_account},
+    group_receipt::GROUP_RECEIPT_SEED,
+};
 
 /// Required accounts for control over receipt
 pub(crate) struct GroupReceiptAccounts<'a> {

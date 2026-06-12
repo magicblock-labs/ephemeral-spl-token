@@ -1,5 +1,10 @@
 #![allow(dead_code)]
 
+use std::{
+    collections::HashMap,
+    sync::{Mutex, OnceLock},
+};
+
 use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
 use magicblock_magic_program_api::{
     args::{AddActionCallbackArgs, MagicIntentBundleArgs, ScheduleTaskArgs},
@@ -10,10 +15,6 @@ use solana_program::{
 };
 use solana_program_test::ProgramTest;
 use solana_pubkey::Pubkey;
-use std::{
-    collections::HashMap,
-    sync::{Mutex, OnceLock},
-};
 // ── Captured types ────────────────────────────────────────────────────────────
 
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -1,10 +1,10 @@
-use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::ID as PROGRAM;
+use ephemeral_spl_api::{instruction, ID as PROGRAM};
 use solana_instruction::{AccountMeta, Instruction};
-use {
-    solana_program_test::tokio, solana_pubkey::Pubkey, solana_signer::Signer,
-    solana_system_interface::instruction::create_account, solana_transaction::Transaction,
-};
+use solana_program_test::tokio;
+use solana_pubkey::Pubkey;
+use solana_signer::Signer;
+use solana_system_interface::instruction::create_account;
+use solana_transaction::Transaction;
 
 mod common;
 mod utils;

@@ -1,24 +1,27 @@
 use std::u64;
-use wheels::layout::Encodable as _;
 
 use dlp_api::state::DelegationRecord;
 use ephemeral_rollups_pinocchio::pda::{
     delegate_buffer_pda_from_delegated_account_and_owner_program,
     delegation_metadata_pda_from_delegated_account, delegation_record_pda_from_delegated_account,
 };
-use ephemeral_spl_api::consts::{
-    BASIS_POINTS_FACTOR, PRIVATE_TRANSFER_FEE_BASIS_POINTS,
-    SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS, SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS,
+use ephemeral_spl_api::{
+    consts::{
+        BASIS_POINTS_FACTOR, PRIVATE_TRANSFER_FEE_BASIS_POINTS,
+        SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS,
+        SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS,
+    },
+    instruction,
+    instructions::{DepositAndDelegateShuttleWithPrivateTransferArgs, DepositAndQueueTransferArgs},
+    state::{
+        ephemeral_ata::EphemeralAta,
+        load,
+        shuttle_ephemeral_ata::ShuttleMetadata,
+        transfer_queue::{TransferQueue, TransferQueueHeader, HEADER_LEN},
+        Initializable,
+    },
+    ID as PROGRAM,
 };
-use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::instructions::{
-    DepositAndDelegateShuttleWithPrivateTransferArgs, DepositAndQueueTransferArgs,
-};
-use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
-use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
-use ephemeral_spl_api::state::transfer_queue::{TransferQueue, TransferQueueHeader, HEADER_LEN};
-use ephemeral_spl_api::state::{load, Initializable};
-use ephemeral_spl_api::ID as PROGRAM;
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::rent::Rent;
@@ -29,6 +32,7 @@ use solana_signer::Signer;
 use solana_system_interface::instruction::transfer;
 use solana_transaction::Transaction;
 use spl_token_interface::state::Account as SplAccount;
+use wheels::layout::Encodable as _;
 
 mod common;
 mod utils;
@@ -272,7 +276,8 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
             AccountMeta::new(vault_ata, false),
             AccountMeta::new(queue, false),
         ],
-        data: instruction::ESplInstruction::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer.with_data(&args.encode().unwrap()),
+        data: instruction::ESplInstruction::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer
+            .with_data(&args.encode().unwrap()),
     };
 
     let ix_delegate_queue = Instruction {

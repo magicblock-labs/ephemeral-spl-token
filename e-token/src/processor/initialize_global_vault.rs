@@ -1,15 +1,16 @@
-use crate::processor::internal::ephemeral_ata::initialize_ephemeral_ata_with_sponsor;
-use ephemeral_spl_api::state::RawType;
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
-use pinocchio::cpi::Signer;
-use pinocchio::sysvars::rent::Rent;
-use pinocchio::sysvars::Sysvar;
-use pinocchio_system::instructions::CreateAccount;
-use {
-    ephemeral_spl_api::state::global_vault::GlobalVault,
-    ephemeral_spl_api::state::load_mut,
-    pinocchio::{error::ProgramError, AccountView, ProgramResult},
+use ephemeral_spl_api::{
+    require, require_eq_keys, require_n_accounts,
+    state::{global_vault::GlobalVault, load_mut, RawType},
 };
+use pinocchio::{
+    cpi::Signer,
+    error::ProgramError,
+    sysvars::{rent::Rent, Sysvar},
+    AccountView, ProgramResult,
+};
+use pinocchio_system::instructions::CreateAccount;
+
+use crate::processor::internal::ephemeral_ata::initialize_ephemeral_ata_with_sponsor;
 
 ///
 /// Executes on:

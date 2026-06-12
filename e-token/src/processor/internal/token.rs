@@ -1,5 +1,4 @@
-use ephemeral_spl_api::require;
-use ephemeral_spl_api::state::transfer_queue::SplTokenProgram;
+use ephemeral_spl_api::{require, state::transfer_queue::SplTokenProgram};
 use pinocchio::{error::ProgramError, AccountView};
 use pinocchio_token_2022::state::{Mint, TokenAccount};
 use solana_address::{address_eq, Address};

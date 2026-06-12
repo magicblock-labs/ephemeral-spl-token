@@ -2,12 +2,15 @@ use ephemeral_rollups_pinocchio::intent_bundle::{
     ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
 };
 use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
-use pinocchio::sysvars::rent::Rent;
-use pinocchio::sysvars::Sysvar;
-use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use pinocchio::{
+    error::ProgramError,
+    sysvars::{rent::Rent, Sysvar},
+    AccountView, ProgramResult,
+};
 
-use crate::instruction::ESplInternalInstruction;
-use crate::processor::internal::lamports_pda::derive_lamports_pda;
+use crate::{
+    instruction::ESplInternalInstruction, processor::internal::lamports_pda::derive_lamports_pda,
+};
 
 const DEFAULT_ESCROW_INDEX: u8 = u8::MAX;
 const INTENT_BUNDLE_DATA_BUF_SIZE: usize = 512;
