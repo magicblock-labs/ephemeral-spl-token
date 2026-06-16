@@ -49,7 +49,7 @@ impl RawType for StealthPool {
 
 impl StealthPool {
     // The discriminator has name + version
-    pub const DISCRIMINATOR: [u8; 8] = *b"stpool@2";
+    pub const DISCRIMINATOR: [u8; 8] = *b"stpool@1";
 
     pub const SEED: &'static [u8] = b"stealth_pool";
 

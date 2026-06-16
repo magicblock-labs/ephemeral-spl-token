@@ -140,7 +140,7 @@ function createDelegationAccountInfo(validator: PublicKey): AccountInfo<Buffer> 
 
 function createStealthPoolAccountInfo(): AccountInfo<Buffer> {
   const data = Buffer.alloc(428);
-  data.set(Buffer.from("stpool@2"), 0);
+  data.set(Buffer.from("stpool@1"), 0);
   return {
     data,
     executable: false,
