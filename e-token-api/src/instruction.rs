@@ -88,6 +88,9 @@ pub enum ESplInstruction {
     ///      []
     EnsureTransferQueueCrank = 17,
 
+    /// Unused slot.
+    __Unused0 = 18,
+
     /// 19 - DelegateTransferQueue: delegate the per-mint transfer queue PDA to the delegation program
     ///      Instruction data:
     ///      []        no instruction args
@@ -101,6 +104,17 @@ pub enum ESplInstruction {
     ///      [0..8]   amount (u64 LE)
     ///      [8..40]  salt ([u8; 32])
     SponsoredLamportsTransfer = 20,
+
+    /// 21 - UpdateStealthPool: write or rotate stealth-pool data inside the
+    ///      already delegated ER account. The stored authority must sign
+    ///      existing-pool updates.
+    UpdateStealthPool = 21,
+
+    /// 22 - EnsureStealthPoolDelegated: ensure the zeroed stealth-pool PDA
+    ///      exists on base and is delegated. Destination keys are not part of
+    ///      this instruction; they are written later inside the ER via
+    ///      UpdateStealthPool.
+    EnsureStealthPoolDelegated = 22,
 
     /// 23 - InitializeRentPda: initialize the global rent-sponsoring PDA derived from ["rent"]
     ///      Instruction data:
@@ -264,6 +278,8 @@ impl TryFrom<u8> for ESplInstruction {
             17 => Ok(Self::EnsureTransferQueueCrank),
             19 => Ok(Self::DelegateTransferQueue),
             20 => Ok(Self::SponsoredLamportsTransfer),
+            21 => Ok(Self::UpdateStealthPool),
+            22 => Ok(Self::EnsureStealthPoolDelegated),
             23 => Ok(Self::InitializeRentPda),
             24 => Ok(Self::SetupAndDelegateShuttleEphemeralAtaWithMerge),
             25 => Ok(Self::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer),

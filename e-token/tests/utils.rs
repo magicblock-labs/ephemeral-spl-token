@@ -8,6 +8,8 @@ use ephemeral_rollups_pinocchio::pda::{
     delegation_metadata_pda_from_delegated_account, delegation_record_pda_from_delegated_account,
 };
 use ephemeral_spl_api::state::group_receipt::GroupReceipt;
+use ephemeral_spl_api::state::stealth_pool::StealthPool;
+use ephemeral_spl_api::state::RawType;
 use ephemeral_spl_api::{instruction, ID as PROGRAM};
 use ephemeral_token_program::InitializeTransferQueueArgs;
 use solana_account::Account;
@@ -324,6 +326,22 @@ pub fn pre_create_group_receipt(
         .into(),
     );
     receipt
+}
+
+pub fn pre_create_stealth_pool(context: &mut ProgramTestContext, stealth_pool: Pubkey) {
+    let data = vec![0u8; StealthPool::LEN];
+    let rent = Rent::default();
+    context.set_account(
+        &stealth_pool,
+        &Account {
+            lamports: rent.minimum_balance(data.len()),
+            data,
+            owner: PROGRAM,
+            executable: false,
+            rent_epoch: 0,
+        }
+        .into(),
+    );
 }
 
 pub fn derive_associated_token_address(wallet: Pubkey, mint: Pubkey) -> Pubkey {

@@ -1,13 +1,16 @@
-use crate::utils::pre_create_group_receipt;
+use crate::utils::{pre_create_group_receipt, pre_create_stealth_pool};
 use bytemuck::Zeroable;
 use ephemeral_spl_api::instruction;
 use ephemeral_spl_api::state::group_receipt::GroupReceiptHeader;
 use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
+use ephemeral_spl_api::state::stealth_pool::{StealthPool, StealthPoolFlags};
 use ephemeral_spl_api::state::transfer_queue::{
     queue_views_checked, QueuedTransfer, TransferQueue, TransferQueueHeader, HEADER_LEN, ITEM_LEN,
 };
 use ephemeral_spl_api::ID as PROGRAM;
-use ephemeral_token_program::DepositAndQueueTransferArgs;
+use ephemeral_token_program::{
+    DepositAndQueueTransferArgs, InitializeTransferQueueArgs, UpdateStealthPoolArgs,
+};
 use serial_test::serial;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::clock::Clock;
@@ -54,6 +57,8 @@ fn read_item_unaligned(data: &[u8], index: usize) -> QueuedTransfer {
 }
 
 async fn setup_fixture(items: Option<u32>) -> Fixture {
+    common::magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
+
     let mut context = utils::start_program_test_with(PROGRAM, |pt| {
         pt.prefer_bpf(false);
         pt.add_program(
@@ -227,6 +232,90 @@ fn build_deposit_and_queue_ix_for_destination(
         ],
         data,
     }
+}
+
+fn build_update_stealth_pool_ix(
+    payer: Pubkey,
+    authority: Pubkey,
+    handle_hash: [u8; 32],
+    flags: u8,
+    destinations: &[Pubkey],
+) -> (Pubkey, Instruction) {
+    let (stealth_pool, _) = StealthPool::find_pda(&handle_hash);
+    let destination_bytes = destinations
+        .iter()
+        .map(|destination| destination.to_bytes())
+        .collect::<Vec<_>>();
+
+    let data = instruction::ESplInstruction::UpdateStealthPool.with_data(
+        &UpdateStealthPoolArgs {
+            handle_hash,
+            flags,
+            destinations: destination_bytes,
+        }
+        .encode()
+        .unwrap(),
+    );
+
+    (
+        stealth_pool,
+        Instruction {
+            program_id: PROGRAM,
+            accounts: vec![
+                AccountMeta::new(payer, true),
+                AccountMeta::new(stealth_pool, false),
+                AccountMeta::new_readonly(authority, true),
+                AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+            ],
+            data,
+        },
+    )
+}
+
+fn expected_stealth_destination(
+    handle_hash: &[u8; 32],
+    destinations: &[Pubkey],
+    split_across_keys: bool,
+    source: &Pubkey,
+    group_id: u32,
+    first_queue_position: usize,
+    queue_position: usize,
+    client_ref_id: u64,
+    split_index: usize,
+) -> Pubkey {
+    let queue_seed = if split_across_keys {
+        queue_position
+    } else {
+        first_queue_position
+    };
+    let split_seed = if split_across_keys { split_index } else { 0 };
+    let mut value = 0xcbf2_9ce4_8422_2325_u64;
+    for byte in handle_hash {
+        value ^= u64::from(*byte);
+        value = value.wrapping_mul(0x100_0000_01b3);
+    }
+    for byte in source.to_bytes() {
+        value ^= u64::from(byte);
+        value = value.wrapping_mul(0x100_0000_01b3);
+    }
+    for byte in group_id.to_le_bytes() {
+        value ^= u64::from(byte);
+        value = value.wrapping_mul(0x100_0000_01b3);
+    }
+    for byte in (queue_seed as u64).to_le_bytes() {
+        value ^= u64::from(byte);
+        value = value.wrapping_mul(0x100_0000_01b3);
+    }
+    for byte in client_ref_id.to_le_bytes() {
+        value ^= u64::from(byte);
+        value = value.wrapping_mul(0x100_0000_01b3);
+    }
+    for byte in (split_seed as u64).to_le_bytes() {
+        value ^= u64::from(byte);
+        value = value.wrapping_mul(0x100_0000_01b3);
+    }
+    value ^= value >> 32;
+    destinations[(value % destinations.len() as u64) as usize]
 }
 
 fn expected_split_delay_ms(
@@ -1098,4 +1187,189 @@ async fn deposit_and_queue_transfer_return_to_shuttle() {
     // return_to_shuttle takes a different code path — no group-receipt CPI expected.
     let creates = common::magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
     assert_eq!(creates.len(), 0, "expected no CreateEphemeralAccount CPIs");
+}
+
+#[tokio::test]
+#[serial]
+async fn deposit_and_queue_transfer_resolves_stealth_pool_destination() {
+    let mut fixture = setup_fixture(None).await;
+    let handle_hash = [42u8; 32];
+    let destinations = [
+        utils::test_keypair("stealth_pool::destination_0").pubkey(),
+        utils::test_keypair("stealth_pool::destination_1").pubkey(),
+    ];
+    let (stealth_pool, init_ix) = build_update_stealth_pool_ix(
+        fixture.payer,
+        fixture.payer,
+        handle_hash,
+        StealthPoolFlags::Empty.value(),
+        &destinations,
+    );
+    pre_create_stealth_pool(&mut fixture.context, stealth_pool);
+    let split = 3;
+    let group_id: u32 = 1;
+    let group_receipt = pre_create_group_receipt(
+        &mut fixture.context,
+        fixture.queue,
+        fixture.payer,
+        group_id,
+        split,
+    );
+    let deposit_ix = build_deposit_and_queue_ix_for_destination(
+        &fixture,
+        stealth_pool,
+        12,
+        0,
+        0,
+        split,
+        None,
+        None,
+        group_id,
+        group_receipt,
+    );
+    let blockhash = fixture
+        .context
+        .banks_client
+        .get_latest_blockhash()
+        .await
+        .unwrap();
+
+    let tx = Transaction::new_signed_with_payer(
+        &[init_ix, deposit_ix],
+        Some(&fixture.payer),
+        &[&fixture.payer_kp],
+        blockhash,
+    );
+    common::metrics::process_transaction_record_cu(
+        &fixture.context.banks_client,
+        tx,
+        "dep_queue::stealth_pool_resolve",
+    )
+    .await
+    .unwrap();
+
+    let queue_account = fixture
+        .context
+        .banks_client
+        .get_account(fixture.queue)
+        .await
+        .unwrap()
+        .expect("queue account must exist");
+    let expected = expected_stealth_destination(
+        &handle_hash,
+        &destinations,
+        false,
+        &fixture.payer,
+        1,
+        0,
+        0,
+        0,
+        0,
+    );
+
+    for index in 0..split as usize {
+        let queued = read_item_unaligned(&queue_account.data, index);
+        assert_eq!(queued.destination_owner.as_array(), &expected.to_bytes());
+        assert_ne!(
+            queued.destination_owner.as_array(),
+            &stealth_pool.to_bytes()
+        );
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn deposit_and_queue_transfer_can_split_stealth_pool_across_keys() {
+    let mut fixture = setup_fixture(None).await;
+    let handle_hash = [77u8; 32];
+    let destinations = [
+        utils::test_keypair("stealth_pool::split_destination_0").pubkey(),
+        utils::test_keypair("stealth_pool::split_destination_1").pubkey(),
+        utils::test_keypair("stealth_pool::split_destination_2").pubkey(),
+    ];
+    let (stealth_pool, init_ix) = build_update_stealth_pool_ix(
+        fixture.payer,
+        fixture.payer,
+        handle_hash,
+        StealthPoolFlags::SplitAcrossKeys.value(),
+        &destinations,
+    );
+    pre_create_stealth_pool(&mut fixture.context, stealth_pool);
+    let split = 5;
+    let client_ref_id = 99;
+    let group_id: u32 = 1;
+    let group_receipt = pre_create_group_receipt(
+        &mut fixture.context,
+        fixture.queue,
+        fixture.payer,
+        group_id,
+        split,
+    );
+    let deposit_ix = build_deposit_and_queue_ix_for_destination(
+        &fixture,
+        stealth_pool,
+        15,
+        0,
+        0,
+        split,
+        None,
+        Some(client_ref_id),
+        group_id,
+        group_receipt,
+    );
+    let blockhash = fixture
+        .context
+        .banks_client
+        .get_latest_blockhash()
+        .await
+        .unwrap();
+
+    let tx = Transaction::new_signed_with_payer(
+        &[init_ix, deposit_ix],
+        Some(&fixture.payer),
+        &[&fixture.payer_kp],
+        blockhash,
+    );
+    common::metrics::process_transaction_record_cu(
+        &fixture.context.banks_client,
+        tx,
+        "dep_queue::stealth_pool_split_keys",
+    )
+    .await
+    .unwrap();
+
+    let queue_account = fixture
+        .context
+        .banks_client
+        .get_account(fixture.queue)
+        .await
+        .unwrap()
+        .expect("queue account must exist");
+
+    let mut actual = (0..split as usize)
+        .map(|index| {
+            read_item_unaligned(&queue_account.data, index)
+                .destination_owner
+                .to_bytes()
+        })
+        .collect::<Vec<_>>();
+    let mut expected = (0..split as usize)
+        .map(|index| {
+            expected_stealth_destination(
+                &handle_hash,
+                &destinations,
+                true,
+                &fixture.payer,
+                1,
+                0,
+                index,
+                client_ref_id,
+                index,
+            )
+            .to_bytes()
+        })
+        .collect::<Vec<_>>();
+    actual.sort_unstable();
+    expected.sort_unstable();
+    assert_eq!(actual, expected);
 }

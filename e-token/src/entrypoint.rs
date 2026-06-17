@@ -70,6 +70,7 @@ fn process_public_instruction(accounts: &[AccountView], instruction_data: &[u8])
     match ESplInstruction::try_from(discriminator[0])
         .map_err(|_| EphemeralSplError::InstructionNotFound)?
     {
+        ESplInstruction::__Unused0 => Err(EphemeralSplError::InstructionNotFound.into()),
         ESplInstruction::InitializeEphemeralAta => {
             debug_log!("Instruction: InitializeEphemeralAta");
 
@@ -187,6 +188,16 @@ fn process_public_instruction(accounts: &[AccountView], instruction_data: &[u8])
             debug_log!("Instruction: EnsureTransferQueueCrank");
 
             process_ensure_transfer_queue_crank(accounts, data)
+        }
+        ESplInstruction::UpdateStealthPool => {
+            debug_log!("Instruction: UpdateStealthPool");
+
+            process_update_stealth_pool(accounts, data)
+        }
+        ESplInstruction::EnsureStealthPoolDelegated => {
+            debug_log!("Instruction: EnsureStealthPoolDelegated");
+
+            process_ensure_stealth_pool_delegated(accounts, data)
         }
         ESplInstruction::DelegateTransferQueue => {
             debug_log!("Instruction: DelegateTransferQueue");

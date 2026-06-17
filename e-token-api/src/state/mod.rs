@@ -5,6 +5,7 @@ pub mod global_vault;
 pub mod group_receipt;
 pub mod shuttle_ephemeral_ata;
 pub mod stash;
+pub mod stealth_pool;
 pub mod transfer_queue;
 pub mod transfer_queue_refill;
 

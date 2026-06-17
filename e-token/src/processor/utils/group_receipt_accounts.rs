@@ -2,6 +2,7 @@ use crate::processor::execute_transfer_callback::GROUP_RECEIPT_SEED;
 use crate::processor::utils::ephemeral_account::{
     close_ephemeral_account, create_ephemeral_account,
 };
+use ephemeral_spl_api::require_ok;
 use ephemeral_spl_api::state::group_receipt;
 use ephemeral_spl_api::state::group_receipt::GroupReceipt;
 use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, QUEUE_SEED};
@@ -48,7 +49,8 @@ pub fn group_receipt_create<'a>(
     let receipt_signer = Signer::from(&receipt_signer_seeds);
 
     let space = GroupReceipt::required_size(splits as usize);
-    create_ephemeral_account(
+
+    require_ok!(create_ephemeral_account(
         accounts.queue_info,
         accounts.group_receipt_info,
         accounts.magic_vault,
@@ -56,13 +58,14 @@ pub fn group_receipt_create<'a>(
             .try_into()
             .map_err(|_| ProgramError::ArithmeticOverflow)?,
         &[queue_signer, receipt_signer],
-    )?;
-    group_receipt::initialize_group_receipt(
+    ));
+
+    require_ok!(group_receipt::initialize_group_receipt(
         accounts.group_receipt_info,
         group_id,
         splits,
         group_receipt_bump,
-    )?;
+    ));
 
     GroupReceipt::new(accounts.group_receipt_info)
 }
