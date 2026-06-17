@@ -12,7 +12,7 @@ use wheels::layout::Decodable as _;
 fn validate_existing_delegation(
     ephemeral_ata_info: &AccountView,
     delegation_record: &AccountView,
-    requested_validator: Option<&[u8; 32]>,
+    requested_validator: Option<&Address>,
 ) -> ProgramResult {
     let Some(requested_validator) = requested_validator else {
         return Ok(());
@@ -25,9 +25,8 @@ fn validate_existing_delegation(
         DelegationRecord::try_from_bytes_with_discriminator(&delegation_record_data)
             .map_err(|_| ProgramError::InvalidAccountData)?;
     let current_validator = Address::new_from_array(delegation_record.authority.to_bytes());
-    let requested_validator = Address::new_from_array(*requested_validator);
 
-    if current_validator == requested_validator {
+    if &current_validator == requested_validator {
         return Ok(());
     }
 
@@ -86,9 +85,7 @@ pub fn process_delegate_ephemeral_ata(
         load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
 
     let config = DelegateConfig {
-        validator: args
-            .validator()
-            .map(|slice| Address::new_from_array(*slice)),
+        validator: args.validator().copied(),
         ..DelegateConfig::default()
     };
 

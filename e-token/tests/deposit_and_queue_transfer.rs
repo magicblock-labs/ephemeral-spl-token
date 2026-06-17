@@ -8,7 +8,7 @@ use ephemeral_spl_api::state::stealth_pool::{StealthPool, StealthPoolFlags};
 use ephemeral_spl_api::state::transfer_queue::{
     queue_views_checked, QueuedTransfer, TransferQueue, TransferQueueHeader, HEADER_LEN, ITEM_LEN,
 };
-use ephemeral_spl_api::ID as PROGRAM;
+use ephemeral_spl_api::{Address, ID as PROGRAM};
 use serial_test::serial;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::clock::Clock;
@@ -241,16 +241,16 @@ fn build_update_stealth_pool_ix(
     destinations: &[Pubkey],
 ) -> (Pubkey, Instruction) {
     let (stealth_pool, _) = StealthPool::find_pda(&handle_hash);
-    let destination_bytes = destinations
+    let destination_addresses = destinations
         .iter()
-        .map(|destination| destination.to_bytes())
+        .map(|destination| Address::new_from_array(destination.to_bytes()))
         .collect::<Vec<_>>();
 
     let data = instruction::ESplInstruction::UpdateStealthPool.with_data(
         &UpdateStealthPoolArgs {
             handle_hash,
             flags,
-            destinations: destination_bytes,
+            destinations: destination_addresses,
         }
         .encode()
         .unwrap(),

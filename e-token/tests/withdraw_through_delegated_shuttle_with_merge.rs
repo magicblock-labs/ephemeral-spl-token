@@ -276,7 +276,7 @@ async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_clean
             &DepositAndDelegateShuttleArgs {
                 shuttle_id,
                 amount: TRANSFER_AMOUNT,
-                validator: Some(validator.to_bytes()),
+                validator: Some(validator),
             }
             .encode()
             .unwrap(),

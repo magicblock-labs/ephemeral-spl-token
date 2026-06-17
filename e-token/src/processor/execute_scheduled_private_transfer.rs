@@ -101,8 +101,7 @@ pub fn process_execute_scheduled_private_transfer(
     let args = ExecuteScheduledPrivateTransferArgs::decode(instruction_data)?;
 
     // -------- validate stash PDA derivation --------
-    let derived_stash =
-        StashPda::derive_pda(args.user_address(), mint_info.address(), args.stash_bump())?;
+    let derived_stash = StashPda::derive_pda(args.user(), mint_info.address(), args.stash_bump())?;
     require_eq_keys!(
         &derived_stash,
         stash_payer_info.address(),
@@ -160,7 +159,7 @@ pub fn process_execute_scheduled_private_transfer(
     )?;
     let stash_bump_seed = [args.stash_bump()];
     let stash_signer_seeds =
-        StashPda::signer_seeds(args.user_address(), mint_info.address(), &stash_bump_seed);
+        StashPda::signer_seeds(args.user(), mint_info.address(), &stash_bump_seed);
     let stash_signer = Signer::from(&stash_signer_seeds);
 
     if effective_amount == 0 {
@@ -177,7 +176,7 @@ pub fn process_execute_scheduled_private_transfer(
 
     if refund_timeout_elapsed(scheduled_slot)? {
         let expected_user_ata = get_associated_token_address(
-            args.user_address(),
+            args.user(),
             mint_info.address(),
             token_program_info.address(),
         );
@@ -189,7 +188,7 @@ pub fn process_execute_scheduled_private_transfer(
         validate_token_account(
             user_ata_info,
             mint_info.address(),
-            Some(args.user_address()),
+            Some(args.user()),
             Some(token_program_info.address()),
         )?;
 
@@ -217,7 +216,7 @@ pub fn process_execute_scheduled_private_transfer(
 
     // -------- build ix 31 instruction data --------
     let mut stash_close_seeds = [0u8; 33];
-    stash_close_seeds[0..32].copy_from_slice(args.user_address().as_ref());
+    stash_close_seeds[0..32].copy_from_slice(args.user().as_ref());
     stash_close_seeds[32] = args.stash_bump();
 
     let ix_data =
@@ -227,7 +226,7 @@ pub fn process_execute_scheduled_private_transfer(
                     shuttle_id: args.shuttle_id(),
                     amount: effective_amount,
                     exact_out: false,
-                    validator: Some(args.validator().to_owned()),
+                    validator: Some(*args.validator()),
                     encrypted_destination: args.encrypted_destination().to_owned(),
                     stash_close_seeds,
                     encrypted_data_suffix: args.encrypted_data_suffix().to_owned(),

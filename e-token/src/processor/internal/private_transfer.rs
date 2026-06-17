@@ -13,7 +13,7 @@ use ephemeral_spl_api::debug_log;
 use ephemeral_spl_api::instruction::ESplInstruction;
 use ephemeral_spl_api::state::transfer_queue::{queue_views, TransferQueue};
 use ephemeral_spl_api::{consts, require, require_eq_keys, require_n_accounts};
-use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
 #[cfg(not(feature = "no-fees"))]
 use solana_instruction::{AccountMeta, Instruction};
 
@@ -45,7 +45,7 @@ pub(crate) fn process_with_merge_and_private_transfer_inner(
     shuttle_id: u32,
     amount: u64,
     exact_out: bool,
-    validator: Option<&[u8; 32]>,
+    validator: Option<&Address>,
     encrypted_destination: &[u8; 80],
     encrypted_data_suffix: &[u8],
     close_stash: Option<CloseStashArgs>,

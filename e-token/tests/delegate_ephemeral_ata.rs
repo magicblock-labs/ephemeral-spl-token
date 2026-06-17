@@ -111,7 +111,7 @@ async fn delegate_ephemeral_ata_succeeds() {
         ],
         data: instruction::ESplInstruction::DelegateEphemeralAta.with_data(
             &DelegateArgs {
-                validator: Some(validator.to_bytes()),
+                validator: Some(validator),
             }
             .encode()
             .unwrap(),
@@ -149,7 +149,7 @@ async fn delegate_ephemeral_ata_succeeds() {
     let ix_redelegate_other_validator = Instruction {
         data: instruction::ESplInstruction::DelegateEphemeralAta.with_data(
             &DelegateArgs {
-                validator: Some(other_validator.to_bytes()),
+                validator: Some(other_validator),
             }
             .encode()
             .unwrap(),
