@@ -49,7 +49,5 @@ pub fn process_allocate_transfer_queue(
         current_items.min(MAX_ITEMS_PER_REALLOC as u64) as usize * ITEM_LEN
     };
 
-    queue_info.resize(queue_info.data_len() + realloc_size)?;
-
-    Ok(())
+    queue_info.resize(queue_info.data_len() + realloc_size)
 }

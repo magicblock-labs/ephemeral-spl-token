@@ -7,6 +7,7 @@ use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::{load_mut, RawType};
 use ephemeral_spl_api::ID as PROGRAM;
 use solana_account::Account;
+use solana_address::Address;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::native_token::LAMPORTS_PER_SOL;
 use solana_program::rent::Rent;
@@ -32,7 +33,7 @@ async fn undelegation_callback_restores_ephemeral_ata() {
     let context = utils::start_program_test_with(PROGRAM, |pt| {
         let mut data = vec![0u8; EphemeralAta::LEN];
         let ephemeral_ata = load_mut::<EphemeralAta>(data.as_mut_slice()).unwrap();
-        ephemeral_ata.mint = pinocchio::Address::new_from_array(mint.to_bytes());
+        ephemeral_ata.mint = Address::new_from_array(mint.to_bytes());
         ephemeral_ata.amount = 500;
         pt.add_account(
             delegated_ata,

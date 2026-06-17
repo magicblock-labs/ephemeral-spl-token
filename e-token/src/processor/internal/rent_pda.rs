@@ -1,4 +1,4 @@
-use pinocchio::Address;
+use solana_address::Address;
 
 pub(crate) const RENT_PDA_SEED: &[u8] = b"rent";
 const RENT_PDA_AND_BUMP: ([u8; 32], u8) =

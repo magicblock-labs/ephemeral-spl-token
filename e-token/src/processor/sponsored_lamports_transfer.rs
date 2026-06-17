@@ -10,8 +10,9 @@ use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
-use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_system::instructions::{CreateAccount, Transfer};
+use solana_address::Address;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_pubkey::Pubkey;
 use wheels::layout::Decodable as _;
@@ -98,7 +99,7 @@ pub fn process_sponsored_lamports_transfer(
     let (derived_lamports_pda, lamports_pda_bump) = derive_lamports_pda(
         payer_info.address(),
         destination_info.address(),
-        &args.salt(),
+        args.salt(),
     );
     require_eq_keys!(
         &derived_lamports_pda,

@@ -1,5 +1,3 @@
-use core::u64;
-
 #[cfg(feature = "logging")]
 use alloc::string::ToString;
 
@@ -13,7 +11,8 @@ use ephemeral_spl_api::debug_log;
 use ephemeral_spl_api::instruction::ESplInstruction;
 use ephemeral_spl_api::state::transfer_queue::{queue_views, TransferQueue};
 use ephemeral_spl_api::{consts, require, require_eq_keys, require_n_accounts};
-use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use solana_address::Address;
 #[cfg(not(feature = "no-fees"))]
 use solana_instruction::{AccountMeta, Instruction};
 
@@ -127,8 +126,7 @@ pub(crate) fn process_with_merge_and_private_transfer_inner(
     });
 
     let (bump, queue_validator) = {
-        let data = unsafe { queue_info.borrow_unchecked() };
-        let (header, _) = queue_views(data)?;
+        let (header, _) = queue_views(unsafe { queue_info.borrow_unchecked() })?;
         (header.bump, header.validator)
     };
     let derived_queue =

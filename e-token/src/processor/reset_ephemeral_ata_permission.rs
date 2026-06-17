@@ -67,8 +67,7 @@ pub fn process_reset_ephemeral_ata_permission(
     members_flag.set(MemberFlags::AUTHORITY);
     let members_buf = [Member {
         flags: members_flag,
-        #[allow(clippy::clone_on_copy)]
-        pubkey: ephemeral_ata.owner.clone(),
+        pubkey: ephemeral_ata.owner,
     }];
     let members_args = MembersArgs {
         members: Some(&members_buf),

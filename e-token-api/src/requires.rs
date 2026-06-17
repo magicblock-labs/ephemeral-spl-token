@@ -38,7 +38,7 @@ macro_rules! require {
 #[macro_export]
 macro_rules! require_owned_by {
     ($account:expr, $owner_ref:expr) => {{
-        if !pinocchio::address::address_eq(unsafe { $account.owner() }, $owner_ref) {
+        if !solana_address::address_eq(unsafe { $account.owner() }, $owner_ref) {
             const FILE: &str = file!();
             const FILE_START: usize = $crate::requires::filename_start(FILE);
             pinocchio_log::log!(
@@ -62,7 +62,7 @@ macro_rules! require_owned_by {
 #[macro_export]
 macro_rules! require_eq_keys {
     ( $key1:expr, $key2:expr, $error:expr) => {{
-        if !pinocchio::address::address_eq($key1, $key2) {
+        if !solana_address::address_eq($key1, $key2) {
             const FILE: &str = file!();
             const FILE_START: usize = $crate::requires::filename_start(FILE);
             pinocchio_log::log!(
@@ -85,7 +85,7 @@ macro_rules! require_eq_keys {
 #[macro_export]
 macro_rules! require_ne_keys {
     ( $key1:expr, $key2:expr, $error:expr) => {{
-        if pinocchio::address::address_eq($key1, $key2) {
+        if solana_address::address_eq($key1, $key2) {
             const FILE: &str = file!();
             const FILE_START: usize = $crate::requires::filename_start(FILE);
             pinocchio_log::log!(

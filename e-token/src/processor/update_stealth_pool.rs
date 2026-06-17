@@ -3,7 +3,8 @@ use ephemeral_spl_api::require_n_accounts;
 use ephemeral_spl_api::state::stealth_pool::{StealthPool, StealthPoolFlags};
 use ephemeral_spl_api::state::{Initializable, RawType};
 use ephemeral_spl_api::{require, require_eq_keys};
-use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use solana_address::Address;
 use wheels::layout::Decodable as _;
 
 ///

@@ -12,6 +12,7 @@ use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::cpi::{invoke_signed_with_bounds, Signer};
 use pinocchio::instruction::{InstructionAccount, InstructionView};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use solana_address::Address;
 
 use crate::instruction::ESplInternalInstruction;
 
@@ -77,8 +78,7 @@ pub fn process_ensure_transfer_queue_crank(
     );
 
     let (mint, bump, validator) = {
-        let data = unsafe { queue_info.borrow_unchecked() };
-        let (header, _) = queue_views_checked(data)?;
+        let (header, _) = queue_views_checked(unsafe { queue_info.borrow_unchecked() })?;
         (header.mint, header.bump, header.validator)
     };
 
@@ -198,16 +198,14 @@ pub fn process_ensure_transfer_queue_crank(
         &queue_signers,
     )?;
 
-    let data = unsafe { queue_info.borrow_unchecked_mut() };
-    queue_set_crank_task_id_from_data(data, crank_task_id)?;
-    Ok(())
+    queue_set_crank_task_id_from_data(unsafe { queue_info.borrow_unchecked_mut() }, crank_task_id)
 }
 
 //
 // TODO (perf): avoid loop, copies, etc.
 //
 #[inline(always)]
-pub(crate) fn derive_queue_crank_task_id(queue_address: &ephemeral_spl_api::Address) -> i64 {
+pub(crate) fn derive_queue_crank_task_id(queue_address: &Address) -> i64 {
     let mut acc = 0_u64;
     for chunk in queue_address.as_ref().chunks_exact(8) {
         let mut bytes = [0_u8; 8];

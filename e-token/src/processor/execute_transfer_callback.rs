@@ -51,8 +51,7 @@ pub fn process_execute_transfer_callback(
     ] = require_n_accounts!(accounts, 11);
 
     // Verify validator & queue info
-    let data = unsafe { queue_info.borrow_unchecked() };
-    let (header, _) = queue_views_checked(data)?;
+    let (header, _) = queue_views_checked(unsafe { queue_info.borrow_unchecked() })?;
     validate_common(callback_signer, queue_info, mint, header)?;
 
     let response = MagicResponseView::deserialize(instruction_data)?;

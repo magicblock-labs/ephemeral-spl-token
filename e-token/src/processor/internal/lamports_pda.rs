@@ -1,4 +1,4 @@
-use pinocchio::Address;
+use solana_address::Address;
 
 pub(crate) const LAMPORTS_PDA_SEED: &[u8] = b"lamports";
 

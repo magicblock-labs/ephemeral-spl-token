@@ -201,8 +201,7 @@ pub(crate) fn validate_queue_vault_for_mint(
     expected_mint: &Address,
 ) -> Result<QueueVault, ProgramError> {
     let (bump, validator) = {
-        let data = unsafe { queue_info.borrow_unchecked() };
-        let (header, _) = queue_views_checked(data)?;
+        let (header, _) = queue_views_checked(unsafe { queue_info.borrow_unchecked() })?;
         require!(
             header.mint == *mint_info.address() && header.mint == *expected_mint,
             ProgramError::InvalidAccountData

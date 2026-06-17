@@ -22,8 +22,9 @@ use hydra_api::instruction::{self as hydra_ix, CreateArgs, SchedMeta};
 use pinocchio::cpi::{invoke_signed_with_bounds, Seed, Signer};
 use pinocchio::instruction::{InstructionAccount, InstructionView};
 use pinocchio::sysvars::{clock::Clock, Sysvar};
-use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_system::instructions::Transfer;
+use solana_address::Address;
 use solana_pubkey::Pubkey;
 
 use crate::processor::internal::private_transfer::SCHEDULED_PT_ACCOUNTS;
@@ -248,7 +249,5 @@ pub fn process_schedule_private_transfer(
         to: hydra_crank_pda_info,
         lamports: CRANKER_REWARD,
     }
-    .invoke_signed(&[rent_signer])?;
-
-    Ok(())
+    .invoke_signed(&[rent_signer])
 }

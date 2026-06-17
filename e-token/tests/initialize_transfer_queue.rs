@@ -3,6 +3,7 @@ use ephemeral_spl_api::state::transfer_queue::{
     ITEM_LEN, TRANSFER_QUEUE_VERSION,
 };
 use ephemeral_spl_api::ID as PROGRAM;
+use solana_address::Address;
 use solana_program_pack::Pack;
 use {
     solana_program_test::tokio, solana_pubkey::Pubkey, solana_signer::Signer,
@@ -69,10 +70,7 @@ async fn initialize_transfer_queue_default_size() {
     let header = read_header_unaligned(&queue_account.data);
     assert_eq!(header.version, TRANSFER_QUEUE_VERSION);
     assert_eq!(header.bump, bump);
-    assert_eq!(
-        header.mint,
-        ephemeral_spl_api::Address::new_from_array(mint.to_bytes())
-    );
+    assert_eq!(header.mint, Address::new_from_array(mint.to_bytes()));
     assert_eq!(header.length, 0);
 }
 
@@ -211,9 +209,6 @@ async fn initialize_transfer_queue_custom_size_is_idempotent() {
     let header = read_header_unaligned(&queue_account.data);
     assert_eq!(header.version, TRANSFER_QUEUE_VERSION);
     assert_eq!(header.bump, bump);
-    assert_eq!(
-        header.mint,
-        ephemeral_spl_api::Address::new_from_array(mint.to_bytes())
-    );
+    assert_eq!(header.mint, Address::new_from_array(mint.to_bytes()));
     assert_eq!(header.length, 0);
 }

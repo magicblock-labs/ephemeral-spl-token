@@ -83,23 +83,21 @@ pub fn process_create_ephemeral_ata_permission(
     members_flag.set(MemberFlags::AUTHORITY);
     let members_buf = [Member {
         flags: members_flag,
-        #[allow(clippy::clone_on_copy)]
-        pubkey: ephemeral_ata.owner.clone(),
+        pubkey: ephemeral_ata.owner,
     }];
     let members_args = MembersArgs {
         members: Some(&members_buf),
     };
 
-    let builder = CreatePermissionCpiBuilder::new(
+    CreatePermissionCpiBuilder::new(
         ephemeral_ata_info,
         permission_info,
         payer_info,
         system_program,
         &PERMISSION_PROGRAM_ID,
-    );
-    builder
-        .seeds(&[ephemeral_ata.owner.as_ref(), ephemeral_ata.mint.as_ref()])
-        .bump(ephemeral_ata.bump)
-        .members(members_args)
-        .invoke()
+    )
+    .seeds(&[ephemeral_ata.owner.as_ref(), ephemeral_ata.mint.as_ref()])
+    .bump(ephemeral_ata.bump)
+    .members(members_args)
+    .invoke()
 }

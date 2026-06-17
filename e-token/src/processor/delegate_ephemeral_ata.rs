@@ -6,7 +6,8 @@ use ephemeral_spl_api::instructions::DelegateArgs;
 use ephemeral_spl_api::require_n_accounts;
 use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_initialized};
 use ephemeral_spl_api::{debug_log, error::EphemeralSplError};
-use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use solana_address::Address;
 use wheels::layout::Decodable as _;
 
 fn validate_existing_delegation(
@@ -89,10 +90,10 @@ pub fn process_delegate_ephemeral_ata(
         ..DelegateConfig::default()
     };
 
-    #[allow(clippy::clone_on_copy)]
-    let mint = ephemeral_ata.mint.clone();
-    #[allow(clippy::clone_on_copy)]
-    let owner = ephemeral_ata.owner.clone();
+    // IMPORTANT: do not use references into account data; delegate zeroes it before invoke_signed.
+    // so copy is mandatory.
+    let mint = ephemeral_ata.mint;
+    let owner = ephemeral_ata.owner;
     let seeds: &[&[u8]] = &[owner.as_ref(), mint.as_ref()];
 
     debug_log!("Delegating eata");

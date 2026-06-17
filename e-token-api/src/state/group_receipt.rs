@@ -11,8 +11,7 @@ pub struct GroupReceipt<'a> {
 
 impl<'a> GroupReceipt<'a> {
     pub fn new(info: &'a AccountView) -> Result<Self, ProgramError> {
-        let data = unsafe { info.borrow_unchecked_mut() };
-        Ok(unsafe { Self::from_data_mut(data)? })
+        Ok(unsafe { Self::from_data_mut(info.borrow_unchecked_mut())? })
     }
 
     /// Returns `true` if all transfers are completed

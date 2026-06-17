@@ -8,8 +8,9 @@ use ephemeral_spl_api::state::stealth_pool::{StealthPool, StealthPoolFlags};
 use ephemeral_spl_api::state::transfer_queue::{
     queue_views_checked, QueuedTransfer, TransferQueue, TransferQueueHeader, HEADER_LEN, ITEM_LEN,
 };
-use ephemeral_spl_api::{Address, ID as PROGRAM};
+use ephemeral_spl_api::ID as PROGRAM;
 use serial_test::serial;
+use solana_address::Address;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::clock::Clock;
 use solana_program_pack::Pack;

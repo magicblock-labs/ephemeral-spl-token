@@ -1,6 +1,6 @@
 use wheels::variable_offset_layout;
 
-use crate::Address;
+use solana_address::Address;
 
 #[variable_offset_layout(buffer_offset = 1, option = implicit)]
 pub struct DelegateShuttleArgs {

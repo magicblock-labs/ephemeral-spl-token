@@ -30,6 +30,7 @@ pinocchio-system = { workspace = true }
 pinocchio-token-2022 = { workspace = true }
 pinocchio-associated-token-account = { workspace = true }
 solana-instruction = { workspace = true }
+solana-address = { workspace = true }
 solana-pubkey = { workspace = true }
 solana-signature = { workspace = true }
 spl-token-interface = { workspace = true }

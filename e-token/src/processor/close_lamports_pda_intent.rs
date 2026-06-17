@@ -1,7 +1,8 @@
 use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts_with_ignored};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
-use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use solana_address::Address;
 
 use crate::processor::{internal::lamports_pda::derive_lamports_pda, internal::rent_pda::RENT_PDA};
 
@@ -120,6 +121,5 @@ fn close_program_account_to_recipient(
         .ok_or(ProgramError::InvalidArgument)?;
     recipient.set_lamports(updated_recipient_lamports);
     account.set_lamports(0);
-    account.close()?;
-    Ok(())
+    account.close()
 }

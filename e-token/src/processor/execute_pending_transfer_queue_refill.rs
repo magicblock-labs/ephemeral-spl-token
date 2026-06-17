@@ -3,7 +3,8 @@ use ephemeral_spl_api::instructions::AmountAndSaltArgs;
 use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::cpi::{invoke_signed_with_bounds, Seed, Signer};
 use pinocchio::instruction::{InstructionAccount, InstructionView};
-use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use solana_address::Address;
 use wheels::layout::Encodable as _;
 
 use crate::processor::internal::{
@@ -178,6 +179,5 @@ fn close_program_account_to_recipient(
         .ok_or(ProgramError::InvalidArgument)?;
     recipient.set_lamports(updated_recipient_lamports);
     account.set_lamports(0);
-    account.close()?;
-    Ok(())
+    account.close()
 }
