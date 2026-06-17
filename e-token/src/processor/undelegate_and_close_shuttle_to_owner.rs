@@ -1,4 +1,5 @@
-use crate::processor::utils::{get_associated_token_address, validate_token_account};
+use crate::processor::internal::shuttle_delegation::DEFAULT_ESCROW_INDEX;
+use crate::processor::internal::{get_associated_token_address, validate_token_account};
 use ephemeral_rollups_pinocchio::intent_bundle::{
     ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
 };
@@ -10,7 +11,6 @@ use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
 
 use crate::instruction::ESplInternalInstruction;
 
-pub(crate) const DEFAULT_ESCROW_INDEX: u8 = u8::MAX;
 const INTENT_BUNDLE_DATA_BUF_SIZE: usize = 1536;
 const CLOSE_SHUTTLE_ATA_COMPUTE_UNITS: u32 = 100_000;
 const CLOSE_STASH_DATA_LEN: usize = 33;

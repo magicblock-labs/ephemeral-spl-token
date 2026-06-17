@@ -1,12 +1,10 @@
-use alloc::vec;
-use alloc::vec::Vec;
-use data_layout::variable_offset_layout;
 use ephemeral_rollups_pinocchio::acl::{
     consts::PERMISSION_PROGRAM_ID,
     instruction::CreatePermissionCpiBuilder,
     pda::permission_pda_from_permissioned_account,
     types::{Member, MemberFlags, MembersArgs},
 };
+use ephemeral_spl_api::instructions::CreateEphemeralAtaPermissionArgs;
 use ephemeral_spl_api::{require, require_eq_keys};
 use ephemeral_spl_api::{
     require_n_accounts,
@@ -103,9 +101,4 @@ pub fn process_create_ephemeral_ata_permission(
         .bump(ephemeral_ata.bump)
         .members(members_args)
         .invoke()
-}
-
-#[variable_offset_layout(buffer_offset = 1)]
-pub struct CreateEphemeralAtaPermissionArgs {
-    flag_byte: u8,
 }

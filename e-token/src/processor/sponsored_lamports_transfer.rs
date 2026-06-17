@@ -5,6 +5,7 @@ use ephemeral_rollups_pinocchio::{
     consts::{DELEGATION_PROGRAM_ID, MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID},
     types::DelegateConfig,
 };
+use ephemeral_spl_api::instructions::AmountAndSaltArgs;
 use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::rent::Rent;
@@ -14,13 +15,11 @@ use pinocchio_system::instructions::{CreateAccount, Transfer};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_pubkey::Pubkey;
 
+use crate::instruction::ESplInternalInstruction;
 use crate::processor::{
-    initialize_rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
     internal::lamports_pda::{derive_lamports_pda, LAMPORTS_PDA_SEED},
+    internal::rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
     internal::shuttle_delegation::delegate_account_with_actions_from_sponsor,
-};
-use crate::{
-    instruction::ESplInternalInstruction, processor::internal::lamports_pda::AmountAndSaltArgs,
 };
 
 ///

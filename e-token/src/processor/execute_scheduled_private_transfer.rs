@@ -1,10 +1,11 @@
 use alloc::borrow::ToOwned;
-use alloc::vec;
-use alloc::vec::Vec;
 use core::mem::MaybeUninit;
 
-use data_layout::variable_offset_layout;
 use ephemeral_spl_api::instruction::ESplInstruction;
+use ephemeral_spl_api::instructions::{
+    DepositAndDelegateShuttleWithPrivateTransferAndStashCloseArgs,
+    ExecuteScheduledPrivateTransferArgs,
+};
 
 use ephemeral_spl_api::state::stash::StashPda;
 use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
@@ -15,19 +16,13 @@ use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
 use pinocchio_system::instructions::Transfer;
 use pinocchio_token_2022::instructions::{CloseAccount, TransferChecked};
 
-use crate::processor::initialize_rent_pda::RENT_PDA;
 use crate::processor::internal::derive_hydra_seed;
-use crate::processor::utils::{
+use crate::processor::internal::private_transfer::SCHEDULED_PT_INNER_ACCOUNTS;
+use crate::processor::internal::rent_pda::RENT_PDA;
+use crate::processor::internal::{
     get_associated_token_address, is_supported_token_program, read_mint_decimals,
     validate_token_account,
 };
-use crate::DepositAndDelegateShuttleWithPrivateTransferAndStashCloseArgs;
-
-/// Number of metas forwarded to instruction 31.
-pub(crate) const SCHEDULED_PT_INNER_ACCOUNTS: usize = 19;
-
-/// Total accounts on this top-level instruction (ix 31 layout + user ATA + Hydra crank).
-pub(crate) const SCHEDULED_PT_ACCOUNTS: usize = SCHEDULED_PT_INNER_ACCOUNTS + 2;
 
 // Five minutes at an estimated 400 ms/slot.
 const REFUND_TIMEOUT_SLOTS: u64 = 750;
@@ -358,23 +353,6 @@ pub fn process_execute_scheduled_private_transfer(
     )?;
 
     Ok(())
-}
-
-#[variable_offset_layout(buffer_offset = 1)]
-pub struct ExecuteScheduledPrivateTransferArgs {
-    pub user: [u8; 32],
-    pub stash_bump: u8,
-    pub shuttle_id: u32,
-    pub validator: [u8; 32],
-    pub encrypted_destination: [u8; 80],
-    #[flexible = 1]
-    pub encrypted_data_suffix: Vec<u8>,
-}
-
-impl ExecuteScheduledPrivateTransferArgsView<'_> {
-    fn user_address(&self) -> &Address {
-        unsafe { &*(self.user().as_ptr() as *const Address) }
-    }
 }
 
 #[inline(always)]

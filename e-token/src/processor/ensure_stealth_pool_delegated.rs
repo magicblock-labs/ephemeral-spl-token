@@ -1,8 +1,6 @@
-use alloc::vec;
-use alloc::vec::Vec;
-use data_layout::variable_offset_layout;
 use ephemeral_rollups_pinocchio::instruction::DelegateAccountCpiBuilder;
 use ephemeral_rollups_pinocchio::types::DelegateConfig;
+use ephemeral_spl_api::instructions::EnsureStealthPoolDelegatedArgs;
 use ephemeral_spl_api::state::stealth_pool::StealthPool;
 use ephemeral_spl_api::state::RawType;
 use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
@@ -122,14 +120,3 @@ pub fn process_ensure_stealth_pool_delegated(
     .config(config)
     .invoke()
 }
-
-#[variable_offset_layout(buffer_offset = 1, option = implicit)]
-pub struct EnsureStealthPoolDelegatedArgs {
-    pub handle_hash: [u8; 32],
-    pub validator: Option<[u8; 32]>,
-}
-
-static_assertions::const_assert!(matches!(
-    EnsureStealthPoolDelegatedArgs::DATA_LENS,
-    [32, 64]
-));

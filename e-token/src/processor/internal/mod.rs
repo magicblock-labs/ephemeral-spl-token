@@ -1,12 +1,27 @@
+pub(crate) mod ephemeral_account;
 pub(crate) mod ephemeral_ata;
 pub(crate) mod group_receipt;
+pub(crate) mod group_receipt_accounts;
 pub(crate) mod lamports_pda;
+pub(crate) mod pda;
+pub(crate) mod private_transfer;
+pub(crate) mod rent_pda;
 pub(crate) mod shuttle_delegation;
+pub(crate) mod token;
 pub(crate) mod token_vault;
 pub(crate) mod transfer_queue_refill;
 
-pub use lamports_pda::AmountAndSaltArgs;
-pub use shuttle_delegation::DepositAndDelegateShuttleArgs;
+pub(crate) use ephemeral_account::MAGIC_VAULT_ID;
+#[cfg(feature = "logging")]
+pub(crate) use group_receipt_accounts::group_receipt_log;
+pub(crate) use group_receipt_accounts::{
+    group_receipt_close, group_receipt_create, GroupReceiptAccounts,
+};
+pub(crate) use pda::CALLBACK_SIGNER;
+pub(crate) use token::{
+    get_associated_token_address, is_supported_token_program, read_mint_decimals,
+    token_program_for_kind, token_program_kind, validate_token_account,
+};
 
 use pinocchio::{error::ProgramError, Address};
 /// seed is created by overwriting the first 4-bytes of stash_pda with shuttle_id bytes

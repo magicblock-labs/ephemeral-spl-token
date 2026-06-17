@@ -6,9 +6,9 @@ use ephemeral_rollups_pinocchio::pda::{
 use ephemeral_spl_api::{
     consts::SPONSORED_LAMPORTS_TRANSFER_SETUP_LAMPORTS,
     instruction::{self, ESplInstruction},
+    instructions::AmountAndSaltArgs,
     ID as PROGRAM,
 };
-use ephemeral_token_program::AmountAndSaltArgs;
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::rent::Rent;

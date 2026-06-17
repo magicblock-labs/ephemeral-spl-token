@@ -6,6 +6,7 @@ use common::magic_mock::{
     take_captured_schedules, CapturedScheduleAccount,
 };
 use dlp_api::pda::magic_fee_vault_pda_from_validator;
+use ephemeral_spl_api::instructions::{DepositAndQueueTransferArgs, ExecuteQueuedTransferArgs};
 use ephemeral_spl_api::state::{
     ephemeral_ata::EphemeralAta,
     transfer_queue::{
@@ -14,7 +15,6 @@ use ephemeral_spl_api::state::{
 };
 use ephemeral_spl_api::ID as PROGRAM;
 use ephemeral_spl_api::{instruction, state::transfer_queue::TransferQueue};
-use ephemeral_token_program::{DepositAndQueueTransferArgs, ExecuteQueuedTransferArgs};
 use magicblock_magic_program_api::{Pubkey as MagicPubkey, MAGIC_CONTEXT_PUBKEY};
 use solana_account::Account as SolanaAccount;
 use solana_instruction::{AccountMeta, Instruction};

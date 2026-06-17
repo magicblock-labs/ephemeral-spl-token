@@ -1,6 +1,4 @@
-use alloc::vec;
-use alloc::vec::Vec;
-use data_layout::variable_offset_layout;
+use ephemeral_spl_api::instructions::WithdrawArgs;
 use ephemeral_spl_api::require_n_accounts;
 use pinocchio::{AccountView, ProgramResult};
 
@@ -49,9 +47,4 @@ pub fn process_withdraw_spl_tokens(
         token_program_info,
         args.amount(),
     )
-}
-
-#[variable_offset_layout(buffer_offset = 1)]
-pub struct WithdrawArgs {
-    amount: u64,
 }

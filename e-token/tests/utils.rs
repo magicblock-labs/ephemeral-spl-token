@@ -7,11 +7,11 @@ use ephemeral_rollups_pinocchio::pda::{
     delegate_buffer_pda_from_delegated_account_and_owner_program,
     delegation_metadata_pda_from_delegated_account, delegation_record_pda_from_delegated_account,
 };
+use ephemeral_spl_api::instructions::InitializeTransferQueueArgs;
 use ephemeral_spl_api::state::group_receipt::GroupReceipt;
 use ephemeral_spl_api::state::stealth_pool::StealthPool;
 use ephemeral_spl_api::state::RawType;
 use ephemeral_spl_api::{instruction, ID as PROGRAM};
-use ephemeral_token_program::InitializeTransferQueueArgs;
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;

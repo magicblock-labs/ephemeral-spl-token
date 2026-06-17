@@ -1,5 +1,6 @@
 use alloc::vec::Vec;
 use dlp_api::compact::ClearText;
+use ephemeral_spl_api::instructions::DepositAndDelegateShuttleArgs;
 use ephemeral_spl_api::require_n_accounts;
 use pinocchio::{AccountView, ProgramResult};
 use solana_instruction::Instruction;
@@ -8,7 +9,7 @@ use crate::processor::internal::shuttle_delegation::{
     merge_shuttle_into_token_account_action,
     process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions,
     undelegate_and_close_shuttle_action, DepositAndDelegateShuttleAccounts,
-    DepositAndDelegateShuttleArgs,
+    DepositAndDelegateShuttleCommonArgs,
 };
 
 struct DepositAndDelegateShuttleWithMergeAccounts<'a> {
@@ -96,7 +97,11 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge(
 
     process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions(
         &accounts.common,
-        args.common_args(),
+        DepositAndDelegateShuttleCommonArgs {
+            shuttle_id: args.shuttle_id(),
+            total_amount: args.amount(),
+            validator: args.validator(),
+        },
         0,
         default_post_delegation_actions(&accounts).cleartext(),
     )

@@ -1,6 +1,3 @@
-use alloc::vec;
-use alloc::vec::Vec;
-use data_layout::variable_offset_layout;
 use ephemeral_rollups_pinocchio::acl::{
     consts::PERMISSION_PROGRAM_ID, instruction::CreatePermissionCpiBuilder,
     pda::permission_pda_from_permissioned_account, types::MembersArgs,
@@ -8,6 +5,7 @@ use ephemeral_rollups_pinocchio::acl::{
 use ephemeral_rollups_pinocchio::instruction::DelegateAccountCpiBuilder;
 use ephemeral_rollups_pinocchio::types::DelegateConfig;
 use ephemeral_spl_api::consts::TRANSFER_QUEUE_INITIAL_BUFFER_LAMPORTS;
+use ephemeral_spl_api::instructions::InitializeTransferQueueArgs;
 use ephemeral_spl_api::require_n_accounts;
 use ephemeral_spl_api::state::transfer_queue::{
     capacity_from_data_len, init_queue, queue_set_token_program_kind_from_data,
@@ -22,8 +20,8 @@ use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_system::instructions::{CreateAccount, Transfer};
 
 use crate::processor::internal::ephemeral_ata::initialize_ephemeral_ata_with_sponsor;
-use crate::processor::utils::get_associated_token_address;
-use crate::processor::utils::token_program_kind;
+use crate::processor::internal::get_associated_token_address;
+use crate::processor::internal::token_program_kind;
 
 pub const DEFAULT_TRANSFER_QUEUE_ITEMS: u32 = 100;
 /// Default queue size in bytes. (HEADER_LEN + ITEM_LEN * DEFAULT_TRANSFER_QUEUE_ITEMS)
@@ -278,10 +276,3 @@ pub fn process_initialize_transfer_queue(
 
     Ok(())
 }
-
-#[variable_offset_layout(buffer_offset = 1, option = implicit)]
-pub struct InitializeTransferQueueArgs {
-    pub requested_items: Option<u32>,
-}
-
-static_assertions::const_assert!(matches!(InitializeTransferQueueArgs::DATA_LENS, [0, 4]));

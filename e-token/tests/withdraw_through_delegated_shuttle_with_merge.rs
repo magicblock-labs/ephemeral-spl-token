@@ -6,13 +6,13 @@ use std::{
 use dlp_api::state::DelegationRecord;
 use ephemeral_spl_api::{
     instruction,
+    instructions::DepositAndDelegateShuttleArgs,
     state::{
         ephemeral_ata::EphemeralAta, load, load_mut, shuttle_ephemeral_ata::ShuttleMetadata,
         Initializable, RawType,
     },
 };
 use ephemeral_spl_api::{state::load_initialized, ID as PROGRAM};
-use ephemeral_token_program::DepositAndDelegateShuttleArgs;
 use magicblock_magic_program_api::{
     args::{MagicIntentBundleArgs, UndelegateTypeArgs},
     instruction::MagicBlockInstruction,

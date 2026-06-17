@@ -7,7 +7,7 @@ use ephemeral_spl_api::{require, require_eq_keys};
 use pinocchio::sysvars::{rent::Rent, Sysvar};
 use pinocchio::{error::ProgramError, AccountView, Address};
 
-use crate::processor::initialize_rent_pda::RENT_PDA;
+use crate::processor::internal::rent_pda::RENT_PDA;
 
 pub(crate) const MARK_TRANSFER_QUEUE_REFILL_PENDING_ESCROW_INDEX: u8 = 1;
 // This path may need to create the refill-state PDA on first use, so it needs

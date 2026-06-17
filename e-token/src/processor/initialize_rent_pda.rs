@@ -1,17 +1,12 @@
 use pinocchio::cpi::{Seed, Signer};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
-use pinocchio::Address;
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_system::instructions::CreateAccount;
 
 use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 
-pub const RENT_PDA_SEED: &[u8] = b"rent";
-const RENT_PDA_AND_BUMP: ([u8; 32], u8) =
-    const_crypto::ed25519::derive_program_address(&[RENT_PDA_SEED], crate::ID.as_array());
-pub const RENT_PDA: Address = Address::new_from_array(RENT_PDA_AND_BUMP.0);
-pub const RENT_PDA_BUMP: u8 = RENT_PDA_AND_BUMP.1;
+use crate::processor::internal::rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED};
 
 ///
 /// Executes on:

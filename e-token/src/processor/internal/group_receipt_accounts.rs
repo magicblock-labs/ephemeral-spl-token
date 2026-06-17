@@ -1,7 +1,5 @@
-use crate::processor::execute_transfer_callback::GROUP_RECEIPT_SEED;
-use crate::processor::utils::ephemeral_account::{
-    close_ephemeral_account, create_ephemeral_account,
-};
+use super::ephemeral_account::{close_ephemeral_account, create_ephemeral_account};
+use super::group_receipt::GROUP_RECEIPT_SEED;
 use ephemeral_spl_api::require_ok;
 use ephemeral_spl_api::state::group_receipt;
 use ephemeral_spl_api::state::group_receipt::GroupReceipt;
@@ -11,17 +9,17 @@ use pinocchio::error::ProgramError;
 use pinocchio::{AccountView, ProgramResult};
 
 /// Required accounts for control over receipt
-pub struct GroupReceiptAccounts<'a> {
-    pub group_receipt_info: &'a AccountView,
-    pub queue_info: &'a AccountView,
-    pub source: &'a AccountView,
-    pub magic_vault: &'a AccountView,
-    pub _magic_program: &'a AccountView,
+pub(crate) struct GroupReceiptAccounts<'a> {
+    pub(crate) group_receipt_info: &'a AccountView,
+    pub(crate) queue_info: &'a AccountView,
+    pub(crate) source: &'a AccountView,
+    pub(crate) magic_vault: &'a AccountView,
+    pub(crate) _magic_program: &'a AccountView,
 }
 
 /// Creates `GroupReceipt` and initializes it.
 /// Use this when the receipt account does not yet exist.
-pub fn group_receipt_create<'a>(
+pub(crate) fn group_receipt_create<'a>(
     accounts: &GroupReceiptAccounts<'a>,
     group_receipt_bump: u8,
     group_id: u32,
@@ -72,7 +70,7 @@ pub fn group_receipt_create<'a>(
 
 /// Closes the group receipt account, refunding rent to the queue PDA.
 /// Consumes the receipt since the account is no longer valid after closing.
-pub fn group_receipt_close(
+pub(crate) fn group_receipt_close(
     accounts: &GroupReceiptAccounts<'_>,
     _group_receipt: GroupReceipt<'_>,
 ) -> ProgramResult {

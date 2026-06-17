@@ -1,6 +1,4 @@
-use alloc::vec;
-use alloc::vec::Vec;
-use data_layout::variable_offset_layout;
+use ephemeral_spl_api::instructions::InitializeShuttleEphemeralAtaArgs;
 use ephemeral_spl_api::{require, require_n_accounts};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
@@ -62,9 +60,4 @@ pub fn process_initialize_shuttle_ephemeral_ata(
     )?;
 
     Ok(())
-}
-
-#[variable_offset_layout(buffer_offset = 1)]
-pub struct InitializeShuttleEphemeralAtaArgs {
-    shuttle_id: u32,
 }

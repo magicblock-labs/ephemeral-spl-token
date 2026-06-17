@@ -1,6 +1,4 @@
-use alloc::vec;
-use alloc::vec::Vec;
-use data_layout::variable_offset_layout;
+use ephemeral_spl_api::instructions::DepositArgs;
 use ephemeral_spl_api::state::{load_initialized, load_mut_initialized};
 use ephemeral_spl_api::{require, require_n_accounts};
 
@@ -74,9 +72,4 @@ pub fn process_deposit_spl_tokens(
         .ok_or(ProgramError::InvalidArgument)?;
 
     Ok(())
-}
-
-#[variable_offset_layout(buffer_offset = 1)]
-pub struct DepositArgs {
-    amount: u64,
 }

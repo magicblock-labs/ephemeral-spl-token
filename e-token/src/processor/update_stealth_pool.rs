@@ -1,6 +1,4 @@
-use alloc::vec;
-use alloc::vec::Vec;
-use data_layout::variable_offset_layout;
+use ephemeral_spl_api::instructions::UpdateStealthPoolArgs;
 use ephemeral_spl_api::require_n_accounts;
 use ephemeral_spl_api::state::stealth_pool::{StealthPool, StealthPoolFlags};
 use ephemeral_spl_api::state::{Initializable, RawType};
@@ -95,15 +93,3 @@ pub fn process_update_stealth_pool(
 
     Ok(())
 }
-
-#[variable_offset_layout(buffer_offset = 1)]
-pub struct UpdateStealthPoolArgs {
-    pub handle_hash: [u8; 32],
-    // TODO (snawaz): support enum based flags in data-layout
-    pub flags: u8, // StealthPoolFlags
-    #[flexible = 1]
-    pub destinations: Vec<[u8; 32]>,
-}
-
-static_assertions::const_assert!(UpdateStealthPoolArgs::DATA_LEN_RANGE.0 == 34);
-static_assertions::const_assert!(UpdateStealthPoolArgs::DATA_LEN_RANGE.1 == 8194);

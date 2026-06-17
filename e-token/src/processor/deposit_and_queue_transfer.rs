@@ -2,15 +2,13 @@ use crate::processor::internal::group_receipt::derive_group_receipt_id;
 use crate::processor::internal::token_vault::{
     transfer_to_queue_vault_for_mint, transfer_to_vault_for_mint, validate_queue_vault_for_mint,
 };
-use crate::processor::utils::{
+use crate::processor::internal::{
     group_receipt_create, read_mint_decimals, token_program_kind, GroupReceiptAccounts,
 };
-use alloc::vec;
-use alloc::vec::Vec;
 use core::convert::TryFrom;
-use data_layout::variable_offset_layout;
 use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
 use ephemeral_spl_api::debug_log;
+use ephemeral_spl_api::instructions::DepositAndQueueTransferArgs;
 use ephemeral_spl_api::state::stealth_pool::StealthPool;
 #[cfg(feature = "logging")]
 use ephemeral_spl_api::state::transfer_queue::capacity_from_data_len;
@@ -379,29 +377,6 @@ impl DestinationResolution {
             }
             _ => group_destination.ok_or(ProgramError::InvalidAccountData),
         }
-    }
-}
-
-#[variable_offset_layout(buffer_offset = 1, option = implicit)]
-pub struct DepositAndQueueTransferArgs {
-    pub amount: u64,
-    pub group_id: [u8; 3],
-    pub min_delay_ms: u64,
-    pub max_delay_ms: u64,
-    pub split: u32,
-    pub flags: Option<u8>,
-    pub client_ref_id: Option<u64>,
-}
-
-static_assertions::const_assert!(matches!(
-    DepositAndQueueTransferArgs::DATA_LENS,
-    [31, 32, 39, 40]
-));
-
-impl DepositAndQueueTransferArgsView<'_> {
-    pub fn group_id_u32(&self) -> u32 {
-        let id = self.group_id();
-        u32::from(id[0]) | (u32::from(id[1]) << 8) | (u32::from(id[2]) << 16)
     }
 }
 

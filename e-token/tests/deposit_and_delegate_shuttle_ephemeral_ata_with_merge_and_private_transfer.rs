@@ -10,14 +10,14 @@ use ephemeral_spl_api::consts::{
     SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS, SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS,
 };
 use ephemeral_spl_api::instruction;
+use ephemeral_spl_api::instructions::{
+    DepositAndDelegateShuttleWithPrivateTransferArgs, DepositAndQueueTransferArgs,
+};
 use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
 use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
 use ephemeral_spl_api::state::transfer_queue::{TransferQueue, TransferQueueHeader, HEADER_LEN};
 use ephemeral_spl_api::state::{load, Initializable};
 use ephemeral_spl_api::ID as PROGRAM;
-use ephemeral_token_program::{
-    DepositAndDelegateShuttleWithPrivateTransferArgs, DepositAndQueueTransferArgs,
-};
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::rent::Rent;
