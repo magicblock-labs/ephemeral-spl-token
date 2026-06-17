@@ -1,4 +1,11 @@
-use ephemeral_rollups_pinocchio::{instruction::DelegateAccountCpiBuilder, types::DelegateConfig};
+use ephemeral_rollups_pinocchio::{
+    acl::{
+        consts::PERMISSION_PROGRAM_ID, instruction::CreatePermissionCpiBuilder,
+        pda::permission_pda_from_permissioned_account, types::MembersArgs,
+    },
+    instruction::DelegateAccountCpiBuilder,
+    types::DelegateConfig,
+};
 use ephemeral_spl_api::{
     instructions::EnsureStealthPoolDelegatedArgs,
     require, require_eq_keys, require_n_accounts,
@@ -20,12 +27,14 @@ use wheels::layout::Decodable as _;
 ///
 ///  0: [signer]            - Keypair : Payer.
 ///  1: [writable]          - PDA     : Stealth pool account.
-///  2: []                  - Program : Owner program (this program).
-///  3: [writable]          - PDA     : Buffer account.
-///  4: [writable]          - PDA     : Delegation record account.
-///  5: [writable]          - PDA     : Delegation metadata account.
-///  6: []                  - Program : Delegation program.
-///  7: []                  - Builtin : System program.
+///  2: [writable]          - PDA     : Stealth pool permission account.
+///  3: []                  - Program : Owner program (this program).
+///  4: [writable]          - PDA     : Buffer account.
+///  5: [writable]          - PDA     : Delegation record account.
+///  6: [writable]          - PDA     : Delegation metadata account.
+///  7: []                  - Program : Delegation program.
+///  8: []                  - Builtin : System program.
+///  9: []                  - Program : Permission program (ACL).
 ///
 /// Instruction Data: EnsureStealthPoolDelegatedArgs
 ///
@@ -33,13 +42,15 @@ pub fn process_ensure_stealth_pool_delegated(accounts: &[AccountView], instructi
     let [
         payer_info, // force multi-line
         stealth_pool_info,
+        stealth_pool_permission_info,
         owner_program,
         buffer_acc,
         delegation_record,
         delegation_metadata,
-        _delegation_program,
+        delegation_program_info,
         system_program,
-    ] = require_n_accounts!(accounts, 8);
+        permission_program,
+    ] = require_n_accounts!(accounts, 10);
 
     let args = EnsureStealthPoolDelegatedArgs::decode(instruction_data)?;
 
@@ -50,11 +61,25 @@ pub fn process_ensure_stealth_pool_delegated(accounts: &[AccountView], instructi
     require_eq_keys!(&derived_pool, stealth_pool_info.address(), ProgramError::InvalidSeeds);
 
     let delegation_program = ephemeral_spl_api::program::DELEGATION_PROGRAM_ID;
-    if stealth_pool_info.owned_by(&delegation_program) {
-        return Ok(());
-    }
+    require_eq_keys!(owner_program.address(), &crate::ID, ProgramError::IncorrectProgramId);
+    require_eq_keys!(
+        delegation_program_info.address(),
+        &delegation_program,
+        ProgramError::IncorrectProgramId
+    );
+    require_eq_keys!(
+        system_program.address(),
+        &pinocchio_system::ID,
+        ProgramError::IncorrectProgramId
+    );
+    require_eq_keys!(
+        permission_program.address(),
+        &PERMISSION_PROGRAM_ID,
+        ProgramError::IncorrectProgramId
+    );
 
-    if !stealth_pool_info.owned_by(&crate::ID) {
+    let stealth_pool_delegated = stealth_pool_info.owned_by(&delegation_program);
+    if !stealth_pool_delegated && !stealth_pool_info.owned_by(&crate::ID) {
         require!(stealth_pool_info.lamports() == 0, ProgramError::IllegalOwner);
 
         let rent = Rent::get()?;
@@ -94,18 +119,67 @@ pub fn process_ensure_stealth_pool_delegated(accounts: &[AccountView], instructi
             }
             .invoke_signed(&[signer])?;
         }
-    } else {
+    } else if !stealth_pool_delegated {
         require!(
             stealth_pool_info.data_len() == StealthPool::LEN,
             ProgramError::InvalidAccountData
         );
     }
 
-    require_eq_keys!(owner_program.address(), &crate::ID, ProgramError::IncorrectProgramId);
+    let expected_permission = permission_pda_from_permissioned_account(stealth_pool_info.address());
     require_eq_keys!(
-        system_program.address(),
-        &pinocchio_system::ID,
+        &expected_permission,
+        stealth_pool_permission_info.address(),
+        ProgramError::InvalidSeeds
+    );
+
+    let stealth_pool_permission_exists = stealth_pool_permission_info.lamports() > 0;
+    require!(
+        !stealth_pool_permission_exists || stealth_pool_permission_info.owned_by(&PERMISSION_PROGRAM_ID),
         ProgramError::IncorrectProgramId
+    );
+
+    if !stealth_pool_permission_exists {
+        if handle.len() <= StealthPool::MAX_HANDLE_SEED_BYTES {
+            let seeds = [StealthPool::SEED, handle];
+            CreatePermissionCpiBuilder::new(
+                stealth_pool_info,
+                stealth_pool_permission_info,
+                payer_info,
+                system_program,
+                &PERMISSION_PROGRAM_ID,
+            )
+            .members(MembersArgs { members: Some(&[]) })
+            .seeds(&seeds)
+            .bump(bump)
+            .invoke()?;
+        } else {
+            let seeds = [
+                StealthPool::SEED,
+                &handle[..StealthPool::MAX_HANDLE_SEED_BYTES],
+                &handle[StealthPool::MAX_HANDLE_SEED_BYTES..],
+            ];
+            CreatePermissionCpiBuilder::new(
+                stealth_pool_info,
+                stealth_pool_permission_info,
+                payer_info,
+                system_program,
+                &PERMISSION_PROGRAM_ID,
+            )
+            .members(MembersArgs { members: Some(&[]) })
+            .seeds(&seeds)
+            .bump(bump)
+            .invoke()?;
+        }
+    }
+
+    if stealth_pool_delegated {
+        return Ok(());
+    }
+
+    require!(
+        stealth_pool_info.data_len() == StealthPool::LEN,
+        ProgramError::InvalidAccountData
     );
 
     let config = DelegateConfig {

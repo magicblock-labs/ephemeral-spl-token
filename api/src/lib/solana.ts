@@ -16,6 +16,8 @@ import {
   initRentPdaIx,
   initTransferQueueIx,
   magicFeeVaultPdaFromValidator,
+  PERMISSION_PROGRAM_ID,
+  permissionPdaFromAccount,
   transferSpl,
   undelegateIx,
   withdrawSpl, initVaultIx, initVaultAtaIx, delegateEphemeralAtaIx, deriveVault, deriveEphemeralAta, deriveVaultAta,
@@ -660,6 +662,7 @@ function ensureStealthPoolDelegatedInstruction(
     keys: [
       { pubkey: payer, isSigner: true, isWritable: true },
       { pubkey: stealthPool, isSigner: false, isWritable: true },
+      { pubkey: permissionPdaFromAccount(stealthPool), isSigner: false, isWritable: true },
       { pubkey: EPHEMERAL_SPL_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
       {
         pubkey: delegateBufferPdaFromDelegatedAccountAndOwnerProgram(
@@ -681,6 +684,7 @@ function ensureStealthPoolDelegatedInstruction(
       },
       { pubkey: DELEGATION_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: PERMISSION_PROGRAM_ID, isSigner: false, isWritable: false },
     ],
     data,
   });

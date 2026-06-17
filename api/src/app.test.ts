@@ -17,6 +17,8 @@ import {
   EPHEMERAL_SPL_TOKEN_PROGRAM_ID,
   HYDRA_PROGRAM_ID,
   magicFeeVaultPdaFromValidator,
+  PERMISSION_PROGRAM_ID,
+  permissionPdaFromAccount,
 } from "@magicblock-labs/ephemeral-rollups-sdk";
 import {
   AddressLookupTableAccount,
@@ -3595,6 +3597,7 @@ describe("app", () => {
     expect(setupInstruction.keys.map(key => key.pubkey.toBase58())).toEqual([
       payer,
       stealthPool,
+      permissionPdaFromAccount(stealthPoolPubkey).toBase58(),
       EPHEMERAL_SPL_TOKEN_PROGRAM_ID.toBase58(),
       delegateBufferPdaFromDelegatedAccountAndOwnerProgram(
         stealthPoolPubkey,
@@ -3604,6 +3607,7 @@ describe("app", () => {
       delegationMetadataPdaFromDelegatedAccount(stealthPoolPubkey).toBase58(),
       DELEGATION_PROGRAM_ID.toBase58(),
       SystemProgram.programId.toBase58(),
+      PERMISSION_PROGRAM_ID.toBase58(),
     ]);
     const handleStorage = createStealthHandleStorage(stealthHandle);
     expect([...setupInstruction.data]).toEqual([
