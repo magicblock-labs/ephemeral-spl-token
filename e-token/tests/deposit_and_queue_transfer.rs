@@ -219,11 +219,11 @@ fn build_deposit_and_queue_ix_for_destination(
 fn build_update_stealth_pool_ix(
     payer: Pubkey,
     authority: Pubkey,
-    handle_hash: [u8; 32],
+    handle: &[u8],
     flags: u8,
     destinations: &[Pubkey],
 ) -> (Pubkey, Instruction) {
-    let (stealth_pool, _) = StealthPool::find_pda(&handle_hash);
+    let (stealth_pool, _) = StealthPool::find_pda(handle).unwrap();
     let destination_addresses = destinations
         .iter()
         .map(|destination| Address::new_from_array(destination.to_bytes()))
@@ -231,7 +231,7 @@ fn build_update_stealth_pool_ix(
 
     let data = instruction::ESplInstruction::UpdateStealthPool.with_data(
         &UpdateStealthPoolArgs {
-            handle_hash,
+            handle: StealthPool::store_handle(handle).unwrap(),
             flags,
             destinations: destination_addresses,
         }
@@ -255,7 +255,7 @@ fn build_update_stealth_pool_ix(
 }
 
 fn expected_stealth_destination(
-    handle_hash: &[u8; 32],
+    handle: &[u8],
     destinations: &[Pubkey],
     split_across_keys: bool,
     source: &Pubkey,
@@ -272,7 +272,7 @@ fn expected_stealth_destination(
     };
     let split_seed = if split_across_keys { split_index } else { 0 };
     let mut value = 0xcbf2_9ce4_8422_2325_u64;
-    for byte in handle_hash {
+    for byte in handle {
         value ^= u64::from(*byte);
         value = value.wrapping_mul(0x100_0000_01b3);
     }
@@ -946,7 +946,7 @@ async fn deposit_and_queue_transfer_return_to_shuttle() {
 #[serial]
 async fn deposit_and_queue_transfer_resolves_stealth_pool_destination() {
     let mut fixture = setup_fixture(None).await;
-    let handle_hash = [42u8; 32];
+    let handle = b"stealth-pool-resolve.block";
     let destinations = [
         utils::test_keypair("stealth_pool::destination_0").pubkey(),
         utils::test_keypair("stealth_pool::destination_1").pubkey(),
@@ -954,7 +954,7 @@ async fn deposit_and_queue_transfer_resolves_stealth_pool_destination() {
     let (stealth_pool, init_ix) = build_update_stealth_pool_ix(
         fixture.payer,
         fixture.payer,
-        handle_hash,
+        handle,
         StealthPoolFlags::Empty.value(),
         &destinations,
     );
@@ -990,6 +990,17 @@ async fn deposit_and_queue_transfer_resolves_stealth_pool_destination() {
     .await
     .unwrap();
 
+    let stealth_pool_account = fixture
+        .context
+        .banks_client
+        .get_account(stealth_pool)
+        .await
+        .unwrap()
+        .expect("stealth pool account must exist");
+    let pool = bytemuck::try_from_bytes::<StealthPool>(&stealth_pool_account.data).unwrap();
+    assert_eq!(pool.handle[0] as usize, handle.len());
+    assert_eq!(pool.handle_bytes(), handle);
+
     let queue_account = fixture
         .context
         .banks_client
@@ -997,7 +1008,7 @@ async fn deposit_and_queue_transfer_resolves_stealth_pool_destination() {
         .await
         .unwrap()
         .expect("queue account must exist");
-    let expected = expected_stealth_destination(&handle_hash, &destinations, false, &fixture.payer, 1, 0, 0, 0, 0);
+    let expected = expected_stealth_destination(handle, &destinations, false, &fixture.payer, 1, 0, 0, 0, 0);
 
     for index in 0..split as usize {
         let queued = read_item_unaligned(&queue_account.data, index);
@@ -1010,7 +1021,7 @@ async fn deposit_and_queue_transfer_resolves_stealth_pool_destination() {
 #[serial]
 async fn deposit_and_queue_transfer_can_split_stealth_pool_across_keys() {
     let mut fixture = setup_fixture(None).await;
-    let handle_hash = [77u8; 32];
+    let handle = b"stealth-pool-split-long-name.block";
     let destinations = [
         utils::test_keypair("stealth_pool::split_destination_0").pubkey(),
         utils::test_keypair("stealth_pool::split_destination_1").pubkey(),
@@ -1019,7 +1030,7 @@ async fn deposit_and_queue_transfer_can_split_stealth_pool_across_keys() {
     let (stealth_pool, init_ix) = build_update_stealth_pool_ix(
         fixture.payer,
         fixture.payer,
-        handle_hash,
+        handle,
         StealthPoolFlags::SplitAcrossKeys.value(),
         &destinations,
     );
@@ -1074,7 +1085,7 @@ async fn deposit_and_queue_transfer_can_split_stealth_pool_across_keys() {
     let mut expected = (0..split as usize)
         .map(|index| {
             expected_stealth_destination(
-                &handle_hash,
+                handle,
                 &destinations,
                 true,
                 &fixture.payer,

@@ -37,13 +37,14 @@ pub fn process_update_stealth_pool(accounts: &[AccountView], instruction_data: &
         args.destinations().len() != 0 && args.destinations().len() <= StealthPool::MAX_DESTINATIONS,
         ProgramError::InvalidInstructionData
     );
+    let handle = StealthPool::handle_from_storage(args.handle())?;
     require!(
         StealthPoolFlags::is_valid(args.flags()),
         ProgramError::InvalidInstructionData
     );
     require!(authority_info.is_signer(), ProgramError::MissingRequiredSignature);
 
-    let (derived_pool, bump) = StealthPool::find_pda(args.handle_hash());
+    let (derived_pool, bump) = StealthPool::find_pda(handle)?;
     require_eq_keys!(&derived_pool, stealth_pool_info.address(), ProgramError::InvalidSeeds);
 
     require!(
@@ -73,7 +74,7 @@ pub fn process_update_stealth_pool(accounts: &[AccountView], instruction_data: &
         destination_count: args.destinations().len() as u8,
         flags: args.flags(),
         authority: *authority_info.address(),
-        handle_hash: *args.handle_hash(),
+        handle: StealthPool::store_handle(handle)?,
         destinations: {
             let mut destinations = [Address::default(); StealthPool::MAX_DESTINATIONS];
             destinations[..args.destinations().len()].copy_from_slice(args.destinations());

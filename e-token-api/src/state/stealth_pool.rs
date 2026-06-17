@@ -1,5 +1,5 @@
 use bytemuck::{Pod, Zeroable};
-use pinocchio::{cpi::Seed, error::ProgramError};
+use pinocchio::error::ProgramError;
 use solana_address::Address;
 
 use crate::{
@@ -25,14 +25,9 @@ pub struct StealthPool {
     pub flags: u8,
     pub authority: Address,
     //
-    // Deterministic handle identifier, usually `hash(canonical_handle)`
-    // where canonical_handle could be human-readable id such as `magicblock.id`
-    // or `myname@mydomain`.
-    //
-    // The original handle string is not stored, so the program can route
-    // payments by handle hash but cannot recover or display the handle text.
-    //
-    pub handle_hash: [u8; 32],
+    // Exact UTF-8 handle bytes used to derive this PDA. Byte 0 stores the
+    // handle length, followed by up to 64 handle bytes.
+    pub handle: [u8; 65],
     pub destination_count: u8,
     pub destinations: [Address; 10],
 }
@@ -41,6 +36,8 @@ impl Initializable for StealthPool {
     #[inline(always)]
     fn is_initialized(&self) -> bool {
         self.discriminator == StealthPool::DISCRIMINATOR
+            && self.handle[0] != 0
+            && self.handle[0] as usize <= StealthPool::MAX_HANDLE_BYTES
             && self.destination_count != 0
             && self.destination_count as usize <= StealthPool::MAX_DESTINATIONS
     }
@@ -56,50 +53,103 @@ impl StealthPool {
 
     pub const SEED: &'static [u8] = b"stealth_pool";
 
+    pub const MAX_HANDLE_BYTES: usize = 64;
+    pub const HANDLE_STORAGE_LEN: usize = 1 + Self::MAX_HANDLE_BYTES;
+    pub const MAX_HANDLE_SEED_BYTES: usize = 32;
+
     pub const MAX_DESTINATIONS: usize = 10;
 
     #[inline(always)]
-    pub fn derive_pda(handle_hash: &[u8; 32], bump_seed: u8) -> Result<Address, ProgramError> {
+    pub fn validate_handle(handle: &[u8]) -> Result<(), ProgramError> {
+        require!(
+            !handle.is_empty() && handle.len() <= Self::MAX_HANDLE_BYTES,
+            ProgramError::InvalidInstructionData
+        );
+
+        Ok(())
+    }
+
+    #[inline(always)]
+    pub fn handle_from_storage(storage: &[u8; 65]) -> Result<&[u8], ProgramError> {
+        let len = storage[0] as usize;
+        require!(
+            len != 0 && len <= Self::MAX_HANDLE_BYTES,
+            ProgramError::InvalidInstructionData
+        );
+
+        Ok(&storage[1..1 + len])
+    }
+
+    #[inline(always)]
+    pub fn store_handle(handle: &[u8]) -> Result<[u8; 65], ProgramError> {
+        Self::validate_handle(handle)?;
+
+        let mut storage = [0u8; Self::HANDLE_STORAGE_LEN];
+        storage[0] = handle.len() as u8;
+        storage[1..1 + handle.len()].copy_from_slice(handle);
+        Ok(storage)
+    }
+
+    #[inline(always)]
+    pub fn derive_pda(handle: &[u8], bump_seed: u8) -> Result<Address, ProgramError> {
+        Self::validate_handle(handle)?;
         let bump = [bump_seed];
-        Ok(Address::create_program_address(
-            &Self::seeds_with_bump(handle_hash, &bump),
-            &crate::ID,
-        )?)
+
+        if handle.len() <= Self::MAX_HANDLE_SEED_BYTES {
+            Ok(Address::create_program_address(
+                &[Self::SEED, handle, &bump],
+                &crate::ID,
+            )?)
+        } else {
+            Ok(Address::create_program_address(
+                &[
+                    Self::SEED,
+                    &handle[..Self::MAX_HANDLE_SEED_BYTES],
+                    &handle[Self::MAX_HANDLE_SEED_BYTES..],
+                    &bump,
+                ],
+                &crate::ID,
+            )?)
+        }
     }
 
     #[inline(always)]
-    pub fn find_pda(handle_hash: &[u8; 32]) -> (Address, u8) {
-        Address::find_program_address(&Self::seeds(handle_hash), &crate::ID)
-    }
+    pub fn find_pda(handle: &[u8]) -> Result<(Address, u8), ProgramError> {
+        Self::validate_handle(handle)?;
 
-    #[inline(always)]
-    pub fn seeds(handle_hash: &[u8; 32]) -> [&[u8]; 2] {
-        [Self::SEED, handle_hash.as_ref()]
-    }
-
-    #[inline(always)]
-    pub fn seeds_with_bump<'a>(handle_hash: &'a [u8; 32], bump: &'a [u8]) -> [&'a [u8]; 3] {
-        [Self::SEED, handle_hash.as_ref(), bump]
-    }
-
-    #[inline(always)]
-    pub fn signer_seeds<'a>(handle_hash: &'a [u8; 32], bump: &'a [u8]) -> [Seed<'a>; 3] {
-        [
-            Seed::from(Self::SEED),
-            Seed::from(handle_hash.as_ref()),
-            Seed::from(bump),
-        ]
+        if handle.len() <= Self::MAX_HANDLE_SEED_BYTES {
+            Ok(Address::find_program_address(&[Self::SEED, handle], &crate::ID))
+        } else {
+            Ok(Address::find_program_address(
+                &[
+                    Self::SEED,
+                    &handle[..Self::MAX_HANDLE_SEED_BYTES],
+                    &handle[Self::MAX_HANDLE_SEED_BYTES..],
+                ],
+                &crate::ID,
+            ))
+        }
     }
 
     #[inline(always)]
     pub fn validate_pda(&self, address_of_self: &Address) -> Result<(), ProgramError> {
         require!(self.is_initialized(), ProgramError::InvalidAccountData);
 
-        let derived = Self::derive_pda(&self.handle_hash, self.bump)?;
+        let derived = Self::derive_pda(self.handle_bytes(), self.bump)?;
 
         require_eq_keys!(&derived, address_of_self, ProgramError::InvalidSeeds);
 
         Ok(())
+    }
+
+    #[inline(always)]
+    pub fn handle_bytes(&self) -> &[u8] {
+        let len = self.handle[0] as usize;
+        if len <= Self::MAX_HANDLE_BYTES {
+            &self.handle[1..1 + len]
+        } else {
+            &[]
+        }
     }
 
     #[inline(always)]

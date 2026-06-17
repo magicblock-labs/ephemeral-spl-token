@@ -532,7 +532,7 @@ fn hash_stealth_pool_seed(
     split_index: usize,
 ) -> u64 {
     let mut hash = 0xcbf2_9ce4_8422_2325_u64;
-    for byte in pool.handle_hash.iter() {
+    for byte in pool.handle_bytes().iter() {
         hash ^= u64::from(*byte);
         hash = hash.wrapping_mul(0x100_0000_01b3);
     }

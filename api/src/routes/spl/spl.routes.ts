@@ -138,7 +138,6 @@ const stealthPoolResponseExample: StealthPoolResponse = {
     validator: "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57",
   },
   stealthPool: "Bt9oNR5cCtnfuMmXgWELd6q5i974PdEMQDUE55nBC57L",
-  handleHash: "f1b46b77cd9bb77a6e3593e5eb02e291457061d1bcb83c929b3165fa7b522477",
 };
 const challengeResponseExample: ChallengeResponse = {
   challenge: "1234567890",
