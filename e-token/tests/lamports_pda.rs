@@ -17,6 +17,7 @@ use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use solana_system_interface::instruction::transfer;
 use solana_transaction::Transaction;
+use wheels::layout::Encodable as _;
 
 use crate::utils::TestInternalInstruction;
 

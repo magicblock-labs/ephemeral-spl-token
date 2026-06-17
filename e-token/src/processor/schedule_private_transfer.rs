@@ -1,5 +1,6 @@
 use alloc::borrow::ToOwned;
 use alloc::vec::Vec;
+use wheels::layout::{Decodable as _, Encodable as _};
 
 use ephemeral_rollups_pinocchio::consts::{
     BUFFER, DELEGATION_METADATA, DELEGATION_PROGRAM_ID, DELEGATION_RECORD,

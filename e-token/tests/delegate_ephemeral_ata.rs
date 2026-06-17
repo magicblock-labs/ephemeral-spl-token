@@ -12,6 +12,7 @@ use solana_program::instruction::InstructionError;
 use solana_program_test::tokio;
 use solana_signer::Signer;
 use solana_transaction::{Transaction, TransactionError};
+use wheels::layout::Encodable as _;
 
 mod common;
 mod utils;

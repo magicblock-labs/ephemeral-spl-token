@@ -2,6 +2,7 @@ use std::{
     collections::HashMap,
     sync::{Mutex, OnceLock},
 };
+use wheels::layout::Encodable as _;
 
 use dlp_api::state::DelegationRecord;
 use ephemeral_spl_api::{

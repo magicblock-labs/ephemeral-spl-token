@@ -1,5 +1,6 @@
 #[cfg(feature = "logging")]
 use alloc::string::ToString;
+use wheels::layout::Encodable as _;
 
 use crate::processor::internal::group_receipt::{derive_group_receipt_id, TransferCallbackArgs};
 use dlp_api::pda::magic_fee_vault_pda_from_validator;

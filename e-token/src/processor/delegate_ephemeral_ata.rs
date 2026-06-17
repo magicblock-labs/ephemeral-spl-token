@@ -7,6 +7,7 @@ use ephemeral_spl_api::require_n_accounts;
 use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_initialized};
 use ephemeral_spl_api::{debug_log, error::EphemeralSplError};
 use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
+use wheels::layout::Decodable as _;
 
 fn validate_existing_delegation(
     ephemeral_ata_info: &AccountView,

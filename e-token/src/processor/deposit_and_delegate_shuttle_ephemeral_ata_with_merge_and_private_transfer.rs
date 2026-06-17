@@ -1,5 +1,6 @@
 use ephemeral_spl_api::instructions::DepositAndDelegateShuttleWithPrivateTransferArgs;
 use pinocchio::{AccountView, ProgramResult};
+use wheels::layout::Decodable as _;
 
 use crate::processor::internal::private_transfer::process_with_merge_and_private_transfer_inner;
 

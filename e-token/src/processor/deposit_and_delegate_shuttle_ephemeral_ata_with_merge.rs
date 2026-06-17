@@ -4,6 +4,7 @@ use ephemeral_spl_api::instructions::DepositAndDelegateShuttleArgs;
 use ephemeral_spl_api::require_n_accounts;
 use pinocchio::{AccountView, ProgramResult};
 use solana_instruction::Instruction;
+use wheels::layout::Decodable as _;
 
 use crate::processor::internal::shuttle_delegation::{
     merge_shuttle_into_token_account_action,

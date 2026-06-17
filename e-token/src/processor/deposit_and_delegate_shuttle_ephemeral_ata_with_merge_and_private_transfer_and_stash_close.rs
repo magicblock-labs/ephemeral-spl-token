@@ -2,6 +2,7 @@ use ephemeral_spl_api::instructions::DepositAndDelegateShuttleWithPrivateTransfe
 use ephemeral_spl_api::state::stash::StashPda;
 use ephemeral_spl_api::{require_eq_keys, require_n_accounts};
 use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
+use wheels::layout::Decodable as _;
 
 use crate::processor::internal::private_transfer::process_with_merge_and_private_transfer_inner;
 use crate::processor::internal::shuttle_delegation::CloseStashArgs;

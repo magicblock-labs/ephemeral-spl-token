@@ -10,6 +10,7 @@ use ephemeral_spl_api::{
     state::{ephemeral_ata::EphemeralAta, load_initialized},
 };
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use wheels::layout::Decodable as _;
 
 ///
 /// Executes on:
