@@ -1,17 +1,21 @@
-use crate::processor::internal::group_receipt;
-use crate::processor::internal::group_receipt::{TransferCallbackArgs, TransferCallbackArgsView};
-#[cfg(feature = "logging")]
-use crate::processor::internal::group_receipt_log;
-use crate::processor::internal::{group_receipt_close, GroupReceiptAccounts, CALLBACK_SIGNER};
-use ephemeral_spl_api::state::group_receipt::{GroupReceipt, TransferReceipt};
-use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, TransferQueueHeader};
 use ephemeral_spl_api::{
     debug_log, require, require_eq_keys, require_n_accounts, require_owned_by,
+    state::{
+        group_receipt::{GroupReceipt, TransferReceipt},
+        transfer_queue::{queue_views_checked, TransferQueueHeader},
+    },
 };
-use pinocchio::error::ProgramError;
-use pinocchio::{AccountView, ProgramResult};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use solana_signature::Signature;
 use wheels::layout::Decodable as _;
+
+#[cfg(feature = "logging")]
+use crate::processor::internal::group_receipt_log;
+use crate::processor::internal::{
+    group_receipt,
+    group_receipt::{TransferCallbackArgs, TransferCallbackArgsView},
+    group_receipt_close, GroupReceiptAccounts, CALLBACK_SIGNER,
+};
 
 ///
 /// Executes on: ER only.
@@ -32,10 +36,7 @@ use wheels::layout::Decodable as _;
 ///
 /// Instruction Data: MagicResponse
 ///
-pub fn process_execute_transfer_callback(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_execute_transfer_callback(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         callback_signer, // force multi-line
         group_receipt,
@@ -98,11 +99,7 @@ fn validate_common(
         ProgramError::IncorrectAuthority
     );
     require_owned_by!(queue_info, &crate::ID);
-    require_eq_keys!(
-        &queue_header.mint,
-        mint.address(),
-        ProgramError::InvalidAccountData
-    );
+    require_eq_keys!(&queue_header.mint, mint.address(), ProgramError::InvalidAccountData);
 
     Ok(())
 }
@@ -142,11 +139,8 @@ fn handle_group_receipt(
         return Err(ProgramError::InvalidArgument);
     }
 
-    let (expected_group_receipt, _) = group_receipt::derive_group_receipt_id(
-        queue_info.address(),
-        source.address(),
-        group_receipt.id(),
-    );
+    let (expected_group_receipt, _) =
+        group_receipt::derive_group_receipt_id(queue_info.address(), source.address(), group_receipt.id());
     require!(
         expected_group_receipt.eq(group_receipt_info.address()),
         ProgramError::InvalidAccountData
@@ -210,19 +204,15 @@ impl<'a> MagicResponseView<'a> {
 
         // data payload
         // [5..13] u64 LE – payload byte length (N)
-        let data_len =
-            read_u64_le(src, &mut cur).ok_or(ProgramError::InvalidInstructionData)? as usize;
+        let data_len = read_u64_le(src, &mut cur).ok_or(ProgramError::InvalidInstructionData)? as usize;
         // [13..13 + data_len] [u8; data_len] – payload bytes
-        let data =
-            read_slice(src, &mut cur, data_len).ok_or(ProgramError::InvalidInstructionData)?;
+        let data = read_slice(src, &mut cur, data_len).ok_or(ProgramError::InvalidInstructionData)?;
 
         // error string
         // [13 + data_len..21 + data_len] u64 LE – error string byte length
-        let error_len =
-            read_u64_le(src, &mut cur).ok_or(ProgramError::InvalidInstructionData)? as usize;
+        let error_len = read_u64_le(src, &mut cur).ok_or(ProgramError::InvalidInstructionData)? as usize;
         // [21 + data_len, 21 + data_len + error_len]
-        let error =
-            read_slice(src, &mut cur, error_len).ok_or(ProgramError::InvalidInstructionData)?;
+        let error = read_slice(src, &mut cur, error_len).ok_or(ProgramError::InvalidInstructionData)?;
 
         // Option<ActionReceipt>
         // [21 + data_len + error_len] u8 - 1 byte tag for Option
@@ -230,8 +220,7 @@ impl<'a> MagicResponseView<'a> {
         let signature: Option<&Signature> = match tag {
             0 => None,
             1 => {
-                let bytes =
-                    read_slice(src, &mut cur, 64).ok_or(ProgramError::InvalidInstructionData)?;
+                let bytes = read_slice(src, &mut cur, 64).ok_or(ProgramError::InvalidInstructionData)?;
                 // Safety: Signature is repr(transparent) over [u8; 64] and
                 // read_slice guarantees exactly 64 bytes.
                 Some(unsafe { &*(bytes.as_ptr() as *const Signature) })

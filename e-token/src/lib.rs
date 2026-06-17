@@ -5,5 +5,6 @@ mod entrypoint;
 mod instruction;
 mod processor;
 
-pub use crate::entrypoint::process_instruction;
 pub use ephemeral_spl_api::ID;
+
+pub use crate::entrypoint::process_instruction;

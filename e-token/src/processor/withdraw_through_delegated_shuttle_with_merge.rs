@@ -1,24 +1,26 @@
 #[cfg(feature = "logging")]
 use alloc::string::ToString;
-use wheels::layout::Decodable as _;
 
 use dlp_api::compact::ClearText;
-use ephemeral_spl_api::debug_log;
-use ephemeral_spl_api::instructions::DepositAndDelegateShuttleArgs;
-use ephemeral_spl_api::require_n_accounts;
-use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load};
+use ephemeral_spl_api::{
+    debug_log,
+    instructions::DepositAndDelegateShuttleArgs,
+    require_n_accounts,
+    state::{ephemeral_ata::EphemeralAta, load},
+};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use solana_instruction::{AccountMeta, Instruction};
+use wheels::layout::Decodable as _;
 
 const TRANSFER_CHECKED_DISCRIMINATOR: u8 = 12;
 
-use crate::processor::{
-    internal::shuttle_delegation::{
-        build_undelegate_and_close_shuttle_instruction,
-        delegate_sponsored_shuttle_with_post_actions, prepare_sponsored_shuttle_delegation,
-        DepositAndDelegateShuttleCommonArgs,
+use crate::processor::internal::{
+    read_mint_decimals,
+    shuttle_delegation::{
+        build_undelegate_and_close_shuttle_instruction, delegate_sponsored_shuttle_with_post_actions,
+        prepare_sponsored_shuttle_delegation, DepositAndDelegateShuttleCommonArgs,
     },
-    internal::{read_mint_decimals, validate_token_account},
+    validate_token_account,
 };
 
 struct WithdrawThroughDelegatedShuttleAccounts<'a> {
@@ -121,17 +123,10 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
 
     debug_log!(
         "Shuttle wallet ata: {}",
-        accounts
-            .shuttle_wallet_ata_info
-            .address()
-            .to_string()
-            .as_str()
+        accounts.shuttle_wallet_ata_info.address().to_string().as_str()
     );
 
-    debug_log!(
-        "Shuttle: {}",
-        accounts.shuttle_info.address().to_string().as_str()
-    );
+    debug_log!("Shuttle: {}", accounts.shuttle_info.address().to_string().as_str());
 
     if prepared.already_delegated {
         return Ok(());
@@ -166,8 +161,7 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
     ];
 
     // Shuttle has been initialized above
-    let shuttle_eata =
-        load::<EphemeralAta>(unsafe { accounts.shuttle_eata_info.borrow_unchecked() })?;
+    let shuttle_eata = load::<EphemeralAta>(unsafe { accounts.shuttle_eata_info.borrow_unchecked() })?;
 
     delegate_sponsored_shuttle_with_post_actions(
         accounts.payer_info,

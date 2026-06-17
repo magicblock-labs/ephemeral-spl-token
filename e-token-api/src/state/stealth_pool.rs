@@ -119,8 +119,7 @@ pub enum StealthPoolFlags {
 }
 
 impl StealthPoolFlags {
-    pub const MASK: u8 =
-        StealthPoolFlags::Empty.value() | StealthPoolFlags::SplitAcrossKeys.value();
+    pub const MASK: u8 = StealthPoolFlags::Empty.value() | StealthPoolFlags::SplitAcrossKeys.value();
 
     #[inline(always)]
     pub const fn value(self) -> u8 {
@@ -143,9 +142,7 @@ mod tests {
     #[test]
     fn stealth_pool_flags_accept_empty_and_known_bits() {
         assert!(StealthPoolFlags::is_valid(StealthPoolFlags::Empty.value()));
-        assert!(StealthPoolFlags::is_valid(
-            StealthPoolFlags::SplitAcrossKeys.value()
-        ));
+        assert!(StealthPoolFlags::is_valid(StealthPoolFlags::SplitAcrossKeys.value()));
         assert!(StealthPoolFlags::is_valid(
             StealthPoolFlags::Empty.value() | StealthPoolFlags::SplitAcrossKeys.value()
         ));

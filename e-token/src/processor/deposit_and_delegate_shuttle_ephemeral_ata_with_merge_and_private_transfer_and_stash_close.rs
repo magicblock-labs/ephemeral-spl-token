@@ -1,12 +1,14 @@
-use ephemeral_spl_api::instructions::DepositAndDelegateShuttleWithPrivateTransferAndStashCloseArgs;
-use ephemeral_spl_api::state::stash::StashPda;
-use ephemeral_spl_api::{require_eq_keys, require_n_accounts};
+use ephemeral_spl_api::{
+    instructions::DepositAndDelegateShuttleWithPrivateTransferAndStashCloseArgs, require_eq_keys, require_n_accounts,
+    state::stash::StashPda,
+};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use solana_address::Address;
 use wheels::layout::Decodable as _;
 
-use crate::processor::internal::private_transfer::process_with_merge_and_private_transfer_inner;
-use crate::processor::internal::shuttle_delegation::CloseStashArgs;
+use crate::processor::internal::{
+    private_transfer::process_with_merge_and_private_transfer_inner, shuttle_delegation::CloseStashArgs,
+};
 
 ///
 /// Executes on: BASE only. Self-CPI'd by `ExecuteScheduledPrivateTransfer`.
@@ -20,8 +22,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let args =
-        DepositAndDelegateShuttleWithPrivateTransferAndStashCloseArgs::decode(instruction_data)?;
+    let args = DepositAndDelegateShuttleWithPrivateTransferAndStashCloseArgs::decode(instruction_data)?;
 
     let _ = require_n_accounts!(accounts, 19);
     let payer_info = &accounts[0];
@@ -34,11 +35,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
 
     let user_address = Address::new_from_array(user);
     let derived_stash_pda = StashPda::derive_pda(&user_address, mint_info.address(), stash_bump)?;
-    require_eq_keys!(
-        payer_info.address(),
-        &derived_stash_pda,
-        ProgramError::InvalidSeeds
-    );
+    require_eq_keys!(payer_info.address(), &derived_stash_pda, ProgramError::InvalidSeeds);
 
     let close_stash = CloseStashArgs { user, stash_bump };
 

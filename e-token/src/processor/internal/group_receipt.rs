@@ -3,11 +3,7 @@ use wheels::variable_offset_layout;
 
 pub(crate) const GROUP_RECEIPT_SEED: &[u8] = b"group-receipt";
 
-pub(crate) fn derive_group_receipt_id(
-    queue_address: &Address,
-    source: &Address,
-    group_id: u32,
-) -> (Address, u8) {
+pub(crate) fn derive_group_receipt_id(queue_address: &Address, source: &Address, group_id: u32) -> (Address, u8) {
     Address::find_program_address(
         &[
             GROUP_RECEIPT_SEED,

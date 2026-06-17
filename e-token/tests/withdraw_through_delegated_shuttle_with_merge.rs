@@ -2,18 +2,17 @@ use std::{
     collections::HashMap,
     sync::{Mutex, OnceLock},
 };
-use wheels::layout::Encodable as _;
 
 use dlp_api::state::DelegationRecord;
 use ephemeral_spl_api::{
     instruction,
     instructions::DepositAndDelegateShuttleArgs,
     state::{
-        ephemeral_ata::EphemeralAta, load, load_mut, shuttle_ephemeral_ata::ShuttleMetadata,
+        ephemeral_ata::EphemeralAta, load, load_initialized, load_mut, shuttle_ephemeral_ata::ShuttleMetadata,
         Initializable, RawType,
     },
+    ID as PROGRAM,
 };
-use ephemeral_spl_api::{state::load_initialized, ID as PROGRAM};
 use magicblock_magic_program_api::{
     args::{MagicIntentBundleArgs, UndelegateTypeArgs},
     instruction::MagicBlockInstruction,
@@ -21,9 +20,7 @@ use magicblock_magic_program_api::{
 };
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
-use solana_program::{
-    account_info::AccountInfo, entrypoint::ProgramResult, program_error::ProgramError, rent::Rent,
-};
+use solana_program::{account_info::AccountInfo, entrypoint::ProgramResult, program_error::ProgramError, rent::Rent};
 use solana_program_pack::Pack;
 use solana_program_test::{processor, tokio, ProgramTest};
 use solana_pubkey::Pubkey;
@@ -31,6 +28,7 @@ use solana_signer::Signer;
 use solana_system_interface::instruction::transfer;
 use solana_transaction::Transaction;
 use spl_token_interface::state::Account as SplAccount;
+use wheels::layout::Encodable as _;
 
 use crate::utils::TestInternalInstruction;
 
@@ -54,10 +52,7 @@ fn captured_intent_bundles() -> &'static Mutex<HashMap<Pubkey, Vec<CapturedInten
 }
 
 fn clear_captured_intent_bundles(magic_program: Pubkey) {
-    captured_intent_bundles()
-        .lock()
-        .unwrap()
-        .remove(&magic_program);
+    captured_intent_bundles().lock().unwrap().remove(&magic_program);
 }
 
 fn peek_captured_intent_bundles(magic_program: Pubkey) -> Vec<CapturedIntentBundle> {
@@ -73,11 +68,7 @@ fn convert_magic_pubkey(pubkey: MagicPubkey) -> Pubkey {
     Pubkey::new_from_array(pubkey.to_bytes())
 }
 
-fn process_magic_program_mock(
-    program_id: &Pubkey,
-    accounts: &[AccountInfo],
-    instruction_data: &[u8],
-) -> ProgramResult {
+fn process_magic_program_mock(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: &[u8]) -> ProgramResult {
     let magic_ix: MagicBlockInstruction =
         bincode::deserialize(instruction_data).map_err(|_| ProgramError::InvalidInstructionData)?;
 
@@ -116,12 +107,7 @@ fn add_magic_program_mock(pt: &mut ProgramTest, magic_program: Pubkey) {
     pt.prefer_bpf(true);
 }
 
-fn associated_token_create_idempotent_ix(
-    funding: Pubkey,
-    ata: Pubkey,
-    wallet: Pubkey,
-    mint: Pubkey,
-) -> Instruction {
+fn associated_token_create_idempotent_ix(funding: Pubkey, ata: Pubkey, wallet: Pubkey, mint: Pubkey) -> Instruction {
     Instruction {
         program_id: utils::associated_token_program_id(),
         accounts: vec![
@@ -138,9 +124,8 @@ fn associated_token_create_idempotent_ix(
 
 #[tokio::test]
 async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_cleanup_actions() {
-    let owner = utils::test_keypair(
-        "withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_cleanup_actions::owner",
-    );
+    let owner =
+        utils::test_keypair("withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_cleanup_actions::owner");
     let owner_token = utils::test_keypair(
         "withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_cleanup_actions::owner_token",
     );
@@ -161,9 +146,8 @@ async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_clean
 
     let payer_kp = utils::fixed_payer_keypair();
     let payer = payer_kp.pubkey();
-    let mint_kp = utils::test_keypair(
-        "withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_cleanup_actions::mint",
-    );
+    let mint_kp =
+        utils::test_keypair("withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_cleanup_actions::mint");
     let mint = mint_kp.pubkey();
     let shuttle_id = 9_u32;
     let validator = utils::test_pubkey(
@@ -171,8 +155,7 @@ async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_clean
     );
     let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
 
-    let (shuttle_metadata, _) =
-        utils::derive_shuttle_ephemeral_ata(PROGRAM, owner.pubkey(), mint, shuttle_id);
+    let (shuttle_metadata, _) = utils::derive_shuttle_ephemeral_ata(PROGRAM, owner.pubkey(), mint, shuttle_id);
     let (shuttle_eata, _) = utils::derive_shuttle_eata(PROGRAM, shuttle_metadata, mint);
     let shuttle_wallet_ata = utils::derive_associated_token_address(shuttle_metadata, mint);
     let owner_source_ata = owner_token.pubkey();
@@ -203,15 +186,8 @@ async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_clean
     )
     .unwrap();
     ix_init_owner_source.program_id = spl_token_interface::ID;
-    let _setup = utils::setup_mint_and_token_accounts(
-        &mut context,
-        &payer_kp,
-        &mint_kp,
-        DECIMALS,
-        STARTING_BALANCE,
-        1,
-    )
-    .await;
+    let _setup =
+        utils::setup_mint_and_token_accounts(&mut context, &payer_kp, &mint_kp, DECIMALS, STARTING_BALANCE, 1).await;
     let mut ix_mint_owner_source = spl_token_interface::instruction::mint_to(
         &spl_token_interface::ID,
         &mint,
@@ -235,14 +211,9 @@ async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_clean
         &[&payer_kp, &owner_token],
         context.banks_client.get_latest_blockhash().await.unwrap(),
     );
-    context
-        .banks_client
-        .process_transaction(tx_init)
-        .await
-        .unwrap();
+    context.banks_client.process_transaction(tx_init).await.unwrap();
 
-    let (buffer_pda, _) =
-        Pubkey::find_program_address(&[b"buffer", shuttle_eata.as_ref()], &PROGRAM.into());
+    let (buffer_pda, _) = Pubkey::find_program_address(&[b"buffer", shuttle_eata.as_ref()], &PROGRAM.into());
     let (delegation_record_pda, _) = Pubkey::find_program_address(
         &[b"delegation", shuttle_eata.as_ref()],
         &ephemeral_spl_api::program::DELEGATION_PROGRAM_ID,
@@ -289,13 +260,9 @@ async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_clean
         &[&payer_kp, &owner],
         context.banks_client.get_latest_blockhash().await.unwrap(),
     );
-    common::metrics::process_transaction_record_cu(
-        &context.banks_client,
-        tx_withdraw,
-        "wd_shuttle::withdraw",
-    )
-    .await
-    .unwrap();
+    common::metrics::process_transaction_record_cu(&context.banks_client, tx_withdraw, "wd_shuttle::withdraw")
+        .await
+        .unwrap();
 
     let shuttle_account = context
         .banks_client
@@ -320,8 +287,7 @@ async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_clean
         ephemeral_spl_api::program::DELEGATION_PROGRAM_ID
     );
     let mut shuttle_eata_data = shuttle_eata_account.data.clone();
-    let shuttle_eata_state =
-        load_initialized::<EphemeralAta>(shuttle_eata_data.as_mut_slice()).unwrap();
+    let shuttle_eata_state = load_initialized::<EphemeralAta>(shuttle_eata_data.as_mut_slice()).unwrap();
     assert_eq!(shuttle_eata_state.amount, 0);
 
     let owner_source_account = context
@@ -341,10 +307,8 @@ async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_clean
         .expect("delegation record must exist");
 
     let record_len = DelegationRecord::size_with_discriminator();
-    let record = DelegationRecord::try_from_bytes_with_discriminator(
-        &delegation_record_account.data[..record_len],
-    )
-    .expect("delegation record must deserialize");
+    let record = DelegationRecord::try_from_bytes_with_discriminator(&delegation_record_account.data[..record_len])
+        .expect("delegation record must deserialize");
     assert_eq!(record.owner.to_bytes(), PROGRAM.to_bytes());
     assert_eq!(record.authority.to_bytes(), validator.to_bytes());
     assert!(
@@ -355,24 +319,20 @@ async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_clean
 
 #[tokio::test]
 async fn undelegate_and_close_shuttle_ephemeral_ata_schedules_close_action() {
-    let magic_program =
-        Pubkey::new_from_array(ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID.to_bytes());
+    let magic_program = Pubkey::new_from_array(ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID.to_bytes());
     let magic_context = convert_magic_pubkey(MAGIC_CONTEXT_PUBKEY);
     clear_captured_intent_bundles(magic_program);
 
-    let owner = utils::test_keypair(
-        "undelegate_withdraw_and_close_shuttle_ephemeral_ata_schedules_close_action::owner",
-    );
-    let mint_kp = utils::test_keypair(
-        "undelegate_withdraw_and_close_shuttle_ephemeral_ata_schedules_close_action::mint",
-    );
+    let owner =
+        utils::test_keypair("undelegate_withdraw_and_close_shuttle_ephemeral_ata_schedules_close_action::owner");
+    let mint_kp =
+        utils::test_keypair("undelegate_withdraw_and_close_shuttle_ephemeral_ata_schedules_close_action::mint");
     let mint = mint_kp.pubkey();
     let shuttle_id = 4_u32;
     let (vault, _) = Pubkey::find_program_address(&[mint.as_ref()], &PROGRAM);
     let vault_ata = utils::derive_associated_token_address(vault, mint);
     let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
-    let (shuttle_metadata, _) =
-        utils::derive_shuttle_ephemeral_ata(PROGRAM, owner.pubkey(), mint, shuttle_id);
+    let (shuttle_metadata, _) = utils::derive_shuttle_ephemeral_ata(PROGRAM, owner.pubkey(), mint, shuttle_id);
     let (shuttle_eata, _) = utils::derive_shuttle_eata(PROGRAM, shuttle_metadata, mint);
     let shuttle_wallet_ata = utils::derive_associated_token_address(shuttle_metadata, mint);
     let owner_destination_ata = utils::derive_associated_token_address(owner.pubkey(), mint);
@@ -447,15 +407,7 @@ async fn undelegate_and_close_shuttle_ephemeral_ata_schedules_close_action() {
     let payer_kp = utils::fixed_payer_keypair();
     let payer = payer_kp.pubkey();
 
-    utils::setup_mint_and_token_accounts(
-        &mut context,
-        &payer_kp,
-        &mint_kp,
-        DECIMALS,
-        STARTING_BALANCE,
-        1,
-    )
-    .await;
+    utils::setup_mint_and_token_accounts(&mut context, &payer_kp, &mint_kp, DECIMALS, STARTING_BALANCE, 1).await;
 
     let ix_create_owner_destination =
         associated_token_create_idempotent_ix(payer, owner_destination_ata, owner.pubkey(), mint);
@@ -494,13 +446,9 @@ async fn undelegate_and_close_shuttle_ephemeral_ata_schedules_close_action() {
         &[&payer_kp],
         context.banks_client.get_latest_blockhash().await.unwrap(),
     );
-    common::metrics::process_transaction_record_cu(
-        &context.banks_client,
-        tx_undelegate,
-        "ud_wd_close::undelegate",
-    )
-    .await
-    .unwrap();
+    common::metrics::process_transaction_record_cu(&context.banks_client, tx_undelegate, "ud_wd_close::undelegate")
+        .await
+        .unwrap();
 
     let captured_bundles = peek_captured_intent_bundles(magic_program);
     assert_eq!(captured_bundles.len(), 1);
@@ -509,9 +457,7 @@ async fn undelegate_and_close_shuttle_ephemeral_ata_schedules_close_action() {
         .commit_and_undelegate
         .as_ref()
         .expect("expected commit_and_undelegate bundle");
-    let UndelegateTypeArgs::WithBaseActions { base_actions } =
-        &commit_and_undelegate.undelegate_type
-    else {
+    let UndelegateTypeArgs::WithBaseActions { base_actions } = &commit_and_undelegate.undelegate_type else {
         panic!("expected undelegate base actions");
     };
     assert_eq!(base_actions.len(), 1);
@@ -525,10 +471,7 @@ async fn undelegate_and_close_shuttle_ephemeral_ata_schedules_close_action() {
         ]
     );
     assert_eq!(close_action.accounts.len(), 9);
-    assert_eq!(
-        close_action.accounts[0].pubkey.to_bytes(),
-        rent_pda.to_bytes()
-    );
+    assert_eq!(close_action.accounts[0].pubkey.to_bytes(), rent_pda.to_bytes());
     assert!(close_action.accounts[0].is_writable);
     assert_eq!(
         close_action.accounts[4].pubkey.to_bytes(),
@@ -537,10 +480,7 @@ async fn undelegate_and_close_shuttle_ephemeral_ata_schedules_close_action() {
     assert!(close_action.accounts[4].is_writable);
     assert_eq!(close_action.accounts[5].pubkey.to_bytes(), mint.to_bytes());
     assert_eq!(close_action.accounts[6].pubkey.to_bytes(), vault.to_bytes());
-    assert_eq!(
-        close_action.accounts[7].pubkey.to_bytes(),
-        vault_ata.to_bytes()
-    );
+    assert_eq!(close_action.accounts[7].pubkey.to_bytes(), vault_ata.to_bytes());
 
     assert_eq!(
         captured_bundles[0].schedule_accounts[close_action.escrow_authority as usize],

@@ -1,29 +1,29 @@
 use alloc::borrow::ToOwned;
 use core::mem::MaybeUninit;
-use wheels::layout::{Decodable as _, Encodable as _};
 
-use ephemeral_spl_api::instruction::ESplInstruction;
-use ephemeral_spl_api::instructions::{
-    DepositAndDelegateShuttleWithPrivateTransferAndStashCloseArgs,
-    ExecuteScheduledPrivateTransferArgs,
+use ephemeral_spl_api::{
+    instruction::ESplInstruction,
+    instructions::{
+        DepositAndDelegateShuttleWithPrivateTransferAndStashCloseArgs, ExecuteScheduledPrivateTransferArgs,
+    },
+    require, require_eq_keys, require_n_accounts,
+    state::stash::StashPda,
 };
-
-use ephemeral_spl_api::state::stash::StashPda;
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
-use pinocchio::cpi::{invoke_signed_with_bounds, Signer};
-use pinocchio::instruction::{InstructionAccount, InstructionView};
-use pinocchio::sysvars::{clock::Clock, Sysvar};
-use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use pinocchio::{
+    cpi::{invoke_signed_with_bounds, Signer},
+    error::ProgramError,
+    instruction::{InstructionAccount, InstructionView},
+    sysvars::{clock::Clock, Sysvar},
+    AccountView, ProgramResult,
+};
 use pinocchio_system::instructions::Transfer;
 use pinocchio_token_2022::instructions::{CloseAccount, TransferChecked};
 use solana_address::Address;
+use wheels::layout::{Decodable as _, Encodable as _};
 
-use crate::processor::internal::derive_hydra_seed;
-use crate::processor::internal::private_transfer::SCHEDULED_PT_INNER_ACCOUNTS;
-use crate::processor::internal::rent_pda::RENT_PDA;
 use crate::processor::internal::{
-    get_associated_token_address, is_supported_token_program, read_mint_decimals,
-    validate_token_account,
+    derive_hydra_seed, get_associated_token_address, is_supported_token_program,
+    private_transfer::SCHEDULED_PT_INNER_ACCOUNTS, read_mint_decimals, rent_pda::RENT_PDA, validate_token_account,
 };
 
 // Five minutes at an estimated 400 ms/slot.
@@ -71,10 +71,7 @@ const REFUND_TIMEOUT_SLOTS: u64 = 750;
 /// Instruction Data: ExecuteScheduledPrivateTransferArgs
 ///
 #[inline(never)]
-pub fn process_execute_scheduled_private_transfer(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_execute_scheduled_private_transfer(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         stash_payer_info, // force multi-line
         rent_pda_info,
@@ -103,21 +100,13 @@ pub fn process_execute_scheduled_private_transfer(
 
     // -------- validate stash PDA derivation --------
     let derived_stash = StashPda::derive_pda(args.user(), mint_info.address(), args.stash_bump())?;
-    require_eq_keys!(
-        &derived_stash,
-        stash_payer_info.address(),
-        ProgramError::InvalidSeeds
-    );
+    require_eq_keys!(&derived_stash, stash_payer_info.address(), ProgramError::InvalidSeeds);
     require_eq_keys!(
         stash_owner_info.address(),
         stash_payer_info.address(),
         ProgramError::InvalidSeeds
     );
-    require_eq_keys!(
-        rent_pda_info.address(),
-        &RENT_PDA,
-        ProgramError::InvalidSeeds
-    );
+    require_eq_keys!(rent_pda_info.address(), &RENT_PDA, ProgramError::InvalidSeeds);
     require!(
         is_supported_token_program(token_program_info.address()),
         ProgramError::IncorrectProgramId
@@ -129,38 +118,23 @@ pub fn process_execute_scheduled_private_transfer(
     );
     let hydra_seed = derive_hydra_seed(stash_payer_info.address(), args.shuttle_id());
     let (expected_crank, _) = hydra_api::state::find_crank_pda(&hydra_seed);
-    require_eq_keys!(
-        &expected_crank,
-        hydra_crank_info.address(),
-        ProgramError::InvalidSeeds
-    );
+    require_eq_keys!(&expected_crank, hydra_crank_info.address(), ProgramError::InvalidSeeds);
     let crank_data = hydra_crank_info.try_borrow()?;
     let crank = unsafe { hydra_api::state::load_crank(&crank_data)? };
     let crank_authority = Address::new_from_array(crank.authority);
     require_eq_keys!(&crank_authority, &RENT_PDA, ProgramError::InvalidSeeds);
-    require!(
-        crank.authority_signer == 1,
-        ProgramError::InvalidAccountData
-    );
+    require!(crank.authority_signer == 1, ProgramError::InvalidAccountData);
     let scheduled_slot = if crank.executed() == 0 {
         crank.next_exec_slot()
     } else {
-        crank
-            .next_exec_slot()
-            .saturating_sub(crank.interval_slots())
+        crank.next_exec_slot().saturating_sub(crank.interval_slots())
     };
     drop(crank_data);
 
     // -------- sweep: amount = current stash ATA token balance --------
-    let effective_amount = read_stash_ata_amount(
-        stash_payer_info,
-        stash_ata_info,
-        mint_info,
-        token_program_info,
-    )?;
+    let effective_amount = read_stash_ata_amount(stash_payer_info, stash_ata_info, mint_info, token_program_info)?;
     let stash_bump_seed = [args.stash_bump()];
-    let stash_signer_seeds =
-        StashPda::signer_seeds(args.user(), mint_info.address(), &stash_bump_seed);
+    let stash_signer_seeds = StashPda::signer_seeds(args.user(), mint_info.address(), &stash_bump_seed);
     let stash_signer = Signer::from(&stash_signer_seeds);
 
     if effective_amount == 0 {
@@ -176,16 +150,9 @@ pub fn process_execute_scheduled_private_transfer(
     }
 
     if refund_timeout_elapsed(scheduled_slot)? {
-        let expected_user_ata = get_associated_token_address(
-            args.user(),
-            mint_info.address(),
-            token_program_info.address(),
-        );
-        require_eq_keys!(
-            &expected_user_ata,
-            user_ata_info.address(),
-            ProgramError::InvalidSeeds
-        );
+        let expected_user_ata =
+            get_associated_token_address(args.user(), mint_info.address(), token_program_info.address());
+        require_eq_keys!(&expected_user_ata, user_ata_info.address(), ProgramError::InvalidSeeds);
         validate_token_account(
             user_ata_info,
             mint_info.address(),
@@ -220,30 +187,26 @@ pub fn process_execute_scheduled_private_transfer(
     stash_close_seeds[0..32].copy_from_slice(args.user().as_ref());
     stash_close_seeds[32] = args.stash_bump();
 
-    let ix_data =
-        ESplInstruction::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransferAndStashClose
-            .with_data(
-                &DepositAndDelegateShuttleWithPrivateTransferAndStashCloseArgs {
-                    shuttle_id: args.shuttle_id(),
-                    amount: effective_amount,
-                    exact_out: false,
-                    validator: Some(*args.validator()),
-                    encrypted_destination: args.encrypted_destination().to_owned(),
-                    stash_close_seeds,
-                    encrypted_data_suffix: args.encrypted_data_suffix().to_owned(),
-                }
-                .encode()?,
-            );
+    let ix_data = ESplInstruction::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransferAndStashClose
+        .with_data(
+            &DepositAndDelegateShuttleWithPrivateTransferAndStashCloseArgs {
+                shuttle_id: args.shuttle_id(),
+                amount: effective_amount,
+                exact_out: false,
+                validator: Some(*args.validator()),
+                encrypted_destination: args.encrypted_destination().to_owned(),
+                stash_close_seeds,
+                encrypted_data_suffix: args.encrypted_data_suffix().to_owned(),
+            }
+            .encode()?,
+        );
 
     // -------- build ix 31 account metas (19) --------
-    let mut metas =
-        [const { MaybeUninit::<InstructionAccount>::uninit() }; SCHEDULED_PT_INNER_ACCOUNTS];
+    let mut metas = [const { MaybeUninit::<InstructionAccount>::uninit() }; SCHEDULED_PT_INNER_ACCOUNTS];
     unsafe {
         metas
             .get_unchecked_mut(0)
-            .write(InstructionAccount::writable_signer(
-                stash_payer_info.address(),
-            ));
+            .write(InstructionAccount::writable_signer(stash_payer_info.address()));
         metas
             .get_unchecked_mut(1)
             .write(InstructionAccount::writable(rent_pda_info.address()));
@@ -255,14 +218,10 @@ pub fn process_execute_scheduled_private_transfer(
             .write(InstructionAccount::writable(shuttle_eata_info.address()));
         metas
             .get_unchecked_mut(4)
-            .write(InstructionAccount::writable(
-                shuttle_wallet_ata_info.address(),
-            ));
+            .write(InstructionAccount::writable(shuttle_wallet_ata_info.address()));
         metas
             .get_unchecked_mut(5)
-            .write(InstructionAccount::readonly_signer(
-                stash_owner_info.address(),
-            ));
+            .write(InstructionAccount::readonly_signer(stash_owner_info.address()));
         metas
             .get_unchecked_mut(6)
             .write(InstructionAccount::readonly(owner_program_info.address()));
@@ -271,24 +230,16 @@ pub fn process_execute_scheduled_private_transfer(
             .write(InstructionAccount::writable(buffer_info.address()));
         metas
             .get_unchecked_mut(8)
-            .write(InstructionAccount::writable(
-                delegation_record_info.address(),
-            ));
+            .write(InstructionAccount::writable(delegation_record_info.address()));
         metas
             .get_unchecked_mut(9)
-            .write(InstructionAccount::writable(
-                delegation_metadata_info.address(),
-            ));
+            .write(InstructionAccount::writable(delegation_metadata_info.address()));
         metas
             .get_unchecked_mut(10)
-            .write(InstructionAccount::readonly(
-                delegation_program_info.address(),
-            ));
+            .write(InstructionAccount::readonly(delegation_program_info.address()));
         metas
             .get_unchecked_mut(11)
-            .write(InstructionAccount::readonly(
-                associated_token_program_info.address(),
-            ));
+            .write(InstructionAccount::readonly(associated_token_program_info.address()));
         metas
             .get_unchecked_mut(12)
             .write(InstructionAccount::readonly(system_program_info.address()));
@@ -315,10 +266,7 @@ pub fn process_execute_scheduled_private_transfer(
     let instruction = InstructionView {
         program_id: &crate::ID,
         accounts: unsafe {
-            core::slice::from_raw_parts(
-                metas.as_ptr() as *const InstructionAccount,
-                SCHEDULED_PT_INNER_ACCOUNTS,
-            )
+            core::slice::from_raw_parts(metas.as_ptr() as *const InstructionAccount, SCHEDULED_PT_INNER_ACCOUNTS)
         },
         data: &ix_data,
     };
@@ -402,12 +350,7 @@ fn close_empty_stash_accounts<'a, 'b>(
     token_program_info: &AccountView,
     stash_signer: &Signer<'a, 'b>,
 ) -> ProgramResult {
-    let stash_ata_amount = read_stash_ata_amount(
-        stash_pda_info,
-        stash_ata_info,
-        mint_info,
-        token_program_info,
-    )?;
+    let stash_ata_amount = read_stash_ata_amount(stash_pda_info, stash_ata_info, mint_info, token_program_info)?;
     require!(stash_ata_amount == 0, ProgramError::InvalidArgument);
 
     if stash_ata_info.lamports() > 0 {

@@ -1,14 +1,14 @@
 use dlp_api::state::DelegationRecord;
 use ephemeral_rollups_pinocchio::pda::{
-    delegate_buffer_pda_from_delegated_account_and_owner_program,
-    delegation_metadata_pda_from_delegated_account, delegation_record_pda_from_delegated_account,
+    delegate_buffer_pda_from_delegated_account_and_owner_program, delegation_metadata_pda_from_delegated_account,
+    delegation_record_pda_from_delegated_account,
 };
-use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::instructions::DepositAndDelegateShuttleArgs;
-use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
-use ephemeral_spl_api::state::load_initialized;
-use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
-use ephemeral_spl_api::ID as PROGRAM;
+use ephemeral_spl_api::{
+    instruction,
+    instructions::DepositAndDelegateShuttleArgs,
+    state::{ephemeral_ata::EphemeralAta, load_initialized, shuttle_ephemeral_ata::ShuttleMetadata},
+    ID as PROGRAM,
+};
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::rent::Rent;
@@ -30,11 +30,9 @@ const STARTING_BALANCE: u64 = 1_000 * 10u64.pow(DECIMALS as u32);
 const DEPOSIT_AMOUNT: u64 = 100 * 10u64.pow(DECIMALS as u32);
 
 #[tokio::test]
-async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_deposits_and_stores_post_delegation_action(
-) {
+async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_deposits_and_stores_post_delegation_action() {
     let owner = utils::test_keypair("deposit_and_delegate_shuttle_ephemeral_ata_with_merge::owner");
-    let owner_token =
-        utils::test_keypair("deposit_and_delegate_shuttle_ephemeral_ata_with_merge::owner_token");
+    let owner_token = utils::test_keypair("deposit_and_delegate_shuttle_ephemeral_ata_with_merge::owner_token");
 
     let mut context = utils::start_program_test_with(PROGRAM, |pt| {
         pt.add_account(
@@ -52,23 +50,14 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_deposits_and_stor
 
     let payer_kp = utils::fixed_payer_keypair();
     let payer = payer_kp.pubkey();
-    let mint_kp =
-        utils::test_keypair("deposit_and_delegate_shuttle_ephemeral_ata_with_merge::mint");
+    let mint_kp = utils::test_keypair("deposit_and_delegate_shuttle_ephemeral_ata_with_merge::mint");
     let mint = mint_kp.pubkey();
     let shuttle_id = 9_u32;
-    let validator =
-        utils::test_pubkey("deposit_and_delegate_shuttle_ephemeral_ata_with_merge::validator");
+    let validator = utils::test_pubkey("deposit_and_delegate_shuttle_ephemeral_ata_with_merge::validator");
     let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
 
-    let setup = utils::setup_mint_and_token_accounts(
-        &mut context,
-        &payer_kp,
-        &mint_kp,
-        DECIMALS,
-        STARTING_BALANCE,
-        1,
-    )
-    .await;
+    let setup =
+        utils::setup_mint_and_token_accounts(&mut context, &payer_kp, &mint_kp, DECIMALS, STARTING_BALANCE, 1).await;
     let destination_ata = setup.user_tokens[0];
 
     let (shuttle_metadata, _) = ShuttleMetadata::find_pda(&owner.pubkey(), &mint, shuttle_id);
@@ -144,14 +133,9 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_deposits_and_stor
         &[&payer_kp, &owner_token],
         context.last_blockhash,
     );
-    context
-        .banks_client
-        .process_transaction(tx_init)
-        .await
-        .unwrap();
+    context.banks_client.process_transaction(tx_init).await.unwrap();
 
-    let buffer_pda =
-        delegate_buffer_pda_from_delegated_account_and_owner_program(&shuttle_eata, &PROGRAM);
+    let buffer_pda = delegate_buffer_pda_from_delegated_account_and_owner_program(&shuttle_eata, &PROGRAM);
     let delegation_record_pda = delegation_record_pda_from_delegated_account(&shuttle_eata);
     let delegation_metadata_pda = delegation_metadata_pda_from_delegated_account(&shuttle_eata);
 
@@ -195,13 +179,9 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_deposits_and_stor
         &[&payer_kp, &owner],
         context.banks_client.get_latest_blockhash().await.unwrap(),
     );
-    common::metrics::process_transaction_record_cu(
-        &context.banks_client,
-        tx_delegate,
-        "del_shuttle_merge::delegate",
-    )
-    .await
-    .unwrap();
+    common::metrics::process_transaction_record_cu(&context.banks_client, tx_delegate, "del_shuttle_merge::delegate")
+        .await
+        .unwrap();
 
     let shuttle_account = context
         .banks_client
@@ -227,8 +207,7 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_deposits_and_stor
         ephemeral_spl_api::program::DELEGATION_PROGRAM_ID
     );
     let mut shuttle_eata_data = shuttle_eata_account.data.clone();
-    let shuttle_eata_state =
-        load_initialized::<EphemeralAta>(shuttle_eata_data.as_mut_slice()).unwrap();
+    let shuttle_eata_state = load_initialized::<EphemeralAta>(shuttle_eata_data.as_mut_slice()).unwrap();
     assert_eq!(shuttle_eata_state.amount, DEPOSIT_AMOUNT);
 
     let shuttle_wallet_account = context
@@ -268,10 +247,8 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_deposits_and_stor
         .expect("delegation record must exist");
 
     let record_len = DelegationRecord::size_with_discriminator();
-    let record = DelegationRecord::try_from_bytes_with_discriminator(
-        &delegation_record_account.data[..record_len],
-    )
-    .expect("delegation record must deserialize");
+    let record = DelegationRecord::try_from_bytes_with_discriminator(&delegation_record_account.data[..record_len])
+        .expect("delegation record must deserialize");
     assert_eq!(record.owner.to_bytes(), PROGRAM.to_bytes());
     assert_eq!(record.authority.to_bytes(), validator.to_bytes());
     assert!(

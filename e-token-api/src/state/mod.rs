@@ -59,9 +59,7 @@ pub fn load<T: RawType>(bytes: &[u8]) -> Result<&T, ProgramError> {
 /// a valid representation of `T`. The length and initialization checks below do
 /// not prove either property.
 #[inline(always)]
-pub fn load_mut_initialized<T: Initializable + RawType>(
-    bytes: &mut [u8],
-) -> Result<&mut T, ProgramError> {
+pub fn load_mut_initialized<T: Initializable + RawType>(bytes: &mut [u8]) -> Result<&mut T, ProgramError> {
     load_mut(bytes).and_then(|t: &mut T| {
         // checks if the data is initialized
         if t.is_initialized() {

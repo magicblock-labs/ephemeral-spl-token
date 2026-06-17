@@ -1,28 +1,31 @@
-use crate::utils::{pre_create_group_receipt, pre_create_stealth_pool};
 use bytemuck::Zeroable;
-use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::instructions::{DepositAndQueueTransferArgs, UpdateStealthPoolArgs};
-use ephemeral_spl_api::state::group_receipt::GroupReceiptHeader;
-use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
-use ephemeral_spl_api::state::stealth_pool::{StealthPool, StealthPoolFlags};
-use ephemeral_spl_api::state::transfer_queue::{
-    queue_views_checked, QueuedTransfer, TransferQueue, TransferQueueHeader, HEADER_LEN, ITEM_LEN,
+use ephemeral_spl_api::{
+    instruction,
+    instructions::{DepositAndQueueTransferArgs, UpdateStealthPoolArgs},
+    state::{
+        group_receipt::GroupReceiptHeader,
+        shuttle_ephemeral_ata::ShuttleMetadata,
+        stealth_pool::{StealthPool, StealthPoolFlags},
+        transfer_queue::{
+            queue_views_checked, QueuedTransfer, TransferQueue, TransferQueueHeader, HEADER_LEN, ITEM_LEN,
+        },
+    },
+    ID as PROGRAM,
 };
-use ephemeral_spl_api::ID as PROGRAM;
 use serial_test::serial;
 use solana_address::Address;
 use solana_instruction::{AccountMeta, Instruction};
+use solana_keypair::Keypair;
 use solana_program::clock::Clock;
 use solana_program_pack::Pack;
+use solana_program_test::{processor, tokio, ProgramTestContext};
+use solana_pubkey::{pubkey, Pubkey};
+use solana_signer::Signer;
+use solana_transaction::{InstructionError, Transaction, TransactionError};
 use spl_token_interface::state::Account;
 use wheels::layout::Encodable as _;
-use {
-    solana_keypair::Keypair,
-    solana_program_test::{processor, tokio, ProgramTestContext},
-    solana_pubkey::{pubkey, Pubkey},
-    solana_signer::Signer,
-    solana_transaction::{InstructionError, Transaction, TransactionError},
-};
+
+use crate::utils::{pre_create_group_receipt, pre_create_stealth_pool};
 
 const MAGIC_PROGRAM: Pubkey = pubkey!("Magic11111111111111111111111111111111111111");
 
@@ -61,11 +64,7 @@ async fn setup_fixture(items: Option<u32>) -> Fixture {
 
     let mut context = utils::start_program_test_with(PROGRAM, |pt| {
         pt.prefer_bpf(false);
-        pt.add_program(
-            "magic_mock",
-            MAGIC_PROGRAM,
-            processor!(common::magic_mock::process),
-        );
+        pt.add_program("magic_mock", MAGIC_PROGRAM, processor!(common::magic_mock::process));
         pt.prefer_bpf(true);
     })
     .await;
@@ -76,15 +75,8 @@ async fn setup_fixture(items: Option<u32>) -> Fixture {
     let mint = mint_kp.pubkey();
     let validator = Keypair::new().pubkey();
 
-    let setup = utils::setup_mint_and_token_accounts(
-        &mut context,
-        &payer_kp,
-        &mint_kp,
-        DECIMALS,
-        STARTING_BALANCE,
-        2,
-    )
-    .await;
+    let setup =
+        utils::setup_mint_and_token_accounts(&mut context, &payer_kp, &mint_kp, DECIMALS, STARTING_BALANCE, 2).await;
 
     let (queue, _) = TransferQueue::find_pda(&mint, &validator);
     let vault = queue;
@@ -92,14 +84,8 @@ async fn setup_fixture(items: Option<u32>) -> Fixture {
     let destination_ata = utils::derive_associated_token_address(payer, mint);
     let vault_ata = utils::derive_associated_token_address(vault, mint);
 
-    let ix_init_queue = utils::build_initialize_transfer_queue_ix(
-        payer,
-        queue,
-        mint,
-        validator,
-        items,
-        spl_token_interface::ID,
-    );
+    let ix_init_queue =
+        utils::build_initialize_transfer_queue_ix(payer, queue, mint, validator, items, spl_token_interface::ID);
 
     let ix_init_destination_ata = Instruction {
         program_id: utils::associated_token_program_id(),
@@ -120,11 +106,7 @@ async fn setup_fixture(items: Option<u32>) -> Fixture {
         &[&payer_kp],
         context.last_blockhash,
     );
-    context
-        .banks_client
-        .process_transaction(tx_init)
-        .await
-        .unwrap();
+    context.banks_client.process_transaction(tx_init).await.unwrap();
 
     Fixture {
         context,
@@ -217,18 +199,18 @@ fn build_deposit_and_queue_ix_for_destination(
     Instruction {
         program_id: PROGRAM,
         accounts: vec![
-            AccountMeta::new(fixture.queue, false),           // 0: queue
-            AccountMeta::new_readonly(fixture.vault, false),  // 1: vault
-            AccountMeta::new_readonly(fixture.mint, false),   // 2: mint
-            AccountMeta::new(fixture.user_source_ata, false), // 3: user_source_token
-            AccountMeta::new(fixture.vault_ata, false),       // 4: vault_token
-            AccountMeta::new_readonly(destination, false),    // 5: destination
-            AccountMeta::new_readonly(fixture.payer, true),   // 6: user_authority (signer)
+            AccountMeta::new(fixture.queue, false),                    // 0: queue
+            AccountMeta::new_readonly(fixture.vault, false),           // 1: vault
+            AccountMeta::new_readonly(fixture.mint, false),            // 2: mint
+            AccountMeta::new(fixture.user_source_ata, false),          // 3: user_source_token
+            AccountMeta::new(fixture.vault_ata, false),                // 4: vault_token
+            AccountMeta::new_readonly(destination, false),             // 5: destination
+            AccountMeta::new_readonly(fixture.payer, true),            // 6: user_authority (signer)
             AccountMeta::new_readonly(spl_token_interface::ID, false), // 7: token_program
-            AccountMeta::new_readonly(PROGRAM, false),        // 8: reimbursement (placeholder)
-            AccountMeta::new(group_receipt, false),           // 9: group_receipt_info
-            AccountMeta::new(fixture.magic_vault, false),     // 10: magic_vault
-            AccountMeta::new_readonly(MAGIC_PROGRAM, false),  // 11: magic_program
+            AccountMeta::new_readonly(PROGRAM, false),                 // 8: reimbursement (placeholder)
+            AccountMeta::new(group_receipt, false),                    // 9: group_receipt_info
+            AccountMeta::new(fixture.magic_vault, false),              // 10: magic_vault
+            AccountMeta::new_readonly(MAGIC_PROGRAM, false),           // 11: magic_program
         ],
         data,
     }
@@ -318,12 +300,7 @@ fn expected_stealth_destination(
     destinations[(value % destinations.len() as u64) as usize]
 }
 
-fn expected_split_delay_ms(
-    destination: &Pubkey,
-    queue_position: usize,
-    min_delay_ms: u64,
-    max_delay_ms: u64,
-) -> u64 {
+fn expected_split_delay_ms(destination: &Pubkey, queue_position: usize, min_delay_ms: u64, max_delay_ms: u64) -> u64 {
     if min_delay_ms == max_delay_ms {
         return min_delay_ms;
     }
@@ -376,25 +353,14 @@ async fn assert_empty_state(fixture: &Fixture) {
 #[serial]
 async fn deposit_and_queue_transfer_transfers_once_and_enqueues_split_items() {
     let mut fixture = setup_fixture(None).await;
-    let clock_before = fixture
-        .context
-        .banks_client
-        .get_sysvar::<Clock>()
-        .await
-        .unwrap();
+    let clock_before = fixture.context.banks_client.get_sysvar::<Clock>().await.unwrap();
 
     let amount: u64 = 10;
     let min_delay_ms: u64 = 120_000;
     let max_delay_ms: u64 = 120_000;
     let split: u32 = 3;
     let group_id: u32 = 1;
-    let group_receipt = pre_create_group_receipt(
-        &mut fixture.context,
-        fixture.queue,
-        fixture.payer,
-        group_id,
-        split,
-    );
+    let group_receipt = pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, group_id, split);
     let ix = build_deposit_and_queue_ix(
         &fixture,
         amount,
@@ -404,33 +370,14 @@ async fn deposit_and_queue_transfer_transfers_once_and_enqueues_split_items() {
         group_id,
         group_receipt,
     );
-    let blockhash = fixture
-        .context
-        .banks_client
-        .get_latest_blockhash()
+    let blockhash = fixture.context.banks_client.get_latest_blockhash().await.unwrap();
+
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&fixture.payer), &[&fixture.payer_kp], blockhash);
+    common::metrics::process_transaction_record_cu(&fixture.context.banks_client, tx, "dep_queue::once_split")
         .await
         .unwrap();
 
-    let tx = Transaction::new_signed_with_payer(
-        &[ix],
-        Some(&fixture.payer),
-        &[&fixture.payer_kp],
-        blockhash,
-    );
-    common::metrics::process_transaction_record_cu(
-        &fixture.context.banks_client,
-        tx,
-        "dep_queue::once_split",
-    )
-    .await
-    .unwrap();
-
-    let clock_after = fixture
-        .context
-        .banks_client
-        .get_sysvar::<Clock>()
-        .await
-        .unwrap();
+    let clock_after = fixture.context.banks_client.get_sysvar::<Clock>().await.unwrap();
 
     let user_token_acc_after = fixture
         .context
@@ -470,10 +417,7 @@ async fn deposit_and_queue_transfer_transfers_once_and_enqueues_split_items() {
         let queued = read_item_unaligned(&queue_account.data, index);
         *queued_amount = queued.amount;
         assert_eq!(queued.source.as_array(), &fixture.payer.to_bytes());
-        assert_eq!(
-            queued.destination_owner.as_array(),
-            &fixture.payer.to_bytes()
-        );
+        assert_eq!(queued.destination_owner.as_array(), &fixture.payer.to_bytes());
         let group_id = queued.group_id();
         assert!(group_id != 0);
         if let Some(expected_group_id) = shared_group_id {
@@ -502,11 +446,7 @@ async fn deposit_and_queue_transfer_transfers_once_and_enqueues_split_items() {
 
     // One CreateEphemeralAccount CPI must have been sent to the magic program.
     let creates = common::magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
-    assert_eq!(
-        creates.len(),
-        1,
-        "expected exactly one CreateEphemeralAccount CPI"
-    );
+    assert_eq!(creates.len(), 1, "expected exactly one CreateEphemeralAccount CPI");
 
     // Receipt must be initialized with the correct header (not yet used, so transfers_completed=0).
     let receipt_acc = fixture
@@ -516,10 +456,8 @@ async fn deposit_and_queue_transfer_transfers_once_and_enqueues_split_items() {
         .await
         .unwrap()
         .expect("group receipt account must exist");
-    let receipt_header = bytemuck::try_from_bytes::<GroupReceiptHeader>(
-        &receipt_acc.data[..GroupReceiptHeader::SIZE],
-    )
-    .unwrap();
+    let receipt_header =
+        bytemuck::try_from_bytes::<GroupReceiptHeader>(&receipt_acc.data[..GroupReceiptHeader::SIZE]).unwrap();
     assert_eq!(receipt_header.id(), group_id);
     assert_eq!(receipt_header.splits(), split);
     assert_eq!(receipt_header.transfer_completed(), 0);
@@ -529,26 +467,14 @@ async fn deposit_and_queue_transfer_transfers_once_and_enqueues_split_items() {
 #[serial]
 async fn deposit_and_queue_transfer_assigns_distinct_group_ids_per_enqueue() {
     let mut fixture = setup_fixture(None).await;
-    let receipt1 =
-        utils::pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, 1, 2);
-    let receipt2 =
-        utils::pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, 2, 3);
+    let receipt1 = utils::pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, 1, 2);
+    let receipt2 = utils::pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, 2, 3);
     let first_ix = build_deposit_and_queue_ix(&fixture, 10, 0, 0, 2, 1, receipt1);
     let second_ix = build_deposit_and_queue_ix(&fixture, 12, 0, 0, 3, 2, receipt2);
 
     for (i, ix) in [first_ix, second_ix].into_iter().enumerate() {
-        let blockhash = fixture
-            .context
-            .banks_client
-            .get_latest_blockhash()
-            .await
-            .unwrap();
-        let tx = Transaction::new_signed_with_payer(
-            &[ix],
-            Some(&fixture.payer),
-            &[&fixture.payer_kp],
-            blockhash,
-        );
+        let blockhash = fixture.context.banks_client.get_latest_blockhash().await.unwrap();
+        let tx = Transaction::new_signed_with_payer(&[ix], Some(&fixture.payer), &[&fixture.payer_kp], blockhash);
         common::metrics::process_transaction_record_cu(
             &fixture.context.banks_client,
             tx,
@@ -590,13 +516,7 @@ async fn deposit_and_queue_transfer_uses_explicit_client_ref_id_for_all_splits()
     let client_ref_id = 0x1234_5678_9abc_def0_u64;
     let split = 3;
     let group_id: u32 = 1;
-    let group_receipt = pre_create_group_receipt(
-        &mut fixture.context,
-        fixture.queue,
-        fixture.payer,
-        group_id,
-        split,
-    );
+    let group_receipt = pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, group_id, split);
     let ix = build_deposit_and_queue_ix_with_options(
         &fixture,
         12,
@@ -608,19 +528,9 @@ async fn deposit_and_queue_transfer_uses_explicit_client_ref_id_for_all_splits()
         group_id,
         group_receipt,
     );
-    let blockhash = fixture
-        .context
-        .banks_client
-        .get_latest_blockhash()
-        .await
-        .unwrap();
+    let blockhash = fixture.context.banks_client.get_latest_blockhash().await.unwrap();
 
-    let tx = Transaction::new_signed_with_payer(
-        &[ix],
-        Some(&fixture.payer),
-        &[&fixture.payer_kp],
-        blockhash,
-    );
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&fixture.payer), &[&fixture.payer_kp], blockhash);
     common::metrics::process_transaction_record_cu(
         &fixture.context.banks_client,
         tx,
@@ -644,11 +554,7 @@ async fn deposit_and_queue_transfer_uses_explicit_client_ref_id_for_all_splits()
 
     // One enqueue = one CreateEphemeralAccount CPI.
     let creates = common::magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
-    assert_eq!(
-        creates.len(),
-        1,
-        "expected exactly one CreateEphemeralAccount CPI"
-    );
+    assert_eq!(creates.len(), 1, "expected exactly one CreateEphemeralAccount CPI");
 }
 
 #[tokio::test]
@@ -656,13 +562,7 @@ async fn deposit_and_queue_transfer_uses_explicit_client_ref_id_for_all_splits()
 async fn deposit_and_queue_transfer_accepts_legacy_destination_ata() {
     let mut fixture = setup_fixture(None).await;
     let group_id: u32 = 1;
-    let group_receipt = pre_create_group_receipt(
-        &mut fixture.context,
-        fixture.queue,
-        fixture.payer,
-        group_id,
-        1,
-    );
+    let group_receipt = pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, group_id, 1);
     let ix = build_deposit_and_queue_ix_for_destination(
         &fixture,
         fixture.destination_ata,
@@ -675,19 +575,9 @@ async fn deposit_and_queue_transfer_accepts_legacy_destination_ata() {
         group_id,
         group_receipt,
     );
-    let blockhash = fixture
-        .context
-        .banks_client
-        .get_latest_blockhash()
-        .await
-        .unwrap();
+    let blockhash = fixture.context.banks_client.get_latest_blockhash().await.unwrap();
 
-    let tx = Transaction::new_signed_with_payer(
-        &[ix],
-        Some(&fixture.payer),
-        &[&fixture.payer_kp],
-        blockhash,
-    );
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&fixture.payer), &[&fixture.payer_kp], blockhash);
     let r = common::metrics::process_transaction_with_metadata_recorded(
         &fixture.context.banks_client,
         tx,
@@ -713,19 +603,9 @@ async fn deposit_and_queue_transfer_rejects_zero_split() {
     let fixture = setup_fixture(None).await;
     let (group_receipt, _) = utils::derive_group_receipt(fixture.queue, fixture.payer, 1);
     let ix = build_deposit_and_queue_ix(&fixture, 10, 0, 0, 0, 1, group_receipt);
-    let blockhash = fixture
-        .context
-        .banks_client
-        .get_latest_blockhash()
-        .await
-        .unwrap();
+    let blockhash = fixture.context.banks_client.get_latest_blockhash().await.unwrap();
 
-    let tx = Transaction::new_signed_with_payer(
-        &[ix],
-        Some(&fixture.payer),
-        &[&fixture.payer_kp],
-        blockhash,
-    );
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&fixture.payer), &[&fixture.payer_kp], blockhash);
     let r = common::metrics::process_transaction_with_metadata_recorded(
         &fixture.context.banks_client,
         tx,
@@ -751,19 +631,9 @@ async fn deposit_and_queue_transfer_rejects_split_greater_than_amount() {
     let fixture = setup_fixture(None).await;
     let (group_receipt, _) = utils::derive_group_receipt(fixture.queue, fixture.payer, 1);
     let ix = build_deposit_and_queue_ix(&fixture, 2, 0, 0, 3, 1, group_receipt);
-    let blockhash = fixture
-        .context
-        .banks_client
-        .get_latest_blockhash()
-        .await
-        .unwrap();
+    let blockhash = fixture.context.banks_client.get_latest_blockhash().await.unwrap();
 
-    let tx = Transaction::new_signed_with_payer(
-        &[ix],
-        Some(&fixture.payer),
-        &[&fixture.payer_kp],
-        blockhash,
-    );
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&fixture.payer), &[&fixture.payer_kp], blockhash);
     let r = common::metrics::process_transaction_with_metadata_recorded(
         &fixture.context.banks_client,
         tx,
@@ -790,19 +660,9 @@ async fn deposit_and_queue_transfer_rejects_when_queue_is_full() {
     let fixture = setup_fixture(Some(items)).await;
     let (group_receipt, _) = utils::derive_group_receipt(fixture.queue, fixture.payer, 1);
     let ix = build_deposit_and_queue_ix(&fixture, 6, 0, 0, 3, 1, group_receipt);
-    let blockhash = fixture
-        .context
-        .banks_client
-        .get_latest_blockhash()
-        .await
-        .unwrap();
+    let blockhash = fixture.context.banks_client.get_latest_blockhash().await.unwrap();
 
-    let tx = Transaction::new_signed_with_payer(
-        &[ix],
-        Some(&fixture.payer),
-        &[&fixture.payer_kp],
-        blockhash,
-    );
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&fixture.payer), &[&fixture.payer_kp], blockhash);
     common::metrics::process_transaction_with_metadata_recorded(
         &fixture.context.banks_client,
         tx,
@@ -826,19 +686,9 @@ async fn deposit_and_queue_transfer_rejects_invalid_delay_range() {
     let fixture = setup_fixture(None).await;
     let (group_receipt, _) = utils::derive_group_receipt(fixture.queue, fixture.payer, 1);
     let ix = build_deposit_and_queue_ix(&fixture, 10, 10, 9, 1, 1, group_receipt);
-    let blockhash = fixture
-        .context
-        .banks_client
-        .get_latest_blockhash()
-        .await
-        .unwrap();
+    let blockhash = fixture.context.banks_client.get_latest_blockhash().await.unwrap();
 
-    let tx = Transaction::new_signed_with_payer(
-        &[ix],
-        Some(&fixture.payer),
-        &[&fixture.payer_kp],
-        blockhash,
-    );
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&fixture.payer), &[&fixture.payer_kp], blockhash);
     let r = common::metrics::process_transaction_with_metadata_recorded(
         &fixture.context.banks_client,
         tx,
@@ -867,13 +717,7 @@ async fn deposit_and_queue_transfer_uses_deterministic_split_delays_within_range
     let max_delay_ms: u64 = 300;
     let split: u32 = 4;
     let group_id: u32 = 1;
-    let group_receipt = pre_create_group_receipt(
-        &mut fixture.context,
-        fixture.queue,
-        fixture.payer,
-        group_id,
-        split,
-    );
+    let group_receipt = pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, group_id, split);
     let ix = build_deposit_and_queue_ix(
         &fixture,
         amount,
@@ -883,19 +727,9 @@ async fn deposit_and_queue_transfer_uses_deterministic_split_delays_within_range
         group_id,
         group_receipt,
     );
-    let blockhash = fixture
-        .context
-        .banks_client
-        .get_latest_blockhash()
-        .await
-        .unwrap();
+    let blockhash = fixture.context.banks_client.get_latest_blockhash().await.unwrap();
 
-    let tx = Transaction::new_signed_with_payer(
-        &[ix],
-        Some(&fixture.payer),
-        &[&fixture.payer_kp],
-        blockhash,
-    );
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&fixture.payer), &[&fixture.payer_kp], blockhash);
     common::metrics::process_transaction_record_cu(
         &fixture.context.banks_client,
         tx,
@@ -931,11 +765,7 @@ async fn deposit_and_queue_transfer_uses_deterministic_split_delays_within_range
 
     // One CreateEphemeralAccount CPI must have been sent to the magic program.
     let creates = common::magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
-    assert_eq!(
-        creates.len(),
-        1,
-        "expected exactly one CreateEphemeralAccount CPI"
-    );
+    assert_eq!(creates.len(), 1, "expected exactly one CreateEphemeralAccount CPI");
 }
 
 #[tokio::test]
@@ -945,34 +775,14 @@ async fn deposit_and_queue_transfer_prefers_multiples_of_five_for_four_way_split
     let amount: u64 = 33_500_000;
     let split: u32 = 4;
     let group_id: u32 = 1;
-    let group_receipt = pre_create_group_receipt(
-        &mut fixture.context,
-        fixture.queue,
-        fixture.payer,
-        group_id,
-        split,
-    );
+    let group_receipt = pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, group_id, split);
     let ix = build_deposit_and_queue_ix(&fixture, amount, 0, 0, split, group_id, group_receipt);
-    let blockhash = fixture
-        .context
-        .banks_client
-        .get_latest_blockhash()
+    let blockhash = fixture.context.banks_client.get_latest_blockhash().await.unwrap();
+
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&fixture.payer), &[&fixture.payer_kp], blockhash);
+    common::metrics::process_transaction_record_cu(&fixture.context.banks_client, tx, "dep_queue::split4_mod5")
         .await
         .unwrap();
-
-    let tx = Transaction::new_signed_with_payer(
-        &[ix],
-        Some(&fixture.payer),
-        &[&fixture.payer_kp],
-        blockhash,
-    );
-    common::metrics::process_transaction_record_cu(
-        &fixture.context.banks_client,
-        tx,
-        "dep_queue::split4_mod5",
-    )
-    .await
-    .unwrap();
 
     let queue_account = fixture
         .context
@@ -986,18 +796,11 @@ async fn deposit_and_queue_transfer_prefers_multiples_of_five_for_four_way_split
         .map(|index| read_item_unaligned(&queue_account.data, index).amount)
         .collect::<Vec<_>>();
     queued_amounts.sort_unstable();
-    assert_eq!(
-        queued_amounts,
-        vec![3_500_000, 10_000_000, 10_000_000, 10_000_000]
-    );
+    assert_eq!(queued_amounts, vec![3_500_000, 10_000_000, 10_000_000, 10_000_000]);
 
     // One CreateEphemeralAccount CPI must have been sent to the magic program.
     let creates = common::magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
-    assert_eq!(
-        creates.len(),
-        1,
-        "expected exactly one CreateEphemeralAccount CPI"
-    );
+    assert_eq!(creates.len(), 1, "expected exactly one CreateEphemeralAccount CPI");
 }
 
 #[tokio::test]
@@ -1007,34 +810,14 @@ async fn deposit_and_queue_transfer_prefers_multiples_of_five_for_three_way_spli
     let amount: u64 = 33_500_000;
     let split: u32 = 3;
     let group_id: u32 = 1;
-    let group_receipt = pre_create_group_receipt(
-        &mut fixture.context,
-        fixture.queue,
-        fixture.payer,
-        group_id,
-        split,
-    );
+    let group_receipt = pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, group_id, split);
     let ix = build_deposit_and_queue_ix(&fixture, amount, 0, 0, split, group_id, group_receipt);
-    let blockhash = fixture
-        .context
-        .banks_client
-        .get_latest_blockhash()
+    let blockhash = fixture.context.banks_client.get_latest_blockhash().await.unwrap();
+
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&fixture.payer), &[&fixture.payer_kp], blockhash);
+    common::metrics::process_transaction_record_cu(&fixture.context.banks_client, tx, "dep_queue::split3_mod5")
         .await
         .unwrap();
-
-    let tx = Transaction::new_signed_with_payer(
-        &[ix],
-        Some(&fixture.payer),
-        &[&fixture.payer_kp],
-        blockhash,
-    );
-    common::metrics::process_transaction_record_cu(
-        &fixture.context.banks_client,
-        tx,
-        "dep_queue::split3_mod5",
-    )
-    .await
-    .unwrap();
 
     let queue_account = fixture
         .context
@@ -1052,11 +835,7 @@ async fn deposit_and_queue_transfer_prefers_multiples_of_five_for_three_way_spli
 
     // One CreateEphemeralAccount CPI must have been sent to the magic program.
     let creates = common::magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
-    assert_eq!(
-        creates.len(),
-        1,
-        "expected exactly one CreateEphemeralAccount CPI"
-    );
+    assert_eq!(creates.len(), 1, "expected exactly one CreateEphemeralAccount CPI");
 }
 
 #[tokio::test]
@@ -1065,10 +844,8 @@ async fn deposit_and_queue_transfer_return_to_shuttle() {
     let fixture = setup_fixture(None).await;
 
     let shuttle_id = 42_u32;
-    let (shuttle_ephemeral_ata, _) =
-        ShuttleMetadata::find_pda(&fixture.payer, &fixture.mint, shuttle_id);
-    let shuttle_wallet_ata =
-        utils::derive_associated_token_address(shuttle_ephemeral_ata, fixture.mint);
+    let (shuttle_ephemeral_ata, _) = ShuttleMetadata::find_pda(&fixture.payer, &fixture.mint, shuttle_id);
+    let shuttle_wallet_ata = utils::derive_associated_token_address(shuttle_ephemeral_ata, fixture.mint);
     let ix_init_ata = Instruction {
         program_id: utils::associated_token_program_id(),
         accounts: vec![
@@ -1082,18 +859,9 @@ async fn deposit_and_queue_transfer_return_to_shuttle() {
         data: vec![1],
     };
 
-    let blockhash = fixture
-        .context
-        .banks_client
-        .get_latest_blockhash()
-        .await
-        .unwrap();
-    let tx_init_ata = Transaction::new_signed_with_payer(
-        &[ix_init_ata],
-        Some(&fixture.payer),
-        &[&fixture.payer_kp],
-        blockhash,
-    );
+    let blockhash = fixture.context.banks_client.get_latest_blockhash().await.unwrap();
+    let tx_init_ata =
+        Transaction::new_signed_with_payer(&[ix_init_ata], Some(&fixture.payer), &[&fixture.payer_kp], blockhash);
     fixture
         .context
         .banks_client
@@ -1104,8 +872,7 @@ async fn deposit_and_queue_transfer_return_to_shuttle() {
     let amount: u64 = 33_500_000;
     let split: u32 = 1000;
     let group_id: u32 = 1;
-    let (group_receipt_pda, _) =
-        utils::derive_group_receipt(fixture.queue, fixture.payer, group_id);
+    let (group_receipt_pda, _) = utils::derive_group_receipt(fixture.queue, fixture.payer, group_id);
     let ix = {
         let g = group_id.to_le_bytes();
         let data = instruction::ESplInstruction::DepositAndQueueTransfer.with_data(
@@ -1125,42 +892,28 @@ async fn deposit_and_queue_transfer_return_to_shuttle() {
         Instruction {
             program_id: PROGRAM,
             accounts: vec![
-                AccountMeta::new(fixture.queue, false),           // 0: queue
-                AccountMeta::new_readonly(fixture.vault, false),  // 1: vault
-                AccountMeta::new_readonly(fixture.mint, false),   // 2: mint
-                AccountMeta::new(fixture.user_source_ata, false), // 3: user_source_token
-                AccountMeta::new(fixture.vault_ata, false),       // 4: vault_token
-                AccountMeta::new_readonly(fixture.payer, false),  // 5: destination
-                AccountMeta::new_readonly(fixture.payer, true),   // 6: user_authority (signer)
+                AccountMeta::new(fixture.queue, false),                    // 0: queue
+                AccountMeta::new_readonly(fixture.vault, false),           // 1: vault
+                AccountMeta::new_readonly(fixture.mint, false),            // 2: mint
+                AccountMeta::new(fixture.user_source_ata, false),          // 3: user_source_token
+                AccountMeta::new(fixture.vault_ata, false),                // 4: vault_token
+                AccountMeta::new_readonly(fixture.payer, false),           // 5: destination
+                AccountMeta::new_readonly(fixture.payer, true),            // 6: user_authority (signer)
                 AccountMeta::new_readonly(spl_token_interface::ID, false), // 7: token_program
-                AccountMeta::new(shuttle_wallet_ata, false),      // 8: reimbursement
-                AccountMeta::new(group_receipt_pda, false),       // 9: group_receipt_info
-                AccountMeta::new(fixture.magic_vault, false),     // 10: magic_vault
-                AccountMeta::new_readonly(MAGIC_PROGRAM, false),  // 11: magic_program
+                AccountMeta::new(shuttle_wallet_ata, false),               // 8: reimbursement
+                AccountMeta::new(group_receipt_pda, false),                // 9: group_receipt_info
+                AccountMeta::new(fixture.magic_vault, false),              // 10: magic_vault
+                AccountMeta::new_readonly(MAGIC_PROGRAM, false),           // 11: magic_program
             ],
             data,
         }
     };
-    let blockhash = fixture
-        .context
-        .banks_client
-        .get_latest_blockhash()
+    let blockhash = fixture.context.banks_client.get_latest_blockhash().await.unwrap();
+
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&fixture.payer), &[&fixture.payer_kp], blockhash);
+    common::metrics::process_transaction_record_cu(&fixture.context.banks_client, tx, "dep_queue::return_to_shuttle")
         .await
         .unwrap();
-
-    let tx = Transaction::new_signed_with_payer(
-        &[ix],
-        Some(&fixture.payer),
-        &[&fixture.payer_kp],
-        blockhash,
-    );
-    common::metrics::process_transaction_record_cu(
-        &fixture.context.banks_client,
-        tx,
-        "dep_queue::return_to_shuttle",
-    )
-    .await
-    .unwrap();
 
     let queue_account = fixture
         .context
@@ -1208,13 +961,7 @@ async fn deposit_and_queue_transfer_resolves_stealth_pool_destination() {
     pre_create_stealth_pool(&mut fixture.context, stealth_pool);
     let split = 3;
     let group_id: u32 = 1;
-    let group_receipt = pre_create_group_receipt(
-        &mut fixture.context,
-        fixture.queue,
-        fixture.payer,
-        group_id,
-        split,
-    );
+    let group_receipt = pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, group_id, split);
     let deposit_ix = build_deposit_and_queue_ix_for_destination(
         &fixture,
         stealth_pool,
@@ -1227,12 +974,7 @@ async fn deposit_and_queue_transfer_resolves_stealth_pool_destination() {
         group_id,
         group_receipt,
     );
-    let blockhash = fixture
-        .context
-        .banks_client
-        .get_latest_blockhash()
-        .await
-        .unwrap();
+    let blockhash = fixture.context.banks_client.get_latest_blockhash().await.unwrap();
 
     let tx = Transaction::new_signed_with_payer(
         &[init_ix, deposit_ix],
@@ -1255,25 +997,12 @@ async fn deposit_and_queue_transfer_resolves_stealth_pool_destination() {
         .await
         .unwrap()
         .expect("queue account must exist");
-    let expected = expected_stealth_destination(
-        &handle_hash,
-        &destinations,
-        false,
-        &fixture.payer,
-        1,
-        0,
-        0,
-        0,
-        0,
-    );
+    let expected = expected_stealth_destination(&handle_hash, &destinations, false, &fixture.payer, 1, 0, 0, 0, 0);
 
     for index in 0..split as usize {
         let queued = read_item_unaligned(&queue_account.data, index);
         assert_eq!(queued.destination_owner.as_array(), &expected.to_bytes());
-        assert_ne!(
-            queued.destination_owner.as_array(),
-            &stealth_pool.to_bytes()
-        );
+        assert_ne!(queued.destination_owner.as_array(), &stealth_pool.to_bytes());
     }
 }
 
@@ -1298,13 +1027,7 @@ async fn deposit_and_queue_transfer_can_split_stealth_pool_across_keys() {
     let split = 5;
     let client_ref_id = 99;
     let group_id: u32 = 1;
-    let group_receipt = pre_create_group_receipt(
-        &mut fixture.context,
-        fixture.queue,
-        fixture.payer,
-        group_id,
-        split,
-    );
+    let group_receipt = pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, group_id, split);
     let deposit_ix = build_deposit_and_queue_ix_for_destination(
         &fixture,
         stealth_pool,
@@ -1317,12 +1040,7 @@ async fn deposit_and_queue_transfer_can_split_stealth_pool_across_keys() {
         group_id,
         group_receipt,
     );
-    let blockhash = fixture
-        .context
-        .banks_client
-        .get_latest_blockhash()
-        .await
-        .unwrap();
+    let blockhash = fixture.context.banks_client.get_latest_blockhash().await.unwrap();
 
     let tx = Transaction::new_signed_with_payer(
         &[init_ix, deposit_ix],

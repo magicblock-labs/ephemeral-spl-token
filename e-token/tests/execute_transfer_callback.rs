@@ -1,13 +1,12 @@
-use crate::common::callback_mock::take_execute_callbacks;
-use crate::common::magic_mock::{take_captured_ephemeral_closes, take_captured_ephemeral_creates};
-use crate::common::{callback_mock, magic_mock};
 use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
-use ephemeral_spl_api::state::group_receipt::{GroupReceipt, GroupReceiptHeader};
-use ephemeral_spl_api::state::transfer_queue::{HEADER_LEN, QUEUE_SEED, TRANSFER_QUEUE_VERSION};
-use ephemeral_spl_api::ID as PROGRAM;
-use magicblock_magic_program_api::instruction::CallbackInstruction;
-use magicblock_magic_program_api::pda::CALLBACK_SIGNER;
-use magicblock_magic_program_api::CALLBACK_PROGRAM_ID;
+use ephemeral_spl_api::{
+    state::{
+        group_receipt::{GroupReceipt, GroupReceiptHeader},
+        transfer_queue::{HEADER_LEN, QUEUE_SEED, TRANSFER_QUEUE_VERSION},
+    },
+    ID as PROGRAM,
+};
+use magicblock_magic_program_api::{instruction::CallbackInstruction, pda::CALLBACK_SIGNER, CALLBACK_PROGRAM_ID};
 use serial_test::serial;
 use solana_account::Account as SolanaAccount;
 use solana_instruction::{AccountMeta, Instruction};
@@ -18,8 +17,14 @@ use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use solana_transaction::Transaction;
 use utils::TestInternalInstruction as internal;
-use wheels::layout::Encodable as _;
-use wheels::variable_offset_layout;
+use wheels::{layout::Encodable as _, variable_offset_layout};
+
+use crate::common::{
+    callback_mock,
+    callback_mock::take_execute_callbacks,
+    magic_mock,
+    magic_mock::{take_captured_ephemeral_closes, take_captured_ephemeral_creates},
+};
 
 mod common;
 mod utils;
@@ -170,16 +175,7 @@ async fn setup_context(
 
     magic_mock::clear_all_captured(MAGIC_PROGRAM_ID);
 
-    (
-        ctx,
-        validator,
-        mint,
-        queue,
-        receipt,
-        vault,
-        vault_token,
-        source,
-    )
+    (ctx, validator, mint, queue, receipt, vault, vault_token, source)
 }
 
 fn callback_executor_ix(
@@ -194,17 +190,7 @@ fn callback_executor_ix(
     amount: u64,
     group_id: u32,
 ) -> Instruction {
-    let callback_ix = callback_ix(
-        receipt,
-        queue,
-        vault,
-        mint,
-        vault_token,
-        source,
-        ok,
-        amount,
-        group_id,
-    );
+    let callback_ix = callback_ix(receipt, queue, vault, mint, vault_token, source, ok, amount, group_id);
 
     // Mandatory accounts for magic-program
     let mut account_metas = vec![
@@ -242,17 +228,17 @@ fn callback_ix(
     Instruction {
         program_id: PROGRAM,
         accounts: vec![
-            AccountMeta::new(CALLBACK_SIGNER, true), // 0: callback_signer
-            AccountMeta::new(receipt, false),        // 1: group_receipt
-            AccountMeta::new(queue, false),          // 2: queue_info
-            AccountMeta::new_readonly(vault, false), // 3: vault
-            AccountMeta::new_readonly(mint, false),  // 4: mint
+            AccountMeta::new(CALLBACK_SIGNER, true),       // 0: callback_signer
+            AccountMeta::new(receipt, false),              // 1: group_receipt
+            AccountMeta::new(queue, false),                // 2: queue_info
+            AccountMeta::new_readonly(vault, false),       // 3: vault
+            AccountMeta::new_readonly(mint, false),        // 4: mint
             AccountMeta::new_readonly(vault_token, false), // 5: vault_token_account
-            AccountMeta::new_readonly(source, false), // 6: source
+            AccountMeta::new_readonly(source, false),      // 6: source
             AccountMeta::new_readonly(solana_system_interface::program::ID, false), // 7: source_token_account (unused)
             AccountMeta::new_readonly(spl_token_interface::ID, false), // 8: token_program (unused)
-            AccountMeta::new(utils::MAGIC_VAULT, false),               // 9: magic_vault
-            AccountMeta::new_readonly(MAGIC_PROGRAM_ID, false),        // 10: magic_program
+            AccountMeta::new(utils::MAGIC_VAULT, false),   // 9: magic_vault
+            AccountMeta::new_readonly(MAGIC_PROGRAM_ID, false), // 10: magic_program
         ],
         data: callback_ix_data(ok, amount, group_id),
     }
@@ -316,9 +302,7 @@ async fn execute_callback_with_pre_initialized_receipt_no_magic_cpi() {
         .await
         .unwrap()
         .expect("receipt must still exist");
-    let header =
-        bytemuck::try_from_bytes::<GroupReceiptHeader>(&account.data[..GroupReceiptHeader::SIZE])
-            .unwrap();
+    let header = bytemuck::try_from_bytes::<GroupReceiptHeader>(&account.data[..GroupReceiptHeader::SIZE]).unwrap();
     assert_eq!(header.transfer_completed(), 1);
 }
 
@@ -347,18 +331,9 @@ async fn execute_callback_closes_receipt_when_last_transfer_with_pre_initialized
         group_id,
     );
 
-    let tx = Transaction::new_signed_with_payer(
-        &[ix],
-        Some(&validator.pubkey()),
-        &[&validator],
-        ctx.last_blockhash,
-    );
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&validator.pubkey()), &[&validator], ctx.last_blockhash);
 
-    let res = ctx
-        .banks_client
-        .process_transaction_with_metadata(tx)
-        .await
-        .unwrap();
+    let res = ctx.banks_client.process_transaction_with_metadata(tx).await.unwrap();
     res.result.unwrap();
 
     let callbacks = take_execute_callbacks();
@@ -370,9 +345,5 @@ async fn execute_callback_closes_receipt_when_last_transfer_with_pre_initialized
 
     // CloseEphemeralAccount must have been called once — this was the last transfer.
     let closes = take_captured_ephemeral_closes(MAGIC_PROGRAM_ID);
-    assert_eq!(
-        closes.len(),
-        1,
-        "expected exactly one CloseEphemeralAccount CPI"
-    );
+    assert_eq!(closes.len(), 1, "expected exactly one CloseEphemeralAccount CPI");
 }

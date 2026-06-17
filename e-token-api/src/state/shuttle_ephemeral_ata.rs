@@ -1,6 +1,5 @@
 use pinocchio::{cpi::Seed, error::ProgramError};
-use solana_address::address_eq;
-use solana_address::Address;
+use solana_address::{address_eq, Address};
 
 use super::{Initializable, RawType};
 
@@ -31,12 +30,7 @@ impl Initializable for ShuttleMetadata {
 
 impl ShuttleMetadata {
     #[inline(always)]
-    pub fn derive_pda(
-        owner: &Address,
-        mint: &Address,
-        id: u32,
-        bump_seed: u8,
-    ) -> Result<Address, ProgramError> {
+    pub fn derive_pda(owner: &Address, mint: &Address, id: u32, bump_seed: u8) -> Result<Address, ProgramError> {
         let bump = [bump_seed];
         let pda = Address::create_program_address(
             &Self::seeds_with_bump(owner, mint, &id.to_le_bytes(), &bump),

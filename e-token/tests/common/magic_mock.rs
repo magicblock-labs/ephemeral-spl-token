@@ -1,19 +1,18 @@
 #![allow(dead_code)]
 
+use std::{
+    collections::HashMap,
+    sync::{Mutex, OnceLock},
+};
+
 use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
 use magicblock_magic_program_api::{
     args::{AddActionCallbackArgs, MagicIntentBundleArgs, ScheduleTaskArgs},
     instruction::MagicBlockInstruction,
 };
-use solana_program::{
-    account_info::AccountInfo, entrypoint::ProgramResult, program_error::ProgramError,
-};
+use solana_program::{account_info::AccountInfo, entrypoint::ProgramResult, program_error::ProgramError};
 use solana_program_test::ProgramTest;
 use solana_pubkey::Pubkey;
-use std::{
-    collections::HashMap,
-    sync::{Mutex, OnceLock},
-};
 // ── Captured types ────────────────────────────────────────────────────────────
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -86,24 +85,18 @@ fn captured_action_callbacks() -> &'static Mutex<HashMap<Pubkey, Vec<CapturedAct
     S.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn captured_ephemeral_creates(
-) -> &'static Mutex<HashMap<Pubkey, Vec<CapturedCreateEphemeralAccount>>> {
-    static S: OnceLock<Mutex<HashMap<Pubkey, Vec<CapturedCreateEphemeralAccount>>>> =
-        OnceLock::new();
+fn captured_ephemeral_creates() -> &'static Mutex<HashMap<Pubkey, Vec<CapturedCreateEphemeralAccount>>> {
+    static S: OnceLock<Mutex<HashMap<Pubkey, Vec<CapturedCreateEphemeralAccount>>>> = OnceLock::new();
     S.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn captured_ephemeral_resizes(
-) -> &'static Mutex<HashMap<Pubkey, Vec<CapturedResizeEphemeralAccount>>> {
-    static S: OnceLock<Mutex<HashMap<Pubkey, Vec<CapturedResizeEphemeralAccount>>>> =
-        OnceLock::new();
+fn captured_ephemeral_resizes() -> &'static Mutex<HashMap<Pubkey, Vec<CapturedResizeEphemeralAccount>>> {
+    static S: OnceLock<Mutex<HashMap<Pubkey, Vec<CapturedResizeEphemeralAccount>>>> = OnceLock::new();
     S.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn captured_ephemeral_closes() -> &'static Mutex<HashMap<Pubkey, Vec<CapturedCloseEphemeralAccount>>>
-{
-    static S: OnceLock<Mutex<HashMap<Pubkey, Vec<CapturedCloseEphemeralAccount>>>> =
-        OnceLock::new();
+fn captured_ephemeral_closes() -> &'static Mutex<HashMap<Pubkey, Vec<CapturedCloseEphemeralAccount>>> {
+    static S: OnceLock<Mutex<HashMap<Pubkey, Vec<CapturedCloseEphemeralAccount>>>> = OnceLock::new();
     S.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -126,14 +119,8 @@ pub fn clear_all_captured(program: Pubkey) {
     captured_cancels().lock().unwrap().remove(&program);
     captured_intent_bundles().lock().unwrap().remove(&program);
     captured_action_callbacks().lock().unwrap().remove(&program);
-    captured_ephemeral_creates()
-        .lock()
-        .unwrap()
-        .remove(&program);
-    captured_ephemeral_resizes()
-        .lock()
-        .unwrap()
-        .remove(&program);
+    captured_ephemeral_creates().lock().unwrap().remove(&program);
+    captured_ephemeral_resizes().lock().unwrap().remove(&program);
     captured_ephemeral_closes().lock().unwrap().remove(&program);
 }
 
@@ -155,11 +142,7 @@ pub fn peek_captured_schedules(program: Pubkey) -> Vec<CapturedScheduleTask> {
 }
 
 pub fn take_captured_cancels(program: Pubkey) -> Vec<CapturedCancelTask> {
-    captured_cancels()
-        .lock()
-        .unwrap()
-        .remove(&program)
-        .unwrap_or_default()
+    captured_cancels().lock().unwrap().remove(&program).unwrap_or_default()
 }
 
 pub fn peek_captured_cancels(program: Pubkey) -> Vec<CapturedCancelTask> {
@@ -222,11 +205,7 @@ pub fn take_captured_ephemeral_closes(program: Pubkey) -> Vec<CapturedCloseEphem
 
 // ── Mock processor ─────────────────────────────────────────────────────────────
 
-pub fn process(
-    program_id: &Pubkey,
-    accounts: &[AccountInfo],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: &[u8]) -> ProgramResult {
     let ix: MagicBlockInstruction =
         bincode::deserialize(instruction_data).map_err(|_| ProgramError::InvalidInstructionData)?;
 

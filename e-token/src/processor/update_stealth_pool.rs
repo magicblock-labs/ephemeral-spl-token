@@ -1,8 +1,11 @@
-use ephemeral_spl_api::instructions::UpdateStealthPoolArgs;
-use ephemeral_spl_api::require_n_accounts;
-use ephemeral_spl_api::state::stealth_pool::{StealthPool, StealthPoolFlags};
-use ephemeral_spl_api::state::{Initializable, RawType};
-use ephemeral_spl_api::{require, require_eq_keys};
+use ephemeral_spl_api::{
+    instructions::UpdateStealthPoolArgs,
+    require, require_eq_keys, require_n_accounts,
+    state::{
+        stealth_pool::{StealthPool, StealthPoolFlags},
+        Initializable, RawType,
+    },
+};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use solana_address::Address;
 use wheels::layout::Decodable as _;
@@ -20,10 +23,7 @@ use wheels::layout::Decodable as _;
 /// Instruction Data: UpdateStealthPoolArgs
 ///
 #[inline(always)]
-pub fn process_update_stealth_pool(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_update_stealth_pool(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         _payer_info, // force multi-line
         stealth_pool_info,
@@ -34,25 +34,17 @@ pub fn process_update_stealth_pool(
     let args = UpdateStealthPoolArgs::decode(instruction_data)?;
 
     require!(
-        args.destinations().len() != 0
-            && args.destinations().len() <= StealthPool::MAX_DESTINATIONS,
+        args.destinations().len() != 0 && args.destinations().len() <= StealthPool::MAX_DESTINATIONS,
         ProgramError::InvalidInstructionData
     );
     require!(
         StealthPoolFlags::is_valid(args.flags()),
         ProgramError::InvalidInstructionData
     );
-    require!(
-        authority_info.is_signer(),
-        ProgramError::MissingRequiredSignature
-    );
+    require!(authority_info.is_signer(), ProgramError::MissingRequiredSignature);
 
     let (derived_pool, bump) = StealthPool::find_pda(args.handle_hash());
-    require_eq_keys!(
-        &derived_pool,
-        stealth_pool_info.address(),
-        ProgramError::InvalidSeeds
-    );
+    require_eq_keys!(&derived_pool, stealth_pool_info.address(), ProgramError::InvalidSeeds);
 
     require!(
         stealth_pool_info.owned_by(&crate::ID),
@@ -63,8 +55,7 @@ pub fn process_update_stealth_pool(
         ProgramError::InvalidAccountData
     );
     let data = unsafe { stealth_pool_info.borrow_unchecked() };
-    let existing = bytemuck::try_from_bytes::<StealthPool>(data)
-        .map_err(|_| ProgramError::InvalidAccountData)?;
+    let existing = bytemuck::try_from_bytes::<StealthPool>(data).map_err(|_| ProgramError::InvalidAccountData)?;
     if existing.is_initialized() {
         require_eq_keys!(
             &existing.authority,
@@ -74,8 +65,7 @@ pub fn process_update_stealth_pool(
     }
 
     let data = unsafe { stealth_pool_info.borrow_unchecked_mut() };
-    let pool = bytemuck::try_from_bytes_mut::<StealthPool>(data)
-        .map_err(|_| ProgramError::InvalidAccountData)?;
+    let pool = bytemuck::try_from_bytes_mut::<StealthPool>(data).map_err(|_| ProgramError::InvalidAccountData)?;
 
     *pool = StealthPool {
         discriminator: StealthPool::DISCRIMINATOR,

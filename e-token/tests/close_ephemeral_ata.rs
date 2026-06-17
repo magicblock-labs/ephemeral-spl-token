@@ -1,10 +1,10 @@
-use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::ID as PROGRAM;
+use ephemeral_spl_api::{instruction, ID as PROGRAM};
 use solana_instruction::{AccountMeta, Instruction};
-use {
-    solana_program_test::tokio, solana_pubkey::Pubkey, solana_signer::Signer,
-    solana_system_interface::instruction::create_account, solana_transaction::Transaction,
-};
+use solana_program_test::tokio;
+use solana_pubkey::Pubkey;
+use solana_signer::Signer;
+use solana_system_interface::instruction::create_account;
+use solana_transaction::Transaction;
 
 mod common;
 mod utils;
@@ -18,11 +18,9 @@ async fn close_ephemeral_ata_refunds_rent_and_closes_account() {
     let user = payer;
     let mint = utils::test_pubkey("close_ephemeral_ata_refunds_rent_and_closes_account::mint");
 
-    let (ephemeral_ata, _) =
-        Pubkey::find_program_address(&[user.as_ref(), mint.as_ref()], &PROGRAM);
+    let (ephemeral_ata, _) = Pubkey::find_program_address(&[user.as_ref(), mint.as_ref()], &PROGRAM);
 
-    let recipient_kp =
-        utils::test_keypair("close_ephemeral_ata_refunds_rent_and_closes_account::recipient");
+    let recipient_kp = utils::test_keypair("close_ephemeral_ata_refunds_rent_and_closes_account::recipient");
     let recipient = recipient_kp.pubkey();
 
     let rent = context.banks_client.get_rent().await.unwrap();
@@ -52,11 +50,7 @@ async fn close_ephemeral_ata_refunds_rent_and_closes_account() {
         &[&payer_kp, &recipient_kp],
         context.last_blockhash,
     );
-    context
-        .banks_client
-        .process_transaction(tx_init)
-        .await
-        .unwrap();
+    context.banks_client.process_transaction(tx_init).await.unwrap();
 
     let recipient_before = context
         .banks_client
@@ -85,19 +79,10 @@ async fn close_ephemeral_ata_refunds_rent_and_closes_account() {
         data: instruction::ESplInstruction::CloseEphemeralAta.to_vec(),
     };
 
-    let tx_close = Transaction::new_signed_with_payer(
-        &[ix_close],
-        Some(&payer),
-        &[&payer_kp],
-        context.last_blockhash,
-    );
-    common::metrics::process_transaction_record_cu(
-        &context.banks_client,
-        tx_close,
-        "close_eata::close",
-    )
-    .await
-    .unwrap();
+    let tx_close = Transaction::new_signed_with_payer(&[ix_close], Some(&payer), &[&payer_kp], context.last_blockhash);
+    common::metrics::process_transaction_record_cu(&context.banks_client, tx_close, "close_eata::close")
+        .await
+        .unwrap();
 
     let recipient_after = context
         .banks_client
@@ -110,10 +95,6 @@ async fn close_ephemeral_ata_refunds_rent_and_closes_account() {
         recipient_before_lamports + ephemeral_ata_lamports
     );
 
-    let ephemeral_ata_after = context
-        .banks_client
-        .get_account(ephemeral_ata)
-        .await
-        .unwrap();
+    let ephemeral_ata_after = context.banks_client.get_account(ephemeral_ata).await.unwrap();
     assert!(ephemeral_ata_after.is_none());
 }

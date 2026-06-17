@@ -3,10 +3,9 @@ use ephemeral_rollups_pinocchio::acl::{
     instruction::UpdatePermissionCpiBuilder,
     types::{Member, MemberFlags, MembersArgs},
 };
-use ephemeral_spl_api::instructions::ResetEphemeralAtaPermissionArgs;
-use ephemeral_spl_api::{require, require_eq_keys};
 use ephemeral_spl_api::{
-    require_n_accounts,
+    instructions::ResetEphemeralAtaPermissionArgs,
+    require, require_eq_keys, require_n_accounts,
     state::{ephemeral_ata::EphemeralAta, load_initialized},
 };
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
@@ -25,10 +24,7 @@ use wheels::layout::Decodable as _;
 /// Instruction Data: ResetEphemeralAtaPermissionArgs
 ///
 #[inline(always)]
-pub fn process_reset_ephemeral_ata_permission(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_reset_ephemeral_ata_permission(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         ephemeral_ata_info, // force multi-line
         permission_info,
@@ -38,10 +34,7 @@ pub fn process_reset_ephemeral_ata_permission(
 
     let args = ResetEphemeralAtaPermissionArgs::decode(instruction_data)?;
 
-    require!(
-        owner_info.is_signer(),
-        ProgramError::MissingRequiredSignature
-    );
+    require!(owner_info.is_signer(), ProgramError::MissingRequiredSignature);
 
     require_eq_keys!(
         &PERMISSION_PROGRAM_ID,
@@ -49,8 +42,7 @@ pub fn process_reset_ephemeral_ata_permission(
         ProgramError::InvalidAccountData
     );
 
-    let ephemeral_ata =
-        load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
+    let ephemeral_ata = load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
 
     require_eq_keys!(
         &ephemeral_ata.owner,
@@ -58,10 +50,7 @@ pub fn process_reset_ephemeral_ata_permission(
         ProgramError::IncorrectAuthority
     );
 
-    require!(
-        permission_info.lamports() != 0,
-        ProgramError::InvalidAccountData
-    );
+    require!(permission_info.lamports() != 0, ProgramError::InvalidAccountData);
 
     let mut members_flag = MemberFlags::from_acl_flag_byte(args.flag_byte());
     members_flag.set(MemberFlags::AUTHORITY);
@@ -73,14 +62,9 @@ pub fn process_reset_ephemeral_ata_permission(
         members: Some(&members_buf),
     };
 
-    UpdatePermissionCpiBuilder::new(
-        owner_info,
-        ephemeral_ata_info,
-        permission_info,
-        &PERMISSION_PROGRAM_ID,
-    )
-    .seeds(&[ephemeral_ata.owner.as_ref(), ephemeral_ata.mint.as_ref()])
-    .bump(ephemeral_ata.bump)
-    .members(members_args)
-    .invoke()
+    UpdatePermissionCpiBuilder::new(owner_info, ephemeral_ata_info, permission_info, &PERMISSION_PROGRAM_ID)
+        .seeds(&[ephemeral_ata.owner.as_ref(), ephemeral_ata.mint.as_ref()])
+        .bump(ephemeral_ata.bump)
+        .members(members_args)
+        .invoke()
 }

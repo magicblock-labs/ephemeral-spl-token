@@ -1,16 +1,12 @@
-use ephemeral_spl_api::debug_log;
-use ephemeral_spl_api::instruction::ESplInstruction;
-use ephemeral_spl_api::{error::EphemeralSplError, require};
+use core::{mem::MaybeUninit, slice::from_raw_parts};
 
-use {
-    crate::instruction::ESplInternalInstruction,
-    crate::processor::*,
-    core::{mem::MaybeUninit, slice::from_raw_parts},
-    pinocchio::{
-        default_allocator, default_panic_handler, entrypoint::deserialize, error::ProgramError,
-        AccountView, ProgramResult, MAX_TX_ACCOUNTS, SUCCESS,
-    },
+use ephemeral_spl_api::{debug_log, error::EphemeralSplError, instruction::ESplInstruction, require};
+use pinocchio::{
+    default_allocator, default_panic_handler, entrypoint::deserialize, error::ProgramError, AccountView, ProgramResult,
+    MAX_TX_ACCOUNTS, SUCCESS,
 };
+
+use crate::{instruction::ESplInternalInstruction, processor::*};
 
 default_allocator!();
 default_panic_handler!();
@@ -24,10 +20,7 @@ pub unsafe extern "C" fn entrypoint(input: *mut u8) -> u64 {
 
     let (_, count, instruction_data) = deserialize::<MAX_PROGRAM_ACCOUNTS>(input, &mut accounts);
 
-    match process_instruction(
-        from_raw_parts(accounts.as_ptr() as _, count),
-        instruction_data,
-    ) {
+    match process_instruction(from_raw_parts(accounts.as_ptr() as _, count), instruction_data) {
         Ok(()) => SUCCESS,
         Err(error) => error.into(),
     }
@@ -36,19 +29,13 @@ pub unsafe extern "C" fn entrypoint(input: *mut u8) -> u64 {
 /// Log an error.
 #[cold]
 fn log_error(error: &ProgramError) {
-    pinocchio_log::log!(
-        "Instruction failed with: {}",
-        error.to_str::<EphemeralSplError>()
-    );
+    pinocchio_log::log!("Instruction failed with: {}", error.to_str::<EphemeralSplError>());
 }
 
 /// Process an instruction.
 #[inline(never)]
 pub fn process_instruction(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
-    require!(
-        !instruction_data.is_empty(),
-        ProgramError::InvalidInstructionData
-    );
+    require!(!instruction_data.is_empty(), ProgramError::InvalidInstructionData);
 
     let result = {
         // UndelegationCallback is the first internal type, so anything less than that is public
@@ -74,9 +61,7 @@ pub fn process_instruction(accounts: &[AccountView], instruction_data: &[u8]) ->
 fn process_public_instruction(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let (discriminator, data) = instruction_data.split_at(1);
 
-    match ESplInstruction::try_from(discriminator[0])
-        .map_err(|_| EphemeralSplError::InstructionNotFound)?
-    {
+    match ESplInstruction::try_from(discriminator[0]).map_err(|_| EphemeralSplError::InstructionNotFound)? {
         ESplInstruction::__Unused0 => Err(EphemeralSplError::InstructionNotFound.into()),
         ESplInstruction::InitializeEphemeralAta => {
             debug_log!("Instruction: InitializeEphemeralAta");
@@ -154,18 +139,12 @@ fn process_public_instruction(accounts: &[AccountView], instruction_data: &[u8])
             process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge(accounts, data)
         }
         ESplInstruction::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer => {
-            debug_log!(
-                "Instruction: DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer"
-            );
+            debug_log!("Instruction: DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer");
 
-            process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer(
-                accounts, data,
-            )
+            process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer(accounts, data)
         }
         ESplInstruction::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransferAndStashClose => {
-            debug_log!(
-                "Instruction: DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransferAndStashClose"
-            );
+            debug_log!("Instruction: DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransferAndStashClose");
 
             process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer_and_stash_close(
                 accounts, data,
@@ -246,15 +225,10 @@ fn process_public_instruction(accounts: &[AccountView], instruction_data: &[u8])
 
 /// Process internal instruction
 #[inline(never)]
-fn process_internal_instruction(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+fn process_internal_instruction(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let (discriminator, data) = instruction_data.split_at(1);
 
-    match ESplInternalInstruction::try_from(discriminator[0])
-        .map_err(|_| EphemeralSplError::InstructionNotFound)?
-    {
+    match ESplInternalInstruction::try_from(discriminator[0]).map_err(|_| EphemeralSplError::InstructionNotFound)? {
         ESplInternalInstruction::UndelegationCallback => {
             debug_log!("Instruction: UndelegationCallback");
             process_undelegation_callback(accounts, data)

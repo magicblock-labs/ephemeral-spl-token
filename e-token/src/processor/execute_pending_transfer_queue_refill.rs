@@ -1,18 +1,19 @@
-use ephemeral_spl_api::instruction::ESplInstruction;
-use ephemeral_spl_api::instructions::AmountAndSaltArgs;
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
-use pinocchio::cpi::{invoke_signed_with_bounds, Seed, Signer};
-use pinocchio::instruction::{InstructionAccount, InstructionView};
-use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use ephemeral_spl_api::{
+    instruction::ESplInstruction, instructions::AmountAndSaltArgs, require, require_eq_keys, require_n_accounts,
+};
+use pinocchio::{
+    cpi::{invoke_signed_with_bounds, Seed, Signer},
+    error::ProgramError,
+    instruction::{InstructionAccount, InstructionView},
+    AccountView, ProgramResult,
+};
 use solana_address::Address;
 use wheels::layout::Encodable as _;
 
 use crate::processor::internal::{
     lamports_pda::derive_lamports_pda,
     rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
-    transfer_queue_refill::{
-        refill_transfer_queue_amounts, validate_queue_refill_state_address, validate_rent_pda,
-    },
+    transfer_queue_refill::{refill_transfer_queue_amounts, validate_queue_refill_state_address, validate_rent_pda},
 };
 const SPONSORED_LAMPORTS_TRANSFER_CPI_ACCOUNTS: usize = 11;
 
@@ -163,14 +164,8 @@ fn trigger_queue_refill_via_sponsored_transfer(
     )
 }
 
-fn close_program_account_to_recipient(
-    account: &AccountView,
-    recipient: &AccountView,
-) -> ProgramResult {
-    require!(
-        recipient.address() != account.address(),
-        ProgramError::InvalidArgument
-    );
+fn close_program_account_to_recipient(account: &AccountView, recipient: &AccountView) -> ProgramResult {
+    require!(recipient.address() != account.address(), ProgramError::InvalidArgument);
 
     let lamports_to_refund = account.lamports();
     let updated_recipient_lamports = recipient

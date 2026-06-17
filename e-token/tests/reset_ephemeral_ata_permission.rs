@@ -1,8 +1,8 @@
-use ephemeral_rollups_pinocchio::acl::permission_pda_from_permissioned_account;
-use ephemeral_rollups_pinocchio::acl::PERMISSION_PROGRAM_ID;
-use ephemeral_rollups_pinocchio::spl::EphemeralAta;
-use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::ID as PROGRAM;
+use ephemeral_rollups_pinocchio::{
+    acl::{permission_pda_from_permissioned_account, PERMISSION_PROGRAM_ID},
+    spl::EphemeralAta,
+};
+use ephemeral_spl_api::{instruction, ID as PROGRAM};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program_test::tokio;
 use solana_pubkey::Pubkey;
@@ -64,8 +64,7 @@ async fn reset_ephemeral_ata_permission() {
             AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
         ],
         data: {
-            let flag =
-                ephemeral_rollups_pinocchio::acl::types::MemberFlags::default().to_acl_flag_byte();
+            let flag = ephemeral_rollups_pinocchio::acl::types::MemberFlags::default().to_acl_flag_byte();
             instruction::ESplInstruction::CreateEphemeralAtaPermission.with_data(&[flag])
         },
     };
@@ -88,13 +87,9 @@ async fn reset_ephemeral_ata_permission() {
         &[&payer_kp],
         context.last_blockhash,
     );
-    common::metrics::process_transaction_record_cu(
-        &context.banks_client,
-        tx,
-        "reset_eata_perm::reset",
-    )
-    .await
-    .unwrap();
+    common::metrics::process_transaction_record_cu(&context.banks_client, tx, "reset_eata_perm::reset")
+        .await
+        .unwrap();
 
     let permission_account = context
         .banks_client
@@ -103,8 +98,7 @@ async fn reset_ephemeral_ata_permission() {
         .unwrap()
         .expect("permission account must exist");
 
-    let mut expected_flags =
-        ephemeral_rollups_pinocchio::acl::types::MemberFlags::from_acl_flag_byte(reset_flag);
+    let mut expected_flags = ephemeral_rollups_pinocchio::acl::types::MemberFlags::from_acl_flag_byte(reset_flag);
     expected_flags.set(ephemeral_rollups_pinocchio::acl::types::MemberFlags::AUTHORITY);
     let member_flag = find_member_flag(&permission_account.data, &payer, expected_flags.as_u8())
         .expect("permission data must contain member flags for owner");

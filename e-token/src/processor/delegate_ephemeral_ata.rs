@@ -1,11 +1,14 @@
 use alloc::string::ToString;
+
 use dlp_api::{requires::require_initialized_delegation_record, state::DelegationRecord};
-use ephemeral_rollups_pinocchio::instruction::DelegateAccountCpiBuilder;
-use ephemeral_rollups_pinocchio::types::DelegateConfig;
-use ephemeral_spl_api::instructions::DelegateArgs;
-use ephemeral_spl_api::require_n_accounts;
-use ephemeral_spl_api::state::{ephemeral_ata::EphemeralAta, load_initialized};
-use ephemeral_spl_api::{debug_log, error::EphemeralSplError};
+use ephemeral_rollups_pinocchio::{instruction::DelegateAccountCpiBuilder, types::DelegateConfig};
+use ephemeral_spl_api::{
+    debug_log,
+    error::EphemeralSplError,
+    instructions::DelegateArgs,
+    require_n_accounts,
+    state::{ephemeral_ata::EphemeralAta, load_initialized},
+};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use solana_address::Address;
 use wheels::layout::Decodable as _;
@@ -22,9 +25,8 @@ fn validate_existing_delegation(
     require_initialized_delegation_record(ephemeral_ata_info, delegation_record, true)?;
 
     let delegation_record_data = delegation_record.try_borrow()?;
-    let delegation_record =
-        DelegationRecord::try_from_bytes_with_discriminator(&delegation_record_data)
-            .map_err(|_| ProgramError::InvalidAccountData)?;
+    let delegation_record = DelegationRecord::try_from_bytes_with_discriminator(&delegation_record_data)
+        .map_err(|_| ProgramError::InvalidAccountData)?;
     let current_validator = Address::new_from_array(delegation_record.authority.to_bytes());
 
     if &current_validator == requested_validator {
@@ -58,10 +60,7 @@ fn validate_existing_delegation(
 ///
 /// Instruction Data: DelegateArgs
 ///
-pub fn process_delegate_ephemeral_ata(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_delegate_ephemeral_ata(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         payer_info, // force multi-line
         ephemeral_ata_info,
@@ -82,8 +81,7 @@ pub fn process_delegate_ephemeral_ata(
     }
 
     // Load Ephemeral ATA account
-    let ephemeral_ata =
-        load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
+    let ephemeral_ata = load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
 
     let config = DelegateConfig {
         validator: args.validator().copied(),

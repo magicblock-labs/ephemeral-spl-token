@@ -1,24 +1,22 @@
 #[cfg(feature = "logging")]
 use alloc::string::ToString;
-
 use core::mem::MaybeUninit;
+
 use dlp_api::args::PostDelegationActions;
 use ephemeral_rollups_pinocchio::{
-    consts::{
-        BUFFER, DELEGATION_PROGRAM_ID, MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID,
-        MAX_POST_DELEGATION_SIGNERS,
-    },
+    consts::{BUFFER, DELEGATION_PROGRAM_ID, MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID, MAX_POST_DELEGATION_SIGNERS},
     instruction::fill_seeds,
     types::{DelegateAccountArgs, DelegateConfig},
     utils::{close_pda_acc, make_seed_buf},
 };
-use ephemeral_spl_api::debug_log;
-use ephemeral_spl_api::instruction::ESplInstruction;
-use ephemeral_spl_api::state::{
-    ephemeral_ata::EphemeralAta, load_initialized, load_mut_initialized,
-    shuttle_ephemeral_ata::ShuttleMetadata,
+use ephemeral_spl_api::{
+    debug_log,
+    instruction::ESplInstruction,
+    require, require_eq_keys, require_owned_by,
+    state::{
+        ephemeral_ata::EphemeralAta, load_initialized, load_mut_initialized, shuttle_ephemeral_ata::ShuttleMetadata,
+    },
 };
-use ephemeral_spl_api::{require, require_eq_keys, require_owned_by};
 use pinocchio::{
     cpi::{invoke_signed_with_bounds, Seed, Signer},
     error::ProgramError,
@@ -29,10 +27,10 @@ use pinocchio_system::instructions::{Assign, CreateAccount, Transfer};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_pubkey::Pubkey;
 
-use crate::processor::{
-    internal::ephemeral_ata::initialize_shuttle_ephemeral_ata_with_sponsor,
-    internal::rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
-    internal::token_vault::transfer_to_vault_for_mint,
+use crate::processor::internal::{
+    ephemeral_ata::initialize_shuttle_ephemeral_ata_with_sponsor,
+    rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
+    token_vault::transfer_to_vault_for_mint,
 };
 
 pub(crate) const DEFAULT_ESCROW_INDEX: u8 = u8::MAX;
@@ -105,9 +103,8 @@ pub(crate) fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actio
         args.total_amount,
     )?;
 
-    let shuttle_eata = load_mut_initialized::<EphemeralAta>(unsafe {
-        accounts.shuttle_eata_info.borrow_unchecked_mut()
-    })?;
+    let shuttle_eata =
+        load_mut_initialized::<EphemeralAta>(unsafe { accounts.shuttle_eata_info.borrow_unchecked_mut() })?;
     shuttle_eata.amount = shuttle_eata
         .amount
         .checked_add(args.total_amount)
@@ -172,15 +169,8 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
         );
     });
 
-    require_eq_keys!(
-        &RENT_PDA,
-        rent_pda_info.address(),
-        ProgramError::InvalidSeeds
-    );
-    require!(
-        rent_pda_info.data_len() == 0,
-        ProgramError::InvalidAccountData
-    );
+    require_eq_keys!(&RENT_PDA, rent_pda_info.address(), ProgramError::InvalidSeeds);
+    require!(rent_pda_info.data_len() == 0, ProgramError::InvalidAccountData);
 
     let setup_lamports = ephemeral_spl_api::consts::SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS
         .checked_add(extra_setup_lamports)
@@ -229,8 +219,7 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
     );
 
     let (mint, bump) = {
-        let shuttle_eata =
-            load_initialized::<EphemeralAta>(unsafe { shuttle_eata_info.borrow_unchecked() })?;
+        let shuttle_eata = load_initialized::<EphemeralAta>(unsafe { shuttle_eata_info.borrow_unchecked() })?;
         require_eq_keys!(
             &shuttle_eata.owner,
             shuttle_info.address(),
@@ -297,10 +286,7 @@ pub(crate) fn delegate_sponsored_shuttle_with_post_actions(
         action_signer_accounts.push(payer_info);
     }
 
-    debug_log!(
-        "Shuttle eata: {}",
-        shuttle_eata_info.address().to_string().as_str()
-    );
+    debug_log!("Shuttle eata: {}", shuttle_eata_info.address().to_string().as_str());
 
     delegate_account_with_actions_from_sponsor(
         rent_pda_info,
@@ -441,9 +427,7 @@ pub(crate) fn delegate_account_with_actions_from_sponsor(
     }
     .invoke_signed(&[sponsor_signer.clone(), buffer_signer])?;
 
-    buffer_acc
-        .try_borrow_mut()?
-        .copy_from_slice(&pda_acc.try_borrow()?);
+    buffer_acc.try_borrow_mut()?.copy_from_slice(&pda_acc.try_borrow()?);
     pda_acc.try_borrow_mut()?.fill(0);
 
     let mut seed_buf = make_seed_buf();
@@ -503,8 +487,7 @@ fn cpi_delegate_with_actions_from_sponsor(
         ProgramError::NotEnoughAccountKeys
     );
     const MAX_DELEGATE_WITH_ACTIONS_ACCOUNTS: usize = 7 + MAX_POST_DELEGATION_SIGNERS;
-    const UNINIT_ACCOUNT: MaybeUninit<InstructionAccount> =
-        MaybeUninit::<InstructionAccount>::uninit();
+    const UNINIT_ACCOUNT: MaybeUninit<InstructionAccount> = MaybeUninit::<InstructionAccount>::uninit();
     let mut account_metas = [UNINIT_ACCOUNT; MAX_DELEGATE_WITH_ACTIONS_ACCOUNTS];
     let num_accounts = 7 + action_signer_accounts.len();
     require!(
@@ -541,23 +524,15 @@ fn cpi_delegate_with_actions_from_sponsor(
         unsafe {
             account_metas
                 .get_unchecked_mut(7 + i)
-                .write(InstructionAccount::readonly_signer(
-                    action_signer_accounts[i].address(),
-                ));
+                .write(InstructionAccount::readonly_signer(action_signer_accounts[i].address()));
         }
         i += 1;
     }
 
     let delegate = dlp_api::args::DelegateArgs {
         commit_frequency_ms: delegate_args.commit_frequency_ms,
-        seeds: delegate_args
-            .seeds
-            .iter()
-            .map(|seed| seed.to_vec())
-            .collect(),
-        validator: delegate_args
-            .validator
-            .map(|validator| (*validator.as_array()).into()),
+        seeds: delegate_args.seeds.iter().map(|seed| seed.to_vec()).collect(),
+        validator: delegate_args.validator.map(|validator| (*validator.as_array()).into()),
     };
     let data = dlp_api::cpi::delegate_with_actions(
         (*sponsor_info.address().as_array()).into(),
@@ -586,10 +561,7 @@ fn cpi_delegate_with_actions_from_sponsor(
     let instruction = InstructionView {
         program_id: &DELEGATION_PROGRAM_ID,
         accounts: unsafe {
-            core::slice::from_raw_parts(
-                account_metas.as_ptr() as *const InstructionAccount,
-                num_accounts,
-            )
+            core::slice::from_raw_parts(account_metas.as_ptr() as *const InstructionAccount, num_accounts)
         },
         data: &data,
     };

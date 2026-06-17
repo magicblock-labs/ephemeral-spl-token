@@ -1,7 +1,8 @@
-use ephemeral_spl_api::state::transfer_queue::{
-    queue_views_checked, TransferQueue, HEADER_LEN, ITEM_LEN, TRANSFER_QUEUE_VERSION,
+use ephemeral_spl_api::{
+    instruction,
+    state::transfer_queue::{queue_views_checked, TransferQueue, HEADER_LEN, ITEM_LEN, TRANSFER_QUEUE_VERSION},
+    ID as PROGRAM,
 };
-use ephemeral_spl_api::{instruction, ID as PROGRAM};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
 use solana_program_test::tokio;
@@ -33,17 +34,9 @@ async fn allocate_transfer_queue_succeeds_and_is_idempotent() {
         spl_token_interface::ID,
     );
 
-    let tx_init = Transaction::new_signed_with_payer(
-        &[ix_init_queue],
-        Some(&payer),
-        &[&payer_kp],
-        context.last_blockhash,
-    );
-    context
-        .banks_client
-        .process_transaction(tx_init)
-        .await
-        .unwrap();
+    let tx_init =
+        Transaction::new_signed_with_payer(&[ix_init_queue], Some(&payer), &[&payer_kp], context.last_blockhash);
+    context.banks_client.process_transaction(tx_init).await.unwrap();
 
     let ix_allocate = Instruction {
         program_id: PROGRAM,
@@ -60,8 +53,7 @@ async fn allocate_transfer_queue_succeeds_and_is_idempotent() {
     for i in 0..256 {
         let blockhash = context.get_new_latest_blockhash().await.unwrap();
         let batch = vec![ix_allocate.clone(); 10];
-        let tx_allocate =
-            Transaction::new_signed_with_payer(&batch, Some(&payer), &[&payer_kp], blockhash);
+        let tx_allocate = Transaction::new_signed_with_payer(&batch, Some(&payer), &[&payer_kp], blockhash);
         if i == 0 {
             common::metrics::process_transaction_record_cu(
                 &context.banks_client,
@@ -71,11 +63,7 @@ async fn allocate_transfer_queue_succeeds_and_is_idempotent() {
             .await
             .unwrap();
         } else {
-            context
-                .banks_client
-                .process_transaction(tx_allocate)
-                .await
-                .unwrap();
+            context.banks_client.process_transaction(tx_allocate).await.unwrap();
         }
 
         let current_data_len = context
@@ -113,8 +101,7 @@ async fn allocate_transfer_queue_succeeds_and_is_idempotent() {
     assert_eq!(items.len(), final_capacity);
 
     let blockhash = context.get_new_latest_blockhash().await.unwrap();
-    let tx_allocate_again =
-        Transaction::new_signed_with_payer(&[ix_allocate], Some(&payer), &[&payer_kp], blockhash);
+    let tx_allocate_again = Transaction::new_signed_with_payer(&[ix_allocate], Some(&payer), &[&payer_kp], blockhash);
     common::metrics::process_transaction_record_cu(
         &context.banks_client,
         tx_allocate_again,
@@ -129,8 +116,5 @@ async fn allocate_transfer_queue_succeeds_and_is_idempotent() {
         .await
         .unwrap()
         .expect("queue account must still exist");
-    assert_eq!(
-        queue_account_after_extra_allocate.data.len(),
-        final_data_len
-    );
+    assert_eq!(queue_account_after_extra_allocate.data.len(), final_data_len);
 }

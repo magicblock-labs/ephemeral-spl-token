@@ -1,12 +1,10 @@
-use ephemeral_spl_api::instructions::DepositArgs;
-use ephemeral_spl_api::state::{load_initialized, load_mut_initialized};
-use ephemeral_spl_api::{require, require_n_accounts};
-use wheels::layout::Decodable as _;
-
-use {
-    ephemeral_spl_api::state::ephemeral_ata::EphemeralAta,
-    pinocchio::{error::ProgramError, AccountView, ProgramResult},
+use ephemeral_spl_api::{
+    instructions::DepositArgs,
+    require, require_n_accounts,
+    state::{ephemeral_ata::EphemeralAta, load_initialized, load_mut_initialized},
 };
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use wheels::layout::Decodable as _;
 
 use crate::processor::internal::token_vault::transfer_to_vault_for_mint;
 
@@ -26,10 +24,7 @@ use crate::processor::internal::token_vault::transfer_to_vault_for_mint;
 /// Instruction Data: DepositArgs
 ///
 #[inline(always)]
-pub fn process_deposit_spl_tokens(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_deposit_spl_tokens(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         ephemeral_ata_info, // force multi-line
         vault_info,
@@ -49,8 +44,7 @@ pub fn process_deposit_spl_tokens(
     );
 
     let ephemeral_ata_mint = {
-        let ephemeral_ata =
-            load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
+        let ephemeral_ata = load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
         ephemeral_ata.mint
     };
 
@@ -65,8 +59,7 @@ pub fn process_deposit_spl_tokens(
         args.amount(),
     )?;
 
-    let ephemeral_ata =
-        load_mut_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked_mut() })?;
+    let ephemeral_ata = load_mut_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked_mut() })?;
     ephemeral_ata.amount = ephemeral_ata
         .amount
         .checked_add(args.amount())

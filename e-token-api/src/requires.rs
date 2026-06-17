@@ -21,12 +21,7 @@ macro_rules! require {
             let expr = stringify!($cond);
             const FILE: &str = file!();
             const FILE_START: usize = $crate::requires::filename_start(FILE);
-            pinocchio_log::log!(
-                "require!({}) failed, {}:{}",
-                expr,
-                &FILE[FILE_START..],
-                line!()
-            );
+            pinocchio_log::log!("require!({}) failed, {}:{}", expr, &FILE[FILE_START..], line!());
             return Err($error.into());
         }
     }};
@@ -307,8 +302,7 @@ macro_rules! require_n_accounts_with_ignored {
             }
             _ => {
                 let (exact, _) = $accounts.split_at($n);
-                TryInto::<&[_; $n]>::try_into(exact)
-                    .map_err(|_| $crate::error::EphemeralSplError::InfallibleError)?
+                TryInto::<&[_; $n]>::try_into(exact).map_err(|_| $crate::error::EphemeralSplError::InfallibleError)?
             }
         }
     }};

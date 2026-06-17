@@ -11,10 +11,7 @@ pub struct DepositAndQueueTransferArgs {
     pub client_ref_id: Option<u64>,
 }
 
-static_assertions::const_assert!(matches!(
-    DepositAndQueueTransferArgs::DATA_LENS,
-    [31, 32, 39, 40]
-));
+static_assertions::const_assert!(matches!(DepositAndQueueTransferArgs::DATA_LENS, [31, 32, 39, 40]));
 
 impl DepositAndQueueTransferArgsView<'_> {
     pub fn group_id_u32(&self) -> u32 {

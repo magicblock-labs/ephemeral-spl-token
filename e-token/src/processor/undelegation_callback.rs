@@ -13,10 +13,7 @@ use pinocchio::{AccountView, ProgramResult};
 ///
 /// Instruction Data: delegation-program undelegation callback payload
 ///
-pub fn process_undelegation_callback(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_undelegation_callback(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         delegated_acc, // force multi-line
         buffer_acc,

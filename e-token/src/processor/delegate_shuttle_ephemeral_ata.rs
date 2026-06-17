@@ -1,11 +1,10 @@
-use ephemeral_rollups_pinocchio::instruction::DelegateAccountCpiBuilder;
-use ephemeral_rollups_pinocchio::types::DelegateConfig;
-use ephemeral_spl_api::debug_log;
-use ephemeral_spl_api::instructions::DelegateShuttleArgs;
-use ephemeral_spl_api::state::{
-    ephemeral_ata::EphemeralAta, load_initialized, shuttle_ephemeral_ata::ShuttleMetadata,
+use ephemeral_rollups_pinocchio::{instruction::DelegateAccountCpiBuilder, types::DelegateConfig};
+use ephemeral_spl_api::{
+    debug_log,
+    instructions::DelegateShuttleArgs,
+    require, require_eq_keys, require_n_accounts,
+    state::{ephemeral_ata::EphemeralAta, load_initialized, shuttle_ephemeral_ata::ShuttleMetadata},
 };
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use wheels::layout::Decodable as _;
 
@@ -26,10 +25,7 @@ use wheels::layout::Decodable as _;
 ///
 /// Instruction Data: DelegateShuttleArgs
 ///
-pub fn process_delegate_shuttle_ephemeral_ata(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_delegate_shuttle_ephemeral_ata(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         payer_info, // force multi-line
         shuttle_info,
@@ -49,10 +45,7 @@ pub fn process_delegate_shuttle_ephemeral_ata(
         return Ok(());
     }
 
-    require!(
-        shuttle_info.owned_by(&crate::ID),
-        ProgramError::InvalidAccountOwner
-    );
+    require!(shuttle_info.owned_by(&crate::ID), ProgramError::InvalidAccountOwner);
 
     // Loading the account to check if the shuttle is correctly initialized
     load_initialized::<ShuttleMetadata>(unsafe { shuttle_info.borrow_unchecked() })?;
@@ -63,8 +56,7 @@ pub fn process_delegate_shuttle_ephemeral_ata(
     );
 
     let (mint, eata_bump) = {
-        let ephemeral_ata =
-            load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
+        let ephemeral_ata = load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
         require_eq_keys!(
             &ephemeral_ata.owner,
             shuttle_info.address(),

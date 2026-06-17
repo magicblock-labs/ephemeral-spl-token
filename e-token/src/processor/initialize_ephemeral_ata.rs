@@ -16,10 +16,7 @@ use crate::processor::internal::ephemeral_ata::initialize_ephemeral_ata_with_spo
 /// Instruction Data: None
 ///
 #[inline(always)]
-pub fn process_initialize_ephemeral_ata(
-    accounts: &[AccountView],
-    _instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_initialize_ephemeral_ata(accounts: &[AccountView], _instruction_data: &[u8]) -> ProgramResult {
     let [
         ephemeral_ata_info, // force multi-line
         payer_info,
@@ -28,11 +25,5 @@ pub fn process_initialize_ephemeral_ata(
         _system_program,
     ] = require_n_accounts!(accounts, 5);
 
-    initialize_ephemeral_ata_with_sponsor(
-        ephemeral_ata_info,
-        payer_info,
-        None,
-        user_info,
-        mint_info,
-    )
+    initialize_ephemeral_ata_with_sponsor(ephemeral_ata_info, payer_info, None, user_info, mint_info)
 }

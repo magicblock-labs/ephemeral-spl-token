@@ -1,12 +1,13 @@
 use ephemeral_rollups_pinocchio::pda::{
-    delegate_buffer_pda_from_delegated_account_and_owner_program,
-    delegation_metadata_pda_from_delegated_account, delegation_record_pda_from_delegated_account,
+    delegate_buffer_pda_from_delegated_account_and_owner_program, delegation_metadata_pda_from_delegated_account,
+    delegation_record_pda_from_delegated_account,
 };
-use ephemeral_spl_api::instructions::DelegateShuttleArgs;
-use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
-use ephemeral_spl_api::state::RawType;
-use ephemeral_spl_api::ID as PROGRAM;
-use ephemeral_spl_api::{instruction, state::shuttle_ephemeral_ata::ShuttleMetadata};
+use ephemeral_spl_api::{
+    instruction,
+    instructions::DelegateShuttleArgs,
+    state::{ephemeral_ata::EphemeralAta, shuttle_ephemeral_ata::ShuttleMetadata, RawType},
+    ID as PROGRAM,
+};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program_test::tokio;
 use solana_signer::Signer;
@@ -27,8 +28,7 @@ async fn delegate_shuttle_ephemeral_ata_succeeds() {
     let mint = mint_kp.pubkey();
     let shuttle_id = 9_u32;
 
-    let _setup =
-        utils::setup_mint_and_token_accounts(&mut context, &payer_kp, &mint_kp, 6, 1_000, 1).await;
+    let _setup = utils::setup_mint_and_token_accounts(&mut context, &payer_kp, &mint_kp, 6, 1_000, 1).await;
 
     let (shuttle_ephemeral_ata, _) = ShuttleMetadata::find_pda(&owner, &mint, shuttle_id);
     let (shuttle_eata, _) = EphemeralAta::find_pda(&shuttle_ephemeral_ata, &mint);
@@ -53,17 +53,9 @@ async fn delegate_shuttle_ephemeral_ata_succeeds() {
         data: init_data,
     };
 
-    let tx_init = Transaction::new_signed_with_payer(
-        &[ix_init_shuttle],
-        Some(&payer),
-        &[&payer_kp],
-        context.last_blockhash,
-    );
-    context
-        .banks_client
-        .process_transaction(tx_init)
-        .await
-        .unwrap();
+    let tx_init =
+        Transaction::new_signed_with_payer(&[ix_init_shuttle], Some(&payer), &[&payer_kp], context.last_blockhash);
+    context.banks_client.process_transaction(tx_init).await.unwrap();
 
     let shuttle_meta_account = context
         .banks_client
@@ -83,8 +75,7 @@ async fn delegate_shuttle_ephemeral_ata_succeeds() {
         .expect("shuttle eata account must exist");
     assert_eq!(shuttle_eata_account.data.len(), EphemeralAta::LEN);
 
-    let buffer_pda =
-        delegate_buffer_pda_from_delegated_account_and_owner_program(&shuttle_eata, &PROGRAM);
+    let buffer_pda = delegate_buffer_pda_from_delegated_account_and_owner_program(&shuttle_eata, &PROGRAM);
     let delegation_record_pda = delegation_record_pda_from_delegated_account(&shuttle_eata);
     let delegation_metadata_pda = delegation_metadata_pda_from_delegated_account(&shuttle_eata);
 
@@ -111,22 +102,14 @@ async fn delegate_shuttle_ephemeral_ata_succeeds() {
         &[&payer_kp],
         context.last_blockhash,
     );
-    common::metrics::process_transaction_record_cu(
-        &context.banks_client,
-        tx,
-        "del_shuttle_eata::delegate",
-    )
-    .await
-    .unwrap();
+    common::metrics::process_transaction_record_cu(&context.banks_client, tx, "del_shuttle_eata::delegate")
+        .await
+        .unwrap();
 
     let redelegate_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
 
-    let tx_redelegate = Transaction::new_signed_with_payer(
-        &[ix_delegate],
-        Some(&payer),
-        &[&payer_kp],
-        redelegate_blockhash,
-    );
+    let tx_redelegate =
+        Transaction::new_signed_with_payer(&[ix_delegate], Some(&payer), &[&payer_kp], redelegate_blockhash);
     common::metrics::process_transaction_record_cu(
         &context.banks_client,
         tx_redelegate,

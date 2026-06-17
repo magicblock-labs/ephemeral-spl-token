@@ -1,15 +1,14 @@
-use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
-use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
-use ephemeral_spl_api::state::{load_initialized, RawType};
-use ephemeral_spl_api::ID as PROGRAM;
-use solana_instruction::Instruction;
-use solana_program_pack::Pack;
-use spl_token_interface::state::Account;
-use {
-    solana_instruction::AccountMeta, solana_program_test::tokio, solana_signer::Signer,
-    solana_transaction::Transaction,
+use ephemeral_spl_api::{
+    instruction,
+    state::{ephemeral_ata::EphemeralAta, load_initialized, shuttle_ephemeral_ata::ShuttleMetadata, RawType},
+    ID as PROGRAM,
 };
+use solana_instruction::{AccountMeta, Instruction};
+use solana_program_pack::Pack;
+use solana_program_test::tokio;
+use solana_signer::Signer;
+use solana_transaction::Transaction;
+use spl_token_interface::state::Account;
 
 mod common;
 mod utils;
@@ -25,11 +24,9 @@ async fn initialize_shuttle_ephemeral_ata() {
     let mint = mint_kp.pubkey();
     let shuttle_id = 7_u32;
 
-    let _setup =
-        utils::setup_mint_and_token_accounts(&mut context, &payer_kp, &mint_kp, 6, 1_000, 1).await;
+    let _setup = utils::setup_mint_and_token_accounts(&mut context, &payer_kp, &mint_kp, 6, 1_000, 1).await;
 
-    let (shuttle_ephemeral_ata, _) =
-        utils::derive_shuttle_ephemeral_ata(PROGRAM, owner, mint, shuttle_id);
+    let (shuttle_ephemeral_ata, _) = utils::derive_shuttle_ephemeral_ata(PROGRAM, owner, mint, shuttle_id);
     let (shuttle_eata, _) = utils::derive_shuttle_eata(PROGRAM, shuttle_ephemeral_ata, mint);
     let shuttle_wallet_ata = utils::derive_associated_token_address(shuttle_ephemeral_ata, mint);
 
@@ -52,12 +49,7 @@ async fn initialize_shuttle_ephemeral_ata() {
         data,
     };
 
-    let tx = Transaction::new_signed_with_payer(
-        &[ix],
-        Some(&payer),
-        &[&payer_kp],
-        context.last_blockhash,
-    );
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&payer), &[&payer_kp], context.last_blockhash);
     common::metrics::process_transaction_record_cu(&context.banks_client, tx, "init_shuttle::init")
         .await
         .unwrap();
@@ -89,10 +81,7 @@ async fn initialize_shuttle_ephemeral_ata() {
 
     let mut mut_eata_acc = shuttle_eata_account.data.clone();
     let shuttle_eata_data = load_initialized::<EphemeralAta>(mut_eata_acc.as_mut_slice()).unwrap();
-    assert_eq!(
-        shuttle_eata_data.owner.as_array(),
-        &shuttle_ephemeral_ata.to_bytes()
-    );
+    assert_eq!(shuttle_eata_data.owner.as_array(), &shuttle_ephemeral_ata.to_bytes());
     assert_eq!(shuttle_eata_data.mint.as_array(), &mint.to_bytes());
     assert_eq!(shuttle_eata_data.amount, 0);
 
