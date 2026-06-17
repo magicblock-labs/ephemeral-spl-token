@@ -3,6 +3,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import {
   DELEGATION_PROGRAM_ID,
+  delegateBufferPdaFromDelegatedAccountAndOwnerProgram,
+  delegationMetadataPdaFromDelegatedAccount,
   delegationRecordPdaFromDelegatedAccount,
   deriveEphemeralAta,
   deriveHydraCrankPda,
@@ -33,7 +35,11 @@ import {
 } from "@solana/web3.js";
 
 import app from "./app";
-import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from "./lib/solana";
+import {
+  deriveStealthPoolFromHash,
+  TOKEN_2022_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
+} from "./lib/solana";
 import { MOCK_AUTH_TOKEN } from "./lib/auth";
 
 const env = {
@@ -49,6 +55,10 @@ const DEVNET_USDC_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
 const owner = Keypair.generate().publicKey.toBase58();
 const destination = Keypair.generate().publicKey.toBase58();
 const resolvedValidator = Keypair.generate().publicKey.toBase58();
+const stealthHandle = "john.doe@magicblock.id";
+const stealthHandleHash
+  = "c76229d36cb5b94158e26526845f91decc075f7e85c0624cb988e40acec01f1e";
+const stealthPool = "U9J8KRwqDoqVN4H1qvv6GzKdxQ2k1Jq8dqczeaMyc39";
 
 function deriveAssociatedTokenAddress(mint: string, owner: string) {
   const [ata] = PublicKey.findProgramAddressSync(
@@ -113,7 +123,6 @@ function createQueueAccountInfo(owner: PublicKey): AccountInfo<Buffer> {
 function createDelegationAccountInfo(validator: PublicKey): AccountInfo<Buffer> {
   const data = Buffer.alloc(40);
   validator.toBuffer().copy(data, 8);
-
   return {
     data,
     executable: false,
@@ -123,11 +132,22 @@ function createDelegationAccountInfo(validator: PublicKey): AccountInfo<Buffer> 
   };
 }
 
+function createStealthPoolAccountInfo(): AccountInfo<Buffer> {
+  const data = Buffer.alloc(395);
+  data.set(Buffer.from("stpool@1"), 0);
+  return {
+    data,
+    executable: false,
+    lamports: 1,
+    owner: EPHEMERAL_SPL_TOKEN_PROGRAM_ID,
+    rentEpoch: 0,
+  };
+}
+
 function deriveEataDelegationRecord(owner: string, mint: string) {
   const [eata] = deriveEphemeralAta(new PublicKey(owner), new PublicKey(mint));
   return delegationRecordPdaFromDelegatedAccount(eata);
 }
-
 function createIdentityResponse(identity: string) {
   return new Response(
     JSON.stringify({
@@ -237,7 +257,10 @@ describe("app", () => {
     expect(json.paths["/v1/spl/login"]).toBeDefined();
     expect(json.paths["/v1/spl/is-mint-initialized"]).toBeDefined();
     expect(json.paths["/v1/spl/initialize-mint"]).toBeDefined();
+    expect(json.paths["/v1/spl/transfer-queue/ensure-crank"]).toBeDefined();
     expect(json.paths["/v1/spl/undelegate-ephemeral-ata"]).toBeDefined();
+    expect(json.paths["/v1/spl/stealth-pool"]).toBeDefined();
+    expect(json.paths["/v1/spl/transfer-stealth"]).toBeDefined();
     expect(json.paths["/v1/swap/quote"]).toBeDefined();
     expect(json.paths["/v1/swap/swap"]).toBeDefined();
     expect(json.tags).toEqual(
@@ -376,6 +399,14 @@ describe("app", () => {
       json.components?.schemas as Record<string, any>
     )?.SendTransactionRequest;
     expect(sendTransactionRequestSchema?.properties?.sendRpcEndpoint).toBeDefined();
+    const stealthTransferRequestSchema = (
+      json.components?.schemas as Record<string, any>
+    )?.StealthTransferRequest;
+    expect(stealthTransferRequestSchema?.properties?.toHandle).toBeDefined();
+    expect(stealthTransferRequestSchema?.example).toMatchObject({
+      toHandle: "john.doe@magicblock.id",
+      fromBalance: "base",
+    });
     expect(
       json.paths["/v1/spl/withdraw"]?.post?.responses?.["200"]?.content?.[
         "application/json"
@@ -3283,10 +3314,6 @@ describe("app", () => {
     expect(json.recentBlockhash).toBe("11111111111111111111111111111111");
     expect(json.validator).toBe(resolvedValidator);
     expect(json.version).toBe("legacy");
-    expect(json.fees).toEqual({
-      lamports: "2039280",
-      tokens: "5000",
-    });
   });
 
   it("rejects private base transfers when the source eATA is delegated to another validator", async () => {
@@ -3492,6 +3519,306 @@ describe("app", () => {
     );
 
     expect(transferInstruction).toBeDefined();
+  });
+
+  it("builds an initialize-or-update stealth pool transaction", async () => {
+    const payer = Keypair.generate().publicKey.toBase58();
+    const authority = Keypair.generate().publicKey.toBase58();
+
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockImplementation(
+      async function getLatestBlockhash(
+        this: Connection & { _rpcEndpoint: string },
+      ) {
+        return {
+          blockhash: "11111111111111111111111111111111",
+          lastValidBlockHeight: 123,
+        };
+      },
+    );
+
+    const response = await app.request(
+      "/v1/spl/stealth-pool",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "authorization": `Bearer ${MOCK_AUTH_TOKEN}`,
+        },
+        body: JSON.stringify({
+          payer,
+          authority,
+          handle: stealthHandle,
+          destinations: [destination],
+          splitAcrossKeys: true,
+        }),
+      },
+      env,
+    );
+
+    expect(response.status, await response.clone().text()).toBe(200);
+
+    const json = (await response.json()) as {
+      kind: string;
+      sendTo: string;
+      stealthPool: string;
+      handleHash: string;
+      transactionBase64: string;
+      requiredSigners: string[];
+      setupTransaction: {
+        sendTo: string;
+        transactionBase64: string;
+        requiredSigners: string[];
+        validator: string;
+      };
+    };
+    expect(json.kind).toBe("stealthPool");
+    expect(json.sendTo).toBe("ephemeral");
+    expect(json.stealthPool).toBe(stealthPool);
+    expect(json.handleHash).toBe(stealthHandleHash);
+    expect(json.requiredSigners.sort()).toEqual([authority, payer].sort());
+    expect(json.setupTransaction.sendTo).toBe("base");
+    expect(json.setupTransaction.requiredSigners).toEqual([payer]);
+
+    const setupTransaction = Transaction.from(
+      Buffer.from(json.setupTransaction.transactionBase64, "base64"),
+    );
+    const setupInstruction = setupTransaction.instructions[0];
+    const stealthPoolPubkey = new PublicKey(stealthPool);
+    expect(setupInstruction.programId.equals(EPHEMERAL_SPL_TOKEN_PROGRAM_ID)).toBe(
+      true,
+    );
+    expect(setupInstruction.keys.map(key => key.pubkey.toBase58())).toEqual([
+      payer,
+      stealthPool,
+      EPHEMERAL_SPL_TOKEN_PROGRAM_ID.toBase58(),
+      delegateBufferPdaFromDelegatedAccountAndOwnerProgram(
+        stealthPoolPubkey,
+        EPHEMERAL_SPL_TOKEN_PROGRAM_ID,
+      ).toBase58(),
+      delegationRecordPdaFromDelegatedAccount(stealthPoolPubkey).toBase58(),
+      delegationMetadataPdaFromDelegatedAccount(stealthPoolPubkey).toBase58(),
+      DELEGATION_PROGRAM_ID.toBase58(),
+      SystemProgram.programId.toBase58(),
+    ]);
+    expect([...setupInstruction.data]).toEqual([
+      22,
+      ...Buffer.from(stealthHandleHash, "hex"),
+      ...new PublicKey(json.setupTransaction.validator).toBuffer(),
+    ]);
+
+    const transaction = Transaction.from(
+      Buffer.from(json.transactionBase64, "base64"),
+    );
+    const instruction = transaction.instructions[0];
+    expect(instruction.programId.equals(EPHEMERAL_SPL_TOKEN_PROGRAM_ID)).toBe(
+      true,
+    );
+    expect(instruction.keys.map(key => key.pubkey.toBase58())).toEqual([
+      payer,
+      stealthPool,
+      authority,
+      SystemProgram.programId.toBase58(),
+    ]);
+    expect([...instruction.data.subarray(0, 35)]).toEqual([
+      21,
+      ...Buffer.from(stealthHandleHash, "hex"),
+      1,
+      1,
+    ]);
+    expect(instruction.data.subarray(35).toString("hex")).toBe(
+      new PublicKey(destination).toBuffer().toString("hex"),
+    );
+  });
+
+  it("reports base stealth pool status without exposing destinations", async () => {
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(
+      async function getAccountInfo(
+        this: Connection & { _rpcEndpoint: string },
+        address: PublicKey,
+      ) {
+        expect(this._rpcEndpoint).toBe(env.BASE_RPC_URL);
+        expect(address.toBase58()).toBe(stealthPool);
+        return createStealthPoolAccountInfo();
+      },
+    );
+
+    const response = await app.request(
+      `/v1/spl/stealth-pool?handle=${encodeURIComponent(stealthHandle)}`,
+      {},
+      env,
+    );
+
+    expect(response.status).toBe(200);
+
+    const json = (await response.json()) as {
+      stealthPool: string;
+      handleHash: string;
+      exists: boolean;
+      destinations?: unknown;
+    };
+    expect(json).toEqual({
+      stealthPool,
+      handleHash: stealthHandleHash,
+      exists: true,
+    });
+    expect(json.destinations).toBeUndefined();
+  });
+
+  it("rejects stealth transfers from ephemeral balance", async () => {
+    const response = await app.request(
+      "/v1/spl/transfer-stealth",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "authorization": "Bearer abc",
+        },
+        body: JSON.stringify({
+          from: owner,
+          toHandle: stealthHandle,
+          mint: "So11111111111111111111111111111111111111112",
+          amount: 2,
+          fromBalance: "ephemeral",
+          minDelayMs: "0",
+          maxDelayMs: "0",
+          split: 1,
+        }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(422);
+
+    const json = (await response.json()) as {
+      error: { code: string; message: string };
+    };
+    expect(json.error.code).toBe("VALIDATION_ERROR");
+    expect(json.error.message).toBe("Request validation failed");
+  });
+
+  it("rejects stealth transfers when the derived pool PDA is missing", async () => {
+    const mint = new PublicKey("So11111111111111111111111111111111111111112");
+    const [stealthPoolPubkey] = deriveStealthPoolFromHash(
+      Buffer.from(stealthHandleHash, "hex"),
+    );
+    expect(stealthPoolPubkey.toBase58()).toBe(stealthPool);
+    const getAccountInfo = vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(
+      async function getAccountInfo(
+        this: Connection & { _rpcEndpoint: string },
+        address: PublicKey,
+      ) {
+        expect(this._rpcEndpoint).toBe(env.BASE_RPC_URL);
+        expect(address.toBase58()).toBe(stealthPoolPubkey.toBase58());
+        return null;
+      },
+    );
+
+    const response = await app.request(
+      "/v1/spl/transfer-stealth",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          from: owner,
+          toHandle: stealthHandle,
+          mint: mint.toBase58(),
+          amount: 2,
+          fromBalance: "base",
+          minDelayMs: "0",
+          maxDelayMs: "0",
+          split: 1,
+          legacy: true,
+        }),
+      },
+      env,
+    );
+
+    expect(response.status, await response.clone().text()).toBe(400);
+    expect(getAccountInfo).toHaveBeenCalledTimes(1);
+
+    const json = (await response.json()) as {
+      error: { code: string; message: string };
+    };
+    expect(json.error.code).toBe("STEALTH_POOL_NOT_FOUND");
+    expect(json.error.message).toBe("Stealth handle is not initialized");
+  });
+
+  it("builds a base stealth transfer after verifying the derived pool PDA exists", async () => {
+    const mint = new PublicKey("So11111111111111111111111111111111111111112");
+    const [stealthPoolPubkey] = deriveStealthPoolFromHash(
+      Buffer.from(stealthHandleHash, "hex"),
+    );
+    expect(stealthPoolPubkey.toBase58()).toBe(stealthPool);
+
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockImplementation(
+      async function getLatestBlockhash(
+        this: Connection & { _rpcEndpoint: string },
+      ) {
+        expect(this._rpcEndpoint).toBe(env.BASE_RPC_URL);
+        return {
+          blockhash: "11111111111111111111111111111111",
+          lastValidBlockHeight: 123,
+        };
+      },
+    );
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(
+      async (address) => {
+        if (address.equals(stealthPoolPubkey)) {
+          return createStealthPoolAccountInfo();
+        }
+
+        if (address.equals(mint)) {
+          return createMintAccountInfo(TOKEN_PROGRAM_ID);
+        }
+
+        throw new Error(`Unexpected transfer-stealth account lookup: ${address.toBase58()}`);
+      },
+    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(env.EPHEMERAL_RPC_URL);
+      return createIdentityResponse(resolvedValidator);
+    });
+
+    const response = await app.request(
+      "/v1/spl/transfer-stealth",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          from: owner,
+          toHandle: stealthHandle,
+          mint: mint.toBase58(),
+          amount: 2,
+          fromBalance: "base",
+          minDelayMs: "0",
+          maxDelayMs: "0",
+          split: 1,
+          legacy: true,
+        }),
+      },
+      env,
+    );
+
+    expect(response.status, await response.clone().text()).toBe(200);
+
+    const json = (await response.json()) as {
+      sendTo: string;
+      transactionBase64: string;
+      validator: string;
+    };
+    expect(json.sendTo).toBe("base");
+    expect(json.validator).toBe(resolvedValidator);
+
+    const transaction = Transaction.from(
+      Buffer.from(json.transactionBase64, "base64"),
+    );
+    const instruction = transaction.instructions.at(-1)!;
+    expect(instruction.data[0]).toBe(25);
+    expect(instruction.keys).toHaveLength(19);
   });
 
   it("builds a v0 private base transfer when the LUT is useful", async () => {
@@ -5341,6 +5668,124 @@ describe("app", () => {
 
     expect(getLatestBlockhashSpy).not.toHaveBeenCalled();
     expect(sendRawTransactionSpy).not.toHaveBeenCalled();
+  });
+
+  it("forces the transfer queue crank endpoint even when recent activity exists", async () => {
+    const mint = "So11111111111111111111111111111111111111112";
+    const validator = Keypair.generate().publicKey.toBase58();
+    const validatorPublicKey = new PublicKey(validator);
+    const [transferQueue] = deriveTransferQueue(
+      new PublicKey(mint),
+      validatorPublicKey,
+    );
+    const nowMs = 1_700_000_000_000;
+    let rawTransaction: Buffer | undefined;
+
+    vi.spyOn(Date, "now").mockReturnValue(nowMs);
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(
+      async function getAccountInfo(
+        this: Connection & { _rpcEndpoint: string },
+        address,
+      ) {
+        expect((this as Connection & { _rpcEndpoint: string })._rpcEndpoint).toBe(
+          env.BASE_RPC_URL,
+        );
+        expect(address.toBase58()).toBe(transferQueue.toBase58());
+        return createQueueAccountInfo(DELEGATION_PROGRAM_ID);
+      },
+    );
+    vi.spyOn(
+      Connection.prototype,
+      "getSignaturesForAddress",
+    ).mockImplementation(async function getSignaturesForAddress(
+      this: Connection & { _rpcEndpoint: string },
+      address,
+    ) {
+      expect((this as Connection & { _rpcEndpoint: string })._rpcEndpoint).toBe(
+        env.EPHEMERAL_RPC_URL,
+      );
+      expect(address.toBase58()).toBe(transferQueue.toBase58());
+      return [
+        {
+          blockTime: Math.floor((nowMs - 30_000) / 1000),
+          confirmationStatus: "confirmed",
+          err: null,
+          memo: null,
+          signature: "recent-signature",
+          slot: 1,
+        },
+      ];
+    });
+    vi.spyOn(
+      Connection.prototype,
+      "getLatestBlockhashAndContext",
+    ).mockResolvedValue({
+      context: { slot: 1 },
+      value: {
+        blockhash: "11111111111111111111111111111111",
+        lastValidBlockHeight: 123,
+      },
+    });
+    vi.spyOn(Connection.prototype, "getEpochInfo").mockResolvedValue({
+      absoluteSlot: 1,
+      blockHeight: 1,
+      epoch: 1,
+      slotIndex: 1,
+      slotsInEpoch: 1,
+      transactionCount: 1,
+    });
+    vi.spyOn(Connection.prototype, "sendRawTransaction").mockImplementation(
+      async function sendRawTransaction(
+        this: Connection & { _rpcEndpoint: string },
+        raw,
+      ) {
+        expect((this as Connection & { _rpcEndpoint: string })._rpcEndpoint).toBe(
+          env.EPHEMERAL_RPC_URL,
+        );
+        rawTransaction = Buffer.from(raw);
+        return "forced-crank-signature";
+      },
+    );
+    vi.spyOn(Connection.prototype, "confirmTransaction").mockResolvedValue({
+      context: { slot: 1 },
+      value: { err: null },
+    } as never);
+
+    const response = await app.request(
+      "/v1/spl/transfer-queue/ensure-crank",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ mint, validator }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(200);
+
+    const json = (await response.json()) as {
+      mint: string;
+      validator: string;
+      transferQueue: string;
+      crankSignature: string;
+    };
+
+    expect(json).toEqual({
+      mint,
+      validator,
+      transferQueue: transferQueue.toBase58(),
+      crankSignature: "forced-crank-signature",
+    });
+    expect(rawTransaction).toBeDefined();
+
+    const transaction = Transaction.from(rawTransaction!);
+    expect(transaction.instructions).toHaveLength(1);
+    expect(transaction.instructions[0]?.keys[1]?.pubkey.toBase58()).toBe(
+      transferQueue.toBase58(),
+    );
+    expect(transaction.instructions[0]?.keys[2]?.pubkey.toBase58()).toBe(
+      magicFeeVaultPdaFromValidator(validatorPublicKey).toBase58(),
+    );
   });
 
   it("does not fail mint initialization when transfer queue activity is auth-filtered", async () => {

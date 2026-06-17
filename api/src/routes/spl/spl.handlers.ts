@@ -4,12 +4,16 @@ import { getEnv, type AppBindings } from "../../env";
 import {
   buildDepositTransaction,
   buildInitializeMintTransaction,
+  buildUpdateStealthPoolTransaction,
+  buildStealthTransferTransaction,
   buildTransferTransaction,
   buildUndelegateEphemeralAtaTransaction,
   buildWithdrawTransaction,
+  ensureTransferQueueCrank,
   getBaseBalance,
   getMintInitializationStatus,
   getPrivateBalance,
+  getStealthPoolStatus,
 } from "../../lib/solana";
 import {
   balanceRoute,
@@ -19,6 +23,10 @@ import {
   loginRoute,
   mintInitializationRoute,
   privateBalanceRoute,
+  stealthPoolRoute,
+  stealthPoolStatusRoute,
+  stealthTransferRoute,
+  transferQueueEnsureCrankRoute,
   transferRoute,
   undelegateEphemeralAtaRoute,
   withdrawRoute,
@@ -30,7 +38,11 @@ import {
   InitializeMintRequest,
   LoginRequest,
   MintInitializationRequest,
+  StealthPoolRequest,
+  StealthPoolStatusRequest,
+  StealthTransferRequest,
   TransferRequest,
+  TransferQueueEnsureCrankRequest,
   UndelegateEphemeralAtaRequest,
   WithdrawRequest,
 } from "./spl.schemas";
@@ -86,6 +98,31 @@ export const undelegateEphemeralAtaHandler: RouteHandler<typeof undelegateEpheme
   return c.json(response, 200);
 };
 
+export const stealthTransferHandler: RouteHandler<typeof stealthTransferRoute, RouteEnv> = async (c) => {
+  const env = getEnv(c.env);
+  const body = c.req.valid("json") as StealthTransferRequest;
+  const authToken = parseAuthToken(c.req.header());
+  const response = await buildStealthTransferTransaction(env, body, authToken);
+  return c.json(response, 200);
+};
+
+export const stealthPoolHandler: RouteHandler<typeof stealthPoolRoute, RouteEnv> = async (c) => {
+  const env = getEnv(c.env);
+  const body = c.req.valid("json") as StealthPoolRequest;
+  const authToken = parseAuthToken(c.req.header());
+
+  const response = await buildUpdateStealthPoolTransaction(env, body, authToken);
+  return c.json(response, 200);
+};
+
+export const stealthPoolStatusHandler: RouteHandler<typeof stealthPoolStatusRoute, RouteEnv> = async (c) => {
+  const env = getEnv(c.env);
+  const query = c.req.valid("query") as StealthPoolStatusRequest;
+
+  const response = await getStealthPoolStatus(env, query);
+  return c.json(response, 200);
+};
+
 export const balanceHandler: RouteHandler<typeof balanceRoute, RouteEnv> = async (c) => {
   const env = getEnv(c.env);
   const query = c.req.valid("query") as BalanceRequest;
@@ -113,6 +150,13 @@ export const mintInitializationHandler: RouteHandler<typeof mintInitializationRo
     query,
     getBackgroundScheduler(c as { executionCtx: BackgroundScheduler }),
   );
+  return c.json(response, 200);
+};
+
+export const transferQueueEnsureCrankHandler: RouteHandler<typeof transferQueueEnsureCrankRoute, RouteEnv> = async (c) => {
+  const env = getEnv(c.env);
+  const body = c.req.valid("json") as TransferQueueEnsureCrankRequest;
+  const response = await ensureTransferQueueCrank(env, body);
   return c.json(response, 200);
 };
 

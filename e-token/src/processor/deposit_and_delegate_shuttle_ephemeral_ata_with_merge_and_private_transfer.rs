@@ -149,7 +149,7 @@ pub(crate) fn process_with_merge_and_private_transfer_inner(
     debug_log!({
         let shuttle = common_accounts.shuttle_info.address().to_string();
         let shuttle_eata = common_accounts.shuttle_eata_info.address().to_string();
-        let shuttle_wallet = common_accounts
+        let shuttle_ata = common_accounts
             .shuttle_wallet_ata_info
             .address()
             .to_string();
@@ -162,10 +162,11 @@ pub(crate) fn process_with_merge_and_private_transfer_inner(
         let queue = queue_info.address().to_string();
 
         pinocchio_log::log!(
-            "Private shuttle ix accounts shuttle={} shuttle_eata={} shuttle_wallet={} mint={} owner_source={} vault_token={} queue={}",
+            350,
+            "privatetx: shuttle={}, ata={} eata={} mint={} owner_source={} vault_token={} queue={}",
             shuttle.as_str(),
+            shuttle_ata.as_str(),
             shuttle_eata.as_str(),
-            shuttle_wallet.as_str(),
             mint.as_str(),
             owner_source.as_str(),
             vault_token.as_str(),

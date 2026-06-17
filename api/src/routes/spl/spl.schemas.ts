@@ -22,7 +22,7 @@ export const transferFeesSchema = z.object({
 export type TransferFees = z.infer<typeof transferFeesSchema>;
 
 export const transactionResponseSchema = z.object({
-  kind: z.enum(["deposit", "withdraw", "transfer", "initializeMint", "undelegateEphemeralAta"]),
+  kind: z.enum(["deposit", "withdraw", "transfer", "initializeMint", "undelegateEphemeralAta", "stealthPool"]),
   version: z.enum(["legacy", "v0"]),
   transactionBase64: z.string(),
   sendTo: balanceLocationSchema,
@@ -72,6 +72,31 @@ export const mintInitializationResponseSchema = z.object({
   initialized: z.boolean(),
 }).openapi("MintInitializationResponse");
 export type MintInitializationResponse = z.infer<typeof mintInitializationResponseSchema>;
+
+export const transferQueueEnsureCrankRequestSchema = z.object({
+  mint: publicKeySchema.openapi({
+    example: DEFAULT_DEPOSIT_MINT,
+  }),
+  cluster: clusterSchema.optional(),
+  validator: publicKeySchema.openapi({
+    example: DEFAULT_DEPOSIT_VALIDATOR,
+    description: "Optional. Defaults to the selected ephemeral RPC identity resolved via `getIdentity`.",
+  }).optional(),
+}).openapi("TransferQueueEnsureCrankRequest", {
+  example: {
+    mint: DEFAULT_DEPOSIT_MINT,
+    validator: DEFAULT_DEPOSIT_VALIDATOR,
+  },
+});
+export type TransferQueueEnsureCrankRequest = z.infer<typeof transferQueueEnsureCrankRequestSchema>;
+
+export const transferQueueEnsureCrankResponseSchema = z.object({
+  mint: publicKeySchema,
+  validator: publicKeySchema,
+  transferQueue: publicKeySchema,
+  crankSignature: z.string(),
+}).openapi("TransferQueueEnsureCrankResponse");
+export type TransferQueueEnsureCrankResponse = z.infer<typeof transferQueueEnsureCrankResponseSchema>;
 
 export const initializeMintRequestSchema = z.object({
   payer: publicKeySchema.openapi({
@@ -126,6 +151,72 @@ export const undelegateEphemeralAtaResponseSchema = transactionResponseSchema.ex
   }),
 }).openapi("UndelegateEphemeralAtaResponse");
 export type UndelegateEphemeralAtaResponse = z.infer<typeof undelegateEphemeralAtaResponseSchema>;
+
+export const stealthHandleSchema = z.string().min(1).openapi({
+  example: "john.doe@magicblock.id",
+  description: "Exact canonical handle string. The API hashes these UTF-8 bytes as-is; it does not trim, lowercase, or normalize.",
+});
+
+export const stealthPoolRequestSchema = z.object({
+  payer: publicKeySchema.openapi({
+    example: DEPOSIT_EXAMPLE_OWNER,
+  }),
+  authority: publicKeySchema.openapi({
+    example: DEPOSIT_EXAMPLE_OWNER,
+  }),
+  handle: stealthHandleSchema,
+  destinations: z.array(publicKeySchema).min(1).max(10).openapi({
+    example: [
+      "Bt9oNR5cCtnfuMmXgWELd6q5i974PdEMQDUE55nBC57L",
+      "3rXKwQ1kpjBd5tdcco32qsvqUh1BnZjcYnS5kYrP7AYE",
+    ],
+    description: "Owner public keys, not token accounts. Must contain between 1 and 10 keys.",
+  }),
+  splitAcrossKeys: z.boolean().openapi({
+    example: false,
+    description: "Optional. When true, split payments may resolve independently across destination keys.",
+  }).optional(),
+  validator: publicKeySchema.openapi({
+    example: DEFAULT_DEPOSIT_VALIDATOR,
+    description: "Optional validator identity to receive the delegated stealth pool.",
+  }).optional(),
+  cluster: clusterSchema.optional(),
+}).openapi("StealthPoolRequest", {
+  example: {
+    payer: DEPOSIT_EXAMPLE_OWNER,
+    authority: DEPOSIT_EXAMPLE_OWNER,
+    handle: "john.doe@magicblock.id",
+    destinations: [TRANSFER_EXAMPLE_TO],
+    splitAcrossKeys: false,
+    validator: DEFAULT_DEPOSIT_VALIDATOR,
+  },
+});
+export type StealthPoolRequest = z.infer<typeof stealthPoolRequestSchema>;
+
+export const stealthPoolResponseSchema = transactionResponseSchema.extend({
+  kind: z.literal("stealthPool"),
+  setupTransaction: transactionResponseSchema,
+  stealthPool: publicKeySchema,
+  handleHash: z.string(),
+}).openapi("StealthPoolResponse");
+export type StealthPoolResponse = z.infer<typeof stealthPoolResponseSchema>;
+
+export const stealthPoolStatusRequestSchema = z.object({
+  handle: stealthHandleSchema,
+  cluster: clusterSchema.optional(),
+}).openapi("StealthPoolStatusRequest", {
+  example: {
+    handle: "john.doe@magicblock.id",
+  },
+});
+export type StealthPoolStatusRequest = z.infer<typeof stealthPoolStatusRequestSchema>;
+
+export const stealthPoolStatusResponseSchema = z.object({
+  stealthPool: publicKeySchema,
+  handleHash: z.string(),
+  exists: z.boolean(),
+}).openapi("StealthPoolStatusResponse");
+export type StealthPoolStatusResponse = z.infer<typeof stealthPoolStatusResponseSchema>;
 
 export const depositRequestSchema = z.object({
   owner: publicKeySchema.openapi({
@@ -254,6 +345,69 @@ export const transferRequestSchema = z.object({
   },
 });
 export type TransferRequest = z.infer<typeof transferRequestSchema>;
+
+export const stealthTransferRequestSchema = z.object({
+  from: publicKeySchema,
+  toHandle: stealthHandleSchema,
+  cluster: clusterSchema.optional(),
+  mint: publicKeySchema,
+  amount: amountSchema,
+  fromBalance: z.literal("base").openapi({
+    example: "base",
+    description: "Stealth transfers are base-chain source only.",
+  }).default("base"),
+  validator: publicKeySchema.openapi({
+    example: DEFAULT_DEPOSIT_VALIDATOR,
+    description: "Optional. When none is provided, the API resolves it from the selected ephemeral RPC via `getIdentity`.",
+  }).optional(),
+  initIfMissing: z.boolean().optional(),
+  initAtasIfMissing: z.boolean().optional(),
+  initVaultIfMissing: z.boolean().optional(),
+  memo: z.string().openapi({
+    example: "Order #1042",
+    description: "Optional. Appends a final Memo Program instruction with this UTF-8 message.",
+  }).optional(),
+  minDelayMs: optionalBigIntStringSchema.openapi({
+    example: "0",
+    description: "Optional. Defaults to 0.",
+  }).optional(),
+  maxDelayMs: optionalBigIntStringSchema.openapi({
+    example: "0",
+    description: "Optional. Defaults to 0 when omitted, or to minDelayMs when minDelayMs is set.",
+  }).optional(),
+  clientRefId: optionalBigIntStringSchema.openapi({
+    example: "42",
+    description: "Optional. Encrypted client reference ID that can be used to confirm a payment.",
+  }).optional(),
+  split: z.int().positive().max(15).openapi({
+    example: 1,
+    description: "Optional. Defaults to 1. Must be between 1 and 15.",
+  }).optional(),
+  exactOut: z.boolean().openapi({
+    example: boolean,
+    description: "Optional. If true, the fees are deducted from the sender, else from the recipient amount.",
+  }).optional(),
+  gasless: z.boolean().openapi({
+    example: true,
+    description: "Optional. Same gasless policy as `/v1/spl/transfer`.",
+  }).optional(),
+  legacy: z.boolean().openapi({
+    description: "Optional. Defaults to false. When true, skips lookup-table compilation and returns a legacy transaction.",
+  }).optional(),
+}).openapi("StealthTransferRequest", {
+  example: {
+    from: DEPOSIT_EXAMPLE_OWNER,
+    toHandle: "john.doe@magicblock.id",
+    mint: DEFAULT_DEPOSIT_MINT,
+    amount: 5000000,
+    fromBalance: "base",
+    minDelayMs: "0",
+    maxDelayMs: "0",
+    clientRefId: "42",
+    gasless: true,
+  },
+});
+export type StealthTransferRequest = z.infer<typeof stealthTransferRequestSchema>;
 
 export const balanceRequestSchema = z.object({
   address: publicKeySchema,

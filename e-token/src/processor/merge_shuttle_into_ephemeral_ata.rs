@@ -7,7 +7,7 @@ use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use crate::processor::utils::{read_mint_decimals, validate_token_account};
 
 ///
-/// Executes on:
+/// Executes on: ER only
 ///
 /// Accounts:
 ///

@@ -177,15 +177,15 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
     debug_log!({
         let shuttle = shuttle_info.address().to_string();
         let shuttle_eata = shuttle_eata_info.address().to_string();
-        let shuttle_wallet = shuttle_wallet_ata_info.address().to_string();
+        let shuttle_ata = shuttle_wallet_ata_info.address().to_string();
         let owner = owner_info.address().to_string();
         let mint = mint_info.address().to_string();
         let rent_pda = rent_pda_info.address().to_string();
         pinocchio_log::log!(
-            "PrepareShuttleDelegation accounts shuttle={} shuttle_eata={} shuttle_wallet={} owner={} mint={} rent_pda={} shuttle_id={}",
+            "prepare_shuttle_delegation: shuttle={} ata={} eata={} owner={} mint={} rent_pda={} shuttle_id={}",
             shuttle.as_str(),
+            shuttle_ata.as_str(),
             shuttle_eata.as_str(),
-            shuttle_wallet.as_str(),
             owner.as_str(),
             mint.as_str(),
             rent_pda.as_str(),
@@ -397,8 +397,8 @@ pub(crate) fn build_undelegate_and_close_shuttle_instruction(
     close_stash: Option<CloseStashArgs>,
 ) -> Instruction {
     let accounts = alloc::vec![
-        AccountMeta::new_readonly(*payer, true),
-        AccountMeta::new_readonly(*rent_pda, false),
+        AccountMeta::new_readonly(*payer, true), // TODO: can be removed, or passed as pubkey
+        AccountMeta::new_readonly(*rent_pda, false), // TODO (snawaz): can be passed as pubkey
         AccountMeta::new_readonly(*shuttle, false),
         AccountMeta::new_readonly(*shuttle_eata, false),
         AccountMeta::new(*shuttle_wallet_ata, false),

@@ -3,6 +3,8 @@ import {
   DELEGATION_PROGRAM_ID,
   DelegationStatus,
   delegateTransferQueueIx,
+  delegateBufferPdaFromDelegatedAccountAndOwnerProgram,
+  delegationMetadataPdaFromDelegatedAccount,
   delegationRecordPdaFromDelegatedAccount,
   deriveRentPda,
   deriveTransferQueue,
@@ -32,8 +34,31 @@ import nacl from "tweetnacl";
 
 import type { AppEnv } from "../env";
 import { ApiError } from "./errors";
-import { BalanceRequest, BalanceResponse, DepositRequest, InitializeMintRequest, InitializeMintResponse, MintInitializationRequest, MintInitializationResponse, TransactionResponse, TransferRequest, UndelegateEphemeralAtaRequest, UndelegateEphemeralAtaResponse, WithdrawRequest } from "../routes/spl/spl.schemas";
-import { SendTransactionRequest, SendTransactionResponse } from "../routes/transaction.schemas";
+import {
+  BalanceRequest,
+  BalanceResponse,
+  DepositRequest,
+  InitializeMintRequest,
+  InitializeMintResponse,
+  MintInitializationRequest,
+  MintInitializationResponse,
+  StealthPoolRequest,
+  StealthPoolResponse,
+  StealthPoolStatusRequest,
+  StealthPoolStatusResponse,
+  StealthTransferRequest,
+  TransactionResponse,
+  TransferRequest,
+  TransferQueueEnsureCrankRequest,
+  TransferQueueEnsureCrankResponse,
+  UndelegateEphemeralAtaRequest,
+  UndelegateEphemeralAtaResponse,
+  WithdrawRequest,
+} from "../routes/spl/spl.schemas";
+import {
+  SendTransactionRequest,
+  SendTransactionResponse,
+} from "../routes/transaction.schemas";
 import { getCachedAddressLookupTable, getConnection } from "./rpc-cache";
 
 export const TOKEN_PROGRAM_ID = new PublicKey(
@@ -73,6 +98,10 @@ const TRANSFER_QUEUE_RECENT_SIGNATURE_LIMIT = 5;
 const TRANSFER_QUEUE_STALE_MS = 60_000;
 const TRANSFER_QUEUE_AUTH_ERROR_FORCE_INTERVAL = 100;
 const SOLANA_WIRE_TRANSACTION_SIZE_LIMIT = 1232;
+const UPDATE_STEALTH_POOL_DISCRIMINATOR = 21;
+const ENSURE_STEALTH_POOL_DELEGATED_DISCRIMINATOR = 22;
+const STEALTH_POOL_SEED = Buffer.from("stealth_pool");
+const STEALTH_POOL_SPLIT_ACROSS_KEYS_FLAG = 1 << 0;
 // Keep these defaults aligned with scripts/create-private-transfer-lut.js. Updating them requires a redeploy.
 const PRIVATE_BASE_TO_BASE_TRANSFER_LOOKUP_TABLES = {
   mainnet: new PublicKey("54M1BrqVSg1UGTmhH44gQPsPVyuMpmcVBkaY2wYNSVZB"),
@@ -138,6 +167,9 @@ type BackgroundTaskScheduler = {
 };
 
 type TransferFees = NonNullable<TransactionResponse["fees"]>;
+type EnsureTransferQueueCrankOptions = {
+  force?: boolean;
+};
 type ProjectedWritableAta = {
   role: string;
   owner: PublicKey;
@@ -445,7 +477,7 @@ function getAssociatedTokenAddressSync(
   associatedTokenProgramId: PublicKey = ASSOCIATED_TOKEN_PROGRAM_ID,
 ) {
   if (!allowOwnerOffCurve && !PublicKey.isOnCurve(owner.toBuffer())) {
-    throw new ApiError(400, "INVALID_OWNER", "Owner public key is off-curve");
+    throw new ApiError(400, "INVALID_OWNER", `Owner public key ${owner.toBase58()} is off-curve`);
   }
 
   const [ata] = PublicKey.findProgramAddressSync(
@@ -473,6 +505,165 @@ function createMemoInstruction(memo: string) {
     programId: MEMO_PROGRAM_ID,
     keys: [],
     data: Buffer.from(memo, "utf8"),
+  });
+}
+
+function bytesToHex(bytes: Uint8Array) {
+  return [...bytes]
+    .map(byte => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function requireAuthToken(authToken: string | undefined, message: string) {
+  if (!authToken) {
+    throw new ApiError(400, "MISSING_AUTH_TOKEN", message);
+  }
+}
+
+export async function hashStealthHandle(handle: string) {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(handle),
+  );
+
+  return new Uint8Array(digest);
+}
+
+export function deriveStealthPoolFromHash(handleHash: Uint8Array): [PublicKey, number] {
+  if (handleHash.length !== 32) {
+    throw new ApiError(400, "INVALID_STEALTH_HANDLE_HASH", "handle hash must be 32 bytes");
+  }
+
+  return PublicKey.findProgramAddressSync(
+    [STEALTH_POOL_SEED, Buffer.from(handleHash)],
+    EPHEMERAL_SPL_TOKEN_PROGRAM_ID,
+  );
+}
+
+async function resolveStealthPool(handle: string) {
+  const handleHash = await hashStealthHandle(handle);
+  const [stealthPool] = deriveStealthPoolFromHash(handleHash);
+
+  return {
+    handleHash,
+    handleHashHex: bytesToHex(handleHash),
+    stealthPool,
+  };
+}
+
+function isStealthPoolAccount(accountInfo: { owner: PublicKey } | null) {
+  return accountInfo !== null
+    && (
+      accountInfo.owner.equals(EPHEMERAL_SPL_TOKEN_PROGRAM_ID)
+      || accountInfo.owner.equals(DELEGATION_PROGRAM_ID)
+    );
+}
+
+async function assertStealthPoolExists(
+  config: RpcConfig,
+  handle: string,
+  stealthPool: PublicKey,
+) {
+  let accountInfo: { owner: PublicKey } | null;
+  try {
+    accountInfo = await getBaseConnection(config).getAccountInfo(stealthPool, "confirmed");
+  } catch (error) {
+    throw new ApiError(502, "RPC_ERROR", "Failed to fetch stealth pool account", {
+      handle,
+      stealthPool: stealthPool.toBase58(),
+      message: getSanitizedErrorMessage(error),
+    });
+  }
+
+  if (!isStealthPoolAccount(accountInfo)) {
+    throw new ApiError(400, "STEALTH_POOL_NOT_FOUND", "Stealth handle is not initialized", {
+      handle,
+      stealthPool: stealthPool.toBase58(),
+      owner: accountInfo?.owner.toBase58(),
+    });
+  }
+}
+
+function updateStealthPoolInstruction(
+  payer: PublicKey,
+  stealthPool: PublicKey,
+  authority: PublicKey,
+  handleHash: Uint8Array,
+  destinations: PublicKey[],
+  flags: number,
+) {
+  const data = Buffer.alloc(1 + 32 + 1 + 1 + destinations.length * 32);
+  let offset = 0;
+  data[offset] = UPDATE_STEALTH_POOL_DISCRIMINATOR;
+  offset += 1;
+  data.set(handleHash, offset);
+  offset += 32;
+  data[offset] = flags;
+  offset += 1;
+  data[offset] = destinations.length;
+  offset += 1;
+
+  for (const destination of destinations) {
+    data.set(destination.toBuffer(), offset);
+    offset += 32;
+  }
+
+  return new TransactionInstruction({
+    programId: EPHEMERAL_SPL_TOKEN_PROGRAM_ID,
+    keys: [
+      { pubkey: payer, isSigner: true, isWritable: true },
+      { pubkey: stealthPool, isSigner: false, isWritable: true },
+      { pubkey: authority, isSigner: true, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data,
+  });
+}
+
+function ensureStealthPoolDelegatedInstruction(
+  payer: PublicKey,
+  stealthPool: PublicKey,
+  handleHash: Uint8Array,
+  validator?: PublicKey,
+) {
+  const data = Buffer.alloc(1 + 32 + (validator ? 32 : 0));
+  let offset = 0;
+  data[offset] = ENSURE_STEALTH_POOL_DELEGATED_DISCRIMINATOR;
+  offset += 1;
+  data.set(handleHash, offset);
+  offset += 32;
+  if (validator) {
+    data.set(validator.toBuffer(), offset);
+  }
+
+  return new TransactionInstruction({
+    programId: EPHEMERAL_SPL_TOKEN_PROGRAM_ID,
+    keys: [
+      { pubkey: payer, isSigner: true, isWritable: true },
+      { pubkey: stealthPool, isSigner: false, isWritable: true },
+      { pubkey: EPHEMERAL_SPL_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      {
+        pubkey: delegateBufferPdaFromDelegatedAccountAndOwnerProgram(
+          stealthPool,
+          EPHEMERAL_SPL_TOKEN_PROGRAM_ID,
+        ),
+        isSigner: false,
+        isWritable: true,
+      },
+      {
+        pubkey: delegationRecordPdaFromDelegatedAccount(stealthPool),
+        isSigner: false,
+        isWritable: true,
+      },
+      {
+        pubkey: delegationMetadataPdaFromDelegatedAccount(stealthPool),
+        isSigner: false,
+        isWritable: true,
+      },
+      { pubkey: DELEGATION_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data,
   });
 }
 
@@ -715,6 +906,30 @@ async function assertProjectedWritableAtaValidators(
       { accounts: mismatchedAccounts },
     );
   }
+}
+
+function withPrivateTransferExactOut(
+  instruction: TransactionInstruction,
+  exactOut: boolean,
+) {
+  if (
+    !instruction.programId.equals(EPHEMERAL_SPL_TOKEN_PROGRAM_ID)
+    || instruction.data[0] !== 25
+    || instruction.data[93] !== 1
+    || instruction.data[126] !== instruction.data.length - 127
+  ) {
+    return instruction;
+  }
+
+  return new TransactionInstruction({
+    programId: instruction.programId,
+    keys: instruction.keys,
+    data: Buffer.concat([
+      instruction.data.subarray(0, 13),
+      Buffer.from([exactOut ? 1 : 0]),
+      instruction.data.subarray(13),
+    ]),
+  });
 }
 
 function createRandomShuttleId() {
@@ -1378,6 +1593,97 @@ export async function buildUndelegateEphemeralAtaTransaction(
   }
 }
 
+export async function buildUpdateStealthPoolTransaction(
+  env: AppEnv,
+  input: StealthPoolRequest,
+  authToken?: string,
+): Promise<StealthPoolResponse> {
+  try {
+    requireAuthToken(authToken, "authToken is required to initialize stealth pool destinations inside the ER");
+
+    const config = resolveRpcConfig(env, input.cluster);
+    const payer = parsePublicKey(input.payer, "payer");
+    const authority = parsePublicKey(input.authority, "authority");
+    const destinations = input.destinations.map((destination, index) =>
+      parsePublicKey(destination, `destinations[${index}]`));
+    const { handleHash, handleHashHex, stealthPool } = await resolveStealthPool(input.handle);
+    const flags = input.splitAcrossKeys ? STEALTH_POOL_SPLIT_ACROSS_KEYS_FLAG : 0;
+    const validator = await resolveValidator(config, input.validator);
+    const setupBlockhash = await getBlockhash(config, "base");
+    const initializeBlockhash = await getBlockhash(config, "ephemeral", authToken);
+    const setupInstructions = [
+      ensureStealthPoolDelegatedInstruction(
+        payer,
+        stealthPool,
+        handleHash,
+        validator,
+      ),
+    ];
+    const initializeInstructions = [
+      updateStealthPoolInstruction(
+        payer,
+        stealthPool,
+        authority,
+        handleHash,
+        destinations,
+        flags,
+      ),
+    ];
+
+    const setupTransaction = serializeTransaction(
+      "stealthPool",
+      "base",
+      setupInstructions,
+      payer,
+      setupBlockhash,
+      validator,
+    );
+    const response = serializeTransaction(
+      "stealthPool",
+      "ephemeral",
+      initializeInstructions,
+      payer,
+      initializeBlockhash,
+      validator,
+    );
+
+    return {
+      ...response,
+      kind: "stealthPool",
+      setupTransaction,
+      stealthPool: stealthPool.toBase58(),
+      handleHash: handleHashHex,
+    };
+  } catch (error) {
+    throwTransactionBuildError(error);
+  }
+}
+
+export async function getStealthPoolStatus(
+  env: AppEnv,
+  input: StealthPoolStatusRequest,
+): Promise<StealthPoolStatusResponse> {
+  const config = resolveRpcConfig(env, input.cluster);
+
+  const { handleHashHex, stealthPool } = await resolveStealthPool(input.handle);
+  const connection = getBaseConnection(config);
+
+  try {
+    const accountInfo = await connection.getAccountInfo(stealthPool, "confirmed");
+    const exists = isStealthPoolAccount(accountInfo);
+
+    return {
+      stealthPool: stealthPool.toBase58(),
+      handleHash: handleHashHex,
+      exists,
+    };
+  } catch (error) {
+    throw new ApiError(502, "RPC_ERROR", "Failed to fetch stealth pool account", {
+      message: getSanitizedErrorMessage(error),
+    });
+  }
+}
+
 export async function buildTransferTransaction(env: AppEnv, input: TransferRequest, authToken?: string) {
   try {
     const config = resolveRpcConfig(env, input.cluster);
@@ -1396,7 +1702,6 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
     const maxDelayMs = parseOptionalAmount(input.maxDelayMs, "maxDelayMs");
     const clientRefId = parseOptionalAmount(input.clientRefId, "clientRefId");
     const split = input.split;
-    const exactOut = input.exactOut;
 
     if (minDelayMs !== undefined && minDelayMs < 0n) {
       throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "minDelayMs must be non-negative");
@@ -1520,19 +1825,18 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       initAtasIfMissing: input.initAtasIfMissing,
       initVaultIfMissing: input.initVaultIfMissing,
       shuttleId,
-      privateTransfer: input.minDelayMs !== undefined
-        || input.maxDelayMs !== undefined
-        || input.clientRefId !== undefined
-        || input.split !== undefined
+      privateTransfer: input.visibility === "private"
         ? {
             minDelayMs,
             maxDelayMs,
             clientRefId,
             split,
-            exactOut,
+            exactOut: input.exactOut ?? true,
           }
         : undefined,
     });
+    const normalizedTransferInstructions = transferInstructions.map(instruction =>
+      withPrivateTransferExactOut(instruction, input.exactOut ?? true));
     // Gasless private base->base already adds a relay-fee token transfer. Dropping
     // the opportunistic queue-refill ix keeps the full transaction under Solana's
     // packet limit while preserving the actual private transfer instruction.
@@ -1540,9 +1844,9 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       && input.visibility === "private"
       && input.fromBalance === "base"
       && input.toBalance === "base"
-      && transferInstructions.length > 0
-      ? transferInstructions.filter(ix => !isProcessPendingTransferQueueRefillInstruction(ix))
-      : transferInstructions;
+      && normalizedTransferInstructions.length > 0
+      ? normalizedTransferInstructions.filter(ix => !isProcessPendingTransferQueueRefillInstruction(ix))
+      : normalizedTransferInstructions;
 
     const instructions = [
       ...gaslessFeeInstructions,
@@ -1586,6 +1890,43 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
   } catch (error) {
     throwTransactionBuildError(error);
   }
+}
+
+export async function buildStealthTransferTransaction(
+  env: AppEnv,
+  input: StealthTransferRequest,
+  authToken?: string,
+) {
+  console.log("buildStealthTransferTransaction invoked: ", input);
+
+  const config = resolveRpcConfig(env, input.cluster);
+  const { stealthPool } = await resolveStealthPool(input.toHandle);
+  await assertStealthPoolExists(config, input.toHandle, stealthPool);
+
+  const transferInput: TransferRequest = {
+    from: input.from,
+    to: stealthPool.toBase58(),
+    cluster: input.cluster,
+    mint: input.mint,
+    amount: input.amount,
+    visibility: "private",
+    fromBalance: input.fromBalance,
+    toBalance: "base",
+    validator: input.validator,
+    initIfMissing: input.initIfMissing,
+    initAtasIfMissing: input.initAtasIfMissing,
+    initVaultIfMissing: input.initVaultIfMissing,
+    memo: input.memo,
+    minDelayMs: input.minDelayMs,
+    maxDelayMs: input.maxDelayMs,
+    clientRefId: input.clientRefId,
+    split: input.split,
+    exactOut: input.exactOut,
+    gasless: input.gasless,
+    legacy: input.legacy,
+  };
+
+  return buildTransferTransaction(env, transferInput, authToken);
 }
 
 async function getBalanceInternal(
@@ -1725,7 +2066,9 @@ async function ensureTransferQueueCrankRunning(
   config: RpcConfig,
   transferQueue: PublicKey,
   validator: PublicKey,
-) {
+  options: EnsureTransferQueueCrankOptions = {},
+): Promise<string | undefined> {
+  const force = options.force === true;
   const activityConnection = getEphemeralConnection(config);
   let activityWasAuthFiltered = false;
   try {
@@ -1736,19 +2079,25 @@ async function ensureTransferQueueCrankRunning(
     );
     transferQueueAuthErrorCounts.delete(transferQueue.toBase58());
     const newestSignatureTimestampMs = getNewestSuccessfulSignatureTimestampMs(signatures);
+    const newestSignatureAgeMs = newestSignatureTimestampMs === undefined
+      ? undefined
+      : Date.now() - newestSignatureTimestampMs;
 
     if (
-      newestSignatureTimestampMs !== undefined
-      && Date.now() - newestSignatureTimestampMs < TRANSFER_QUEUE_STALE_MS
+      !force
+      && newestSignatureAgeMs !== undefined
+      && newestSignatureAgeMs < TRANSFER_QUEUE_STALE_MS
     ) {
+      console.warn("ensureTransferQueueCrankRunning (early return): ", newestSignatureTimestampMs, newestSignatureAgeMs, TRANSFER_QUEUE_STALE_MS);
       return;
     }
+    console.warn("ensureTransferQueueCrankRunning (ensuring): ", newestSignatureTimestampMs, newestSignatureAgeMs, TRANSFER_QUEUE_STALE_MS);
   } catch (error) {
     if (!isAuthFilteredRpcError(error)) {
       throw error;
     }
 
-    if (!shouldForceTransferQueueCrankAfterAuthError(transferQueue)) {
+    if (!force && !shouldForceTransferQueueCrankAfterAuthError(transferQueue)) {
       return;
     }
 
@@ -1830,6 +2179,8 @@ async function ensureTransferQueueCrankRunning(
   if (confirmation.value.err !== null) {
     throw new Error(`Transfer queue crank transaction failed: ${JSON.stringify(confirmation.value.err)}`);
   }
+
+  return signature;
 }
 
 function scheduleTransferQueueCrank(
@@ -1838,6 +2189,7 @@ function scheduleTransferQueueCrank(
   transferQueue: PublicKey,
   validator: PublicKey,
 ) {
+  console.warn("scheduleTransferQueueCrank: ", backgroundScheduler ? "backgroundScheduler exists" : "backgroundScheduler doesn't exist");
   if (!backgroundScheduler) {
     return;
   }
@@ -1851,6 +2203,66 @@ function scheduleTransferQueueCrank(
       });
     }),
   );
+}
+
+export async function ensureTransferQueueCrank(
+  env: AppEnv,
+  input: TransferQueueEnsureCrankRequest,
+): Promise<TransferQueueEnsureCrankResponse> {
+  const config = resolveRpcConfig(env, input.cluster);
+  const mint = parsePublicKey(input.mint, "mint");
+  const validator = await resolveRequiredValidator(config, input.validator);
+  const [transferQueue] = deriveTransferQueue(mint, validator);
+
+  let accountInfo: { owner: PublicKey } | null;
+  try {
+    accountInfo = await getBaseConnection(config).getAccountInfo(transferQueue, "confirmed");
+  } catch (error) {
+    throw new ApiError(502, "RPC_ERROR", "Failed to fetch transfer queue account", {
+      transferQueue: transferQueue.toBase58(),
+      message: getSanitizedErrorMessage(error),
+    });
+  }
+
+  if (accountInfo === null || !accountInfo.owner.equals(DELEGATION_PROGRAM_ID)) {
+    throw new ApiError(400, "TRANSFER_QUEUE_NOT_INITIALIZED", "Transfer queue is not initialized and delegated", {
+      mint: mint.toBase58(),
+      validator: validator.toBase58(),
+      transferQueue: transferQueue.toBase58(),
+      owner: accountInfo?.owner.toBase58(),
+    });
+  }
+
+  try {
+    const crankSignature = await ensureTransferQueueCrankRunning(
+      config,
+      transferQueue,
+      validator,
+      { force: true },
+    );
+
+    if (!crankSignature) {
+      throw new Error("Forced transfer queue crank did not produce a signature");
+    }
+
+    return {
+      mint: mint.toBase58(),
+      validator: validator.toBase58(),
+      transferQueue: transferQueue.toBase58(),
+      crankSignature,
+    };
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+
+    throw new ApiError(502, "RPC_ERROR", "Failed to ensure transfer queue crank", {
+      mint: mint.toBase58(),
+      validator: validator.toBase58(),
+      transferQueue: transferQueue.toBase58(),
+      message: getSanitizedErrorMessage(error),
+    });
+  }
 }
 
 export async function getMintInitializationStatus(
@@ -1868,6 +2280,8 @@ export async function getMintInitializationStatus(
     const accountInfo = await connection.getAccountInfo(transferQueue, "confirmed");
     const initialized = accountInfo !== null
       && accountInfo.owner.equals(DELEGATION_PROGRAM_ID);
+
+    console.warn("getMintInitializationStatus: ", accountInfo ? `${transferQueue.toBase58()} exists` : `${transferQueue.toBase58()} doesn't exist`, initialized);
 
     if (initialized) {
       scheduleTransferQueueCrank(backgroundScheduler, config, transferQueue, validator);

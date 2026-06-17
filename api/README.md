@@ -20,6 +20,9 @@ The API exposes:
 - `POST /v1/spl/deposit`
 - `POST /v1/spl/withdraw`
 - `POST /v1/spl/transfer`
+- `POST /v1/spl/transfer-stealth`
+- `POST /v1/spl/stealth-pool`
+- `GET /v1/spl/stealth-pool`
 - `GET /v1/spl/balance`
 - `GET /v1/spl/private-balance`
 - `GET /v1/swap/quote`
@@ -45,6 +48,8 @@ Important behavior:
 - `deposit` always uses `escrowIndex = 0`
 - `withdraw` uses `withdrawSpl(...)`
 - `transfer` uses `transferSpl(...)`
+- stealth handles are hashed exactly as provided with SHA-256 over UTF-8 bytes
+- `transfer-stealth` uses the derived stealth-pool PDA as the virtual destination owner
 - every SPL endpoint accepts an optional `cluster` parameter
 - `cluster=mainnet` uses `BASE_RPC_URL` and `EPHEMERAL_RPC_URL`
 - `cluster=devnet` uses `BASE_DEVNET_RPC_URL` and `EPHEMERAL_DEVNET_RPC_URL`
@@ -693,6 +698,65 @@ Relevant fields:
 - `exactOut`
 - `gasless`
 - `legacy`
+
+### `POST /v1/spl/stealth-pool`
+
+Builds an unsigned base-chain transaction that initializes or updates a stealth pool. The caller provides the exact handle string, payer, authority, and 1 to 10 destination owner keys.
+
+The API does not canonicalize the handle. For example, `John.Doe@magicblock.id` and `john.doe@magicblock.id` hash to different pools.
+
+Temporary integration note: this setup transaction is currently built for base so the end-to-end handle flow can be exercised without ER auth. The ER is expected to read/clone the pool state for private transfer resolution.
+
+```bash
+curl -X POST http://127.0.0.1:8787/v1/spl/stealth-pool \
+  -H 'content-type: application/json' \
+  -d '{
+    "payer": "PAYER_PUBKEY",
+    "authority": "AUTHORITY_PUBKEY",
+    "handle": "john.doe@magicblock.id",
+    "destinations": ["DESTINATION_OWNER_PUBKEY"],
+    "splitAcrossKeys": false
+  }'
+```
+
+Response includes:
+
+- `stealthPool`: derived PDA
+- `handleHash`: lowercase hex SHA-256 hash
+- normal unsigned transaction fields
+
+### `GET /v1/spl/stealth-pool`
+
+Derives the stealth-pool PDA for a handle and reports whether the base account exists. It does not return destination keys.
+
+```bash
+curl "http://127.0.0.1:8787/v1/spl/stealth-pool?handle=john.doe%40magicblock.id"
+```
+
+### `POST /v1/spl/transfer-stealth`
+
+Builds an unsigned private transfer addressed to a handle. The API hashes `toHandle`, derives the stealth-pool PDA, verifies the pool account exists, and passes that PDA as the private transfer destination owner.
+
+Missing or wrong handles are rejected before an unsigned transaction is returned.
+
+```bash
+curl -X POST http://127.0.0.1:8787/v1/spl/transfer-stealth \
+  -H 'content-type: application/json' \
+  -d '{
+    "from": "FROM_OWNER_PUBKEY",
+    "toHandle": "john.doe@magicblock.id",
+    "mint": "MINT_PUBKEY",
+    "amount": 5000000,
+    "fromBalance": "base",
+    "minDelayMs": "0",
+    "maxDelayMs": "0"
+  }'
+```
+
+Supported stealth transfer routes:
+
+- `base -> base` private transfer, submitted to base
+- `ephemeral -> base` private transfer, submitted to ER and requiring an auth token
 
 ### `GET /v1/spl/balance`
 
