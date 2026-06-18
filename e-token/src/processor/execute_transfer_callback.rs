@@ -7,9 +7,7 @@ use crate::processor::internal::group_receipt_accounts::group_receipt_log;
 use crate::processor::internal::group_receipt_accounts::{
     group_receipt_close, GroupReceiptAccounts,
 };
-use crate::processor::refund_on_failure_callback::{
-    schedule_refund_on_failure, RefundOnFailureAccounts,
-};
+use crate::processor::internal::refund::{schedule_refund_on_failure, RefundOnFailureAccounts};
 use crate::processor::utils::CALLBACK_SIGNER;
 use ephemeral_spl_api::state::group_receipt::{GroupReceipt, TransferReceipt};
 use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, TransferQueueHeader};
