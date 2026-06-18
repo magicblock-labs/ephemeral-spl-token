@@ -16,6 +16,7 @@
     "@hono/zod-openapi": "^1.0.2",
     "@magicblock-labs/ephemeral-rollups-sdk": "0.15.5",
     "@modelcontextprotocol/sdk": "^1.27.1",
+    "@noble/hashes": "1.8.0",
     "@scalar/hono-api-reference": "^0.9.13",
     "@solana/web3.js": "^1.98.0",
     "hono": "^4.9.6",

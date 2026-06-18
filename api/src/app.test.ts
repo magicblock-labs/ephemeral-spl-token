@@ -20,6 +20,7 @@ import {
   PERMISSION_PROGRAM_ID,
   permissionPdaFromAccount,
 } from "@magicblock-labs/ephemeral-rollups-sdk";
+import { sha256 } from "@noble/hashes/sha256";
 import {
   AddressLookupTableAccount,
   AddressLookupTableProgram,
@@ -62,7 +63,7 @@ const stealthPool = deriveStealthPoolFromHandle(stealthHandle)[0].toBase58();
 
 function createStealthHandleStorage(handle: string) {
   const handleBytes = Buffer.from(handle, "utf8");
-  const storage = Buffer.alloc(65);
+  const storage = Buffer.alloc(256);
   storage[0] = handleBytes.length;
   storage.set(handleBytes, 1);
   return storage;
@@ -3584,7 +3585,7 @@ describe("app", () => {
     expect(json).not.toHaveProperty("handleHash");
     expect(json.requiredSigners.sort()).toEqual([authority, payer].sort());
     expect(json.setupTransaction.sendTo).toBe("base");
-    expect(json.setupTransaction.requiredSigners).toEqual([payer]);
+    expect(json.setupTransaction.requiredSigners.sort()).toEqual([authority, payer].sort());
 
     const setupTransaction = Transaction.from(
       Buffer.from(json.setupTransaction.transactionBase64, "base64"),
@@ -3608,6 +3609,7 @@ describe("app", () => {
       DELEGATION_PROGRAM_ID.toBase58(),
       SystemProgram.programId.toBase58(),
       PERMISSION_PROGRAM_ID.toBase58(),
+      authority,
     ]);
     const handleStorage = createStealthHandleStorage(stealthHandle);
     expect([...setupInstruction.data]).toEqual([
@@ -3629,13 +3631,13 @@ describe("app", () => {
       authority,
       SystemProgram.programId.toBase58(),
     ]);
-    expect([...instruction.data.subarray(0, 68)]).toEqual([
+    expect([...instruction.data.subarray(0, 259)]).toEqual([
       21,
       ...handleStorage,
       1,
       1,
     ]);
-    const destinationsOffset = 68;
+    const destinationsOffset = 259;
     expect(instruction.data.subarray(destinationsOffset).toString("hex")).toBe(
       new PublicKey(destination).toBuffer().toString("hex"),
     );
@@ -3674,7 +3676,7 @@ describe("app", () => {
     expect(json.destinations).toBeUndefined();
   });
 
-  it("derives stealth pool PDAs with two handle seeds after 32 bytes", () => {
+  it("derives stealth pool PDAs with chunked handle seeds after 32 bytes", () => {
     const longHandle = "john.doe-long-handle-more-than-32.block";
     const handleBytes = Buffer.from(longHandle, "utf8");
     expect(handleBytes.length).toBeGreaterThan(32);
@@ -3685,6 +3687,26 @@ describe("app", () => {
         Buffer.from("stealth_pool"),
         handleBytes.subarray(0, 32),
         handleBytes.subarray(32),
+      ],
+      EPHEMERAL_SPL_TOKEN_PROGRAM_ID,
+    );
+
+    expect(actual.toBase58()).toBe(expected.toBase58());
+  });
+
+  it("derives stealth pool PDAs for 255-byte handles", () => {
+    const longHandle = "a".repeat(255);
+    const handleBytes = Buffer.from(longHandle, "utf8");
+    const handleHashSeed = Buffer.from(
+      sha256(Buffer.concat([Buffer.from("stealth_pool_handle"), handleBytes])),
+    );
+
+    const [actual] = deriveStealthPoolFromHandle(longHandle);
+    const [expected] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("stealth_pool"),
+        handleBytes.subarray(0, 32),
+        handleHashSeed,
       ],
       EPHEMERAL_SPL_TOKEN_PROGRAM_ID,
     );

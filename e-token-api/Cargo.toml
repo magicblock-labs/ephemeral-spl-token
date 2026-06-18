@@ -19,6 +19,7 @@ solana-address = { workspace = true, features = ["bytemuck"] }
 solana-signature = { workspace = true, features = ["bytemuck"] }
 ephemeral-rollups-pinocchio = { workspace = true }
 bytemuck = { workspace = true }
+const-crypto = { workspace = true }
 static_assertions = { workspace = true }
 wheels = { workspace = true }
 
