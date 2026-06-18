@@ -5,7 +5,6 @@ import {
   buildDepositTransaction,
   buildInitializeMintTransaction,
   buildUpdateStealthPoolTransaction,
-  buildStealthTransferTransaction,
   buildTransferTransaction,
   buildUndelegateEphemeralAtaTransaction,
   buildWithdrawTransaction,
@@ -25,7 +24,6 @@ import {
   privateBalanceRoute,
   stealthPoolRoute,
   stealthPoolStatusRoute,
-  stealthTransferRoute,
   transferQueueEnsureCrankRoute,
   transferRoute,
   undelegateEphemeralAtaRoute,
@@ -40,7 +38,6 @@ import {
   MintInitializationRequest,
   StealthPoolRequest,
   StealthPoolStatusRequest,
-  StealthTransferRequest,
   TransferRequest,
   TransferQueueEnsureCrankRequest,
   UndelegateEphemeralAtaRequest,
@@ -95,14 +92,6 @@ export const undelegateEphemeralAtaHandler: RouteHandler<typeof undelegateEpheme
   const body = c.req.valid("json") as UndelegateEphemeralAtaRequest;
   const authToken = parseAuthToken(c.req.header());
   const response = await buildUndelegateEphemeralAtaTransaction(env, body, authToken);
-  return c.json(response, 200);
-};
-
-export const stealthTransferHandler: RouteHandler<typeof stealthTransferRoute, RouteEnv> = async (c) => {
-  const env = getEnv(c.env);
-  const body = c.req.valid("json") as StealthTransferRequest;
-  const authToken = parseAuthToken(c.req.header());
-  const response = await buildStealthTransferTransaction(env, body, authToken);
   return c.json(response, 200);
 };
 

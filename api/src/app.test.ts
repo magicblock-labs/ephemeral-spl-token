@@ -269,7 +269,7 @@ describe("app", () => {
     expect(json.paths["/v1/spl/transfer-queue/ensure-crank"]).toBeDefined();
     expect(json.paths["/v1/spl/undelegate-ephemeral-ata"]).toBeDefined();
     expect(json.paths["/v1/spl/stealth-pool"]).toBeDefined();
-    expect(json.paths["/v1/spl/transfer-stealth"]).toBeDefined();
+    expect(json.paths["/v1/spl/transfer-stealth"]).toBeUndefined();
     expect(json.paths["/v1/swap/quote"]).toBeDefined();
     expect(json.paths["/v1/swap/swap"]).toBeDefined();
     expect(json.tags).toEqual(
@@ -387,6 +387,9 @@ describe("app", () => {
       type: "boolean",
       example: true,
     });
+    expect(transferRequestSchema?.properties?.to?.description).toContain(
+      "stealth handle",
+    );
     expect(transferRequestSchema?.example).toMatchObject({
       amount: 5000000,
       gasless: true,
@@ -408,14 +411,9 @@ describe("app", () => {
       json.components?.schemas as Record<string, any>
     )?.SendTransactionRequest;
     expect(sendTransactionRequestSchema?.properties?.sendRpcEndpoint).toBeDefined();
-    const stealthTransferRequestSchema = (
-      json.components?.schemas as Record<string, any>
-    )?.StealthTransferRequest;
-    expect(stealthTransferRequestSchema?.properties?.toHandle).toBeDefined();
-    expect(stealthTransferRequestSchema?.example).toMatchObject({
-      toHandle: "john.doe@magicblock.id",
-      fromBalance: "base",
-    });
+    expect(
+      (json.components?.schemas as Record<string, any>)?.StealthTransferRequest,
+    ).toBeUndefined();
     expect(
       json.paths["/v1/spl/withdraw"]?.post?.responses?.["200"]?.content?.[
         "application/json"
@@ -3716,7 +3714,7 @@ describe("app", () => {
 
   it("rejects stealth transfers from ephemeral balance", async () => {
     const response = await app.request(
-      "/v1/spl/transfer-stealth",
+      "/v1/spl/transfer",
       {
         method: "POST",
         headers: {
@@ -3725,10 +3723,12 @@ describe("app", () => {
         },
         body: JSON.stringify({
           from: owner,
-          toHandle: stealthHandle,
+          to: stealthHandle,
           mint: "So11111111111111111111111111111111111111112",
           amount: 2,
+          visibility: "private",
           fromBalance: "ephemeral",
+          toBalance: "base",
           minDelayMs: "0",
           maxDelayMs: "0",
           split: 1,
@@ -3737,13 +3737,15 @@ describe("app", () => {
       env,
     );
 
-    expect(response.status).toBe(422);
+    expect(response.status).toBe(400);
 
     const json = (await response.json()) as {
       error: { code: string; message: string };
     };
-    expect(json.error.code).toBe("VALIDATION_ERROR");
-    expect(json.error.message).toBe("Request validation failed");
+    expect(json.error.code).toBe("INVALID_STEALTH_TRANSFER");
+    expect(json.error.message).toBe(
+      "Stealth handle transfers require visibility=private, fromBalance=base, and toBalance=base",
+    );
   });
 
   it("rejects stealth transfers when the derived pool PDA is missing", async () => {
@@ -3762,7 +3764,7 @@ describe("app", () => {
     );
 
     const response = await app.request(
-      "/v1/spl/transfer-stealth",
+      "/v1/spl/transfer",
       {
         method: "POST",
         headers: {
@@ -3770,10 +3772,9 @@ describe("app", () => {
         },
         body: JSON.stringify({
           from: owner,
-          toHandle: stealthHandle,
+          to: stealthHandle,
           mint: mint.toBase58(),
           amount: 2,
-          fromBalance: "base",
           minDelayMs: "0",
           maxDelayMs: "0",
           split: 1,
@@ -3819,7 +3820,7 @@ describe("app", () => {
           return createMintAccountInfo(TOKEN_PROGRAM_ID);
         }
 
-        throw new Error(`Unexpected transfer-stealth account lookup: ${address.toBase58()}`);
+        throw new Error(`Unexpected stealth transfer account lookup: ${address.toBase58()}`);
       },
     );
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
@@ -3828,7 +3829,7 @@ describe("app", () => {
     });
 
     const response = await app.request(
-      "/v1/spl/transfer-stealth",
+      "/v1/spl/transfer",
       {
         method: "POST",
         headers: {
@@ -3836,10 +3837,9 @@ describe("app", () => {
         },
         body: JSON.stringify({
           from: owner,
-          toHandle: stealthHandle,
+          to: stealthHandle,
           mint: mint.toBase58(),
           amount: 2,
-          fromBalance: "base",
           minDelayMs: "0",
           maxDelayMs: "0",
           split: 1,
