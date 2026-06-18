@@ -29,6 +29,10 @@ async function fetchAuth(url: URL, init?: RequestInit) {
   }
 }
 
+function isUpstreamRateLimit(status: number, body: string) {
+  return status === 429 || (body.includes("429") && body.toLowerCase().includes("too many requests"));
+}
+
 export function parseAuthToken(
   headers: Record<string, string>,
 ): string | undefined {
@@ -100,10 +104,14 @@ export async function login(
   });
 
   if (!loginResponse.ok) {
+    const body = await loginResponse.text().catch(() => "");
+    const status = isUpstreamRateLimit(loginResponse.status, body)
+      ? 429
+      : loginResponse.status;
     throw new ApiError(
-      loginResponse.status,
+      status,
       "RPC_ERROR",
-      `Failed to login: ${loginResponse.statusText}`,
+      `Failed to login: ${status === 429 ? "Too Many Requests" : loginResponse.statusText}`,
     );
   }
 

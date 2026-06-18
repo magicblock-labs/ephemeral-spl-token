@@ -1,12 +1,12 @@
-use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
-use ephemeral_spl_api::state::global_vault::GlobalVault;
-use ephemeral_spl_api::state::{load_initialized, RawType};
-use ephemeral_spl_api::ID as PROGRAM;
-use solana_instruction::Instruction;
-use {
-    ephemeral_spl_api::instruction, solana_instruction::AccountMeta, solana_program_test::tokio,
-    solana_signer::Signer, solana_transaction::Transaction,
+use ephemeral_spl_api::{
+    instruction,
+    state::{ephemeral_ata::EphemeralAta, global_vault::GlobalVault, load_initialized, RawType},
+    ID as PROGRAM,
 };
+use solana_instruction::{AccountMeta, Instruction};
+use solana_program_test::tokio;
+use solana_signer::Signer;
+use solana_transaction::Transaction;
 mod common;
 mod utils;
 
@@ -24,15 +24,8 @@ async fn initialize_global_vault() {
     let mint = mint_kp.pubkey();
 
     let pdas = utils::derive_pdas(PROGRAM, user, mint);
-    let _setup = utils::setup_mint_and_token_accounts(
-        &mut context,
-        &payer_kp,
-        &mint_kp,
-        DECIMALS,
-        STARTING_BALANCE,
-        1,
-    )
-    .await;
+    let _setup =
+        utils::setup_mint_and_token_accounts(&mut context, &payer_kp, &mint_kp, DECIMALS, STARTING_BALANCE, 1).await;
 
     let vault_token_acc = utils::derive_associated_token_address(pdas.vault, mint);
     let (vault_eata, _) = EphemeralAta::find_pda(&pdas.vault, &mint);
@@ -41,11 +34,11 @@ async fn initialize_global_vault() {
     let ix = Instruction {
         program_id: PROGRAM,
         accounts: vec![
-            AccountMeta::new(pdas.vault, false),    // writable vault account
-            AccountMeta::new(payer, true),          // payer (funds, signer)
-            AccountMeta::new_readonly(mint, false), // mint (seed)
-            AccountMeta::new(vault_eata, false),    // vault ephemeral ATA
-            AccountMeta::new(vault_token_acc, false), // vault token account
+            AccountMeta::new(pdas.vault, false),                       // writable vault account
+            AccountMeta::new(payer, true),                             // payer (funds, signer)
+            AccountMeta::new_readonly(mint, false),                    // mint (seed)
+            AccountMeta::new(vault_eata, false),                       // vault ephemeral ATA
+            AccountMeta::new(vault_token_acc, false),                  // vault token account
             AccountMeta::new_readonly(spl_token_interface::ID, false), // token program
             AccountMeta::new_readonly(utils::associated_token_program_id(), false), // associated token program
             AccountMeta::new_readonly(solana_system_interface::program::ID, false), // system program
@@ -53,12 +46,7 @@ async fn initialize_global_vault() {
         data: instruction::ESplInstruction::InitializeGlobalVault.to_vec(),
     };
 
-    let tx = Transaction::new_signed_with_payer(
-        &[ix],
-        Some(&payer),
-        &[&payer_kp],
-        context.last_blockhash,
-    );
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&payer), &[&payer_kp], context.last_blockhash);
     common::metrics::process_transaction_record_cu(&context.banks_client, tx, "init_gvault::init")
         .await
         .unwrap();

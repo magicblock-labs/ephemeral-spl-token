@@ -1,20 +1,5 @@
-use alloc::vec;
-use alloc::vec::Vec;
-use data_layout::variable_offset_layout;
 use pinocchio::error::ProgramError;
 use solana_signature::Signature;
-
-// buffer_offset = 6: response.data starts at byte 14 of the original 8-byte-aligned
-// instruction buffer (1 disc + 4 variant + 1 ok + 8 data_len), and 14 % 8 = 6.
-#[variable_offset_layout(buffer_offset = 6)]
-pub(crate) struct TransferCallbackArgs {
-    /// Amount was transferred in action
-    pub amount: u64,
-    /// Group ID of a transfer
-    pub group_id: u32,
-    // Flags
-    pub flag: u8,
-}
 
 /// Deserialize the bincode-encoded `MagicResponse` from a byte slice without
 /// pulling in the `bincode` crate.
@@ -46,19 +31,15 @@ impl<'a> MagicResponseView<'a> {
 
         // data payload
         // [5..13] u64 LE – payload byte length (N)
-        let data_len =
-            read_u64_le(src, &mut cur).ok_or(ProgramError::InvalidInstructionData)? as usize;
+        let data_len = read_u64_le(src, &mut cur).ok_or(ProgramError::InvalidInstructionData)? as usize;
         // [13..13 + data_len] [u8; data_len] – payload bytes
-        let data =
-            read_slice(src, &mut cur, data_len).ok_or(ProgramError::InvalidInstructionData)?;
+        let data = read_slice(src, &mut cur, data_len).ok_or(ProgramError::InvalidInstructionData)?;
 
         // error string
         // [13 + data_len..21 + data_len] u64 LE – error string byte length
-        let error_len =
-            read_u64_le(src, &mut cur).ok_or(ProgramError::InvalidInstructionData)? as usize;
+        let error_len = read_u64_le(src, &mut cur).ok_or(ProgramError::InvalidInstructionData)? as usize;
         // [21 + data_len, 21 + data_len + error_len]
-        let error =
-            read_slice(src, &mut cur, error_len).ok_or(ProgramError::InvalidInstructionData)?;
+        let error = read_slice(src, &mut cur, error_len).ok_or(ProgramError::InvalidInstructionData)?;
 
         // Option<ActionReceipt>
         // [21 + data_len + error_len] u8 - 1 byte tag for Option
@@ -66,8 +47,7 @@ impl<'a> MagicResponseView<'a> {
         let signature: Option<&Signature> = match tag {
             0 => None,
             1 => {
-                let bytes =
-                    read_slice(src, &mut cur, 64).ok_or(ProgramError::InvalidInstructionData)?;
+                let bytes = read_slice(src, &mut cur, 64).ok_or(ProgramError::InvalidInstructionData)?;
                 // Safety: Signature is repr(transparent) over [u8; 64] and
                 // read_slice guarantees exactly 64 bytes.
                 Some(unsafe { &*(bytes.as_ptr() as *const Signature) })

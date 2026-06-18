@@ -1,11 +1,12 @@
-use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
-use ephemeral_spl_api::state::{load_initialized, Initializable, RawType};
-use ephemeral_spl_api::ID as PROGRAM;
-use solana_instruction::Instruction;
-use {
-    ephemeral_spl_api::instruction, solana_instruction::AccountMeta, solana_program_test::tokio,
-    solana_signer::Signer, solana_transaction::Transaction,
+use ephemeral_spl_api::{
+    instruction,
+    state::{ephemeral_ata::EphemeralAta, load_initialized, Initializable, RawType},
+    ID as PROGRAM,
 };
+use solana_instruction::{AccountMeta, Instruction};
+use solana_program_test::tokio;
+use solana_signer::Signer;
+use solana_transaction::Transaction;
 
 mod common;
 mod utils;
@@ -35,12 +36,7 @@ async fn initialize_ephemeral_ata() {
         data: instruction::ESplInstruction::InitializeEphemeralAta.to_vec(), // instruction data: discriminator
     };
 
-    let tx = Transaction::new_signed_with_payer(
-        &[ix],
-        Some(&payer),
-        &[&payer_kp],
-        context.last_blockhash,
-    );
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&payer), &[&payer_kp], context.last_blockhash);
     common::metrics::process_transaction_record_cu(&context.banks_client, tx, "init_eata::init")
         .await
         .unwrap();

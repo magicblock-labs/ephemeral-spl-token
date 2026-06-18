@@ -1,22 +1,21 @@
-use alloc::vec;
-use alloc::vec::Vec;
-use {
-    ephemeral_rollups_pinocchio::pda::ephemeral_balance_pda_from_payer,
-    ephemeral_spl_api::state::{
-        global_vault::GlobalVault, transfer_queue::QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
-    },
-    ephemeral_spl_api::{require, require_eq_keys, require_n_accounts},
-    pinocchio::{error::ProgramError, AccountView, ProgramResult},
+use ephemeral_rollups_pinocchio::pda::ephemeral_balance_pda_from_payer;
+use ephemeral_spl_api::{
+    instructions::ExecuteQueuedTransferArgs, require, require_eq_keys, require_n_accounts,
+    state::global_vault::GlobalVault,
 };
-
-use crate::processor::{
-    initialize_rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
-    internal::token_vault::validate_vault_for_mint,
-    utils::read_mint_decimals,
+use pinocchio::{
+    cpi::{Seed, Signer},
+    error::ProgramError,
+    AccountView, ProgramResult,
 };
-use data_layout::variable_offset_layout;
-use pinocchio::cpi::{Seed, Signer};
 use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
+use wheels::layout::Decodable as _;
+
+use crate::processor::internal::{
+    read_mint_decimals,
+    rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
+    token_vault::validate_vault_for_mint,
+};
 
 ///
 /// Executes on: BASE only.
@@ -39,10 +38,7 @@ use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
 /// Instruction Data: ExecuteQueuedTransferArgs
 ///
 #[inline(always)]
-pub fn process_execute_ready_queued_transfer(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_execute_ready_queued_transfer(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         vault_info, // force multi-line
         mint_info,
@@ -62,39 +58,20 @@ pub fn process_execute_ready_queued_transfer(
 
     // Note that accounts [source_program, escrow_authority, escrow_signer] are appended by DLP's
     // CallHandlerV2 instruction.
-    require_eq_keys!(
-        source_program.address(),
-        &crate::ID,
-        ProgramError::IncorrectAuthority
-    );
+    require_eq_keys!(source_program.address(), &crate::ID, ProgramError::IncorrectAuthority);
 
-    require!(
-        escrow_signer.is_signer(),
-        ProgramError::MissingRequiredSignature
-    );
+    require!(escrow_signer.is_signer(), ProgramError::MissingRequiredSignature);
 
-    let expected_escrow =
-        ephemeral_balance_pda_from_payer(escrow_authority.address(), args.escrow_index());
-    require_eq_keys!(
-        &expected_escrow,
-        escrow_signer.address(),
-        ProgramError::InvalidSeeds
-    );
+    let expected_escrow = ephemeral_balance_pda_from_payer(escrow_authority.address(), args.escrow_index());
+    require_eq_keys!(&expected_escrow, escrow_signer.address(), ProgramError::InvalidSeeds);
 
     if args.should_create_destination_ata_idempotent() {
         require!(
             rent_pda_info.owned_by(&SYSTEM_PROGRAM_ID),
             ProgramError::InvalidAccountOwner
         );
-        require_eq_keys!(
-            &RENT_PDA,
-            rent_pda_info.address(),
-            ProgramError::InvalidSeeds
-        );
-        require!(
-            rent_pda_info.data_len() == 0,
-            ProgramError::InvalidAccountData
-        );
+        require_eq_keys!(&RENT_PDA, rent_pda_info.address(), ProgramError::InvalidSeeds);
+        require!(rent_pda_info.data_len() == 0, ProgramError::InvalidAccountData);
         require!(
             associated_token_program_info.address() == &pinocchio_associated_token_account::ID
                 && system_program_info.address() == &SYSTEM_PROGRAM_ID,
@@ -141,20 +118,4 @@ pub fn process_execute_ready_queued_transfer(
     }
 
     Ok(())
-}
-
-#[variable_offset_layout(buffer_offset = 1, option = implicit)]
-pub struct ExecuteQueuedTransferArgs {
-    pub escrow_index: u8,
-    pub amount: u64,
-    pub flags: u8,
-    pub client_ref_id: Option<u64>,
-}
-
-static_assertions::const_assert!(matches!(ExecuteQueuedTransferArgs::DATA_LENS, [10, 18]));
-
-impl ExecuteQueuedTransferArgsView<'_> {
-    pub fn should_create_destination_ata_idempotent(&self) -> bool {
-        self.flags() & QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA != 0
-    }
 }

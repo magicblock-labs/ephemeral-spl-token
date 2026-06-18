@@ -1,9 +1,11 @@
-use crate::processor::internal::callbacks::MagicResponseView;
-use crate::processor::internal::refund::{
-    schedule_refund_on_failure, RefundOnFailureAccounts, RefundOnFailureArgs,
-};
 use ephemeral_spl_api::require_n_accounts;
 use pinocchio::{AccountView, ProgramResult};
+use wheels::layout::Decodable as _;
+
+use crate::processor::internal::{
+    callbacks::MagicResponseView,
+    refund::{schedule_refund_on_failure, RefundOnFailureAccounts, RefundOnFailureArgs},
+};
 
 ///
 /// Executes on: ER only.
@@ -20,10 +22,7 @@ use pinocchio::{AccountView, ProgramResult};
 /// Instruction Data: MagicResponse
 ///
 #[inline(never)]
-pub fn process_refund_on_failure_callback(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_refund_on_failure_callback(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [callback_signer, refund_destination_owner, queue_info, magic_fee_vault_info, magic_context_info, magic_program_info] =
         require_n_accounts!(accounts, 6);
     let accounts = RefundOnFailureAccounts::try_new(

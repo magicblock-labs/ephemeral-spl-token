@@ -18,7 +18,6 @@ no-fees = ["ephemeral-spl-api/no-fees"]
 [dependencies]
 bytemuck = { workspace = true }
 const-crypto = { workspace = true }
-data-layout = { path = "../data-layout" }
 ephemeral-rollups-pinocchio = { workspace = true }
 ephemeral-spl-api = { path = "../e-token-api" }
 hydra-api = { workspace = true }
@@ -31,10 +30,12 @@ pinocchio-system = { workspace = true }
 pinocchio-token-2022 = { workspace = true }
 pinocchio-associated-token-account = { workspace = true }
 solana-instruction = { workspace = true }
+solana-address = { workspace = true }
 solana-pubkey = { workspace = true }
 solana-signature = { workspace = true }
 spl-token-interface = { workspace = true }
 static_assertions = { workspace = true }
+wheels = { workspace = true }
 
 [dev-dependencies]
 bytemuck = { workspace = true }

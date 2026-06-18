@@ -1,17 +1,21 @@
-use crate::processor::initialize_rent_pda::RENT_PDA;
-use crate::processor::internal::token_vault::withdraw_ephemeral_ata_tokens;
-use crate::processor::utils::{get_associated_token_address, validate_token_account};
-use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
-use ephemeral_spl_api::state::stash::StashPda;
-use ephemeral_spl_api::state::{
-    ephemeral_ata::read_ephemeral_ata_compat, load_initialized,
-    shuttle_ephemeral_ata::ShuttleMetadata,
+use ephemeral_spl_api::{
+    require, require_eq_keys, require_n_accounts, require_some,
+    state::{
+        ephemeral_ata::{read_ephemeral_ata_compat, EphemeralAta},
+        load_initialized,
+        shuttle_ephemeral_ata::ShuttleMetadata,
+        stash::StashPda,
+    },
 };
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts, require_some};
-use pinocchio::cpi::Signer;
-use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
+use pinocchio::{cpi::Signer, error::ProgramError, AccountView, ProgramResult};
 use pinocchio_system::instructions::Transfer;
 use pinocchio_token_2022::instructions::CloseAccount;
+use solana_address::Address;
+
+use crate::processor::internal::{
+    get_associated_token_address, rent_pda::RENT_PDA, token_vault::withdraw_ephemeral_ata_tokens,
+    validate_token_account,
+};
 const DLP_EPHEMERAL_BALANCE_TAG: &[u8] = b"balance";
 
 const CLOSE_STASH_DATA_LEN: usize = 33;
@@ -38,10 +42,7 @@ const CLOSE_STASH_DATA_LEN: usize = 33;
 /// `[user(32) | stash_bump(1)]` for the stash close path. In that path the
 /// escrow authority is the stash PDA and account 0 is the rent sink.
 ///
-pub fn process_close_shuttle_ata_intent(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_close_shuttle_ata_intent(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let (head_accounts, source_program, escrow_authority, escrow_signer) = match accounts.len() {
         12 => (&accounts[..9], &accounts[9], &accounts[10], &accounts[11]),
         _ => return Err(ProgramError::NotEnoughAccountKeys),
@@ -63,27 +64,19 @@ pub fn process_close_shuttle_ata_intent(
         n if n == 1 + CLOSE_STASH_DATA_LEN => (
             &instruction_data[0],
             Some((
-                <&[u8; 32]>::try_from(&instruction_data[1..33])
-                    .map_err(|_| ProgramError::InvalidInstructionData)?,
+                <&[u8; 32]>::try_from(&instruction_data[1..33]).map_err(|_| ProgramError::InvalidInstructionData)?,
                 instruction_data[33],
             )),
         ),
         _ => return Err(ProgramError::InvalidInstructionData),
     };
 
-    require_eq_keys!(
-        source_program.address(),
-        &crate::ID,
-        ProgramError::IncorrectAuthority
-    );
+    require_eq_keys!(source_program.address(), &crate::ID, ProgramError::IncorrectAuthority);
 
-    require!(
-        escrow_signer.is_signer(),
-        ProgramError::MissingRequiredSignature
-    );
+    require!(escrow_signer.is_signer(), ProgramError::MissingRequiredSignature);
 
     let escrow_index_seed = [*escrow_index];
-    let (expected_escrow, _) = ephemeral_spl_api::Address::find_program_address(
+    let (expected_escrow, _) = Address::find_program_address(
         &[
             DLP_EPHEMERAL_BALANCE_TAG,
             escrow_authority.address().as_ref(),
@@ -91,11 +84,7 @@ pub fn process_close_shuttle_ata_intent(
         ],
         &ephemeral_rollups_pinocchio::ID,
     );
-    require_eq_keys!(
-        &expected_escrow,
-        escrow_signer.address(),
-        ProgramError::InvalidSeeds
-    );
+    require_eq_keys!(&expected_escrow, escrow_signer.address(), ProgramError::InvalidSeeds);
 
     let shuttle_present = shuttle_info.lamports() > 0;
     let shuttle_ephemeral_present = shuttle_ephemeral_ata_info.lamports() > 0;
@@ -105,13 +94,9 @@ pub fn process_close_shuttle_ata_intent(
     let mut shuttle_owner_opt = None;
     let mut shuttle_bump = None;
     if shuttle_present {
-        require!(
-            shuttle_info.owned_by(&crate::ID),
-            ProgramError::InvalidAccountOwner
-        );
+        require!(shuttle_info.owned_by(&crate::ID), ProgramError::InvalidAccountOwner);
 
-        let shuttle =
-            load_initialized::<ShuttleMetadata>(unsafe { shuttle_info.borrow_unchecked() })?;
+        let shuttle = load_initialized::<ShuttleMetadata>(unsafe { shuttle_info.borrow_unchecked() })?;
         require_eq_keys!(
             &shuttle.payer,
             rent_reimbursement_info.address(),
@@ -130,8 +115,7 @@ pub fn process_close_shuttle_ata_intent(
         );
         let shuttle_bump = require_some!(shuttle_bump, ProgramError::InvalidAccountData);
 
-        let shuttle_owner =
-            require_some!(shuttle_owner_opt.as_ref(), ProgramError::InvalidAccountData);
+        let shuttle_owner = require_some!(shuttle_owner_opt.as_ref(), ProgramError::InvalidAccountData);
         let (mint, shuttle_wallet_amount) = {
             let token_account = validate_token_account(
                 shuttle_wallet_ata_info,
@@ -145,17 +129,11 @@ pub fn process_close_shuttle_ata_intent(
         require!(shuttle_wallet_amount == 0, ProgramError::InvalidArgument);
 
         let shuttle_id_seed = shuttle_id.to_le_bytes();
-        let derived_shuttle =
-            ShuttleMetadata::derive_pda(shuttle_owner, mint, shuttle_id, shuttle_bump)?;
-        require_eq_keys!(
-            &derived_shuttle,
-            shuttle_info.address(),
-            ProgramError::InvalidSeeds
-        );
+        let derived_shuttle = ShuttleMetadata::derive_pda(shuttle_owner, mint, shuttle_id, shuttle_bump)?;
+        require_eq_keys!(&derived_shuttle, shuttle_info.address(), ProgramError::InvalidSeeds);
 
         let bump = [shuttle_bump];
-        let signer_seeds =
-            ShuttleMetadata::signer_seeds(shuttle_owner, mint, &shuttle_id_seed, &bump);
+        let signer_seeds = ShuttleMetadata::signer_seeds(shuttle_owner, mint, &shuttle_id_seed, &bump);
         let signer = Signer::from(&signer_seeds);
 
         CloseAccount {
@@ -174,8 +152,7 @@ pub fn process_close_shuttle_ata_intent(
         );
         let shuttle_bump = require_some!(shuttle_bump, ProgramError::InvalidAccountData);
 
-        let shuttle_owner =
-            require_some!(shuttle_owner_opt.as_ref(), ProgramError::InvalidAccountData);
+        let shuttle_owner = require_some!(shuttle_owner_opt.as_ref(), ProgramError::InvalidAccountData);
         let (mint, shuttle_ephemeral_amount, shuttle_eata_bump) = {
             let shuttle_ephemeral_ata_data = shuttle_ephemeral_ata_info.try_borrow()?;
             let (ephemeral_owner, mint, amount, shuttle_eata_bump) =
@@ -204,17 +181,11 @@ pub fn process_close_shuttle_ata_intent(
             )?;
         }
 
-        let derived_shuttle =
-            ShuttleMetadata::derive_pda(shuttle_owner, &mint, shuttle_id, shuttle_bump)?;
+        let derived_shuttle = ShuttleMetadata::derive_pda(shuttle_owner, &mint, shuttle_id, shuttle_bump)?;
 
-        require_eq_keys!(
-            &derived_shuttle,
-            shuttle_info.address(),
-            ProgramError::InvalidSeeds
-        );
+        require_eq_keys!(&derived_shuttle, shuttle_info.address(), ProgramError::InvalidSeeds);
 
-        let derived_shuttle_ephemeral_ata =
-            EphemeralAta::derive_pda(shuttle_info.address(), &mint, shuttle_eata_bump)?;
+        let derived_shuttle_ephemeral_ata = EphemeralAta::derive_pda(shuttle_info.address(), &mint, shuttle_eata_bump)?;
         require_eq_keys!(
             &derived_shuttle_ephemeral_ata,
             shuttle_ephemeral_ata_info.address(),
@@ -258,20 +229,12 @@ fn close_empty_stash_after_settlement(
     user: &[u8; 32],
     stash_bump: u8,
 ) -> ProgramResult {
-    require_eq_keys!(
-        rent_pda_info.address(),
-        &RENT_PDA,
-        ProgramError::InvalidSeeds
-    );
+    require_eq_keys!(rent_pda_info.address(), &RENT_PDA, ProgramError::InvalidSeeds);
 
     let user_address = Address::new_from_array(*user);
 
     let derived_stash_pda = StashPda::derive_pda(&user_address, mint_info.address(), stash_bump)?;
-    require_eq_keys!(
-        &derived_stash_pda,
-        stash_pda_info.address(),
-        ProgramError::InvalidSeeds
-    );
+    require_eq_keys!(&derived_stash_pda, stash_pda_info.address(), ProgramError::InvalidSeeds);
 
     let expected_stash_ata = get_associated_token_address(
         stash_pda_info.address(),
@@ -318,14 +281,8 @@ fn close_empty_stash_after_settlement(
 }
 
 #[inline(always)]
-fn close_program_account_to_recipient(
-    account: &AccountView,
-    recipient: &AccountView,
-) -> ProgramResult {
-    require!(
-        recipient.address() != account.address(),
-        ProgramError::InvalidArgument
-    );
+fn close_program_account_to_recipient(account: &AccountView, recipient: &AccountView) -> ProgramResult {
+    require!(recipient.address() != account.address(), ProgramError::InvalidArgument);
 
     let lamports_to_refund = account.lamports();
     let updated_recipient_lamports = recipient
@@ -334,6 +291,5 @@ fn close_program_account_to_recipient(
         .ok_or(ProgramError::InvalidArgument)?;
     recipient.set_lamports(updated_recipient_lamports);
     account.set_lamports(0);
-    account.close()?;
-    Ok(())
+    account.close()
 }

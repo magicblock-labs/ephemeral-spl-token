@@ -1,13 +1,12 @@
-use ephemeral_spl_api::require;
-use ephemeral_spl_api::state::transfer_queue::SplTokenProgram;
-use pinocchio::{address::address_eq, error::ProgramError, AccountView, Address};
+use ephemeral_spl_api::{require, state::transfer_queue::SplTokenProgram};
+use pinocchio::{error::ProgramError, AccountView};
 use pinocchio_token_2022::state::{Mint, TokenAccount};
+use solana_address::{address_eq, Address};
 use spl_token_interface::ID as SPL_TOKEN_PROGRAM_ID;
 
 #[inline(always)]
 pub(crate) fn is_supported_token_program(token_program: &Address) -> bool {
-    address_eq(token_program, &SPL_TOKEN_PROGRAM_ID)
-        || address_eq(token_program, &pinocchio_token_2022::ID)
+    address_eq(token_program, &SPL_TOKEN_PROGRAM_ID) || address_eq(token_program, &pinocchio_token_2022::ID)
 }
 
 #[inline(always)]
@@ -35,10 +34,7 @@ pub(crate) fn read_mint_decimals(
     token_program_info: &AccountView,
 ) -> Result<u8, ProgramError> {
     let mint_data = unsafe { mint_info.borrow_unchecked() };
-    require!(
-        mint_data.len() >= Mint::BASE_LEN,
-        ProgramError::InvalidAccountData
-    );
+    require!(mint_data.len() >= Mint::BASE_LEN, ProgramError::InvalidAccountData);
     require!(
         mint_info.owned_by(token_program_info.address()),
         ProgramError::InvalidAccountOwner
@@ -49,7 +45,7 @@ pub(crate) fn read_mint_decimals(
 }
 
 #[inline(always)]
-pub fn read_token_account(account: &AccountView) -> Result<&TokenAccount, ProgramError> {
+pub(crate) fn read_token_account(account: &AccountView) -> Result<&TokenAccount, ProgramError> {
     let token_data = unsafe { account.borrow_unchecked() };
     require!(
         token_data.len() >= TokenAccount::BASE_LEN,
@@ -70,10 +66,7 @@ pub(crate) fn validate_token_account<'a>(
     expected_token_program: Option<&Address>,
 ) -> Result<&'a TokenAccount, ProgramError> {
     if let Some(token_program) = expected_token_program {
-        require!(
-            ata_info.owned_by(token_program),
-            ProgramError::InvalidAccountOwner
-        );
+        require!(ata_info.owned_by(token_program), ProgramError::InvalidAccountOwner);
     }
 
     let token = read_token_account(ata_info)?;
@@ -82,22 +75,15 @@ pub(crate) fn validate_token_account<'a>(
         ProgramError::InvalidAccountData
     );
     if let Some(expected_owner) = expected_owner {
-        require!(
-            address_eq(token.owner(), expected_owner),
-            ProgramError::IllegalOwner
-        );
+        require!(address_eq(token.owner(), expected_owner), ProgramError::IllegalOwner);
     }
 
     Ok(token)
 }
 
 #[inline(always)]
-pub fn get_associated_token_address(
-    wallet: &Address,
-    mint: &Address,
-    token_program: &Address,
-) -> Address {
-    ephemeral_spl_api::Address::find_program_address(
+pub(crate) fn get_associated_token_address(wallet: &Address, mint: &Address, token_program: &Address) -> Address {
+    Address::find_program_address(
         &[wallet.as_ref(), token_program.as_ref(), mint.as_ref()],
         &pinocchio_associated_token_account::ID,
     )

@@ -1,16 +1,18 @@
-use crate::processor::utils::{get_associated_token_address, validate_token_account};
-use ephemeral_rollups_pinocchio::intent_bundle::{
-    ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
+use ephemeral_rollups_pinocchio::intent_bundle::{ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta};
+use ephemeral_spl_api::{
+    require, require_eq_keys, require_n_accounts,
+    state::{ephemeral_ata::EphemeralAta, load_initialized, shuttle_ephemeral_ata::ShuttleMetadata},
 };
-use ephemeral_spl_api::state::{
-    ephemeral_ata::EphemeralAta, load_initialized, shuttle_ephemeral_ata::ShuttleMetadata,
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use solana_address::Address;
+
+use crate::{
+    instruction::ESplInternalInstruction,
+    processor::internal::{
+        get_associated_token_address, shuttle_delegation::DEFAULT_ESCROW_INDEX, validate_token_account,
+    },
 };
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
-use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
 
-use crate::instruction::ESplInternalInstruction;
-
-pub(crate) const DEFAULT_ESCROW_INDEX: u8 = u8::MAX;
 const INTENT_BUNDLE_DATA_BUF_SIZE: usize = 1536;
 const CLOSE_SHUTTLE_ATA_COMPUTE_UNITS: u32 = 100_000;
 const CLOSE_STASH_DATA_LEN: usize = 33;
@@ -61,19 +63,14 @@ pub fn process_undelegate_and_close_shuttle_to_owner(
 
     let (escrow_index, close_stash_seeds) = parse_instruction_data(instruction_data)?;
     if close_stash_seeds.is_some() && accounts.len() == 11 {
-        require_eq_keys!(
-            accounts[9].address(),
-            executor.address(),
-            ProgramError::InvalidSeeds
-        );
+        require_eq_keys!(accounts[9].address(), executor.address(), ProgramError::InvalidSeeds);
         require_eq_keys!(
             accounts[10].address(),
             rent_reimbursement.address(),
             ProgramError::InvalidSeeds
         );
     }
-    let close_stash =
-        close_stash_seeds.map(|(user, stash_bump)| CloseStashForward { user, stash_bump });
+    let close_stash = close_stash_seeds.map(|(user, stash_bump)| CloseStashForward { user, stash_bump });
 
     // TODO (snawaz):  unauthorized third-party cleanup/cancellation is possible.
     //
@@ -83,10 +80,7 @@ pub fn process_undelegate_and_close_shuttle_to_owner(
     // enforce: executor == shuttle.owner
     require!(executor.is_signer(), ProgramError::MissingRequiredSignature);
 
-    require!(
-        shuttle_info.owned_by(&crate::ID),
-        ProgramError::InvalidAccountOwner
-    );
+    require!(shuttle_info.owned_by(&crate::ID), ProgramError::InvalidAccountOwner);
 
     let shuttle = load_initialized::<ShuttleMetadata>(unsafe { shuttle_info.borrow_unchecked() })?;
     require_eq_keys!(
@@ -96,23 +90,18 @@ pub fn process_undelegate_and_close_shuttle_to_owner(
     );
 
     let mint = {
-        let shuttle_ephemeral_ata = load_initialized::<EphemeralAta>(unsafe {
-            shuttle_ephemeral_ata_info.borrow_unchecked()
-        })?;
+        let shuttle_ephemeral_ata =
+            load_initialized::<EphemeralAta>(unsafe { shuttle_ephemeral_ata_info.borrow_unchecked() })?;
         require_eq_keys!(
             &shuttle_ephemeral_ata.owner,
             shuttle_info.address(),
             ProgramError::InvalidAccountData
         );
-        #[allow(clippy::clone_on_copy)]
-        let mint = shuttle_ephemeral_ata.mint.clone();
-        mint
+        shuttle_ephemeral_ata.mint
     };
 
-    let (derived_shuttle_ephemeral_ata, _) = ephemeral_spl_api::Address::find_program_address(
-        &[shuttle_info.address().as_ref(), mint.as_ref()],
-        &crate::ID,
-    );
+    let (derived_shuttle_ephemeral_ata, _) =
+        Address::find_program_address(&[shuttle_info.address().as_ref(), mint.as_ref()], &crate::ID);
     require_eq_keys!(
         &derived_shuttle_ephemeral_ata,
         shuttle_ephemeral_ata_info.address(),
@@ -157,9 +146,7 @@ pub fn process_undelegate_and_close_shuttle_to_owner(
 }
 
 #[inline(always)]
-fn parse_instruction_data(
-    instruction_data: &[u8],
-) -> Result<(u8, Option<([u8; 32], u8)>), ProgramError> {
+fn parse_instruction_data(instruction_data: &[u8]) -> Result<(u8, Option<([u8; 32], u8)>), ProgramError> {
     let (escrow_index, tail) = match instruction_data.split_first() {
         None => (DEFAULT_ESCROW_INDEX, &[][..]),
         Some((first, rest)) => (*first, rest),
@@ -192,12 +179,9 @@ fn schedule_shuttle_close_after_undelegate(
     escrow_index: u8,
     close_stash: Option<&CloseStashForward>,
 ) -> ProgramResult {
-    let (vault_info, _) =
-        ephemeral_spl_api::Address::find_program_address(&[mint.as_ref()], &crate::ID);
-    let vault_token_info =
-        get_associated_token_address(&vault_info, mint, token_program_info.address());
-    let mut close_handler_data =
-        ESplInternalInstruction::SettleAndCloseShuttleIntent.with_data(&[escrow_index]);
+    let (vault_info, _) = Address::find_program_address(&[mint.as_ref()], &crate::ID);
+    let vault_token_info = get_associated_token_address(&vault_info, mint, token_program_info.address());
+    let mut close_handler_data = ESplInternalInstruction::SettleAndCloseShuttleIntent.with_data(&[escrow_index]);
     if let Some(close) = close_stash {
         close_handler_data.extend_from_slice(&close.user);
         close_handler_data.push(close.stash_bump);
@@ -251,12 +235,8 @@ fn schedule_shuttle_close_after_undelegate(
     let committed_accounts = [shuttle_wallet_ata_info.clone()];
     let mut intent_bundle_data = [0u8; INTENT_BUNDLE_DATA_BUF_SIZE];
 
-    MagicIntentBundleBuilder::new(
-        executor.clone(),
-        magic_context.clone(),
-        magic_program.clone(),
-    )
-    .commit_and_undelegate(&committed_accounts)
-    .add_post_undelegate_actions(&close_handler)
-    .build_and_invoke(&mut intent_bundle_data)
+    MagicIntentBundleBuilder::new(executor.clone(), magic_context.clone(), magic_program.clone())
+        .commit_and_undelegate(&committed_accounts)
+        .add_post_undelegate_actions(&close_handler)
+        .build_and_invoke(&mut intent_bundle_data)
 }

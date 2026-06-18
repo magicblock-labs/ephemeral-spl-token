@@ -1,8 +1,6 @@
-use alloc::vec;
-use alloc::vec::Vec;
-use data_layout::variable_offset_layout;
-use ephemeral_spl_api::require_n_accounts;
+use ephemeral_spl_api::{instructions::WithdrawArgs, require_n_accounts};
 use pinocchio::{AccountView, ProgramResult};
+use wheels::layout::Decodable as _;
 
 use crate::processor::internal::token_vault::withdraw_ephemeral_ata_tokens;
 
@@ -22,10 +20,7 @@ use crate::processor::internal::token_vault::withdraw_ephemeral_ata_tokens;
 /// Instruction Data: WithdrawArgs
 ///
 #[inline(always)]
-pub fn process_withdraw_spl_tokens(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_withdraw_spl_tokens(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         owner, // force multi-line
         ephemeral_ata_info,
@@ -49,9 +44,4 @@ pub fn process_withdraw_spl_tokens(
         token_program_info,
         args.amount(),
     )
-}
-
-#[variable_offset_layout(buffer_offset = 1)]
-pub struct WithdrawArgs {
-    amount: u64,
 }

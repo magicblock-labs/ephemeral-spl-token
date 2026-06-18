@@ -1,23 +1,28 @@
-use alloc::vec;
-use alloc::vec::Vec;
+use ephemeral_rollups_pinocchio::{
+    consts::{MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID},
+    intent_bundle::{ActionCallback, ShortAccountMeta},
+    pda::magic_fee_vault_pda_from_validator,
+};
+use ephemeral_spl_api::{
+    debug_log,
+    instructions::ExecuteQueuedTransferArgs,
+    require, require_eq_keys, require_owned_by,
+    state::transfer_queue::{queue_views_checked, QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA},
+};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use solana_address::Address;
+use wheels::{layout::Encodable as _, variable_offset_layout};
 
-use crate::instruction::ESplInternalInstruction;
-use crate::processor::internal::queue_authorized_action::{
-    invoke_standalone_action, IntentBundleAccounts, QueueSignerState, QueuedTransferActionBuilder,
-    EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
+use crate::{
+    instruction::ESplInternalInstruction,
+    processor::internal::{
+        queue_authorized_action::{
+            invoke_standalone_action, IntentBundleAccounts, QueueSignerState, QueuedTransferActionBuilder,
+            EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
+        },
+        token_program_for_kind, CALLBACK_SIGNER,
+    },
 };
-use crate::processor::utils::{token_program_for_kind, CALLBACK_SIGNER};
-use crate::ExecuteQueuedTransferArgs;
-use data_layout::variable_offset_layout;
-use ephemeral_rollups_pinocchio::consts::{MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID};
-use ephemeral_rollups_pinocchio::intent_bundle::{ActionCallback, ShortAccountMeta};
-use ephemeral_rollups_pinocchio::pda::magic_fee_vault_pda_from_validator;
-use ephemeral_spl_api::state::transfer_queue::{
-    queue_views_checked, QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
-};
-use ephemeral_spl_api::{debug_log, require, require_eq_keys, require_owned_by};
-use pinocchio::error::ProgramError;
-use pinocchio::{AccountView, ProgramResult};
 
 pub(crate) struct RefundOnFailureAccounts<'a> {
     callback_signer: &'a AccountView,
@@ -69,10 +74,7 @@ impl<'a> RefundOnFailureAccounts<'a> {
     }
 }
 
-pub(crate) fn schedule_refund_on_failure(
-    accounts: &RefundOnFailureAccounts<'_>,
-    amount: u64,
-) -> ProgramResult {
+pub(crate) fn schedule_refund_on_failure(accounts: &RefundOnFailureAccounts<'_>, amount: u64) -> ProgramResult {
     let RefundOnFailureAccounts {
         callback_signer,
         refund_destination_owner,
@@ -93,7 +95,7 @@ pub(crate) fn schedule_refund_on_failure(
 
     let mint = header.mint;
     let token_program = token_program_for_kind(header.token_program_kind()?);
-    let (vault, _) = ephemeral_spl_api::Address::find_program_address(&[mint.as_ref()], &crate::ID);
+    let (vault, _) = Address::find_program_address(&[mint.as_ref()], &crate::ID);
 
     let callback_accounts = create_callback_accounts(
         callback_signer.address(),
@@ -146,10 +148,10 @@ pub(crate) struct RefundOnFailureArgs {
 }
 
 fn create_callback_accounts(
-    callback_signer: &ephemeral_spl_api::Address,
-    refund_destination_owner: &ephemeral_spl_api::Address,
-    queue: &ephemeral_spl_api::Address,
-    magic_fee_vault: &ephemeral_spl_api::Address,
+    callback_signer: &Address,
+    refund_destination_owner: &Address,
+    queue: &Address,
+    magic_fee_vault: &Address,
 ) -> [ShortAccountMeta; 6] {
     [
         ShortAccountMeta {

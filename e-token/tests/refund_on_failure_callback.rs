@@ -1,14 +1,10 @@
-use crate::common::callback_mock::take_execute_callbacks;
-use crate::common::magic_mock::{take_captured_action_callbacks, take_captured_intent_bundles};
-use crate::common::{callback_mock, magic_mock};
-use data_layout::variable_offset_layout;
 use dlp_api::pda::magic_fee_vault_pda_from_validator;
 use ephemeral_rollups_pinocchio::consts::{MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID};
-use ephemeral_spl_api::state::transfer_queue::{HEADER_LEN, QUEUE_SEED, TRANSFER_QUEUE_VERSION};
-use ephemeral_spl_api::ID as PROGRAM;
-use magicblock_magic_program_api::instruction::CallbackInstruction;
-use magicblock_magic_program_api::pda::CALLBACK_SIGNER;
-use magicblock_magic_program_api::CALLBACK_PROGRAM_ID;
+use ephemeral_spl_api::{
+    state::transfer_queue::{HEADER_LEN, QUEUE_SEED, TRANSFER_QUEUE_VERSION},
+    ID as PROGRAM,
+};
+use magicblock_magic_program_api::{instruction::CallbackInstruction, pda::CALLBACK_SIGNER, CALLBACK_PROGRAM_ID};
 use serial_test::serial;
 use solana_account::Account as SolanaAccount;
 use solana_instruction::{AccountMeta, Instruction};
@@ -19,6 +15,14 @@ use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use solana_transaction::Transaction;
 use utils::TestInternalInstruction as internal;
+use wheels::{layout::Encodable, variable_offset_layout};
+
+use crate::common::{
+    callback_mock,
+    callback_mock::take_execute_callbacks,
+    magic_mock,
+    magic_mock::{take_captured_action_callbacks, take_captured_intent_bundles},
+};
 
 mod common;
 mod utils;
@@ -62,9 +66,7 @@ fn queue_account_data(mint: Pubkey, validator: Pubkey, bump: u8) -> Vec<u8> {
 }
 
 fn magic_fee_vault_pubkey(validator: Pubkey) -> Pubkey {
-    Pubkey::new_from_array(
-        magic_fee_vault_pda_from_validator(&validator.to_bytes().into()).to_bytes(),
-    )
+    Pubkey::new_from_array(magic_fee_vault_pda_from_validator(&validator.to_bytes().into()).to_bytes())
 }
 
 fn delegation_program() -> Pubkey {
@@ -158,14 +160,7 @@ async fn setup_context() -> (
 
     magic_mock::clear_all_captured(Pubkey::new_from_array(MAGIC_PROGRAM_ID.to_bytes()));
 
-    (
-        ctx,
-        validator,
-        mint,
-        queue,
-        magic_fee_vault,
-        refund_destination_owner,
-    )
+    (ctx, validator, mint, queue, magic_fee_vault, refund_destination_owner)
 }
 
 fn callback_ix(
@@ -178,7 +173,7 @@ fn callback_ix(
     Instruction {
         program_id: PROGRAM,
         accounts: vec![
-            AccountMeta::new(CALLBACK_SIGNER, true), // 0: callback_signer
+            AccountMeta::new(CALLBACK_SIGNER, true),                    // 0: callback_signer
             AccountMeta::new_readonly(refund_destination_owner, false), // 1: refund_destination_owner
             AccountMeta::new(queue, false),                             // 2: queue_info
             AccountMeta::new(magic_fee_vault, false),                   // 3: magic_fee_vault
@@ -222,8 +217,7 @@ fn callback_executor_ix(
 #[tokio::test]
 #[serial]
 async fn refund_on_failure_success_no_intent_bundle() {
-    let (ctx, validator, _mint, queue, magic_fee_vault, refund_destination_owner) =
-        setup_context().await;
+    let (ctx, validator, _mint, queue, magic_fee_vault, refund_destination_owner) = setup_context().await;
     let magic_program = Pubkey::new_from_array(MAGIC_PROGRAM_ID.to_bytes());
 
     let ix = callback_executor_ix(
@@ -250,10 +244,7 @@ async fn refund_on_failure_success_no_intent_bundle() {
     assert!(bundles.is_empty(), "expected no intent bundle on success");
 
     let action_callbacks = take_captured_action_callbacks(magic_program);
-    assert!(
-        action_callbacks.is_empty(),
-        "expected no AddActionCallback on success"
-    );
+    assert!(action_callbacks.is_empty(), "expected no AddActionCallback on success");
 }
 
 /// Failure case (ok=false): callback fires, intent bundle with one refund action is scheduled,
@@ -261,8 +252,7 @@ async fn refund_on_failure_success_no_intent_bundle() {
 #[tokio::test]
 #[serial]
 async fn refund_on_failure_schedules_intent_bundle() {
-    let (ctx, validator, _mint, queue, magic_fee_vault, refund_destination_owner) =
-        setup_context().await;
+    let (ctx, validator, _mint, queue, magic_fee_vault, refund_destination_owner) = setup_context().await;
     let magic_program = Pubkey::new_from_array(MAGIC_PROGRAM_ID.to_bytes());
     const AMOUNT: u64 = 1_000;
 
@@ -305,11 +295,7 @@ async fn refund_on_failure_schedules_intent_bundle() {
 
     // One AddActionCallback CPI with RefundOnFailureCallback discriminator
     let action_callbacks = take_captured_action_callbacks(magic_program);
-    assert_eq!(
-        action_callbacks.len(),
-        1,
-        "expected exactly one AddActionCallback"
-    );
+    assert_eq!(action_callbacks.len(), 1, "expected exactly one AddActionCallback");
 
     let cb = &action_callbacks[0].args;
     assert_eq!(cb.action_index, 0, "callback must target action index 0");
@@ -327,10 +313,6 @@ async fn refund_on_failure_schedules_intent_bundle() {
 
     // Payload encodes the refund amount: encode() writes 8 bytes (raw u64 LE, no padding).
     assert_eq!(cb.payload.len(), 8, "payload must be 8 bytes");
-    let decoded_amount =
-        u64::from_le_bytes(cb.payload[0..8].try_into().expect("payload too short"));
-    assert_eq!(
-        decoded_amount, AMOUNT,
-        "callback payload must encode AMOUNT"
-    );
+    let decoded_amount = u64::from_le_bytes(cb.payload[0..8].try_into().expect("payload too short"));
+    assert_eq!(decoded_amount, AMOUNT, "callback payload must encode AMOUNT");
 }

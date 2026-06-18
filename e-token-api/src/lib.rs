@@ -40,6 +40,7 @@ macro_rules! debug_log {
 pub mod consts;
 pub mod error;
 pub mod instruction;
+pub mod instructions;
 pub mod requires;
 pub mod state;
 pub mod program {
@@ -47,7 +48,3 @@ pub mod program {
 }
 
 solana_address::declare_id!("SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2");
-
-/// Re-exported `Address` type from solana-address for convenience.
-/// Used throughout the codebase for account address representations.
-pub use solana_address::Address;

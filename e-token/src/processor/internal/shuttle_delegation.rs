@@ -1,27 +1,22 @@
 #[cfg(feature = "logging")]
 use alloc::string::ToString;
-use alloc::vec;
-use alloc::vec::Vec;
-use data_layout::variable_offset_layout;
-
 use core::mem::MaybeUninit;
+
 use dlp_api::args::PostDelegationActions;
 use ephemeral_rollups_pinocchio::{
-    consts::{
-        BUFFER, DELEGATION_PROGRAM_ID, MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID,
-        MAX_POST_DELEGATION_SIGNERS,
-    },
+    consts::{BUFFER, DELEGATION_PROGRAM_ID, MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID, MAX_POST_DELEGATION_SIGNERS},
     instruction::fill_seeds,
     types::{DelegateAccountArgs, DelegateConfig},
     utils::{close_pda_acc, make_seed_buf},
 };
-use ephemeral_spl_api::debug_log;
-use ephemeral_spl_api::instruction::ESplInstruction;
-use ephemeral_spl_api::state::{
-    ephemeral_ata::EphemeralAta, load_initialized, load_mut_initialized,
-    shuttle_ephemeral_ata::ShuttleMetadata,
+use ephemeral_spl_api::{
+    debug_log,
+    instruction::ESplInstruction,
+    require, require_eq_keys, require_owned_by,
+    state::{
+        ephemeral_ata::EphemeralAta, load_initialized, load_mut_initialized, shuttle_ephemeral_ata::ShuttleMetadata,
+    },
 };
-use ephemeral_spl_api::{require, require_eq_keys, require_owned_by};
 use pinocchio::{
     cpi::{invoke_signed_with_bounds, Seed, Signer},
     error::ProgramError,
@@ -32,11 +27,13 @@ use pinocchio_system::instructions::{Assign, CreateAccount, Transfer};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_pubkey::Pubkey;
 
-use crate::processor::{
-    initialize_rent_pda::{RENT_PDA, RENT_PDA_BUMP},
-    internal::ephemeral_ata::initialize_shuttle_ephemeral_ata_with_sponsor,
-    internal::token_vault::transfer_to_vault_for_mint,
+use crate::processor::internal::{
+    ephemeral_ata::initialize_shuttle_ephemeral_ata_with_sponsor,
+    rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
+    token_vault::transfer_to_vault_for_mint,
 };
+
+pub(crate) const DEFAULT_ESCROW_INDEX: u8 = u8::MAX;
 
 pub(crate) struct DepositAndDelegateShuttleAccounts<'a> {
     pub(crate) payer_info: &'a AccountView,
@@ -66,27 +63,7 @@ pub(crate) struct PreparedShuttleDelegation {
 pub(crate) struct DepositAndDelegateShuttleCommonArgs<'a> {
     pub(crate) shuttle_id: u32,
     pub(crate) total_amount: u64,
-    pub(crate) validator: Option<&'a [u8; 32]>,
-}
-
-#[variable_offset_layout(buffer_offset = 1, option = implicit)]
-pub struct DepositAndDelegateShuttleArgs {
-    pub shuttle_id: u32,
-    pub amount: u64,
-    pub validator: Option<[u8; 32]>,
-}
-
-static_assertions::const_assert!(matches!(DepositAndDelegateShuttleArgs::DATA_LENS, [12, 44]));
-
-impl DepositAndDelegateShuttleArgsView<'_> {
-    #[inline]
-    pub(crate) fn common_args(&self) -> DepositAndDelegateShuttleCommonArgs<'_> {
-        DepositAndDelegateShuttleCommonArgs {
-            shuttle_id: self.shuttle_id(),
-            total_amount: self.amount(),
-            validator: self.validator(),
-        }
-    }
+    pub(crate) validator: Option<&'a Address>,
 }
 
 pub(crate) fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions(
@@ -126,9 +103,8 @@ pub(crate) fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actio
         args.total_amount,
     )?;
 
-    let shuttle_eata = load_mut_initialized::<EphemeralAta>(unsafe {
-        accounts.shuttle_eata_info.borrow_unchecked_mut()
-    })?;
+    let shuttle_eata =
+        load_mut_initialized::<EphemeralAta>(unsafe { accounts.shuttle_eata_info.borrow_unchecked_mut() })?;
     shuttle_eata.amount = shuttle_eata
         .amount
         .checked_add(args.total_amount)
@@ -177,15 +153,15 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
     debug_log!({
         let shuttle = shuttle_info.address().to_string();
         let shuttle_eata = shuttle_eata_info.address().to_string();
-        let shuttle_wallet = shuttle_wallet_ata_info.address().to_string();
+        let shuttle_ata = shuttle_wallet_ata_info.address().to_string();
         let owner = owner_info.address().to_string();
         let mint = mint_info.address().to_string();
         let rent_pda = rent_pda_info.address().to_string();
         pinocchio_log::log!(
-            "PrepareShuttleDelegation accounts shuttle={} shuttle_eata={} shuttle_wallet={} owner={} mint={} rent_pda={} shuttle_id={}",
+            "prepare_shuttle_delegation: shuttle={} ata={} eata={} owner={} mint={} rent_pda={} shuttle_id={}",
             shuttle.as_str(),
+            shuttle_ata.as_str(),
             shuttle_eata.as_str(),
-            shuttle_wallet.as_str(),
             owner.as_str(),
             mint.as_str(),
             rent_pda.as_str(),
@@ -193,15 +169,8 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
         );
     });
 
-    require_eq_keys!(
-        &RENT_PDA,
-        rent_pda_info.address(),
-        ProgramError::InvalidSeeds
-    );
-    require!(
-        rent_pda_info.data_len() == 0,
-        ProgramError::InvalidAccountData
-    );
+    require_eq_keys!(&RENT_PDA, rent_pda_info.address(), ProgramError::InvalidSeeds);
+    require!(rent_pda_info.data_len() == 0, ProgramError::InvalidAccountData);
 
     let setup_lamports = ephemeral_spl_api::consts::SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS
         .checked_add(extra_setup_lamports)
@@ -215,10 +184,7 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
     .invoke()?;
 
     let rent_bump_seed = [RENT_PDA_BUMP];
-    let rent_signer_seed = [
-        Seed::from(crate::processor::initialize_rent_pda::RENT_PDA_SEED),
-        Seed::from(&rent_bump_seed),
-    ];
+    let rent_signer_seed = [Seed::from(RENT_PDA_SEED), Seed::from(&rent_bump_seed)];
     let rent_signer = Signer::from(&rent_signer_seed);
 
     initialize_shuttle_ephemeral_ata_with_sponsor(
@@ -253,8 +219,7 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
     );
 
     let (mint, bump) = {
-        let shuttle_eata =
-            load_initialized::<EphemeralAta>(unsafe { shuttle_eata_info.borrow_unchecked() })?;
+        let shuttle_eata = load_initialized::<EphemeralAta>(unsafe { shuttle_eata_info.borrow_unchecked() })?;
         require_eq_keys!(
             &shuttle_eata.owner,
             shuttle_info.address(),
@@ -307,15 +272,12 @@ pub(crate) fn delegate_sponsored_shuttle_with_post_actions(
     post_actions: PostDelegationActions,
 ) -> ProgramResult {
     let rent_bump_seed = [RENT_PDA_BUMP];
-    let rent_signer_seed = [
-        Seed::from(crate::processor::initialize_rent_pda::RENT_PDA_SEED),
-        Seed::from(&rent_bump_seed),
-    ];
+    let rent_signer_seed = [Seed::from(RENT_PDA_SEED), Seed::from(&rent_bump_seed)];
     let rent_signer = Signer::from(&rent_signer_seed);
 
     let seeds: &[&[u8]] = &[shuttle_info.address().as_ref(), mint.as_ref()];
     let config = DelegateConfig {
-        validator: args.validator.map(|slice| Address::new_from_array(*slice)),
+        validator: args.validator.copied(),
         ..DelegateConfig::default()
     };
 
@@ -324,10 +286,7 @@ pub(crate) fn delegate_sponsored_shuttle_with_post_actions(
         action_signer_accounts.push(payer_info);
     }
 
-    debug_log!(
-        "Shuttle eata: {}",
-        shuttle_eata_info.address().to_string().as_str()
-    );
+    debug_log!("Shuttle eata: {}", shuttle_eata_info.address().to_string().as_str());
 
     delegate_account_with_actions_from_sponsor(
         rent_pda_info,
@@ -397,8 +356,8 @@ pub(crate) fn build_undelegate_and_close_shuttle_instruction(
     close_stash: Option<CloseStashArgs>,
 ) -> Instruction {
     let accounts = alloc::vec![
-        AccountMeta::new_readonly(*payer, true),
-        AccountMeta::new_readonly(*rent_pda, false),
+        AccountMeta::new_readonly(*payer, true), // TODO: can be removed, or passed as pubkey
+        AccountMeta::new_readonly(*rent_pda, false), // TODO (snawaz): can be passed as pubkey
         AccountMeta::new_readonly(*shuttle, false),
         AccountMeta::new_readonly(*shuttle_eata, false),
         AccountMeta::new(*shuttle_wallet_ata, false),
@@ -410,7 +369,7 @@ pub(crate) fn build_undelegate_and_close_shuttle_instruction(
     let mut data = ESplInstruction::UndelegateAndCloseShuttleToOwner.to_vec();
     if let Some(close) = close_stash {
         // Explicit escrow_index byte: the parser would otherwise consume `user[0]` as it.
-        data.push(crate::processor::undelegate_and_close_shuttle_to_owner::DEFAULT_ESCROW_INDEX);
+        data.push(DEFAULT_ESCROW_INDEX);
         data.extend_from_slice(&close.user);
         data.push(close.stash_bump);
     }
@@ -439,7 +398,7 @@ pub(crate) fn delegate_account_with_actions_from_sponsor(
     action_signer_accounts: &[&AccountView],
 ) -> ProgramResult {
     let pda_key_bytes = pda_acc.address().as_array();
-    let (_, buffer_pda_bump) = ephemeral_spl_api::Address::find_program_address(
+    let (_, buffer_pda_bump) = Address::find_program_address(
         &[BUFFER, pda_key_bytes.as_ref()],
         owner_program.address(), // which must be same as crate::ID
     );
@@ -468,34 +427,22 @@ pub(crate) fn delegate_account_with_actions_from_sponsor(
     }
     .invoke_signed(&[sponsor_signer.clone(), buffer_signer])?;
 
-    {
-        let pda_ro = pda_acc.try_borrow()?;
-        let mut buf_data = buffer_acc.try_borrow_mut()?;
-        buf_data.copy_from_slice(&pda_ro);
-    }
-    {
-        let mut pda_mut = pda_acc.try_borrow_mut()?;
-        for b in pda_mut.iter_mut().take(data_len) {
-            *b = 0;
-        }
-    }
+    buffer_acc.try_borrow_mut()?.copy_from_slice(&pda_acc.try_borrow()?);
+    pda_acc.try_borrow_mut()?.fill(0);
 
     let mut seed_buf = make_seed_buf();
     let filled = fill_seeds(&mut seed_buf, seeds, &bump);
     let delegate_signer = Signer::from(filled);
 
-    let current_owner = unsafe { pda_acc.owner() };
-    if current_owner != &pinocchio_system::ID {
+    if unsafe { pda_acc.owner() } != &pinocchio_system::ID {
         unsafe { pda_acc.assign(&pinocchio_system::ID) };
     }
-    let current_owner = unsafe { pda_acc.owner() };
-    if current_owner != &DELEGATION_PROGRAM_ID {
-        Assign {
-            account: pda_acc,
-            owner: &DELEGATION_PROGRAM_ID,
-        }
-        .invoke_signed(core::slice::from_ref(&delegate_signer))?;
+
+    Assign {
+        account: pda_acc,
+        owner: &DELEGATION_PROGRAM_ID,
     }
+    .invoke_signed(core::slice::from_ref(&delegate_signer))?;
 
     let delegate_args = DelegateAccountArgs {
         commit_frequency_ms: config.commit_frequency_ms,
@@ -517,9 +464,7 @@ pub(crate) fn delegate_account_with_actions_from_sponsor(
         &[sponsor_signer.clone(), delegate_signer],
     )?;
 
-    close_pda_acc(sponsor_info, buffer_acc)?;
-
-    Ok(())
+    close_pda_acc(sponsor_info, buffer_acc)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -542,8 +487,7 @@ fn cpi_delegate_with_actions_from_sponsor(
         ProgramError::NotEnoughAccountKeys
     );
     const MAX_DELEGATE_WITH_ACTIONS_ACCOUNTS: usize = 7 + MAX_POST_DELEGATION_SIGNERS;
-    const UNINIT_ACCOUNT: MaybeUninit<InstructionAccount> =
-        MaybeUninit::<InstructionAccount>::uninit();
+    const UNINIT_ACCOUNT: MaybeUninit<InstructionAccount> = MaybeUninit::<InstructionAccount>::uninit();
     let mut account_metas = [UNINIT_ACCOUNT; MAX_DELEGATE_WITH_ACTIONS_ACCOUNTS];
     let num_accounts = 7 + action_signer_accounts.len();
     require!(
@@ -580,23 +524,15 @@ fn cpi_delegate_with_actions_from_sponsor(
         unsafe {
             account_metas
                 .get_unchecked_mut(7 + i)
-                .write(InstructionAccount::readonly_signer(
-                    action_signer_accounts[i].address(),
-                ));
+                .write(InstructionAccount::readonly_signer(action_signer_accounts[i].address()));
         }
         i += 1;
     }
 
     let delegate = dlp_api::args::DelegateArgs {
         commit_frequency_ms: delegate_args.commit_frequency_ms,
-        seeds: delegate_args
-            .seeds
-            .iter()
-            .map(|seed| seed.to_vec())
-            .collect(),
-        validator: delegate_args
-            .validator
-            .map(|validator| (*validator.as_array()).into()),
+        seeds: delegate_args.seeds.iter().map(|seed| seed.to_vec()).collect(),
+        validator: delegate_args.validator.map(|validator| (*validator.as_array()).into()),
     };
     let data = dlp_api::cpi::delegate_with_actions(
         (*sponsor_info.address().as_array()).into(),
@@ -625,10 +561,7 @@ fn cpi_delegate_with_actions_from_sponsor(
     let instruction = InstructionView {
         program_id: &DELEGATION_PROGRAM_ID,
         accounts: unsafe {
-            core::slice::from_raw_parts(
-                account_metas.as_ptr() as *const InstructionAccount,
-                num_accounts,
-            )
+            core::slice::from_raw_parts(account_metas.as_ptr() as *const InstructionAccount, num_accounts)
         },
         data: &data,
     };
@@ -637,7 +570,5 @@ fn cpi_delegate_with_actions_from_sponsor(
         &instruction,
         &account_refs[..num_accounts],
         signers,
-    )?;
-
-    Ok(())
+    )
 }

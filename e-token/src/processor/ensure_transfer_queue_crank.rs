@@ -1,17 +1,20 @@
 use core::mem::MaybeUninit;
 
 use dlp_api::pda::magic_fee_vault_pda_from_validator;
-use ephemeral_rollups_pinocchio::crank::{
-    CancelCrankCpi, CrankInstruction, ScheduleCrankArgs, ScheduleCrankCpi,
+use ephemeral_rollups_pinocchio::crank::{CancelCrankCpi, CrankInstruction, ScheduleCrankArgs, ScheduleCrankCpi};
+use ephemeral_spl_api::{
+    require, require_eq_keys, require_n_accounts,
+    state::transfer_queue::{
+        queue_crank_task_id_from_data, queue_set_crank_task_id_from_data, queue_views_checked, TransferQueue,
+    },
 };
-use ephemeral_spl_api::state::transfer_queue::{
-    queue_crank_task_id_from_data, queue_set_crank_task_id_from_data, queue_views_checked,
-    TransferQueue,
+use pinocchio::{
+    cpi::{invoke_signed_with_bounds, Signer},
+    error::ProgramError,
+    instruction::{InstructionAccount, InstructionView},
+    AccountView, ProgramResult,
 };
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
-use pinocchio::cpi::{invoke_signed_with_bounds, Signer};
-use pinocchio::instruction::{InstructionAccount, InstructionView};
-use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use solana_address::Address;
 
 use crate::instruction::ESplInternalInstruction;
 
@@ -19,8 +22,7 @@ pub const CRANK_EXECUTION_INTERVAL_MILLIS: i64 = 500;
 
 const PROCESS_QUEUE_TICK_CRANK_ACCOUNTS: usize = 4;
 const SCHEDULE_CRANK_CPI_ACCOUNTS: usize = 5;
-const SCHEDULE_CRANK_DATA_LEN: usize =
-    4 + 8 + 8 + 8 + 8 + 32 + 8 + (PROCESS_QUEUE_TICK_CRANK_ACCOUNTS * 34) + 8 + 1;
+const SCHEDULE_CRANK_DATA_LEN: usize = 4 + 8 + 8 + 8 + 8 + 32 + 8 + (PROCESS_QUEUE_TICK_CRANK_ACCOUNTS * 34) + 8 + 1;
 
 ///
 /// Executes on:
@@ -36,10 +38,7 @@ const SCHEDULE_CRANK_DATA_LEN: usize =
 /// Instruction Data: None
 ///
 #[inline(always)]
-pub fn process_ensure_transfer_queue_crank(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_ensure_transfer_queue_crank(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         payer_info, // force multi-line
         queue_info,
@@ -48,10 +47,7 @@ pub fn process_ensure_transfer_queue_crank(
         magic_program_info,
     ] = require_n_accounts!(accounts, 5);
 
-    require!(
-        instruction_data.is_empty(),
-        ProgramError::InvalidInstructionData
-    );
+    require!(instruction_data.is_empty(), ProgramError::InvalidInstructionData);
 
     // TODO (snawaz): re-review this!
     //
@@ -61,14 +57,8 @@ pub fn process_ensure_transfer_queue_crank(
     //
     // What if attackers repeatedly invoke this current ix?
 
-    require!(
-        payer_info.is_signer(),
-        ProgramError::MissingRequiredSignature
-    );
-    require!(
-        queue_info.owned_by(&crate::ID),
-        ProgramError::InvalidAccountOwner
-    );
+    require!(payer_info.is_signer(), ProgramError::MissingRequiredSignature);
+    require!(queue_info.owned_by(&crate::ID), ProgramError::InvalidAccountOwner);
 
     require_eq_keys!(
         magic_program_info.address(),
@@ -77,17 +67,12 @@ pub fn process_ensure_transfer_queue_crank(
     );
 
     let (mint, bump, validator) = {
-        let data = unsafe { queue_info.borrow_unchecked() };
-        let (header, _) = queue_views_checked(data)?;
+        let (header, _) = queue_views_checked(unsafe { queue_info.borrow_unchecked() })?;
         (header.mint, header.bump, header.validator)
     };
 
     let derived_queue = TransferQueue::derive_pda(&mint, &validator, bump)?;
-    require_eq_keys!(
-        &derived_queue,
-        queue_info.address(),
-        ProgramError::InvalidSeeds
-    );
+    require_eq_keys!(&derived_queue, queue_info.address(), ProgramError::InvalidSeeds);
     let derived_magic_fee_vault = magic_fee_vault_pda_from_validator(&validator.to_bytes().into());
     require!(
         derived_magic_fee_vault.to_bytes() == magic_fee_vault_info.address().to_bytes(),
@@ -149,8 +134,7 @@ pub fn process_ensure_transfer_queue_crank(
     );
     let data_len = schedule_cpi.serialize_into(&mut crank_data)?;
 
-    let mut schedule_accounts =
-        [const { MaybeUninit::<InstructionAccount>::uninit() }; SCHEDULE_CRANK_CPI_ACCOUNTS];
+    let mut schedule_accounts = [const { MaybeUninit::<InstructionAccount>::uninit() }; SCHEDULE_CRANK_CPI_ACCOUNTS];
     unsafe {
         // TODO (snawaz): re-review this.
         //
@@ -198,16 +182,14 @@ pub fn process_ensure_transfer_queue_crank(
         &queue_signers,
     )?;
 
-    let data = unsafe { queue_info.borrow_unchecked_mut() };
-    queue_set_crank_task_id_from_data(data, crank_task_id)?;
-    Ok(())
+    queue_set_crank_task_id_from_data(unsafe { queue_info.borrow_unchecked_mut() }, crank_task_id)
 }
 
 //
 // TODO (perf): avoid loop, copies, etc.
 //
 #[inline(always)]
-pub(crate) fn derive_queue_crank_task_id(queue_address: &ephemeral_spl_api::Address) -> i64 {
+pub(crate) fn derive_queue_crank_task_id(queue_address: &Address) -> i64 {
     let mut acc = 0_u64;
     for chunk in queue_address.as_ref().chunks_exact(8) {
         let mut bytes = [0_u8; 8];

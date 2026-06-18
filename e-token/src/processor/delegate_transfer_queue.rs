@@ -1,7 +1,8 @@
-use ephemeral_rollups_pinocchio::instruction::DelegateAccountCpiBuilder;
-use ephemeral_rollups_pinocchio::types::DelegateConfig;
-use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, TransferQueue, QUEUE_SEED};
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
+use ephemeral_rollups_pinocchio::{instruction::DelegateAccountCpiBuilder, types::DelegateConfig};
+use ephemeral_spl_api::{
+    require, require_eq_keys, require_n_accounts,
+    state::transfer_queue::{queue_views_checked, TransferQueue, QUEUE_SEED},
+};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
 ///
@@ -21,10 +22,7 @@ use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 ///
 /// Instruction Data: None
 ///
-pub fn process_delegate_transfer_queue(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_delegate_transfer_queue(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         payer_info, // force multi-line
         queue_info,
@@ -37,15 +35,9 @@ pub fn process_delegate_transfer_queue(
         system_program,
     ] = require_n_accounts!(accounts, 9);
 
-    require!(
-        instruction_data.is_empty(),
-        ProgramError::InvalidInstructionData
-    );
+    require!(instruction_data.is_empty(), ProgramError::InvalidInstructionData);
 
-    require!(
-        payer_info.is_signer(),
-        ProgramError::MissingRequiredSignature
-    );
+    require!(payer_info.is_signer(), ProgramError::MissingRequiredSignature);
 
     let delegation_program = ephemeral_spl_api::program::DELEGATION_PROGRAM_ID;
     require!(
@@ -54,22 +46,12 @@ pub fn process_delegate_transfer_queue(
     );
 
     let (bump, validator) = {
-        let data = unsafe { queue_info.borrow_unchecked() };
-        let (header, _) = queue_views_checked(data)?;
-        require_eq_keys!(
-            &header.mint,
-            mint_info.address(),
-            ProgramError::InvalidAccountData
-        );
+        let (header, _) = queue_views_checked(unsafe { queue_info.borrow_unchecked() })?;
+        require_eq_keys!(&header.mint, mint_info.address(), ProgramError::InvalidAccountData);
 
         let bump = header.bump;
-        let derived_queue =
-            TransferQueue::derive_pda(mint_info.address(), &header.validator, bump)?;
-        require_eq_keys!(
-            &derived_queue,
-            queue_info.address(),
-            ProgramError::InvalidSeeds
-        );
+        let derived_queue = TransferQueue::derive_pda(mint_info.address(), &header.validator, bump)?;
+        require_eq_keys!(&derived_queue, queue_info.address(), ProgramError::InvalidSeeds);
 
         (bump, header.validator)
     };
@@ -78,11 +60,7 @@ pub fn process_delegate_transfer_queue(
         return Ok(());
     }
 
-    require_eq_keys!(
-        owner_program.address(),
-        &crate::ID,
-        ProgramError::IncorrectProgramId
-    );
+    require_eq_keys!(owner_program.address(), &crate::ID, ProgramError::IncorrectProgramId);
     require_eq_keys!(
         system_program.address(),
         &pinocchio_system::ID,

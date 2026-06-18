@@ -1,11 +1,16 @@
 BASE_RPC_URL=https://rpc.magicblock.app/mainnet
 EPHEMERAL_RPC_URL=https://as.magicblock.app
 BASE_DEVNET_RPC_URL=https://rpc.magicblock.app/devnet
-EPHEMERAL_DEVNET_RPC_URL=https://devnet.magicblock.app
+EPHEMERAL_DEVNET_RPC_URL=https://devnet-tee.magicblock.app
+EPHEMERAL_TEE_RPC_URL=https://mainnet-tee.magicblock.app
+EPHEMERAL_DEVNET_TEE_RPC_URL=https://devnet-tee.magicblock.app
+# Optional: RPC used only by the API to submit transfer queue crank transactions.
+# TRANSFER_QUEUE_CRANK_RPC_URL=
+# TRANSFER_QUEUE_DEVNET_CRANK_RPC_URL=
 # METIS_SWAP_API_URL=https://<endpoint>.rpcpool.com/<private_token>/metis
 # Optional: override the built-in private base -> base transfer LUT addresses.
-# PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE=
-# PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE=
+PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE=54M1BrqVSg1UGTmhH44gQPsPVyuMpmcVBkaY2wYNSVZB
+PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE=E26JGdRsdKkGe6oRU4Un24agZjBF2Bg9z1ctfZByETRo
 # Optional: JSON-encoded sponsor secret key array for gasless transfers.
 # GASLESS_SPONSOR_SECRET_KEY=
 CORS_ORIGIN=*

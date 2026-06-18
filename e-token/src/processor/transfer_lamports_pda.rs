@@ -1,9 +1,12 @@
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
-use pinocchio::sysvars::rent::Rent;
-use pinocchio::sysvars::Sysvar;
-use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use ephemeral_spl_api::{instructions::AmountAndSaltArgs, require, require_eq_keys, require_n_accounts};
+use pinocchio::{
+    error::ProgramError,
+    sysvars::{rent::Rent, Sysvar},
+    AccountView, ProgramResult,
+};
+use wheels::layout::Decodable as _;
 
-use crate::processor::internal::lamports_pda::{derive_lamports_pda, AmountAndSaltArgs};
+use crate::processor::internal::lamports_pda::derive_lamports_pda;
 
 ///
 /// Executes on:
@@ -17,10 +20,7 @@ use crate::processor::internal::lamports_pda::{derive_lamports_pda, AmountAndSal
 /// Instruction Data: amount (u64) + salt ([u8; 32])
 ///
 #[inline(never)]
-pub fn process_transfer_lamports_pda(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_transfer_lamports_pda(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         payer_info, // force multi-line
         lamports_pda_info,
@@ -29,25 +29,15 @@ pub fn process_transfer_lamports_pda(
 
     let args = AmountAndSaltArgs::decode(instruction_data)?;
 
-    require!(
-        payer_info.is_signer(),
-        ProgramError::MissingRequiredSignature
-    );
+    require!(payer_info.is_signer(), ProgramError::MissingRequiredSignature);
     require!(
         lamports_pda_info.owned_by(&crate::ID),
         ProgramError::InvalidAccountOwner
     );
 
-    require!(
-        lamports_pda_info.data_len() == 0,
-        ProgramError::InvalidAccountData
-    );
+    require!(lamports_pda_info.data_len() == 0, ProgramError::InvalidAccountData);
 
-    let (derived_lamports_pda, _) = derive_lamports_pda(
-        payer_info.address(),
-        destination_info.address(),
-        args.salt(),
-    );
+    let (derived_lamports_pda, _) = derive_lamports_pda(payer_info.address(), destination_info.address(), args.salt());
     require_eq_keys!(
         &derived_lamports_pda,
         lamports_pda_info.address(),
@@ -66,15 +56,8 @@ pub fn process_transfer_lamports_pda(
     transfer_lamports(lamports_pda_info, destination_info, args.amount())
 }
 
-fn transfer_lamports(
-    source: &AccountView,
-    destination: &AccountView,
-    amount: u64,
-) -> ProgramResult {
-    require!(
-        source.address() != destination.address(),
-        ProgramError::InvalidArgument
-    );
+fn transfer_lamports(source: &AccountView, destination: &AccountView, amount: u64) -> ProgramResult {
+    require!(source.address() != destination.address(), ProgramError::InvalidArgument);
 
     let updated_source_lamports = source
         .lamports()

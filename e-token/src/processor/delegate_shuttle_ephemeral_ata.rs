@@ -1,14 +1,12 @@
-use alloc::vec;
-use alloc::vec::Vec;
-use data_layout::variable_offset_layout;
-use ephemeral_rollups_pinocchio::instruction::DelegateAccountCpiBuilder;
-use ephemeral_rollups_pinocchio::types::DelegateConfig;
-use ephemeral_spl_api::debug_log;
-use ephemeral_spl_api::state::{
-    ephemeral_ata::EphemeralAta, load_initialized, shuttle_ephemeral_ata::ShuttleMetadata,
+use ephemeral_rollups_pinocchio::{instruction::DelegateAccountCpiBuilder, types::DelegateConfig};
+use ephemeral_spl_api::{
+    debug_log,
+    instructions::DelegateShuttleArgs,
+    require, require_eq_keys, require_n_accounts,
+    state::{ephemeral_ata::EphemeralAta, load_initialized, shuttle_ephemeral_ata::ShuttleMetadata},
 };
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
-use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use wheels::layout::Decodable as _;
 
 ///
 /// Executes on:
@@ -27,10 +25,7 @@ use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
 ///
 /// Instruction Data: DelegateShuttleArgs
 ///
-pub fn process_delegate_shuttle_ephemeral_ata(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_delegate_shuttle_ephemeral_ata(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         payer_info, // force multi-line
         shuttle_info,
@@ -50,10 +45,7 @@ pub fn process_delegate_shuttle_ephemeral_ata(
         return Ok(());
     }
 
-    require!(
-        shuttle_info.owned_by(&crate::ID),
-        ProgramError::InvalidAccountOwner
-    );
+    require!(shuttle_info.owned_by(&crate::ID), ProgramError::InvalidAccountOwner);
 
     // Loading the account to check if the shuttle is correctly initialized
     load_initialized::<ShuttleMetadata>(unsafe { shuttle_info.borrow_unchecked() })?;
@@ -64,16 +56,13 @@ pub fn process_delegate_shuttle_ephemeral_ata(
     );
 
     let (mint, eata_bump) = {
-        let ephemeral_ata =
-            load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
+        let ephemeral_ata = load_initialized::<EphemeralAta>(unsafe { ephemeral_ata_info.borrow_unchecked() })?;
         require_eq_keys!(
             &ephemeral_ata.owner,
             shuttle_info.address(),
             ProgramError::InvalidAccountData
         );
-        #[allow(clippy::clone_on_copy)]
-        let mint = ephemeral_ata.mint.clone();
-        (mint, ephemeral_ata.bump)
+        (ephemeral_ata.mint, ephemeral_ata.bump)
     };
 
     let derived_ephemeral_ata = EphemeralAta::derive_pda(shuttle_info.address(), &mint, eata_bump)?;
@@ -86,9 +75,7 @@ pub fn process_delegate_shuttle_ephemeral_ata(
     let seeds: &[&[u8]] = &[shuttle_info.address().as_ref(), mint.as_ref()];
 
     let config = DelegateConfig {
-        validator: args
-            .validator()
-            .map(|slice| Address::new_from_array(*slice)),
+        validator: args.validator().copied(),
         ..DelegateConfig::default()
     };
 
@@ -108,10 +95,3 @@ pub fn process_delegate_shuttle_ephemeral_ata(
     .config(config)
     .invoke()
 }
-
-#[variable_offset_layout(buffer_offset = 1, option = implicit)]
-pub struct DelegateShuttleArgs {
-    pub validator: Option<[u8; 32]>,
-}
-
-static_assertions::const_assert!(matches!(DelegateShuttleArgs::DATA_LENS, [0, 32]));

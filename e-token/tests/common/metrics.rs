@@ -4,9 +4,13 @@
 //! Metric keys are short `area::step` strings (for example `del_eata::delegate`, `tq_auto::crank_1`).
 //! Relative paths are resolved from the **workspace** root (the parent of this crate’s manifest).
 
-use std::collections::HashMap;
-use std::fs;
-use std::path::{Path, PathBuf};
+#![allow(dead_code)]
+
+use std::{
+    collections::HashMap,
+    fs,
+    path::{Path, PathBuf},
+};
 
 use fslock::LockFile;
 use serde::{Deserialize, Serialize};
@@ -24,8 +28,7 @@ fn workspace_root() -> PathBuf {
 }
 
 fn metrics_json_path() -> PathBuf {
-    let raw = std::env::var(ENV_METRICS_JSON_PATH)
-        .unwrap_or_else(|_| DEFAULT_METRICS_JSON_PATH.to_string());
+    let raw = std::env::var(ENV_METRICS_JSON_PATH).unwrap_or_else(|_| DEFAULT_METRICS_JSON_PATH.to_string());
     let path = PathBuf::from(raw);
     if path.is_absolute() {
         path
@@ -77,12 +80,7 @@ pub fn record_compute_units(entry_key: &str, compute_units_consumed: u64) {
         } else {
             HashMap::new()
         };
-        if let Some(_) = map.insert(
-            entry_key.to_string(),
-            CuEntry {
-                compute_units_consumed,
-            },
-        ) {
+        if let Some(_) = map.insert(entry_key.to_string(), CuEntry { compute_units_consumed }) {
             // If the env var is explicitly set, panic if the entry key already exists.
             if std::env::var(ENV_METRICS_JSON_PATH).is_ok() {
                 panic!("entry_key already exists: {entry_key}");
@@ -94,11 +92,7 @@ pub fn record_compute_units(entry_key: &str, compute_units_consumed: u64) {
 
 /// Append CU from transaction metadata (if any) under `entry_key`.
 pub fn record_compute_units_from_result(entry_key: &str, res: &BanksTransactionResultWithMetadata) {
-    let cu = res
-        .metadata
-        .as_ref()
-        .map(|m| m.compute_units_consumed)
-        .unwrap_or(0);
+    let cu = res.metadata.as_ref().map(|m| m.compute_units_consumed).unwrap_or(0);
     record_compute_units(entry_key, cu);
 }
 

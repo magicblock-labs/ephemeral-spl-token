@@ -1,14 +1,11 @@
 use ephemeral_rollups_pinocchio::{
     acl::permission_pda_from_permissioned_account,
     pda::{
-        delegate_buffer_pda_from_delegated_account_and_owner_program,
-        delegation_metadata_pda_from_delegated_account,
+        delegate_buffer_pda_from_delegated_account_and_owner_program, delegation_metadata_pda_from_delegated_account,
         delegation_record_pda_from_delegated_account,
     },
 };
-use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
-use ephemeral_spl_api::ID as PROGRAM;
+use ephemeral_spl_api::{instruction, state::ephemeral_ata::EphemeralAta, ID as PROGRAM};
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::rent::Rent;
@@ -68,8 +65,7 @@ async fn delegate_ephemeral_ata_permission_succeeds() {
             AccountMeta::new_readonly(permission_program_id, false),
         ],
         data: {
-            let flag =
-                ephemeral_rollups_pinocchio::acl::types::MemberFlags::default().to_acl_flag_byte();
+            let flag = ephemeral_rollups_pinocchio::acl::types::MemberFlags::default().to_acl_flag_byte();
             instruction::ESplInstruction::CreateEphemeralAtaPermission.with_data(&[flag])
         },
     };
@@ -80,16 +76,10 @@ async fn delegate_ephemeral_ata_permission_succeeds() {
         &[&payer_kp],
         context.last_blockhash,
     );
-    context
-        .banks_client
-        .process_transaction(tx_init)
-        .await
-        .unwrap();
+    context.banks_client.process_transaction(tx_init).await.unwrap();
 
-    let buffer_pda = delegate_buffer_pda_from_delegated_account_and_owner_program(
-        &permission_pda,
-        &permission_program_id,
-    );
+    let buffer_pda =
+        delegate_buffer_pda_from_delegated_account_and_owner_program(&permission_pda, &permission_program_id);
     let delegation_record_pda = delegation_record_pda_from_delegated_account(&permission_pda);
     let delegation_metadata_pda = delegation_metadata_pda_from_delegated_account(&permission_pda);
 
@@ -116,28 +106,16 @@ async fn delegate_ephemeral_ata_permission_succeeds() {
         &[&payer_kp],
         context.last_blockhash,
     );
-    common::metrics::process_transaction_record_cu(
-        &context.banks_client,
-        tx_delegate,
-        "del_eata_perm::delegate",
-    )
-    .await
-    .unwrap();
+    common::metrics::process_transaction_record_cu(&context.banks_client, tx_delegate, "del_eata_perm::delegate")
+        .await
+        .unwrap();
 
     let blockhash = context.get_new_latest_blockhash().await.unwrap();
-    let tx_redelegate = Transaction::new_signed_with_payer(
-        &[ix_delegate_permission],
-        Some(&payer),
-        &[&payer_kp],
-        blockhash,
-    );
-    common::metrics::process_transaction_record_cu(
-        &context.banks_client,
-        tx_redelegate,
-        "del_eata_perm::redelegate",
-    )
-    .await
-    .unwrap();
+    let tx_redelegate =
+        Transaction::new_signed_with_payer(&[ix_delegate_permission], Some(&payer), &[&payer_kp], blockhash);
+    common::metrics::process_transaction_record_cu(&context.banks_client, tx_redelegate, "del_eata_perm::redelegate")
+        .await
+        .unwrap();
 
     let permission_account = context
         .banks_client
@@ -154,8 +132,7 @@ async fn delegate_ephemeral_ata_permission_succeeds() {
 #[tokio::test]
 async fn delegate_ephemeral_ata_permission_non_owner_succeeds() {
     let permission_program_id = utils::permission_program_id();
-    let validator =
-        utils::test_pubkey("delegate_ephemeral_ata_permission_non_owner_succeeds::validator");
+    let validator = utils::test_pubkey("delegate_ephemeral_ata_permission_non_owner_succeeds::validator");
 
     let context = utils::start_program_test_with(PROGRAM, |pt| {
         pt.add_account(
@@ -201,8 +178,7 @@ async fn delegate_ephemeral_ata_permission_non_owner_succeeds() {
             AccountMeta::new_readonly(permission_program_id, false),
         ],
         data: {
-            let flag =
-                ephemeral_rollups_pinocchio::acl::types::MemberFlags::default().to_acl_flag_byte();
+            let flag = ephemeral_rollups_pinocchio::acl::types::MemberFlags::default().to_acl_flag_byte();
             instruction::ESplInstruction::CreateEphemeralAtaPermission.with_data(&[flag])
         },
     };
@@ -213,16 +189,10 @@ async fn delegate_ephemeral_ata_permission_non_owner_succeeds() {
         &[&payer_kp],
         context.last_blockhash,
     );
-    context
-        .banks_client
-        .process_transaction(tx_init)
-        .await
-        .unwrap();
+    context.banks_client.process_transaction(tx_init).await.unwrap();
 
-    let buffer_pda = delegate_buffer_pda_from_delegated_account_and_owner_program(
-        &permission_pda,
-        &permission_program_id,
-    );
+    let buffer_pda =
+        delegate_buffer_pda_from_delegated_account_and_owner_program(&permission_pda, &permission_program_id);
     let delegation_record_pda = delegation_record_pda_from_delegated_account(&permission_pda);
     let delegation_metadata_pda = delegation_metadata_pda_from_delegated_account(&permission_pda);
 
@@ -249,13 +219,9 @@ async fn delegate_ephemeral_ata_permission_non_owner_succeeds() {
         &[&payer_kp],
         context.last_blockhash,
     );
-    common::metrics::process_transaction_record_cu(
-        &context.banks_client,
-        tx_delegate,
-        "del_eata_perm::non_owner",
-    )
-    .await
-    .unwrap();
+    common::metrics::process_transaction_record_cu(&context.banks_client, tx_delegate, "del_eata_perm::non_owner")
+        .await
+        .unwrap();
 
     let permission_account = context
         .banks_client

@@ -1,18 +1,20 @@
 use alloc::vec::Vec;
 
-use crate::processor::initialize_rent_pda::RENT_PDA;
-use crate::processor::internal;
-use crate::processor::internal::ASSOCIATED_TOKEN_PROGRAM_ID;
-use dlp_api::pda::magic_fee_vault_pda_from_validator;
-use ephemeral_rollups_pinocchio::intent_bundle::{
-    ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta,
+use ephemeral_rollups_pinocchio::{
+    intent_bundle::{ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta},
+    pda::magic_fee_vault_pda_from_validator,
 };
-use ephemeral_spl_api::require;
-use ephemeral_spl_api::state::transfer_queue::QUEUE_SEED;
-use hydra_api::instruction::SYSTEM_PROGRAM_ID;
-use pinocchio::cpi::{Seed, Signer};
-use pinocchio::error::ProgramError;
-use pinocchio::{AccountView, ProgramResult};
+use ephemeral_spl_api::{instructions::ExecuteQueuedTransferArgs, require, state::transfer_queue::QUEUE_SEED};
+use pinocchio::{
+    cpi::{Seed, Signer},
+    error::ProgramError,
+    AccountView, ProgramResult,
+};
+use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
+use solana_address::Address;
+use wheels::layout::Encodable as _;
+
+use crate::processor::{internal, internal::rent_pda::RENT_PDA};
 
 const MAGIC_INTENT_BUNDLE_DATA_LEN: usize = 512;
 pub(crate) const EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX: u8 = 0;
@@ -25,9 +27,9 @@ pub(crate) struct IntentBundleAccounts<'a> {
 }
 
 pub(crate) struct QueueSignerState {
-    pub mint: ephemeral_spl_api::Address,
+    pub mint: Address,
     pub queue_bump: u8,
-    pub validator: ephemeral_spl_api::Address,
+    pub validator: Address,
 }
 
 #[inline(always)]
@@ -45,11 +47,9 @@ pub(crate) fn invoke_standalone_action(
     ];
     let signers = [Signer::from(&signer_seeds)];
     let mut intent_bundle_data = [0_u8; MAGIC_INTENT_BUNDLE_DATA_LEN];
-    let derived_magic_fee_vault =
-        magic_fee_vault_pda_from_validator(&state.validator.to_bytes().into());
+    let derived_magic_fee_vault = magic_fee_vault_pda_from_validator(&state.validator);
     require!(
-        derived_magic_fee_vault.to_bytes()
-            == magic_accounts.magic_fee_vault_info.address().to_bytes(),
+        derived_magic_fee_vault.to_bytes() == magic_accounts.magic_fee_vault_info.address().to_bytes(),
         ProgramError::InvalidSeeds
     );
 
@@ -75,14 +75,14 @@ impl QueuedTransferActionBuilder {
 
     pub(crate) fn new(
         queue_info: &AccountView,
-        destination_owner: &ephemeral_spl_api::Address,
-        vault: &ephemeral_spl_api::Address,
-        mint: &ephemeral_spl_api::Address,
-        token_program: &ephemeral_spl_api::Address,
-        args: crate::ExecuteQueuedTransferArgs,
+        destination_owner: &Address,
+        vault: &Address,
+        mint: &Address,
+        token_program: &Address,
+        args: ExecuteQueuedTransferArgs,
     ) -> Self {
-        let data = crate::instruction::ESplInternalInstruction::ExecuteReadyQueuedTransfer
-            .with_data(&args.encode().unwrap());
+        let data =
+            crate::instruction::ESplInternalInstruction::ExecuteReadyQueuedTransfer.with_data(&args.encode().unwrap());
 
         Self {
             queue_info: queue_info.clone(),
@@ -95,8 +95,7 @@ impl QueuedTransferActionBuilder {
         CallHandler {
             destination_program: crate::ID,
             escrow_authority: self.queue_info.clone(),
-            args: ActionArgs::new(&self.data)
-                .with_escrow_index(EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX),
+            args: ActionArgs::new(&self.data).with_escrow_index(EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX),
             compute_units: Self::EXECUTE_READY_QUEUED_TRANSFER_COMPUTE_UNITS,
             accounts: &self.accounts,
             callback: None,
@@ -104,18 +103,13 @@ impl QueuedTransferActionBuilder {
     }
 
     fn action_accounts(
-        destination_owner: &ephemeral_spl_api::Address,
-        vault: &ephemeral_spl_api::Address,
-        mint: &ephemeral_spl_api::Address,
-        token_program: &ephemeral_spl_api::Address,
+        destination_owner: &Address,
+        vault: &Address,
+        mint: &Address,
+        token_program: &Address,
     ) -> [ShortAccountMeta; 9] {
-        let vault_token_account =
-            internal::derive_associated_token_address_with_program(vault, mint, token_program);
-        let destination_token_account = internal::derive_associated_token_address_with_program(
-            &destination_owner,
-            mint,
-            token_program,
-        );
+        let vault_token_account = internal::get_associated_token_address(vault, mint, token_program);
+        let destination_token_account = internal::get_associated_token_address(destination_owner, mint, token_program);
 
         // Note that we initialize CallHandler with 9 accounts only, and then 3 more accounts [source_program,
         // escrow_authority, escrow_signer] are appended by DLP's CallHandlerV2 instruction, which is
@@ -150,7 +144,7 @@ impl QueuedTransferActionBuilder {
                 is_writable: false,
             },
             ShortAccountMeta {
-                pubkey: ASSOCIATED_TOKEN_PROGRAM_ID,
+                pubkey: pinocchio_associated_token_account::ID,
                 is_writable: false,
             },
             ShortAccountMeta {

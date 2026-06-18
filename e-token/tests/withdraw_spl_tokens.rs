@@ -1,11 +1,14 @@
-use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
-use ephemeral_spl_api::state::{load, RawType};
-use ephemeral_spl_api::ID as PROGRAM;
+use ephemeral_spl_api::{
+    instruction,
+    state::{ephemeral_ata::EphemeralAta, load, RawType},
+    ID as PROGRAM,
+};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program_pack::Pack;
+use solana_program_test::tokio;
+use solana_signer::Signer;
+use solana_transaction::Transaction;
 use spl_token_interface::state::Account;
-use {solana_program_test::tokio, solana_signer::Signer, solana_transaction::Transaction};
 
 mod common;
 mod utils;
@@ -26,15 +29,8 @@ async fn withdraw_spl_tokens_decrements_ephemeral_amount() {
 
     // Derive PDAs and setup mint/accounts via utils
     let pdas = utils::derive_pdas(PROGRAM, user, mint);
-    let setup = utils::setup_mint_and_token_accounts(
-        &mut context,
-        &payer_kp,
-        &mint_kp,
-        DECIMALS,
-        STARTING_BALANCE,
-        2,
-    )
-    .await;
+    let setup =
+        utils::setup_mint_and_token_accounts(&mut context, &payer_kp, &mint_kp, DECIMALS, STARTING_BALANCE, 2).await;
 
     let ephemeral_ata = pdas.ephemeral_ata;
     let vault = pdas.vault;
@@ -78,11 +74,7 @@ async fn withdraw_spl_tokens_decrements_ephemeral_amount() {
         &[&payer_kp],
         context.last_blockhash,
     );
-    context
-        .banks_client
-        .process_transaction(tx_init)
-        .await
-        .unwrap();
+    context.banks_client.process_transaction(tx_init).await.unwrap();
 
     // Deposit first to fund the vault and set ephemeral amount
     let deposit_amount: u64 = 1_000 * 10u64.pow(DECIMALS as u32);
@@ -101,17 +93,9 @@ async fn withdraw_spl_tokens_decrements_ephemeral_amount() {
         ],
         data: deposit_data,
     };
-    let tx_deposit = Transaction::new_signed_with_payer(
-        &[ix_deposit],
-        Some(&payer),
-        &[&payer_kp],
-        context.last_blockhash,
-    );
-    context
-        .banks_client
-        .process_transaction(tx_deposit)
-        .await
-        .unwrap();
+    let tx_deposit =
+        Transaction::new_signed_with_payer(&[ix_deposit], Some(&payer), &[&payer_kp], context.last_blockhash);
+    context.banks_client.process_transaction(tx_deposit).await.unwrap();
 
     // Now withdraw a portion
     let withdraw_amount: u64 = 400 * 10u64.pow(DECIMALS as u32);
@@ -121,30 +105,22 @@ async fn withdraw_spl_tokens_decrements_ephemeral_amount() {
     let ix_withdraw = Instruction {
         program_id: PROGRAM,
         accounts: vec![
-            AccountMeta::new_readonly(payer, true),  // [signer]
-            AccountMeta::new(ephemeral_ata, false),  // [writable]
-            AccountMeta::new_readonly(vault, false), // [] vault data
-            AccountMeta::new_readonly(mint, false),  // [] mint
-            AccountMeta::new(vault_token, false),    // [writable] source (vault)
-            AccountMeta::new(user_dest, false),      // [writable] destination (user)
+            AccountMeta::new_readonly(payer, true),                    // [signer]
+            AccountMeta::new(ephemeral_ata, false),                    // [writable]
+            AccountMeta::new_readonly(vault, false),                   // [] vault data
+            AccountMeta::new_readonly(mint, false),                    // [] mint
+            AccountMeta::new(vault_token, false),                      // [writable] source (vault)
+            AccountMeta::new(user_dest, false),                        // [writable] destination (user)
             AccountMeta::new_readonly(spl_token_interface::ID, false), // [] token program
         ],
         data: withdraw_data,
     };
 
-    let tx_withdraw = Transaction::new_signed_with_payer(
-        &[ix_withdraw],
-        Some(&payer),
-        &[&payer_kp],
-        context.last_blockhash,
-    );
-    common::metrics::process_transaction_record_cu(
-        &context.banks_client,
-        tx_withdraw,
-        "wd_spl::withdraw",
-    )
-    .await
-    .unwrap();
+    let tx_withdraw =
+        Transaction::new_signed_with_payer(&[ix_withdraw], Some(&payer), &[&payer_kp], context.last_blockhash);
+    common::metrics::process_transaction_record_cu(&context.banks_client, tx_withdraw, "wd_spl::withdraw")
+        .await
+        .unwrap();
 
     // Check SPL balances
     let vault_after = context

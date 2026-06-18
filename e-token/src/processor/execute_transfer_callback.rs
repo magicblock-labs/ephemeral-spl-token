@@ -1,23 +1,22 @@
-use crate::processor::internal::callbacks::{
-    MagicResponseView, TransferCallbackArgs, TransferCallbackArgsView,
-};
-use crate::processor::internal::group_receipt_accounts;
-#[cfg(feature = "logging")]
-use crate::processor::internal::group_receipt_accounts::group_receipt_log;
-use crate::processor::internal::group_receipt_accounts::{
-    group_receipt_close, GroupReceiptAccounts,
-};
-use crate::processor::internal::refund::{schedule_refund_on_failure, RefundOnFailureAccounts};
-use crate::processor::utils::CALLBACK_SIGNER;
-use ephemeral_spl_api::state::group_receipt::{GroupReceipt, TransferReceipt};
-use ephemeral_spl_api::state::transfer_queue::{queue_views_checked, TransferQueueHeader};
 use ephemeral_spl_api::{
     debug_log, require, require_eq_keys, require_n_accounts, require_owned_by,
+    state::{
+        group_receipt::{GroupReceipt, TransferReceipt},
+        transfer_queue::{queue_views_checked, TransferQueueHeader},
+    },
 };
-use pinocchio::error::ProgramError;
-use pinocchio::{AccountView, ProgramResult};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use wheels::layout::Decodable as _;
 
-pub const GROUP_RECEIPT_SEED: &[u8] = b"group-receipt";
+#[cfg(feature = "logging")]
+use crate::processor::internal::group_receipt_log;
+use crate::processor::internal::{
+    callbacks::MagicResponseView,
+    group_receipt::{derive_group_receipt_id, TransferCallbackArgs, TransferCallbackArgsView},
+    group_receipt_close,
+    refund::{schedule_refund_on_failure, RefundOnFailureAccounts},
+    GroupReceiptAccounts, CALLBACK_SIGNER,
+};
 
 ///
 /// Executes on: ER only.
@@ -40,20 +39,17 @@ pub const GROUP_RECEIPT_SEED: &[u8] = b"group-receipt";
 ///
 /// Instruction Data: MagicResponse
 ///
-pub fn process_execute_transfer_callback(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_execute_transfer_callback(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
-        callback_signer,
+        callback_signer, // force multi-line
         group_receipt,
         queue_info,
-        _, // vault
+        _vault,
         mint,
-        _, // vault token account
+        _vault_token_account,
         source,
-        _, // source token account
-        _, // token program
+        _source_token_account,
+        _token_program,
         magic_vault,
         magic_fee_vault,
         magic_program,
@@ -61,8 +57,7 @@ pub fn process_execute_transfer_callback(
     ] = require_n_accounts!(accounts, 13);
 
     // Verify validator & queue info
-    let data = unsafe { queue_info.borrow_unchecked() };
-    let (header, _) = queue_views_checked(data)?;
+    let (header, _) = queue_views_checked(unsafe { queue_info.borrow_unchecked() })?;
     validate_common(callback_signer, queue_info, mint, header)?;
 
     let response = MagicResponseView::deserialize(instruction_data)?;
@@ -128,11 +123,7 @@ fn validate_common(
         ProgramError::IncorrectAuthority
     );
     require_owned_by!(queue_info, &crate::ID);
-    require_eq_keys!(
-        &queue_header.mint,
-        mint.address(),
-        ProgramError::InvalidAccountData
-    );
+    require_eq_keys!(&queue_header.mint, mint.address(), ProgramError::InvalidAccountData);
 
     Ok(())
 }
@@ -150,6 +141,17 @@ fn handle_group_receipt(
     args: &TransferCallbackArgsView<'_>,
     response: &MagicResponseView,
 ) -> ProgramResult {
+    debug_log!({
+        use alloc::string::ToString;
+        pinocchio_log::log!(
+            256,
+            "ExecuteTransferCallback group_receipt address: {} data_len: {} owner: {}",
+            group_receipt_info.address().to_string().as_str(),
+            group_receipt_info.data_len(),
+            unsafe { group_receipt_info.owner() }.to_string().as_str()
+        );
+    });
+
     if !group_receipt_info.owned_by(&crate::ID) {
         debug_log!("Group receipt expected to be initialized");
         return Err(ProgramError::InvalidAccountOwner);
@@ -161,11 +163,8 @@ fn handle_group_receipt(
         return Err(ProgramError::InvalidArgument);
     }
 
-    let (expected_group_receipt, _) = group_receipt_accounts::derive_group_receipt_id(
-        queue_info.address(),
-        source.address(),
-        group_receipt.id(),
-    );
+    let (expected_group_receipt, _) =
+        derive_group_receipt_id(queue_info.address(), source.address(), group_receipt.id());
     require!(
         expected_group_receipt.eq(group_receipt_info.address()),
         ProgramError::InvalidAccountData

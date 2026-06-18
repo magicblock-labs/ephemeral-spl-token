@@ -3,16 +3,23 @@ import {
   DELEGATION_PROGRAM_ID,
   DelegationStatus,
   delegateTransferQueueIx,
+  delegateBufferPdaFromDelegatedAccountAndOwnerProgram,
+  delegationMetadataPdaFromDelegatedAccount,
+  delegationRecordPdaFromDelegatedAccount,
   deriveRentPda,
   deriveTransferQueue,
   delegateSpl,
   EPHEMERAL_SPL_TOKEN_PROGRAM_ID,
   ensureTransferQueueCrankIx,
   getDelegationRecord,
+  getAuthToken,
   initRentPdaIx,
   initTransferQueueIx,
   magicFeeVaultPdaFromValidator,
+  PERMISSION_PROGRAM_ID,
+  permissionPdaFromAccount,
   transferSpl,
+  undelegateIx,
   withdrawSpl, initVaultIx, initVaultAtaIx, delegateEphemeralAtaIx, deriveVault, deriveEphemeralAta, deriveVaultAta,
 } from "@magicblock-labs/ephemeral-rollups-sdk";
 import {
@@ -25,11 +32,35 @@ import {
   Transaction,
   TransactionInstruction,
 } from "@solana/web3.js";
+import nacl from "tweetnacl";
 
 import type { AppEnv } from "../env";
 import { ApiError } from "./errors";
-import { BalanceRequest, BalanceResponse, DepositRequest, InitializeMintRequest, InitializeMintResponse, MintInitializationRequest, MintInitializationResponse, TransactionResponse, TransferRequest, WithdrawRequest } from "../routes/spl/spl.schemas";
-import { SendTransactionRequest, SendTransactionResponse } from "../routes/transaction.schemas";
+import {
+  BalanceRequest,
+  BalanceResponse,
+  DepositRequest,
+  InitializeMintRequest,
+  InitializeMintResponse,
+  MintInitializationRequest,
+  MintInitializationResponse,
+  StealthPoolRequest,
+  StealthPoolResponse,
+  StealthPoolStatusRequest,
+  StealthPoolStatusResponse,
+  StealthTransferRequest,
+  TransactionResponse,
+  TransferRequest,
+  TransferQueueEnsureCrankRequest,
+  TransferQueueEnsureCrankResponse,
+  UndelegateEphemeralAtaRequest,
+  UndelegateEphemeralAtaResponse,
+  WithdrawRequest,
+} from "../routes/spl/spl.schemas";
+import {
+  SendTransactionRequest,
+  SendTransactionResponse,
+} from "../routes/transaction.schemas";
 import { getCachedAddressLookupTable, getConnection } from "./rpc-cache";
 
 export const TOKEN_PROGRAM_ID = new PublicKey(
@@ -54,15 +85,32 @@ const MAINNET_USDT_MINT = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
 const DEFAULT_FALLBACK_VALIDATOR = new PublicKey(
   "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57",
 );
+const TEE_VALIDATOR = new PublicKey(
+  "MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo",
+);
+const DEVNET_TEE_RPC_URL = "https://devnet-tee.magicblock.app";
+const MAINNET_TEE_RPC_URL = "https://mainnet-tee.magicblock.app";
+const DELEGATION_ROUTER_RPC_URLS = {
+  mainnet: "https://router.magicblock.app/",
+  devnet: "https://devnet-router.magicblock.app/",
+} as const;
 const TRANSFER_QUEUE_RENT_LAMPORTS = LAMPORTS_PER_SOL / 50;
 const PRIVATE_TRANSFER_MAX_DELAY_MS_LIMIT = 10n * 60n * 1000n;
 const TRANSFER_QUEUE_RECENT_SIGNATURE_LIMIT = 5;
 const TRANSFER_QUEUE_STALE_MS = 60_000;
+const TRANSFER_QUEUE_AUTH_ERROR_FORCE_INTERVAL = 100;
 const SOLANA_WIRE_TRANSACTION_SIZE_LIMIT = 1232;
+const UPDATE_STEALTH_POOL_DISCRIMINATOR = 21;
+const ENSURE_STEALTH_POOL_DELEGATED_DISCRIMINATOR = 22;
+const STEALTH_POOL_SEED = Buffer.from("stealth_pool");
+const STEALTH_POOL_SPLIT_ACROSS_KEYS_FLAG = 1 << 0;
+const MAX_STEALTH_HANDLE_BYTES = 64;
+const STEALTH_HANDLE_STORAGE_BYTES = 1 + MAX_STEALTH_HANDLE_BYTES;
+const MAX_STEALTH_HANDLE_SEED_BYTES = 32;
 // Keep these defaults aligned with scripts/create-private-transfer-lut.js. Updating them requires a redeploy.
 const PRIVATE_BASE_TO_BASE_TRANSFER_LOOKUP_TABLES = {
-  mainnet: new PublicKey("2J2Pw639kU7U6rj7qUXY5sVXdJqyt4DjEcVxzqmFrFds"),
-  devnet: new PublicKey("HFmj4QbofPjhXP2vdnDARDQFw1AucSQTKVAs8df4tkUy"),
+  mainnet: new PublicKey("54M1BrqVSg1UGTmhH44gQPsPVyuMpmcVBkaY2wYNSVZB"),
+  devnet: new PublicKey("E26JGdRsdKkGe6oRU4Un24agZjBF2Bg9z1ctfZByETRo"),
 } as const;
 const PRIVATE_TRANSFER_SETUP_LAMPORTS = 2_039_280n;
 const PRIVATE_TRANSFER_FEE_BASIS_POINTS = 10n;
@@ -71,6 +119,7 @@ const GASLESS_RELAY_FEE_MICRO_USDC = 200_000n; // 0.2 USDC/USDT
 const GASLESS_STABLECOIN_MIN_AMOUNT = BigInt(5 * 1_000_000); // 5 USDC/USDT
 
 const validatorCache = new Map<string, Promise<PublicKey | undefined>>();
+const transferQueueAuthErrorCounts = new Map<string, number>();
 
 type SendTarget = "base" | "ephemeral";
 
@@ -82,8 +131,16 @@ type BlockhashResult = {
 type RpcConfig = {
   baseRpcUrl: string;
   ephemeralRpcUrl: string;
+  transferQueueCrankRpcUrl: string;
   cluster: "mainnet" | "devnet" | "custom";
+  teeRpcUrl?: string;
 };
+
+type ClusterConfigEnvVar
+  = "BASE_DEVNET_RPC_URL"
+    | "EPHEMERAL_DEVNET_RPC_URL"
+    | "EPHEMERAL_TEE_RPC_URL"
+    | "EPHEMERAL_DEVNET_TEE_RPC_URL";
 
 type RpcIdentityResponse = {
   result?: {
@@ -94,24 +151,65 @@ type RpcIdentityResponse = {
   };
 };
 
+type DelegationStatusRpcResponse = {
+  result?: {
+    isDelegated?: boolean;
+    fqdn?: unknown;
+  };
+  error?: {
+    message?: string;
+  };
+};
+
+type DelegationEndpointResolution = {
+  endpoint?: string;
+  error?: string;
+  isDelegated?: boolean;
+};
+
 type BackgroundTaskScheduler = {
   waitUntil: (promise: Promise<unknown>) => void;
 };
 
 type TransferFees = NonNullable<TransactionResponse["fees"]>;
+type EnsureTransferQueueCrankOptions = {
+  force?: boolean;
+};
+type ProjectedWritableAta = {
+  role: string;
+  owner: PublicKey;
+  mint: PublicKey;
+  ata: PublicKey;
+  eata: PublicKey;
+  delegationRecord: PublicKey;
+};
 
 function getBaseConnection(config: RpcConfig) {
   return getConnection(config.baseRpcUrl);
 }
 
-function getEphemeralConnection(config: RpcConfig, authToken?: string) {
+function getConnectionWithOptionalAuthToken(rpcUrl: string, authToken?: string) {
   if (!authToken) {
-    return getConnection(config.ephemeralRpcUrl);
+    return getConnection(rpcUrl);
   }
 
-  const url = new URL(config.ephemeralRpcUrl);
+  const url = new URL(rpcUrl);
   url.searchParams.set("token", authToken);
   return new Connection(url.toString(), "confirmed");
+}
+
+function getEphemeralConnection(config: RpcConfig, authToken?: string) {
+  return getConnectionWithOptionalAuthToken(config.ephemeralRpcUrl, authToken);
+}
+
+async function createThrowawayAuthToken(rpcUrl: string) {
+  const keypair = Keypair.generate();
+  const { token } = await getAuthToken(
+    rpcUrl,
+    keypair.publicKey,
+    async message => nacl.sign.detached(message, keypair.secretKey),
+  );
+  return token;
 }
 
 async function resolveMintTokenProgram(config: RpcConfig, mint: PublicKey) {
@@ -142,17 +240,17 @@ async function resolveMintTokenProgram(config: RpcConfig, mint: PublicKey) {
   });
 }
 
-function createClusterConfigError(missingVars: Array<"BASE_DEVNET_RPC_URL" | "EPHEMERAL_DEVNET_RPC_URL">) {
+function createClusterConfigError(cluster: string, missingVars: ClusterConfigEnvVar[]) {
   return new ApiError(
     500,
     "CONFIG_ERROR",
-    "Missing worker environment variables for cluster=devnet",
+    `Missing worker environment variables for cluster=${cluster}`,
     {
       issues: missingVars.map(name => ({
         path: [name],
-        message: "Required for cluster=devnet",
+        message: `Required for cluster=${cluster}`,
       })),
-      hint: "Set BASE_DEVNET_RPC_URL and EPHEMERAL_DEVNET_RPC_URL before using cluster=devnet.",
+      hint: `Set ${missingVars.join(" and ")} before using cluster=${cluster}.`,
     },
   );
 }
@@ -197,20 +295,32 @@ function getGaslessSponsorKeypair(env: AppEnv) {
 }
 
 export function resolveRpcConfig(env: AppEnv, cluster?: string): RpcConfig {
-  if (!cluster) {
-    return {
-      baseRpcUrl: env.BASE_RPC_URL,
-      ephemeralRpcUrl: env.EPHEMERAL_RPC_URL,
-      cluster: env.CLUSTER,
-    };
-  }
-  const value = cluster.trim();
+  const value = (cluster ?? env.CLUSTER).trim();
   const normalized = value?.toLowerCase();
   if (!value || normalized === "mainnet") {
     return {
       baseRpcUrl: env.BASE_RPC_URL,
       ephemeralRpcUrl: env.EPHEMERAL_RPC_URL,
+      transferQueueCrankRpcUrl: env.TRANSFER_QUEUE_CRANK_RPC_URL ?? env.EPHEMERAL_RPC_URL,
       cluster: "mainnet",
+    };
+  }
+
+  if (normalized === "mainnet-private") {
+    const missingVars = [
+      ...(!env.EPHEMERAL_TEE_RPC_URL ? ["EPHEMERAL_TEE_RPC_URL" as const] : []),
+    ];
+
+    if (missingVars.length > 0) {
+      throw createClusterConfigError("mainnet-private", missingVars);
+    }
+
+    return {
+      baseRpcUrl: env.BASE_RPC_URL,
+      ephemeralRpcUrl: env.EPHEMERAL_TEE_RPC_URL!,
+      transferQueueCrankRpcUrl: env.TRANSFER_QUEUE_CRANK_RPC_URL ?? env.EPHEMERAL_TEE_RPC_URL!,
+      cluster: "mainnet",
+      teeRpcUrl: env.EPHEMERAL_TEE_RPC_URL!,
     };
   }
 
@@ -221,13 +331,42 @@ export function resolveRpcConfig(env: AppEnv, cluster?: string): RpcConfig {
     ];
 
     if (missingVars.length > 0) {
-      throw createClusterConfigError(missingVars);
+      throw createClusterConfigError("devnet", missingVars);
     }
 
     return {
       baseRpcUrl: env.BASE_DEVNET_RPC_URL!,
       ephemeralRpcUrl: env.EPHEMERAL_DEVNET_RPC_URL!,
+      transferQueueCrankRpcUrl: env.TRANSFER_QUEUE_DEVNET_CRANK_RPC_URL ?? env.EPHEMERAL_DEVNET_RPC_URL!,
       cluster: "devnet",
+    };
+  }
+
+  if (normalized === "devnet-private") {
+    const missingVars = [
+      ...(!env.BASE_DEVNET_RPC_URL ? ["BASE_DEVNET_RPC_URL" as const] : []),
+      ...(!env.EPHEMERAL_DEVNET_TEE_RPC_URL ? ["EPHEMERAL_DEVNET_TEE_RPC_URL" as const] : []),
+    ];
+
+    if (missingVars.length > 0) {
+      throw createClusterConfigError("devnet-private", missingVars);
+    }
+
+    return {
+      baseRpcUrl: env.BASE_DEVNET_RPC_URL!,
+      ephemeralRpcUrl: env.EPHEMERAL_DEVNET_TEE_RPC_URL!,
+      transferQueueCrankRpcUrl: env.TRANSFER_QUEUE_DEVNET_CRANK_RPC_URL ?? env.EPHEMERAL_DEVNET_TEE_RPC_URL!,
+      cluster: "devnet",
+      teeRpcUrl: env.EPHEMERAL_DEVNET_TEE_RPC_URL!,
+    };
+  }
+
+  if (cluster === undefined && normalized === "custom") {
+    return {
+      baseRpcUrl: env.BASE_RPC_URL,
+      ephemeralRpcUrl: env.EPHEMERAL_RPC_URL,
+      transferQueueCrankRpcUrl: env.TRANSFER_QUEUE_CRANK_RPC_URL ?? env.EPHEMERAL_RPC_URL,
+      cluster: "custom",
     };
   }
 
@@ -241,10 +380,11 @@ export function resolveRpcConfig(env: AppEnv, cluster?: string): RpcConfig {
     return {
       baseRpcUrl: url.toString(),
       ephemeralRpcUrl: env.EPHEMERAL_RPC_URL,
+      transferQueueCrankRpcUrl: env.TRANSFER_QUEUE_CRANK_RPC_URL ?? env.EPHEMERAL_RPC_URL,
       cluster: "custom",
     };
   } catch {
-    throw new ApiError(400, "INVALID_CLUSTER", "cluster must be \"mainnet\", \"devnet\", or a valid http(s) URL");
+    throw new ApiError(400, "INVALID_CLUSTER", "cluster must be \"mainnet\", \"devnet\", \"mainnet-private\", \"devnet-private\", or a valid http(s) URL");
   }
 }
 
@@ -270,24 +410,35 @@ function parsePublicKey(value: string, fieldName: string) {
   }
 }
 
-function parseAmount(value: string | number, fieldName: string) {
+function parseAmount(
+  value: string | number,
+  fieldName: string,
+  options?: { allowZero?: boolean },
+) {
   try {
+    const allowZero = options?.allowZero ?? false;
     const amount = typeof value === "number"
       ? (() => {
-          if (!Number.isSafeInteger(value) || value <= 0) {
-            throw new Error("non-positive");
+          if (!Number.isSafeInteger(value) || value < 0 || (!allowZero && value === 0)) {
+            throw new Error("invalid amount");
           }
 
           return BigInt(value);
         })()
       : BigInt(value);
 
-    if (amount <= 0n) {
-      throw new Error("non-positive");
+    if (amount < 0n || (!allowZero && amount === 0n)) {
+      throw new Error("invalid amount");
     }
     return amount;
   } catch {
-    throw new ApiError(400, "INVALID_AMOUNT", `${fieldName} must be a positive integer string`);
+    throw new ApiError(
+      400,
+      "INVALID_AMOUNT",
+      options?.allowZero
+        ? `${fieldName} must be a non-negative integer string`
+        : `${fieldName} must be a positive integer string`,
+    );
   }
 }
 
@@ -331,7 +482,7 @@ function getAssociatedTokenAddressSync(
   associatedTokenProgramId: PublicKey = ASSOCIATED_TOKEN_PROGRAM_ID,
 ) {
   if (!allowOwnerOffCurve && !PublicKey.isOnCurve(owner.toBuffer())) {
-    throw new ApiError(400, "INVALID_OWNER", "Owner public key is off-curve");
+    throw new ApiError(400, "INVALID_OWNER", `Owner public key ${owner.toBase58()} is off-curve`);
   }
 
   const [ata] = PublicKey.findProgramAddressSync(
@@ -362,6 +513,183 @@ function createMemoInstruction(memo: string) {
   });
 }
 
+function requireAuthToken(authToken: string | undefined, message: string) {
+  if (!authToken) {
+    throw new ApiError(400, "MISSING_AUTH_TOKEN", message);
+  }
+}
+
+function encodeStealthHandle(handle: string) {
+  const handleBytes = new TextEncoder().encode(handle);
+  if (handleBytes.length === 0 || handleBytes.length > MAX_STEALTH_HANDLE_BYTES) {
+    throw new ApiError(400, "INVALID_STEALTH_HANDLE", `handle must be between 1 and ${MAX_STEALTH_HANDLE_BYTES} UTF-8 bytes`);
+  }
+
+  return handleBytes;
+}
+
+function encodeStealthHandleStorage(handleBytes: Uint8Array) {
+  const storage = Buffer.alloc(STEALTH_HANDLE_STORAGE_BYTES);
+  storage[0] = handleBytes.length;
+  storage.set(handleBytes, 1);
+  return storage;
+}
+
+function deriveStealthPoolFromHandleBytes(handleBytes: Uint8Array): [PublicKey, number] {
+  const handleSeed = Buffer.from(handleBytes);
+  const seeds = handleBytes.length <= MAX_STEALTH_HANDLE_SEED_BYTES
+    ? [STEALTH_POOL_SEED, handleSeed]
+    : [
+        STEALTH_POOL_SEED,
+        handleSeed.subarray(0, MAX_STEALTH_HANDLE_SEED_BYTES),
+        handleSeed.subarray(MAX_STEALTH_HANDLE_SEED_BYTES),
+      ];
+  return PublicKey.findProgramAddressSync(
+    seeds,
+    EPHEMERAL_SPL_TOKEN_PROGRAM_ID,
+  );
+}
+
+export function deriveStealthPoolFromHandle(handle: string): [PublicKey, number] {
+  return deriveStealthPoolFromHandleBytes(encodeStealthHandle(handle));
+}
+
+function resolveStealthPool(handle: string) {
+  const handleBytes = encodeStealthHandle(handle);
+  const [stealthPool] = deriveStealthPoolFromHandleBytes(handleBytes);
+
+  return {
+    handleStorage: encodeStealthHandleStorage(handleBytes),
+    stealthPool,
+  };
+}
+
+function isStealthPoolAccount(accountInfo: { owner: PublicKey } | null) {
+  return accountInfo !== null
+    && (
+      accountInfo.owner.equals(EPHEMERAL_SPL_TOKEN_PROGRAM_ID)
+      || accountInfo.owner.equals(DELEGATION_PROGRAM_ID)
+    );
+}
+
+async function assertStealthPoolExists(
+  config: RpcConfig,
+  handle: string,
+  stealthPool: PublicKey,
+) {
+  let accountInfo: { owner: PublicKey } | null;
+  try {
+    accountInfo = await getBaseConnection(config).getAccountInfo(stealthPool, "confirmed");
+  } catch (error) {
+    throw new ApiError(502, "RPC_ERROR", "Failed to fetch stealth pool account", {
+      handle,
+      stealthPool: stealthPool.toBase58(),
+      message: getSanitizedErrorMessage(error),
+    });
+  }
+
+  if (!isStealthPoolAccount(accountInfo)) {
+    throw new ApiError(400, "STEALTH_POOL_NOT_FOUND", "Stealth handle is not initialized", {
+      handle,
+      stealthPool: stealthPool.toBase58(),
+      owner: accountInfo?.owner.toBase58(),
+    });
+  }
+}
+
+function updateStealthPoolInstruction(
+  payer: PublicKey,
+  stealthPool: PublicKey,
+  authority: PublicKey,
+  handleStorage: Uint8Array,
+  destinations: PublicKey[],
+  flags: number,
+) {
+  if (handleStorage.length !== STEALTH_HANDLE_STORAGE_BYTES) {
+    throw new ApiError(400, "INVALID_STEALTH_HANDLE", "handle storage must be 65 bytes");
+  }
+
+  const data = Buffer.alloc(1 + STEALTH_HANDLE_STORAGE_BYTES + 1 + 1 + destinations.length * 32);
+  let offset = 0;
+  data[offset] = UPDATE_STEALTH_POOL_DISCRIMINATOR;
+  offset += 1;
+  data.set(handleStorage, offset);
+  offset += STEALTH_HANDLE_STORAGE_BYTES;
+  data[offset] = flags;
+  offset += 1;
+  data[offset] = destinations.length;
+  offset += 1;
+
+  for (const destination of destinations) {
+    data.set(destination.toBuffer(), offset);
+    offset += 32;
+  }
+
+  return new TransactionInstruction({
+    programId: EPHEMERAL_SPL_TOKEN_PROGRAM_ID,
+    keys: [
+      { pubkey: payer, isSigner: true, isWritable: true },
+      { pubkey: stealthPool, isSigner: false, isWritable: true },
+      { pubkey: authority, isSigner: true, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data,
+  });
+}
+
+function ensureStealthPoolDelegatedInstruction(
+  payer: PublicKey,
+  stealthPool: PublicKey,
+  handleStorage: Uint8Array,
+  validator?: PublicKey,
+) {
+  if (handleStorage.length !== STEALTH_HANDLE_STORAGE_BYTES) {
+    throw new ApiError(400, "INVALID_STEALTH_HANDLE", "handle storage must be 65 bytes");
+  }
+
+  const data = Buffer.alloc(1 + STEALTH_HANDLE_STORAGE_BYTES + (validator ? 32 : 0));
+  let offset = 0;
+  data[offset] = ENSURE_STEALTH_POOL_DELEGATED_DISCRIMINATOR;
+  offset += 1;
+  data.set(handleStorage, offset);
+  offset += STEALTH_HANDLE_STORAGE_BYTES;
+  if (validator) {
+    data.set(validator.toBuffer(), offset);
+  }
+
+  return new TransactionInstruction({
+    programId: EPHEMERAL_SPL_TOKEN_PROGRAM_ID,
+    keys: [
+      { pubkey: payer, isSigner: true, isWritable: true },
+      { pubkey: stealthPool, isSigner: false, isWritable: true },
+      { pubkey: permissionPdaFromAccount(stealthPool), isSigner: false, isWritable: true },
+      { pubkey: EPHEMERAL_SPL_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      {
+        pubkey: delegateBufferPdaFromDelegatedAccountAndOwnerProgram(
+          stealthPool,
+          EPHEMERAL_SPL_TOKEN_PROGRAM_ID,
+        ),
+        isSigner: false,
+        isWritable: true,
+      },
+      {
+        pubkey: delegationRecordPdaFromDelegatedAccount(stealthPool),
+        isSigner: false,
+        isWritable: true,
+      },
+      {
+        pubkey: delegationMetadataPdaFromDelegatedAccount(stealthPool),
+        isSigner: false,
+        isWritable: true,
+      },
+      { pubkey: DELEGATION_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: PERMISSION_PROGRAM_ID, isSigner: false, isWritable: false },
+    ],
+    data,
+  });
+}
+
 function createTokenTransferInstruction(
   source: PublicKey,
   destination: PublicKey,
@@ -388,6 +716,243 @@ function isProcessPendingTransferQueueRefillInstruction(instruction: Transaction
   return instruction.programId.equals(EPHEMERAL_SPL_TOKEN_PROGRAM_ID)
     && instruction.data.length === 1
     && instruction.data.readInt8(0) === 28;
+}
+
+function readDelegatedValidator(accountInfo: { owner: PublicKey; lamports: number; data: Buffer | Uint8Array } | null) {
+  if (
+    !accountInfo
+    || accountInfo.lamports === 0
+    || !accountInfo.owner.equals(DELEGATION_PROGRAM_ID)
+    || accountInfo.data.length < 40
+  ) {
+    return undefined;
+  }
+
+  return new PublicKey(Buffer.from(accountInfo.data).subarray(8, 40));
+}
+
+function normalizeRpcEndpoint(value: unknown) {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(value.trim());
+
+    if (!["http:", "https:"].includes(url.protocol)) {
+      return undefined;
+    }
+
+    if (url.pathname === "/" && !url.search && !url.hash) {
+      return url.origin;
+    }
+
+    return url.toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function getDelegationRouterRpcUrl(cluster: RpcConfig["cluster"]) {
+  return cluster === "mainnet" || cluster === "devnet"
+    ? DELEGATION_ROUTER_RPC_URLS[cluster]
+    : undefined;
+}
+
+async function tryResolveDelegationEndpointFromRouter(
+  config: RpcConfig,
+  delegatedAccount: PublicKey,
+): Promise<DelegationEndpointResolution> {
+  const routerRpcUrl = getDelegationRouterRpcUrl(config.cluster);
+
+  if (!routerRpcUrl) {
+    return {
+      error: `No delegation router configured for cluster=${config.cluster}`,
+    };
+  }
+
+  try {
+    const response = await fetch(routerRpcUrl, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "getDelegationStatus",
+        params: [delegatedAccount.toBase58()],
+      }),
+    });
+
+    if (!response.ok) {
+      return {
+        error: `Delegation router returned HTTP ${response.status}`,
+      };
+    }
+
+    const payload = await response.json() as DelegationStatusRpcResponse;
+
+    if (payload.error) {
+      return {
+        error: payload.error.message ?? "Delegation router returned an error",
+      };
+    }
+
+    const endpoint = payload.result?.isDelegated
+      ? normalizeRpcEndpoint(payload.result.fqdn)
+      : undefined;
+
+    return {
+      endpoint,
+      isDelegated: payload.result?.isDelegated,
+      error: payload.result?.isDelegated && !endpoint
+        ? "Delegation router did not return a usable fqdn"
+        : undefined,
+    };
+  } catch (error) {
+    return {
+      error: getSanitizedErrorMessage(error),
+    };
+  }
+}
+
+function getHardcodedTeeRpcEndpoint(config: RpcConfig, validator: PublicKey | undefined) {
+  if (!validator?.equals(TEE_VALIDATOR)) {
+    return undefined;
+  }
+
+  if (config.teeRpcUrl) {
+    return config.teeRpcUrl;
+  }
+
+  if (config.cluster === "devnet") {
+    return DEVNET_TEE_RPC_URL;
+  }
+
+  if (config.cluster === "mainnet") {
+    return MAINNET_TEE_RPC_URL;
+  }
+
+  return undefined;
+}
+
+async function resolveUndelegateEphemeralRpcEndpoint(
+  config: RpcConfig,
+  delegatedAccount: PublicKey,
+) {
+  const routerResolution = await tryResolveDelegationEndpointFromRouter(config, delegatedAccount);
+
+  if (routerResolution.endpoint) {
+    return routerResolution.endpoint;
+  }
+
+  const delegationRecord = delegationRecordPdaFromDelegatedAccount(delegatedAccount);
+  let delegationAccount: Awaited<ReturnType<Connection["getAccountInfo"]>>;
+  try {
+    delegationAccount = await getBaseConnection(config).getAccountInfo(delegationRecord, "confirmed");
+  } catch (error) {
+    throw new ApiError(502, "RPC_ERROR", "Failed to fetch delegation record", {
+      delegatedAccount: delegatedAccount.toBase58(),
+      delegationRecord: delegationRecord.toBase58(),
+      message: getSanitizedErrorMessage(error),
+    });
+  }
+
+  const delegatedValidator = readDelegatedValidator(delegationAccount);
+  const hardcodedEndpoint = getHardcodedTeeRpcEndpoint(config, delegatedValidator);
+
+  if (hardcodedEndpoint) {
+    return hardcodedEndpoint;
+  }
+
+  throw new ApiError(
+    400,
+    "EPHEMERAL_ENDPOINT_UNRESOLVED",
+    "Ephemeral RPC endpoint cannot be retrieved",
+    {
+      cluster: config.cluster,
+      delegatedAccount: delegatedAccount.toBase58(),
+      delegationRecord: delegationRecord.toBase58(),
+      delegatedValidator: delegatedValidator?.toBase58(),
+      routerIsDelegated: routerResolution.isDelegated,
+      routerError: routerResolution.error,
+    },
+  );
+}
+
+async function assertProjectedWritableAtaValidators(
+  config: RpcConfig,
+  accounts: ProjectedWritableAta[],
+  validator: PublicKey,
+) {
+  if (accounts.length === 0) {
+    return;
+  }
+
+  let delegationAccounts: Awaited<ReturnType<Connection["getMultipleAccountsInfo"]>>;
+  try {
+    delegationAccounts = await getBaseConnection(config).getMultipleAccountsInfo(
+      accounts.map(account => account.delegationRecord),
+      "confirmed",
+    );
+  } catch (error) {
+    throw new ApiError(502, "RPC_ERROR", "Failed to fetch delegation records", {
+      message: getSanitizedErrorMessage(error),
+    });
+  }
+
+  const mismatchedAccounts = accounts.flatMap((account, index) => {
+    const delegatedValidator = readDelegatedValidator(delegationAccounts[index]);
+
+    if (!delegatedValidator || delegatedValidator.equals(validator)) {
+      return [];
+    }
+
+    return [{
+      role: account.role,
+      owner: account.owner.toBase58(),
+      mint: account.mint.toBase58(),
+      ata: account.ata.toBase58(),
+      eata: account.eata.toBase58(),
+      delegationRecord: account.delegationRecord.toBase58(),
+      currentValidator: delegatedValidator.toBase58(),
+      selectedValidator: validator.toBase58(),
+    }];
+  });
+
+  if (mismatchedAccounts.length > 0) {
+    throw new ApiError(
+      400,
+      "EATA_VALIDATOR_MISMATCH",
+      "Projected token account is delegated to another validator",
+      { accounts: mismatchedAccounts },
+    );
+  }
+}
+
+function withPrivateTransferExactOut(
+  instruction: TransactionInstruction,
+  exactOut: boolean,
+) {
+  if (
+    !instruction.programId.equals(EPHEMERAL_SPL_TOKEN_PROGRAM_ID)
+    || instruction.data[0] !== 25
+    || instruction.data[93] !== 1
+    || instruction.data[126] !== instruction.data.length - 127
+  ) {
+    return instruction;
+  }
+
+  return new TransactionInstruction({
+    programId: instruction.programId,
+    keys: instruction.keys,
+    data: Buffer.concat([
+      instruction.data.subarray(0, 13),
+      Buffer.from([exactOut ? 1 : 0]),
+      instruction.data.subarray(13),
+    ]),
+  });
 }
 
 function createRandomShuttleId() {
@@ -472,11 +1037,10 @@ async function resolveRequiredValidator(config: RpcConfig, explicitValidator?: s
   return validator;
 }
 
-async function getBlockhash(config: RpcConfig, source: SendTarget, authToken?: string): Promise<BlockhashResult> {
-  const connection = source === "base"
-    ? getBaseConnection(config)
-    : getEphemeralConnection(config, authToken);
-
+async function getBlockhashFromConnection(
+  connection: Connection,
+  source: SendTarget,
+): Promise<BlockhashResult> {
   try {
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
     return { blockhash, lastValidBlockHeight };
@@ -486,6 +1050,52 @@ async function getBlockhash(config: RpcConfig, source: SendTarget, authToken?: s
       message: getSanitizedErrorMessage(error),
     });
   }
+}
+
+async function getBlockhash(config: RpcConfig, source: SendTarget, authToken?: string): Promise<BlockhashResult> {
+  const connection = source === "base"
+    ? getBaseConnection(config)
+    : getEphemeralConnection(config, authToken);
+
+  return getBlockhashFromConnection(connection, source);
+}
+
+async function getBlockhashFromRpcEndpoint(
+  rpcEndpoint: string,
+  source: SendTarget,
+  authToken?: string,
+): Promise<BlockhashResult> {
+  return getBlockhashFromConnection(
+    getConnectionWithOptionalAuthToken(rpcEndpoint, authToken),
+    source,
+  );
+}
+
+function getTransactionSendRpcEndpoint(config: RpcConfig, input: SendTransactionRequest) {
+  if (input.sendRpcEndpoint !== undefined) {
+    if (input.sendTo !== "ephemeral") {
+      throw new ApiError(
+        400,
+        "INVALID_SEND_RPC_ENDPOINT",
+        "sendRpcEndpoint can only be used when sendTo is ephemeral",
+      );
+    }
+
+    const endpoint = normalizeRpcEndpoint(input.sendRpcEndpoint);
+    if (!endpoint) {
+      throw new ApiError(
+        400,
+        "INVALID_SEND_RPC_ENDPOINT",
+        "sendRpcEndpoint must be a valid http(s) URL",
+      );
+    }
+
+    return endpoint;
+  }
+
+  return input.sendTo === "base"
+    ? config.baseRpcUrl
+    : config.ephemeralRpcUrl;
 }
 
 function decodeTransactionBase64(value: string) {
@@ -521,12 +1131,11 @@ export async function sendSignedTransaction(
   authToken?: string,
 ): Promise<SendTransactionResponse> {
   const config = resolveRpcConfig(env, input.cluster);
+  const rpcEndpoint = getTransactionSendRpcEndpoint(config, input);
   const connection = input.sendTo === "base"
     ? getBaseConnection(config)
-    : getEphemeralConnection(config, authToken);
-  const confirmationRpcEndpoint = input.sendTo === "base"
-    ? config.baseRpcUrl
-    : config.ephemeralRpcUrl;
+    : getConnectionWithOptionalAuthToken(rpcEndpoint, authToken);
+  const confirmationRpcEndpoint = rpcEndpoint;
   const confirmationRequiresAuthToken = input.sendTo === "ephemeral";
   const transaction = decodeTransactionBase64(input.transactionBase64);
   const options: SendOptions = {
@@ -710,6 +1319,7 @@ function serializeTransaction(
   partialSigners: Keypair[] = [],
   from?: SendTarget,
   fees?: TransferFees,
+  sendRpcEndpoint?: string,
 ): TransactionResponse {
   const transaction = createUnsignedTransaction(instructions, feePayer, blockhash);
   if (partialSigners.length > 0) {
@@ -726,6 +1336,7 @@ function serializeTransaction(
       }),
     ).toString("base64"),
     sendTo,
+    sendRpcEndpoint,
     from,
     recentBlockhash: blockhash.blockhash,
     lastValidBlockHeight: blockhash.lastValidBlockHeight,
@@ -838,6 +1449,7 @@ export async function buildDepositTransaction(env: AppEnv, input: DepositRequest
       shuttleId: createRandomShuttleId(),
       escrowIndex: 0,
       idempotent: input.idempotent,
+      private: input.private ?? true,
     });
 
     return serializeTransaction(
@@ -912,6 +1524,8 @@ export async function buildInitializeMintTransaction(
         transferQueue,
         mint,
         validator,
+        undefined,
+        tokenProgram,
       ),
       initRentPdaIx(
         payer,
@@ -960,22 +1574,155 @@ export async function buildInitializeMintTransaction(
   }
 }
 
+export async function buildUndelegateEphemeralAtaTransaction(
+  env: AppEnv,
+  input: UndelegateEphemeralAtaRequest,
+  authToken?: string,
+): Promise<UndelegateEphemeralAtaResponse> {
+  try {
+    const config = resolveRpcConfig(env, input.cluster);
+    const payer = parsePublicKey(input.payer, "payer");
+    const mint = parsePublicKey(input.mint, "mint");
+    await resolveMintTokenProgram(config, mint);
+    const [ephemeralAta] = deriveEphemeralAta(payer, mint);
+    const sendRpcEndpoint = await resolveUndelegateEphemeralRpcEndpoint(config, ephemeralAta);
+    const blockhash = await getBlockhashFromRpcEndpoint(sendRpcEndpoint, "ephemeral", authToken);
+    const instructions = [
+      undelegateIx(payer, mint),
+    ];
+
+    const response = serializeTransaction(
+      "undelegateEphemeralAta",
+      "ephemeral",
+      instructions,
+      payer,
+      blockhash,
+    );
+
+    return {
+      ...response,
+      kind: "undelegateEphemeralAta",
+      version: "legacy",
+      sendTo: "ephemeral",
+      sendRpcEndpoint,
+      recentBlockhash: blockhash.blockhash,
+      lastValidBlockHeight: blockhash.lastValidBlockHeight,
+      instructionCount: instructions.length,
+      requiredSigners: response.requiredSigners,
+      transactionBase64: response.transactionBase64,
+    };
+  } catch (error) {
+    throwTransactionBuildError(error);
+  }
+}
+
+export async function buildUpdateStealthPoolTransaction(
+  env: AppEnv,
+  input: StealthPoolRequest,
+  authToken?: string,
+): Promise<StealthPoolResponse> {
+  try {
+    requireAuthToken(authToken, "authToken is required to initialize stealth pool destinations inside the ER");
+
+    const config = resolveRpcConfig(env, input.cluster);
+    const payer = parsePublicKey(input.payer, "payer");
+    const authority = parsePublicKey(input.authority, "authority");
+    const destinations = input.destinations.map((destination, index) =>
+      parsePublicKey(destination, `destinations[${index}]`));
+    const { handleStorage, stealthPool } = resolveStealthPool(input.handle);
+    const flags = input.splitAcrossKeys ? STEALTH_POOL_SPLIT_ACROSS_KEYS_FLAG : 0;
+    const validator = await resolveValidator(config, input.validator);
+    const setupBlockhash = await getBlockhash(config, "base");
+    const initializeBlockhash = await getBlockhash(config, "ephemeral", authToken);
+    const setupInstructions = [
+      ensureStealthPoolDelegatedInstruction(
+        payer,
+        stealthPool,
+        handleStorage,
+        validator,
+      ),
+    ];
+    const initializeInstructions = [
+      updateStealthPoolInstruction(
+        payer,
+        stealthPool,
+        authority,
+        handleStorage,
+        destinations,
+        flags,
+      ),
+    ];
+
+    const setupTransaction = serializeTransaction(
+      "stealthPool",
+      "base",
+      setupInstructions,
+      payer,
+      setupBlockhash,
+      validator,
+    );
+    const response = serializeTransaction(
+      "stealthPool",
+      "ephemeral",
+      initializeInstructions,
+      payer,
+      initializeBlockhash,
+      validator,
+    );
+
+    return {
+      ...response,
+      kind: "stealthPool",
+      setupTransaction,
+      stealthPool: stealthPool.toBase58(),
+    };
+  } catch (error) {
+    throwTransactionBuildError(error);
+  }
+}
+
+export async function getStealthPoolStatus(
+  env: AppEnv,
+  input: StealthPoolStatusRequest,
+): Promise<StealthPoolStatusResponse> {
+  const config = resolveRpcConfig(env, input.cluster);
+
+  const { stealthPool } = resolveStealthPool(input.handle);
+  const connection = getBaseConnection(config);
+
+  try {
+    const accountInfo = await connection.getAccountInfo(stealthPool, "confirmed");
+    const exists = isStealthPoolAccount(accountInfo);
+
+    return {
+      stealthPool: stealthPool.toBase58(),
+      exists,
+    };
+  } catch (error) {
+    throw new ApiError(502, "RPC_ERROR", "Failed to fetch stealth pool account", {
+      message: getSanitizedErrorMessage(error),
+    });
+  }
+}
+
 export async function buildTransferTransaction(env: AppEnv, input: TransferRequest, authToken?: string) {
   try {
     const config = resolveRpcConfig(env, input.cluster);
     const from = parsePublicKey(input.from, "from");
     const to = parsePublicKey(input.to, "to");
     const mint = parsePublicKey(input.mint, "mint");
-    const amount = parseAmount(input.amount, "amount");
+    const allowZeroAmount = input.visibility === "private"
+      && input.fromBalance === "base"
+      && input.toBalance === "ephemeral";
+    const amount = parseAmount(input.amount, "amount", {
+      allowZero: allowZeroAmount,
+    });
     const shuttleId = createRandomShuttleId();
 
     const minDelayMs = parseOptionalAmount(input.minDelayMs, "minDelayMs");
     const maxDelayMs = parseOptionalAmount(input.maxDelayMs, "maxDelayMs");
     const clientRefId = parseOptionalAmount(input.clientRefId, "clientRefId");
     const split = input.split;
-    const exactOut = input.exactOut;
-
-    console.log("input: ", input);
 
     if (minDelayMs !== undefined && minDelayMs < 0n) {
       throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "minDelayMs must be non-negative");
@@ -1056,6 +1803,23 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       : undefined;
 
     const tokenProgram = await resolveMintTokenProgram(config, mint);
+    if (validator && isPrivateBaseToBaseTransfer(input)) {
+      const sourceAta = getAssociatedTokenAddressSync(mint, from, true, tokenProgram);
+      const [sourceEata] = deriveEphemeralAta(from, mint);
+      await assertProjectedWritableAtaValidators(
+        config,
+        [{
+          role: "source",
+          owner: from,
+          mint,
+          ata: sourceAta,
+          eata: sourceEata,
+          delegationRecord: delegationRecordPdaFromDelegatedAccount(sourceEata),
+        }],
+        validator,
+      );
+    }
+
     const gaslessFeeInstructions = sponsor
       ? [
           createTokenTransferInstruction(
@@ -1082,19 +1846,18 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       initAtasIfMissing: input.initAtasIfMissing,
       initVaultIfMissing: input.initVaultIfMissing,
       shuttleId,
-      privateTransfer: input.minDelayMs !== undefined
-        || input.maxDelayMs !== undefined
-        || input.clientRefId !== undefined
-        || input.split !== undefined
+      privateTransfer: input.visibility === "private"
         ? {
             minDelayMs,
             maxDelayMs,
             clientRefId,
             split,
-            exactOut,
+            exactOut: input.exactOut ?? true,
           }
         : undefined,
     });
+    const normalizedTransferInstructions = transferInstructions.map(instruction =>
+      withPrivateTransferExactOut(instruction, input.exactOut ?? true));
     // Gasless private base->base already adds a relay-fee token transfer. Dropping
     // the opportunistic queue-refill ix keeps the full transaction under Solana's
     // packet limit while preserving the actual private transfer instruction.
@@ -1102,9 +1865,9 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       && input.visibility === "private"
       && input.fromBalance === "base"
       && input.toBalance === "base"
-      && transferInstructions.length > 0
-      ? transferInstructions.filter(ix => !isProcessPendingTransferQueueRefillInstruction(ix))
-      : transferInstructions;
+      && normalizedTransferInstructions.length > 0
+      ? normalizedTransferInstructions.filter(ix => !isProcessPendingTransferQueueRefillInstruction(ix))
+      : normalizedTransferInstructions;
 
     const instructions = [
       ...gaslessFeeInstructions,
@@ -1133,8 +1896,6 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
         return versionedResponse;
       }
     }
-    console.log("instructions: ", instructions);
-
     return serializeTransaction(
       "transfer",
       sendTo,
@@ -1145,10 +1906,48 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       sponsor ? [sponsor] : [],
       input.fromBalance,
       fees,
+      sendTo === "ephemeral" ? config.ephemeralRpcUrl : undefined,
     );
   } catch (error) {
     throwTransactionBuildError(error);
   }
+}
+
+export async function buildStealthTransferTransaction(
+  env: AppEnv,
+  input: StealthTransferRequest,
+  authToken?: string,
+) {
+  console.log("buildStealthTransferTransaction invoked: ", input);
+
+  const config = resolveRpcConfig(env, input.cluster);
+  const { stealthPool } = await resolveStealthPool(input.toHandle);
+  await assertStealthPoolExists(config, input.toHandle, stealthPool);
+
+  const transferInput: TransferRequest = {
+    from: input.from,
+    to: stealthPool.toBase58(),
+    cluster: input.cluster,
+    mint: input.mint,
+    amount: input.amount,
+    visibility: "private",
+    fromBalance: input.fromBalance,
+    toBalance: "base",
+    validator: input.validator,
+    initIfMissing: input.initIfMissing,
+    initAtasIfMissing: input.initAtasIfMissing,
+    initVaultIfMissing: input.initVaultIfMissing,
+    memo: input.memo,
+    minDelayMs: input.minDelayMs,
+    maxDelayMs: input.maxDelayMs,
+    clientRefId: input.clientRefId,
+    split: input.split,
+    exactOut: input.exactOut,
+    gasless: input.gasless,
+    legacy: input.legacy,
+  };
+
+  return buildTransferTransaction(env, transferInput, authToken);
 }
 
 async function getBalanceInternal(
@@ -1210,7 +2009,11 @@ export async function getPrivateBalance(env: AppEnv, input: BalanceRequest, auth
 
     const validator = await resolveRequiredValidator(config);
     if (!delegationRecord.validator.equals(validator)) {
-      return zeroBalanceResponse;
+      throw new ApiError(400, "EATA_DELEGATED_ELSEWHERE", "eATA is delegated to a different validator", {
+        eata: eata.toBase58(),
+        delegatedValidator: delegationRecord.validator.toBase58(),
+        selectedValidator: validator.toBase58(),
+      });
     }
 
     const accountInfo = await getEphemeralConnection(config, authToken).getAccountInfo(ata, "confirmed");
@@ -1224,6 +2027,10 @@ export async function getPrivateBalance(env: AppEnv, input: BalanceRequest, auth
       balance: balance.toString(),
     };
   } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+
     throw new ApiError(502, "RPC_ERROR", "Failed to fetch token balance", {
       location: "ephemeral",
       message: getSanitizedErrorMessage(error),
@@ -1231,10 +2038,14 @@ export async function getPrivateBalance(env: AppEnv, input: BalanceRequest, auth
   }
 }
 
-function getNewestSignatureTimestampMs(signatures: Array<{ blockTime?: number | null }>) {
+function getNewestSuccessfulSignatureTimestampMs(signatures: Array<{ blockTime?: number | null; err?: unknown }>) {
   let newestSignatureTimestampMs: number | undefined;
 
   for (const signature of signatures) {
+    if (signature.err !== null && signature.err !== undefined) {
+      continue;
+    }
+
     if (signature.blockTime === null || signature.blockTime === undefined) {
       continue;
     }
@@ -1249,26 +2060,79 @@ function getNewestSignatureTimestampMs(signatures: Array<{ blockTime?: number | 
   return newestSignatureTimestampMs;
 }
 
+function isAuthFilteredRpcError(error: unknown) {
+  const message = getSanitizedErrorMessage(error).toLowerCase();
+  return message.includes("missing token")
+    || message.includes("invalidtoken")
+    || message.includes("invalid token")
+    || message.includes("401 unauthorized")
+    || message.includes("access denied")
+    || message.includes("unauthorized");
+}
+
+function shouldForceTransferQueueCrankAfterAuthError(transferQueue: PublicKey) {
+  const key = transferQueue.toBase58();
+  const count = (transferQueueAuthErrorCounts.get(key) ?? 0) + 1;
+  transferQueueAuthErrorCounts.set(key, count);
+
+  if (count % TRANSFER_QUEUE_AUTH_ERROR_FORCE_INTERVAL !== 0) {
+    return false;
+  }
+
+  transferQueueAuthErrorCounts.set(key, 0);
+  return true;
+}
+
 async function ensureTransferQueueCrankRunning(
   config: RpcConfig,
   transferQueue: PublicKey,
   validator: PublicKey,
-) {
-  const connection = getEphemeralConnection(config);
-  const signatures = await connection.getSignaturesForAddress(
-    transferQueue,
-    { limit: TRANSFER_QUEUE_RECENT_SIGNATURE_LIMIT },
-    "confirmed",
-  );
-  const newestSignatureTimestampMs = getNewestSignatureTimestampMs(signatures);
+  options: EnsureTransferQueueCrankOptions = {},
+): Promise<string | undefined> {
+  const force = options.force === true;
+  const activityConnection = getEphemeralConnection(config);
+  let activityWasAuthFiltered = false;
+  try {
+    const signatures = await activityConnection.getSignaturesForAddress(
+      transferQueue,
+      { limit: TRANSFER_QUEUE_RECENT_SIGNATURE_LIMIT },
+      "confirmed",
+    );
+    transferQueueAuthErrorCounts.delete(transferQueue.toBase58());
+    const newestSignatureTimestampMs = getNewestSuccessfulSignatureTimestampMs(signatures);
+    const newestSignatureAgeMs = newestSignatureTimestampMs === undefined
+      ? undefined
+      : Date.now() - newestSignatureTimestampMs;
 
-  if (
-    newestSignatureTimestampMs !== undefined
-    && Date.now() - newestSignatureTimestampMs < TRANSFER_QUEUE_STALE_MS
-  ) {
-    return;
+    if (
+      !force
+      && newestSignatureAgeMs !== undefined
+      && newestSignatureAgeMs < TRANSFER_QUEUE_STALE_MS
+    ) {
+      console.warn("ensureTransferQueueCrankRunning (early return): ", newestSignatureTimestampMs, newestSignatureAgeMs, TRANSFER_QUEUE_STALE_MS);
+      return;
+    }
+    console.warn("ensureTransferQueueCrankRunning (ensuring): ", newestSignatureTimestampMs, newestSignatureAgeMs, TRANSFER_QUEUE_STALE_MS);
+  } catch (error) {
+    if (!isAuthFilteredRpcError(error)) {
+      throw error;
+    }
+
+    if (!force && !shouldForceTransferQueueCrankAfterAuthError(transferQueue)) {
+      return;
+    }
+
+    activityWasAuthFiltered = true;
+    console.warn("Forcing transfer queue crank after auth-filtered activity checks", {
+      transferQueue: transferQueue.toBase58(),
+      validator: validator.toBase58(),
+    });
   }
 
+  const crankAuthToken = activityWasAuthFiltered && config.transferQueueCrankRpcUrl === config.ephemeralRpcUrl
+    ? await createThrowawayAuthToken(config.transferQueueCrankRpcUrl)
+    : undefined;
+  const crankConnection = getConnectionWithOptionalAuthToken(config.transferQueueCrankRpcUrl, crankAuthToken);
   const payer = Keypair.generate();
   const magicFeeVault = magicFeeVaultPdaFromValidator(validator);
   const transaction = new Transaction().add(
@@ -1283,8 +2147,8 @@ async function ensureTransferQueueCrankRunning(
   const {
     context: blockhashContext,
     value: { blockhash, lastValidBlockHeight },
-  } = await connection.getLatestBlockhashAndContext("confirmed");
-  const epochInfo = await connection.getEpochInfo({
+  } = await crankConnection.getLatestBlockhashAndContext("confirmed");
+  const epochInfo = await crankConnection.getEpochInfo({
     commitment: "confirmed",
     minContextSlot: blockhashContext.slot,
   });
@@ -1300,6 +2164,8 @@ async function ensureTransferQueueCrankRunning(
   console.log("Preparing transfer queue crank", {
     transferQueue: transferQueue.toBase58(),
     validator: validator.toBase58(),
+    crankRpcUrl: config.transferQueueCrankRpcUrl,
+    crankAuth: crankAuthToken ? "throwaway" : "none",
     blockhash,
     blockhashContextSlot: blockhashContext.slot,
     currentBlockHeight,
@@ -1310,20 +2176,22 @@ async function ensureTransferQueueCrankRunning(
   transaction.lastValidBlockHeight = lastValidBlockHeight;
   transaction.sign(payer);
 
-  const signature = await connection.sendRawTransaction(transaction.serialize(), {
+  const signature = await crankConnection.sendRawTransaction(transaction.serialize(), {
     skipPreflight: true,
     preflightCommitment: "confirmed",
   });
   console.log("Sent transfer queue crank", {
     transferQueue: transferQueue.toBase58(),
     validator: validator.toBase58(),
+    crankRpcUrl: config.transferQueueCrankRpcUrl,
+    crankAuth: crankAuthToken ? "throwaway" : "none",
     signature,
     blockhash,
     blockhashContextSlot: blockhashContext.slot,
     currentBlockHeight,
     lastValidBlockHeight,
   });
-  const confirmation = await connection.confirmTransaction({
+  const confirmation = await crankConnection.confirmTransaction({
     signature,
     blockhash,
     lastValidBlockHeight,
@@ -1332,6 +2200,8 @@ async function ensureTransferQueueCrankRunning(
   if (confirmation.value.err !== null) {
     throw new Error(`Transfer queue crank transaction failed: ${JSON.stringify(confirmation.value.err)}`);
   }
+
+  return signature;
 }
 
 function scheduleTransferQueueCrank(
@@ -1340,6 +2210,7 @@ function scheduleTransferQueueCrank(
   transferQueue: PublicKey,
   validator: PublicKey,
 ) {
+  console.warn("scheduleTransferQueueCrank: ", backgroundScheduler ? "backgroundScheduler exists" : "backgroundScheduler doesn't exist");
   if (!backgroundScheduler) {
     return;
   }
@@ -1353,6 +2224,66 @@ function scheduleTransferQueueCrank(
       });
     }),
   );
+}
+
+export async function ensureTransferQueueCrank(
+  env: AppEnv,
+  input: TransferQueueEnsureCrankRequest,
+): Promise<TransferQueueEnsureCrankResponse> {
+  const config = resolveRpcConfig(env, input.cluster);
+  const mint = parsePublicKey(input.mint, "mint");
+  const validator = await resolveRequiredValidator(config, input.validator);
+  const [transferQueue] = deriveTransferQueue(mint, validator);
+
+  let accountInfo: { owner: PublicKey } | null;
+  try {
+    accountInfo = await getBaseConnection(config).getAccountInfo(transferQueue, "confirmed");
+  } catch (error) {
+    throw new ApiError(502, "RPC_ERROR", "Failed to fetch transfer queue account", {
+      transferQueue: transferQueue.toBase58(),
+      message: getSanitizedErrorMessage(error),
+    });
+  }
+
+  if (accountInfo === null || !accountInfo.owner.equals(DELEGATION_PROGRAM_ID)) {
+    throw new ApiError(400, "TRANSFER_QUEUE_NOT_INITIALIZED", "Transfer queue is not initialized and delegated", {
+      mint: mint.toBase58(),
+      validator: validator.toBase58(),
+      transferQueue: transferQueue.toBase58(),
+      owner: accountInfo?.owner.toBase58(),
+    });
+  }
+
+  try {
+    const crankSignature = await ensureTransferQueueCrankRunning(
+      config,
+      transferQueue,
+      validator,
+      { force: true },
+    );
+
+    if (!crankSignature) {
+      throw new Error("Forced transfer queue crank did not produce a signature");
+    }
+
+    return {
+      mint: mint.toBase58(),
+      validator: validator.toBase58(),
+      transferQueue: transferQueue.toBase58(),
+      crankSignature,
+    };
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+
+    throw new ApiError(502, "RPC_ERROR", "Failed to ensure transfer queue crank", {
+      mint: mint.toBase58(),
+      validator: validator.toBase58(),
+      transferQueue: transferQueue.toBase58(),
+      message: getSanitizedErrorMessage(error),
+    });
+  }
 }
 
 export async function getMintInitializationStatus(
@@ -1370,6 +2301,8 @@ export async function getMintInitializationStatus(
     const accountInfo = await connection.getAccountInfo(transferQueue, "confirmed");
     const initialized = accountInfo !== null
       && accountInfo.owner.equals(DELEGATION_PROGRAM_ID);
+
+    console.warn("getMintInitializationStatus: ", accountInfo ? `${transferQueue.toBase58()} exists` : `${transferQueue.toBase58()} doesn't exist`, initialized);
 
     if (initialized) {
       scheduleTransferQueueCrank(backgroundScheduler, config, transferQueue, validator);

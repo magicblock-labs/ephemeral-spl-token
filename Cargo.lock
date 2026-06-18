@@ -1443,18 +1443,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d7a1e2f27636f116493b8b860f5546edb47c8d8f8ea73e1d2a20be88e28d1fea"
 
 [[package]]
-name = "data-layout"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "pinocchio 0.10.1",
- "pinocchio-log",
- "proc-macro2",
- "quote",
- "syn 2.0.117",
-]
-
-[[package]]
 name = "der"
 version = "0.7.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1838,7 +1826,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4eabedb2d5ca6f4f465436d45c882bcbe23a4ff8d7db2148f0410abbf1972f5b"
 dependencies = [
  "bincode 2.0.1",
- "pinocchio 0.10.1",
+ "pinocchio 0.10.2",
  "pinocchio-pubkey",
  "pinocchio-system",
  "solana-address 2.6.0",
@@ -1851,11 +1839,13 @@ version = "0.0.0"
 dependencies = [
  "bytemuck",
  "ephemeral-rollups-pinocchio",
- "pinocchio 0.10.1",
+ "pinocchio 0.10.2",
  "pinocchio-log",
  "pinocchio-pubkey",
  "solana-address 2.6.0",
  "solana-signature 3.1.0",
+ "static_assertions",
+ "wheels",
 ]
 
 [[package]]
@@ -1865,14 +1855,13 @@ dependencies = [
  "bincode 1.3.3",
  "bytemuck",
  "const-crypto",
- "data-layout",
  "ephemeral-rollups-pinocchio",
  "ephemeral-spl-api",
  "fslock",
  "hydra-api",
  "magicblock-delegation-program-api",
  "magicblock-magic-program-api",
- "pinocchio 0.10.1",
+ "pinocchio 0.10.2",
  "pinocchio-associated-token-account",
  "pinocchio-log",
  "pinocchio-system",
@@ -1881,6 +1870,7 @@ dependencies = [
  "serde_json",
  "serial_test",
  "solana-account 3.3.0",
+ "solana-address 2.6.0",
  "solana-instruction 3.1.0",
  "solana-keypair 3.1.0",
  "solana-program 3.0.0",
@@ -1893,6 +1883,7 @@ dependencies = [
  "solana-transaction 3.0.2",
  "spl-token-interface",
  "static_assertions",
+ "wheels",
 ]
 
 [[package]]
@@ -2002,7 +1993,7 @@ version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a75b8549488b4715defcb0d8a8a1c1c76a80661b5fa106b4ca0e7fce59d7d875"
 dependencies = [
- "five8_core 0.1.2",
+ "five8_core",
 ]
 
 [[package]]
@@ -2011,7 +2002,7 @@ version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23f76610e969fa1784327ded240f1e28a3fd9520c9cec93b636fcf62dd37f772"
 dependencies = [
- "five8_core 1.0.0",
+ "five8_core",
 ]
 
 [[package]]
@@ -2020,7 +2011,7 @@ version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "26dec3da8bc3ef08f2c04f61eab298c3ab334523e55f076354d6d6f613799a7b"
 dependencies = [
- "five8_core 0.1.2",
+ "five8_core",
 ]
 
 [[package]]
@@ -2029,7 +2020,7 @@ version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1a0f1728185f277989ca573a402716ae0beaaea3f76a8ff87ef9dd8fb19436c5"
 dependencies = [
- "five8_core 1.0.0",
+ "five8_core",
 ]
 
 [[package]]
@@ -2037,12 +2028,6 @@ name = "five8_core"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2551bf44bc5f776c15044b9b94153a00198be06743e262afaaa61f11ac7523a5"
-
-[[package]]
-name = "five8_core"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "059c31d7d36c43fe39d89e55711858b4da8be7eb6dabac23c7289b1a19489406"
 
 [[package]]
 name = "flate2"
@@ -3138,9 +3123,9 @@ dependencies = [
 
 [[package]]
 name = "magicblock-delegation-program-api"
-version = "0.1.1"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a413fd0a3ce67bba8c31b681f37088a897d47a3c39fd0d9303725882898ad78"
+checksum = "b8447309107c033ed0b5416c485b64f281a2e49c28adee03d14899fe58301187"
 dependencies = [
  "bincode 1.3.3",
  "borsh 1.6.0",
@@ -3148,7 +3133,7 @@ dependencies = [
  "const-crypto",
  "libsodium-rs",
  "num_enum",
- "pinocchio 0.10.1",
+ "pinocchio 0.10.2",
  "pinocchio-log",
  "pinocchio-pubkey",
  "pinocchio-system",
@@ -3161,7 +3146,7 @@ dependencies = [
  "solana-sha256-hasher 3.1.0",
  "static_assertions",
  "strum 0.28.0",
- "thiserror 2.0.18",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -3692,9 +3677,9 @@ checksum = "5b971851087bc3699b001954ad02389d50c41405ece3548cbcafc88b3e20017a"
 
 [[package]]
 name = "pinocchio"
-version = "0.10.1"
+version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dfad955b2fe8f736e1ea276ebb31820d778ee69c1161146054e9b31be2e73326"
+checksum = "c06810dac15a4ef83d3dabdb4f2f22fb39c9adff669cd2781da4f716510a647c"
 dependencies = [
  "solana-account-view 1.0.0",
  "solana-address 2.6.0",
@@ -3765,7 +3750,7 @@ version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "24044a0815753862b558e179e78f03f7344cb755de48617a09d7d23b50883b6c"
 dependencies = [
- "pinocchio 0.10.1",
+ "pinocchio 0.10.2",
  "solana-address 2.6.0",
 ]
 
@@ -10139,6 +10124,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "12bed680863276c63889429bfd6cab3b99943659923822de1c8a39c49e4d722c"
 dependencies = [
  "rustls-pki-types",
+]
+
+[[package]]
+name = "wheels"
+version = "0.1.0"
+source = "git+https://github.com/magicblock-labs/magicblock-wheels.git#730f4927ebdd0841749d223d3e44674780e03121"
+dependencies = [
+ "bytemuck",
+ "pinocchio 0.10.2",
+ "pinocchio-log",
+ "solana-address 2.6.0",
+ "wheels-macros",
+]
+
+[[package]]
+name = "wheels-macros"
+version = "0.1.0"
+source = "git+https://github.com/magicblock-labs/magicblock-wheels.git#730f4927ebdd0841749d223d3e44674780e03121"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
 ]
 
 [[package]]

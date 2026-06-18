@@ -1,35 +1,36 @@
-use alloc::borrow::ToOwned;
-use alloc::vec;
-use alloc::vec::Vec;
+use alloc::{borrow::ToOwned, vec::Vec};
 
-use data_layout::variable_offset_layout;
-use ephemeral_rollups_pinocchio::consts::{
-    BUFFER, DELEGATION_METADATA, DELEGATION_PROGRAM_ID, DELEGATION_RECORD,
+use ephemeral_rollups_pinocchio::consts::{BUFFER, DELEGATION_METADATA, DELEGATION_PROGRAM_ID, DELEGATION_RECORD};
+use ephemeral_spl_api::{
+    instruction::ESplInstruction,
+    instructions::{ExecuteScheduledPrivateTransferArgs, SchedulePrivateTransferArgs},
+    require, require_eq_keys, require_n_accounts,
+    state::{
+        ephemeral_ata::EphemeralAta, global_vault::GlobalVault, shuttle_ephemeral_ata::ShuttleMetadata,
+        stash::StashPda, transfer_queue::TransferQueue,
+    },
 };
-use ephemeral_spl_api::instruction::ESplInstruction;
-use ephemeral_spl_api::state::ephemeral_ata::EphemeralAta;
-use ephemeral_spl_api::state::global_vault::GlobalVault;
-use ephemeral_spl_api::state::shuttle_ephemeral_ata::ShuttleMetadata;
-use ephemeral_spl_api::state::stash::StashPda;
-use ephemeral_spl_api::state::transfer_queue::TransferQueue;
-use ephemeral_spl_api::{require, require_eq_keys, require_n_accounts};
-
-use hydra_api::consts::CRANKER_REWARD;
-use hydra_api::instruction::{self as hydra_ix, CreateArgs, SchedMeta};
-
-use pinocchio::cpi::{invoke_signed_with_bounds, Seed, Signer};
-use pinocchio::instruction::{InstructionAccount, InstructionView};
-use pinocchio::sysvars::{clock::Clock, Sysvar};
-use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
+use hydra_api::{
+    consts::CRANKER_REWARD,
+    instruction::{self as hydra_ix, CreateArgs, SchedMeta},
+};
+use pinocchio::{
+    cpi::{invoke_signed_with_bounds, Seed, Signer},
+    error::ProgramError,
+    instruction::{InstructionAccount, InstructionView},
+    sysvars::{clock::Clock, Sysvar},
+    AccountView, ProgramResult,
+};
 use pinocchio_system::instructions::Transfer;
+use solana_address::Address;
 use solana_pubkey::Pubkey;
+use wheels::layout::{Decodable as _, Encodable as _};
 
-use crate::processor::execute_scheduled_private_transfer::{
-    ExecuteScheduledPrivateTransferArgs, SCHEDULED_PT_ACCOUNTS,
+use crate::processor::internal::{
+    derive_ata, derive_hydra_seed, get_associated_token_address, is_supported_token_program,
+    private_transfer::SCHEDULED_PT_ACCOUNTS,
+    rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
 };
-use crate::processor::initialize_rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED};
-use crate::processor::internal::{derive_ata, derive_hydra_seed};
-use crate::processor::utils::{get_associated_token_address, is_supported_token_program};
 
 const SETUP_LAMPORTS: u64 = ephemeral_spl_api::consts::SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS
     + ephemeral_spl_api::consts::SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS;
@@ -59,10 +60,7 @@ const SETUP_LAMPORTS: u64 = ephemeral_spl_api::consts::SPONSORED_SHUTTLE_DELEGAT
 /// Instruction Data: SchedulePrivateTransferArgs
 ///
 #[inline(never)]
-pub fn process_schedule_private_transfer(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_schedule_private_transfer(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         user_info,
         stash_pda_info,
@@ -75,18 +73,9 @@ pub fn process_schedule_private_transfer(
 
     let args = SchedulePrivateTransferArgs::decode(instruction_data)?;
 
-    let derived_stash =
-        StashPda::derive_pda(user_info.address(), args.mint_address(), args.stash_bump())?;
-    require_eq_keys!(
-        &derived_stash,
-        stash_pda_info.address(),
-        ProgramError::InvalidSeeds
-    );
-    require_eq_keys!(
-        rent_pda_info.address(),
-        &RENT_PDA,
-        ProgramError::InvalidSeeds
-    );
+    let derived_stash = StashPda::derive_pda(user_info.address(), args.mint(), args.stash_bump())?;
+    require_eq_keys!(&derived_stash, stash_pda_info.address(), ProgramError::InvalidSeeds);
+    require_eq_keys!(rent_pda_info.address(), &RENT_PDA, ProgramError::InvalidSeeds);
 
     let token_program_id = *token_program_info.address();
     require!(
@@ -107,22 +96,13 @@ pub fn process_schedule_private_transfer(
 
     let shuttle = ShuttleMetadata::derive_pda(
         stash_pda_info.address(),
-        args.mint_address(),
+        args.mint(),
         args.shuttle_id(),
         args.shuttle_bump(),
     )?;
-    let shuttle_eata =
-        EphemeralAta::derive_pda(&shuttle, args.mint_address(), args.shuttle_eata_bump())?;
-    let shuttle_wallet_ata = derive_ata(
-        &shuttle,
-        &token_program_id,
-        args.mint_address(),
-        args.shuttle_wallet_ata_bump(),
-    )?;
-    let buffer = Address::create_program_address(
-        &[BUFFER, shuttle_eata.as_ref(), &[args.buffer_bump()]],
-        &crate::ID,
-    )?;
+    let shuttle_eata = EphemeralAta::derive_pda(&shuttle, args.mint(), args.shuttle_eata_bump())?;
+    let shuttle_wallet_ata = derive_ata(&shuttle, &token_program_id, args.mint(), args.shuttle_wallet_ata_bump())?;
+    let buffer = Address::create_program_address(&[BUFFER, shuttle_eata.as_ref(), &[args.buffer_bump()]], &crate::ID)?;
     let delegation_record = Address::create_program_address(
         &[
             DELEGATION_RECORD,
@@ -139,26 +119,16 @@ pub fn process_schedule_private_transfer(
         ],
         &DELEGATION_PROGRAM_ID,
     )?;
-    let global_vault = GlobalVault::derive_pda(args.mint_address(), args.global_vault_bump())?;
-    let vault_token = derive_ata(
-        &global_vault,
-        &token_program_id,
-        args.mint_address(),
-        args.vault_token_bump(),
-    )?;
+    let global_vault = GlobalVault::derive_pda(args.mint(), args.global_vault_bump())?;
+    let vault_token = derive_ata(&global_vault, &token_program_id, args.mint(), args.vault_token_bump())?;
     let stash_ata = derive_ata(
         stash_pda_info.address(),
         &token_program_id,
-        args.mint_address(),
+        args.mint(),
         args.stash_ata_bump(),
     )?;
-    let user_ata =
-        get_associated_token_address(user_info.address(), args.mint_address(), &token_program_id);
-    let queue = TransferQueue::derive_pda(
-        &args.mint_address(),
-        args.validator_address(),
-        args.queue_bump(),
-    )?;
+    let user_ata = get_associated_token_address(user_info.address(), args.mint(), &token_program_id);
+    let queue = TransferQueue::derive_pda(args.mint(), args.validator(), args.queue_bump())?;
 
     // Slots 0..18 mirror ix 31's layout. Slot 5 aliases slot 0 (stash PDA).
     // Slot 20 aliases Trigger's crank account; the flag must match Solana's
@@ -177,7 +147,7 @@ pub fn process_schedule_private_transfer(
         (&DELEGATION_PROGRAM_ID, false),
         (&pinocchio_associated_token_account::ID, false),
         (system_program_info.address(), false),
-        (&args.mint_address(), false),
+        (args.mint(), false),
         (&token_program_id, false),
         (&global_vault, false),
         (&stash_ata, true),
@@ -222,10 +192,10 @@ pub fn process_schedule_private_transfer(
             scheduled_metas: &sched_metas_vec,
             scheduled_data: &ESplInstruction::ExecuteScheduledPrivateTransfer.with_data(
                 &ExecuteScheduledPrivateTransferArgs {
-                    user: user_info.address().to_bytes(),
+                    user: *user_info.address(),
                     stash_bump: args.stash_bump(),
                     shuttle_id: args.shuttle_id(),
-                    validator: args.validator().to_owned(),
+                    validator: *args.validator(),
                     encrypted_destination: args.encrypted_destination().to_owned(),
                     encrypted_data_suffix: args.encrypted_data_suffix().to_owned(),
                 }
@@ -254,37 +224,5 @@ pub fn process_schedule_private_transfer(
         to: hydra_crank_pda_info,
         lamports: CRANKER_REWARD,
     }
-    .invoke_signed(&[rent_signer])?;
-
-    Ok(())
-}
-
-#[variable_offset_layout(buffer_offset = 1)]
-pub struct SchedulePrivateTransferArgs {
-    pub shuttle_id: u32,
-    pub stash_bump: u8,
-    pub mint: [u8; 32],
-    pub shuttle_bump: u8,
-    pub shuttle_eata_bump: u8,
-    pub shuttle_wallet_ata_bump: u8,
-    pub buffer_bump: u8,
-    pub delegation_record_bump: u8,
-    pub delegation_metadata_bump: u8,
-    pub global_vault_bump: u8,
-    pub vault_token_bump: u8,
-    pub stash_ata_bump: u8,
-    pub queue_bump: u8,
-    pub validator: [u8; 32],
-    pub encrypted_destination: [u8; 80],
-    #[flexible = 1]
-    pub encrypted_data_suffix: Vec<u8>,
-}
-
-impl SchedulePrivateTransferArgsView<'_> {
-    fn validator_address(&self) -> &Address {
-        unsafe { &*(self.validator().as_ptr() as *const Address) }
-    }
-    fn mint_address(&self) -> &Address {
-        unsafe { &*(self.mint().as_ptr() as *const Address) }
-    }
+    .invoke_signed(&[rent_signer])
 }

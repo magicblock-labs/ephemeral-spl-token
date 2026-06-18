@@ -7,7 +7,7 @@ use pinocchio::{
 use solana_pubkey::pubkey;
 
 /// Vault account that collects rent for ephemeral accounts.
-pub const MAGIC_VAULT_ID: Address = pubkey!("MagicVau1t999999999999999999999999999999999");
+pub(crate) const MAGIC_VAULT_ID: Address = pubkey!("MagicVau1t999999999999999999999999999999999");
 
 /// Bincode variant index for `MagicBlockInstruction::CreateEphemeralAccount` (variant 12).
 const CREATE_EPHEMERAL_VARIANT: [u8; 4] = [12, 0, 0, 0];
@@ -21,7 +21,7 @@ const CLOSE_EPHEMERAL_VARIANT: [u8; 4] = [14, 0, 0, 0];
 /// - `sponsor`       `[WRITE, SIGNER]` Pays rent (can be a PDA)
 /// - `account`       `[WRITE, SIGNER]` Ephemeral account to create (must have 0 lamports)
 /// - `vault`         `[WRITE]`      Magic vault account (`EPHEMERAL_VAULT_ID`)
-pub fn create_ephemeral_account(
+pub(crate) fn create_ephemeral_account(
     sponsor: &AccountView,
     account: &AccountView,
     vault: &AccountView,
@@ -55,7 +55,7 @@ pub fn create_ephemeral_account(
 /// - `sponsor`       `[WRITE, SIGNER]` Receives rent refund (can be a PDA)
 /// - `account`       `[WRITE]`      Ephemeral account to close
 /// - `vault`         `[WRITE]`      Magic vault account (`EPHEMERAL_VAULT_ID`)
-pub fn close_ephemeral_account(
+pub(crate) fn close_ephemeral_account(
     sponsor: &AccountView,
     account: &AccountView,
     vault: &AccountView,

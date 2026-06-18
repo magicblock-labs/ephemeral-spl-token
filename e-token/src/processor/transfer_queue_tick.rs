@@ -1,37 +1,44 @@
 #[cfg(feature = "logging")]
 use alloc::string::ToString;
 
-use crate::processor::internal::callbacks::TransferCallbackArgs;
-use ephemeral_rollups_pinocchio::consts::{MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID};
-use ephemeral_rollups_pinocchio::intent_bundle::{
-    ActionArgs, ActionCallback, CallHandler, ShortAccountMeta,
+use ephemeral_rollups_pinocchio::{
+    consts::{MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID},
+    intent_bundle::{ActionArgs, ActionCallback, CallHandler, ShortAccountMeta},
 };
-use ephemeral_spl_api::debug_log;
-use ephemeral_spl_api::require_n_accounts;
-use ephemeral_spl_api::state::transfer_queue::{
-    queue_peek_from_data, queue_pop_from_data, queue_views_checked, QueuedTransfer, QUEUE_SEED,
+use ephemeral_spl_api::{
+    debug_log,
+    instructions::ExecuteQueuedTransferArgs,
+    require, require_eq_keys, require_n_accounts,
+    state::transfer_queue::{
+        queue_peek_from_data, queue_pop_from_data, queue_views_checked, QueuedTransfer, QUEUE_SEED,
+    },
 };
-use ephemeral_spl_api::{require, require_eq_keys};
-use pinocchio::sysvars::{clock::Clock, Sysvar};
-use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use pinocchio::{
+    error::ProgramError,
+    sysvars::{clock::Clock, Sysvar},
+    AccountView, ProgramResult,
+};
 use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
+use solana_address::Address;
+use wheels::layout::Encodable as _;
 
-use crate::processor::initialize_rent_pda::RENT_PDA;
-use crate::processor::internal;
-use crate::processor::internal::group_receipt_accounts::derive_group_receipt_id;
-use crate::processor::internal::queue_authorized_action::{
-    invoke_standalone_action, IntentBundleAccounts, QueueSignerState, QueuedTransferActionBuilder,
-    EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
-};
-use crate::processor::internal::transfer_queue_refill::{
-    queue_refill_state_address, refill_transfer_queue_amounts,
-    MARK_TRANSFER_QUEUE_REFILL_PENDING_COMPUTE_UNITS,
-    MARK_TRANSFER_QUEUE_REFILL_PENDING_ESCROW_INDEX,
-};
-use crate::processor::utils::{token_program_for_kind, CALLBACK_SIGNER, MAGIC_VAULT_ID};
 use crate::{
     instruction::ESplInternalInstruction,
-    processor::execute_ready_queued_transfer::ExecuteQueuedTransferArgs,
+    processor::internal::{
+        get_associated_token_address,
+        group_receipt::{derive_group_receipt_id, TransferCallbackArgs},
+        queue_authorized_action::{
+            invoke_standalone_action, IntentBundleAccounts, QueueSignerState, QueuedTransferActionBuilder,
+            EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
+        },
+        rent_pda::RENT_PDA,
+        token_program_for_kind,
+        transfer_queue_refill::{
+            queue_refill_state_address, refill_transfer_queue_amounts,
+            MARK_TRANSFER_QUEUE_REFILL_PENDING_COMPUTE_UNITS, MARK_TRANSFER_QUEUE_REFILL_PENDING_ESCROW_INDEX,
+        },
+        CALLBACK_SIGNER, MAGIC_VAULT_ID,
+    },
 };
 
 const MILLIS_PER_SECOND: i64 = 1_000;
@@ -44,11 +51,11 @@ struct TickAccounts<'a> {
 }
 
 struct QueueTickState {
-    mint: ephemeral_spl_api::Address,
+    mint: Address,
     queue_bump: u8,
     queue_len: usize,
-    token_program: ephemeral_spl_api::Address,
-    validator: ephemeral_spl_api::Address,
+    token_program: Address,
+    validator: Address,
     queued_transfer: Option<QueuedTransfer>,
 }
 
@@ -65,14 +72,8 @@ struct QueueTickState {
 /// Instruction Data: None
 ///
 #[inline(always)]
-pub fn process_transfer_queue_tick(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
-    require!(
-        instruction_data.is_empty(),
-        ProgramError::InvalidInstructionData
-    );
+pub fn process_transfer_queue_tick(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
+    require!(instruction_data.is_empty(), ProgramError::InvalidInstructionData);
 
     let [
         queue_info, // force multi-line
@@ -102,8 +103,7 @@ pub fn process_transfer_queue_tick(
         return Ok(());
     }
 
-    let Some(queued_transfer) =
-        ready_queued_transfer(queue_state.queued_transfer, queue_state.queue_len, &clock)?
+    let Some(queued_transfer) = ready_queued_transfer(queue_state.queued_transfer, queue_state.queue_len, &clock)?
     else {
         return Ok(());
     };
@@ -113,10 +113,7 @@ pub fn process_transfer_queue_tick(
 }
 
 #[inline(always)]
-fn read_queue_tick_state(
-    queue_info: &AccountView,
-    program_id: &ephemeral_spl_api::Address,
-) -> Result<QueueTickState, ProgramError> {
+fn read_queue_tick_state(queue_info: &AccountView, program_id: &Address) -> Result<QueueTickState, ProgramError> {
     let data = unsafe { queue_info.borrow_unchecked() };
     let (header, _) = queue_views_checked(data)?;
     let mint = header.mint;
@@ -124,15 +121,9 @@ fn read_queue_tick_state(
     let validator = header.validator;
     let queue_len = header.length as usize;
 
-    let (derived_queue, queue_bump) = ephemeral_spl_api::Address::find_program_address(
-        &[QUEUE_SEED, mint.as_ref(), validator.as_ref()],
-        program_id,
-    );
-    require_eq_keys!(
-        &derived_queue,
-        queue_info.address(),
-        ProgramError::InvalidSeeds
-    );
+    let (derived_queue, queue_bump) =
+        Address::find_program_address(&[QUEUE_SEED, mint.as_ref(), validator.as_ref()], program_id);
+    require_eq_keys!(&derived_queue, queue_info.address(), ProgramError::InvalidSeeds);
 
     Ok(QueueTickState {
         mint,
@@ -149,8 +140,7 @@ fn try_schedule_queue_refill(
     tick_accounts: &TickAccounts<'_>,
     queue_state: &QueueTickState,
 ) -> Result<bool, ProgramError> {
-    let (queue_rent_exemption, refill_lamports) =
-        refill_transfer_queue_amounts(tick_accounts.queue_info.data_len())?;
+    let (queue_rent_exemption, refill_lamports) = refill_transfer_queue_amounts(tick_accounts.queue_info.data_len())?;
     let refill_threshold = queue_rent_exemption
         .checked_add(refill_lamports)
         .ok_or(ProgramError::ArithmeticOverflow)?;
@@ -178,8 +168,7 @@ fn try_schedule_queue_refill(
     let standalone_actions = [CallHandler {
         destination_program: crate::ID,
         escrow_authority: tick_accounts.queue_info.clone(),
-        args: ActionArgs::new(&refill_data)
-            .with_escrow_index(MARK_TRANSFER_QUEUE_REFILL_PENDING_ESCROW_INDEX),
+        args: ActionArgs::new(&refill_data).with_escrow_index(MARK_TRANSFER_QUEUE_REFILL_PENDING_ESCROW_INDEX),
         compute_units: MARK_TRANSFER_QUEUE_REFILL_PENDING_COMPUTE_UNITS,
         accounts: &refill_accounts,
         callback: None,
@@ -218,10 +207,7 @@ fn ready_queued_transfer(
         .checked_mul(MILLIS_PER_SECOND)
         .ok_or(ProgramError::InvalidInstructionData)?;
     if queued_transfer.ready_at > now {
-        debug_log!(
-            "ProcessTransferQueueTick queue length: {} (next not ready)",
-            _queue_len
-        );
+        debug_log!("ProcessTransferQueueTick queue length: {} (next not ready)", _queue_len);
         return Ok(None);
     }
 
@@ -233,7 +219,7 @@ fn schedule_execute_ready_transfer(
     tick_accounts: &TickAccounts<'_>,
     queue_state: &QueueTickState,
     queued_transfer: &QueuedTransfer,
-    program_id: &ephemeral_spl_api::Address,
+    program_id: &Address,
 ) -> ProgramResult {
     require!(
         tick_accounts.queue_info.owned_by(program_id),
@@ -245,8 +231,7 @@ fn schedule_execute_ready_transfer(
         queue_state.queue_len
     );
 
-    let (vault, _) =
-        ephemeral_spl_api::Address::find_program_address(&[queue_state.mint.as_ref()], program_id);
+    let (vault, _) = Address::find_program_address(&[queue_state.mint.as_ref()], program_id);
 
     // Create action callback
     let mut callback_data = [0_u8; 13];
@@ -265,8 +250,7 @@ fn schedule_execute_ready_transfer(
         &queue_state.mint,
         &queue_state.token_program,
     );
-    let standalone_action_callback =
-        create_action_callback(&standalone_action_callback_accounts, &callback_data);
+    let standalone_action_callback = create_action_callback(&standalone_action_callback_accounts, &callback_data);
 
     let action_builder = QueuedTransferActionBuilder::new(
         tick_accounts.queue_info,
@@ -305,10 +289,7 @@ fn schedule_execute_ready_transfer(
 }
 
 #[inline(always)]
-fn pop_executed_transfer(
-    queue_info: &AccountView,
-    queued_transfer: QueuedTransfer,
-) -> ProgramResult {
+fn pop_executed_transfer(queue_info: &AccountView, queued_transfer: QueuedTransfer) -> ProgramResult {
     // Note that we delete the queue entry immediately after execution is scheduled (only) and we
     // do not wait for actual payout. It is by design.
     let data = unsafe { queue_info.borrow_unchecked_mut() };
@@ -333,25 +314,17 @@ fn pop_executed_transfer(
 
 #[inline(never)]
 fn create_action_callback_accounts(
-    queue_address: &ephemeral_spl_api::Address,
-    magic_fee_vault: &ephemeral_spl_api::Address,
+    queue_address: &Address,
+    magic_fee_vault: &Address,
     queued_transfer: &QueuedTransfer,
-    vault: &ephemeral_spl_api::Address,
-    mint: &ephemeral_spl_api::Address,
-    token_program: &ephemeral_spl_api::Address,
+    vault: &Address,
+    mint: &Address,
+    token_program: &Address,
 ) -> [ShortAccountMeta; 13] {
-    let vault_token_account =
-        internal::derive_associated_token_address_with_program(vault, mint, token_program);
-    let source_token_account = internal::derive_associated_token_address_with_program(
-        &queued_transfer.source,
-        mint,
-        token_program,
-    );
-    let (group_receipt_account, _) = derive_group_receipt_id(
-        queue_address,
-        &queued_transfer.source,
-        queued_transfer.group_id(),
-    );
+    let vault_token_account = get_associated_token_address(vault, mint, token_program);
+    let source_token_account = get_associated_token_address(&queued_transfer.source, mint, token_program);
+    let (group_receipt_account, _) =
+        derive_group_receipt_id(queue_address, &queued_transfer.source, queued_transfer.group_id());
     [
         ShortAccountMeta {
             pubkey: CALLBACK_SIGNER,
@@ -362,15 +335,15 @@ fn create_action_callback_accounts(
             is_writable: true,
         },
         ShortAccountMeta {
-            pubkey: queue_address.clone(),
+            pubkey: *queue_address,
             is_writable: true,
         },
         ShortAccountMeta {
-            pubkey: vault.clone(),
+            pubkey: *vault,
             is_writable: false,
         },
         ShortAccountMeta {
-            pubkey: mint.clone(),
+            pubkey: *mint,
             is_writable: false,
         },
         ShortAccountMeta {
@@ -379,7 +352,7 @@ fn create_action_callback_accounts(
         },
         ShortAccountMeta {
             pubkey: queued_transfer.source,
-            is_writable: true,
+            is_writable: false,
         },
         ShortAccountMeta {
             pubkey: source_token_account,
@@ -408,10 +381,7 @@ fn create_action_callback_accounts(
     ]
 }
 
-fn create_action_callback<'a>(
-    accounts: &'a [ShortAccountMeta],
-    payload: &'a [u8],
-) -> ActionCallback<'a> {
+fn create_action_callback<'a>(accounts: &'a [ShortAccountMeta], payload: &'a [u8]) -> ActionCallback<'a> {
     const CALLBACK_COMPUTE_UNITS: u32 = 100_000;
 
     ActionCallback {

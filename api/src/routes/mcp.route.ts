@@ -91,6 +91,7 @@ const mcpToolCallRequestExample = {
       initAtasIfMissing: true,
       initVaultIfMissing: false,
       idempotent: true,
+      private: true,
     },
   },
 };

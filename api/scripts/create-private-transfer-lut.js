@@ -19,10 +19,13 @@ import {
   delegationMetadataPdaFromDelegatedAccount,
   delegationRecordPdaFromDelegatedAccount,
   deriveEphemeralAta,
+  deriveQueueEphemeralAta,
+  deriveQueueVaultAta,
   deriveRentPda,
   deriveTransferQueue,
   deriveVault,
   deriveVaultAta,
+  permissionPdaFromAccount,
 } from "@magicblock-labs/ephemeral-rollups-sdk";
 
 const TOKEN_PROGRAM_ID = new PublicKey(
@@ -46,11 +49,19 @@ const MAINNET_USDC_MINT = new PublicKey(
 const DEVNET_USDC_MINT = new PublicKey(
   "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
 );
+const MAINNET_USDT_MINT = new PublicKey(
+  "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+);
+const DEVNET_USDT_MINT = new PublicKey(
+  "BQnB36y4tTb9K1fTXkU71Q8WQa4HSNNqYw4T3agViD1y",
+);
 const QUEUE_REFILL_STATE_SEED = Buffer.from("queue-refill");
 const LAMPORTS_PDA_SEED = Buffer.from("lamports");
 const DEFAULT_ENV_FILE = ".dev.vars";
 const DEFAULT_KEYPAIR_PATH = resolve(homedir(), ".config/solana/id.json");
 const MAX_EXTEND_ADDRESSES = 20;
+const MAX_LOOKUP_TABLE_ADDRESSES = 256;
+const CLUSTERS = ["mainnet", "devnet", "mainnet-private", "devnet-private"];
 
 function usage() {
   return [
@@ -58,13 +69,15 @@ function usage() {
     "  yarn create:private-transfer-lut -- [options]",
     "",
     "Options:",
-    "  --cluster <mainnet|devnet>   Cluster to target. Default: mainnet",
+    "  --cluster <mainnet|devnet>   Base cluster to target. Default: mainnet",
     `  --env-file <path>            Env file to load when process env is unset. Default: ${DEFAULT_ENV_FILE}`,
     `  --payer <path>               Payer keypair JSON path. Default: ${DEFAULT_KEYPAIR_PATH}`,
     "  --authority <path>           LUT authority keypair JSON path. Default: payer",
-    "  --validator <pubkey>         Validator pubkey. Defaults to getIdentity on the selected ephemeral RPC",
+    "  --validator <pubkey[,pubkey]>",
+    "                               Validator pubkey(s). May be repeated. Defaults to getIdentity on base and TEE ephemeral RPCs",
     "  --base-rpc-url <url>         Override the selected base RPC URL",
-    "  --ephemeral-rpc-url <url>    Override the selected ephemeral RPC URL",
+    "  --ephemeral-rpc-url <url[,url]>",
+    "                               Override ephemeral RPC URL(s) used for validator resolution. May be repeated",
     "  --freeze                     Freeze the LUT after extending it",
     "  --help                       Show this help",
   ].join("\n");
@@ -76,9 +89,9 @@ function parseArgs(argv) {
     envFile: DEFAULT_ENV_FILE,
     payerPath: DEFAULT_KEYPAIR_PATH,
     authorityPath: undefined,
-    validator: undefined,
+    validators: [],
     baseRpcUrl: undefined,
-    ephemeralRpcUrl: undefined,
+    ephemeralRpcUrls: [],
     freeze: false,
   };
 
@@ -119,13 +132,13 @@ function parseArgs(argv) {
         options.authorityPath = nextValue;
         break;
       case "--validator":
-        options.validator = nextValue;
+        options.validators.push(...parseList(nextValue, arg));
         break;
       case "--base-rpc-url":
         options.baseRpcUrl = nextValue;
         break;
       case "--ephemeral-rpc-url":
-        options.ephemeralRpcUrl = nextValue;
+        options.ephemeralRpcUrls.push(...parseList(nextValue, arg));
         break;
       default:
         throw new Error(`Unknown argument: ${arg}`);
@@ -134,8 +147,10 @@ function parseArgs(argv) {
     index += 2;
   }
 
-  if (!["mainnet", "devnet"].includes(options.cluster)) {
-    throw new Error("cluster must be either \"mainnet\" or \"devnet\"");
+  if (!CLUSTERS.includes(options.cluster)) {
+    throw new Error(
+      "cluster must be \"mainnet\", \"devnet\", \"mainnet-private\", or \"devnet-private\"",
+    );
   }
 
   return options;
@@ -150,6 +165,19 @@ function stripWrappingQuotes(value) {
   }
 
   return value;
+}
+
+function parseList(value, arg) {
+  const values = value
+    .split(",")
+    .map(part => part.trim())
+    .filter(Boolean);
+
+  if (values.length === 0) {
+    throw new Error(`Missing value for ${arg}`);
+  }
+
+  return values;
 }
 
 function parseEnvFile(filePath) {
@@ -192,19 +220,74 @@ function readRequiredEnv(env, key) {
   return value;
 }
 
-function resolveRpcUrls(options, env) {
-  if (options.cluster === "devnet") {
-    return {
-      baseRpcUrl: options.baseRpcUrl ?? readRequiredEnv(env, "BASE_DEVNET_RPC_URL"),
-      ephemeralRpcUrl:
-        options.ephemeralRpcUrl ?? readRequiredEnv(env, "EPHEMERAL_DEVNET_RPC_URL"),
-    };
+function getBaseCluster(cluster) {
+  return cluster === "devnet" || cluster === "devnet-private" ? "devnet" : "mainnet";
+}
+
+function resolveBaseRpcUrl(options, env, baseCluster) {
+  if (baseCluster === "devnet") {
+    return options.baseRpcUrl ?? readRequiredEnv(env, "BASE_DEVNET_RPC_URL");
   }
 
-  return {
-    baseRpcUrl: options.baseRpcUrl ?? readRequiredEnv(env, "BASE_RPC_URL"),
-    ephemeralRpcUrl: options.ephemeralRpcUrl ?? readRequiredEnv(env, "EPHEMERAL_RPC_URL"),
-  };
+  return options.baseRpcUrl ?? readRequiredEnv(env, "BASE_RPC_URL");
+}
+
+function dedupeRpcConfigs(configs) {
+  const byUrl = new Map();
+
+  for (const config of configs) {
+    const current = byUrl.get(config.url);
+
+    if (current) {
+      current.labels.push(config.label);
+      continue;
+    }
+
+    byUrl.set(config.url, {
+      labels: [config.label],
+      url: config.url,
+    });
+  }
+
+  return [...byUrl.values()].map(config => ({
+    label: config.labels.join("+"),
+    url: config.url,
+  }));
+}
+
+function resolveEphemeralRpcConfigs(options, env, baseCluster) {
+  if (options.ephemeralRpcUrls.length > 0) {
+    return dedupeRpcConfigs(
+      options.ephemeralRpcUrls.map((url, index) => ({
+        label: `rpc${index + 1}`,
+        url,
+      })),
+    );
+  }
+
+  if (baseCluster === "devnet") {
+    return dedupeRpcConfigs([
+      {
+        label: "ephemeral",
+        url: readRequiredEnv(env, "EPHEMERAL_DEVNET_RPC_URL"),
+      },
+      {
+        label: "tee",
+        url: readRequiredEnv(env, "EPHEMERAL_DEVNET_TEE_RPC_URL"),
+      },
+    ]);
+  }
+
+  return dedupeRpcConfigs([
+    {
+      label: "ephemeral",
+      url: readRequiredEnv(env, "EPHEMERAL_RPC_URL"),
+    },
+    {
+      label: "tee",
+      url: readRequiredEnv(env, "EPHEMERAL_TEE_RPC_URL"),
+    },
+  ]);
 }
 
 function readKeypair(path) {
@@ -214,12 +297,8 @@ function readKeypair(path) {
   return Keypair.fromSecretKey(secretKey);
 }
 
-async function resolveValidator(ephemeralRpcUrl, validatorOverride) {
-  if (validatorOverride) {
-    return new PublicKey(validatorOverride);
-  }
-
-  const response = await fetch(ephemeralRpcUrl, {
+async function resolveValidatorFromRpc({ label, url }) {
+  const response = await fetch(url, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -233,20 +312,76 @@ async function resolveValidator(ephemeralRpcUrl, validatorOverride) {
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to resolve validator identity: HTTP ${response.status}`);
+    throw new Error(`Failed to resolve ${label} validator identity: HTTP ${response.status}`);
   }
 
   const payload = await response.json();
   const identity = payload?.result?.identity;
 
   if (typeof identity !== "string" || identity.length === 0) {
-    throw new Error("Failed to resolve validator identity from ephemeral RPC");
+    throw new Error(`Failed to resolve ${label} validator identity from ephemeral RPC`);
   }
 
-  return new PublicKey(identity);
+  return {
+    label,
+    pubkey: new PublicKey(identity),
+  };
+}
+
+function dedupeValidatorConfigs(configs) {
+  const byAddress = new Map();
+
+  for (const config of configs) {
+    const address = config.pubkey.toBase58();
+    const current = byAddress.get(address);
+
+    if (current) {
+      current.labels.push(config.label);
+      current.rpcUrls.push(...config.rpcUrls);
+      continue;
+    }
+
+    byAddress.set(address, {
+      labels: [config.label],
+      pubkey: config.pubkey,
+      rpcUrls: config.rpcUrls,
+    });
+  }
+
+  return [...byAddress.values()].map(config => ({
+    label: config.labels.join("+"),
+    pubkey: config.pubkey,
+    rpcUrls: [...new Set(config.rpcUrls)],
+  }));
+}
+
+async function resolveValidators(options, ephemeralRpcConfigs) {
+  if (options.validators.length > 0) {
+    return dedupeValidatorConfigs(
+      options.validators.map((validator, index) => ({
+        label: `validator${index + 1}`,
+        pubkey: new PublicKey(validator),
+        rpcUrls: [],
+      })),
+    );
+  }
+
+  const resolvedValidators = await Promise.all(
+    ephemeralRpcConfigs.map(async (config) => {
+      const validator = await resolveValidatorFromRpc(config);
+      return {
+        ...validator,
+        rpcUrls: [config.url],
+      };
+    }),
+  );
+
+  return dedupeValidatorConfigs(resolvedValidators);
 }
 
 function getMintConfigs(cluster) {
+  const baseCluster = getBaseCluster(cluster);
+
   return [
     {
       label: "sol",
@@ -254,7 +389,11 @@ function getMintConfigs(cluster) {
     },
     {
       label: "usdc",
-      mint: cluster === "devnet" ? DEVNET_USDC_MINT : MAINNET_USDC_MINT,
+      mint: baseCluster === "devnet" ? DEVNET_USDC_MINT : MAINNET_USDC_MINT,
+    },
+    {
+      label: "usdt",
+      mint: baseCluster === "devnet" ? DEVNET_USDT_MINT : MAINNET_USDT_MINT,
     },
   ];
 }
@@ -265,6 +404,10 @@ function createEntry(label, pubkey) {
 
 function buildMintEntries(label, mint, validator) {
   const [queue] = deriveTransferQueue(mint, validator);
+  const queueAta = deriveQueueVaultAta(mint, validator);
+  const [queueEphemeralAta] = deriveQueueEphemeralAta(mint, validator);
+  const queuePermission = permissionPdaFromAccount(queue);
+  const queueEphemeralAtaPermission = permissionPdaFromAccount(queueEphemeralAta);
   const [vault] = deriveVault(mint);
   const vaultAta = deriveVaultAta(mint, vault);
   const [vaultEphemeralAta] = deriveEphemeralAta(vault, mint);
@@ -284,6 +427,9 @@ function buildMintEntries(label, mint, validator) {
     createEntry(`${label}.vaultAta`, vaultAta),
     createEntry(`${label}.vaultEphemeralAta`, vaultEphemeralAta),
     createEntry(`${label}.queue`, queue),
+    createEntry(`${label}.queueAta`, queueAta),
+    createEntry(`${label}.queueEphemeralAta`, queueEphemeralAta),
+    createEntry(`${label}.queuePermission`, queuePermission),
     createEntry(`${label}.refillState`, refillState),
     createEntry(`${label}.lamportsPda`, lamportsPda),
     createEntry(
@@ -302,8 +448,53 @@ function buildMintEntries(label, mint, validator) {
       delegationMetadataPdaFromDelegatedAccount(lamportsPda),
     ),
     createEntry(
+      `${label}.queueDelegateBuffer`,
+      delegateBufferPdaFromDelegatedAccountAndOwnerProgram(
+        queue,
+        EPHEMERAL_SPL_TOKEN_PROGRAM_ID,
+      ),
+    ),
+    createEntry(
       `${label}.queueDelegationRecord`,
       delegationRecordPdaFromDelegatedAccount(queue),
+    ),
+    createEntry(
+      `${label}.queueDelegationMetadata`,
+      delegationMetadataPdaFromDelegatedAccount(queue),
+    ),
+    createEntry(
+      `${label}.queueEphemeralAtaDelegateBuffer`,
+      delegateBufferPdaFromDelegatedAccountAndOwnerProgram(
+        queueEphemeralAta,
+        EPHEMERAL_SPL_TOKEN_PROGRAM_ID,
+      ),
+    ),
+    createEntry(
+      `${label}.queueEphemeralAtaDelegationRecord`,
+      delegationRecordPdaFromDelegatedAccount(queueEphemeralAta),
+    ),
+    createEntry(
+      `${label}.queueEphemeralAtaDelegationMetadata`,
+      delegationMetadataPdaFromDelegatedAccount(queueEphemeralAta),
+    ),
+    createEntry(
+      `${label}.queueEphemeralAtaPermission`,
+      queueEphemeralAtaPermission,
+    ),
+    createEntry(
+      `${label}.queueEphemeralAtaPermissionDelegateBuffer`,
+      delegateBufferPdaFromDelegatedAccountAndOwnerProgram(
+        queueEphemeralAtaPermission,
+        PERMISSION_PROGRAM_ID,
+      ),
+    ),
+    createEntry(
+      `${label}.queueEphemeralAtaPermissionDelegationRecord`,
+      delegationRecordPdaFromDelegatedAccount(queueEphemeralAtaPermission),
+    ),
+    createEntry(
+      `${label}.queueEphemeralAtaPermissionDelegationMetadata`,
+      delegationMetadataPdaFromDelegatedAccount(queueEphemeralAtaPermission),
     ),
     createEntry(
       `${label}.vaultDelegateBuffer`,
@@ -390,16 +581,31 @@ async function main() {
     ...parseEnvFile(resolve(process.cwd(), options.envFile)),
     ...process.env,
   };
-  const { baseRpcUrl, ephemeralRpcUrl } = resolveRpcUrls(options, env);
+  const baseCluster = getBaseCluster(options.cluster);
+  const baseRpcUrl = resolveBaseRpcUrl(options, env, baseCluster);
+  const ephemeralRpcConfigs = options.validators.length > 0
+    ? []
+    : resolveEphemeralRpcConfigs(options, env, baseCluster);
   const payer = readKeypair(options.payerPath);
   const authority = readKeypair(options.authorityPath ?? options.payerPath);
-  const validator = await resolveValidator(ephemeralRpcUrl, options.validator);
-  const mintConfigs = getMintConfigs(options.cluster);
+  const validators = await resolveValidators(options, ephemeralRpcConfigs);
+  const mintConfigs = getMintConfigs(baseCluster);
   const entries = dedupeEntries([
     ...buildSharedEntries(),
-    ...mintConfigs.flatMap(({ label, mint }) => buildMintEntries(label, mint, validator)),
+    ...validators.flatMap(validator =>
+      mintConfigs.flatMap(({ label, mint }) =>
+        buildMintEntries(`${validator.label}.${label}`, mint, validator.pubkey),
+      ),
+    ),
   ]);
   const addresses = entries.map(entry => entry.pubkey);
+
+  if (addresses.length > MAX_LOOKUP_TABLE_ADDRESSES) {
+    throw new Error(
+      `Lookup table would contain ${addresses.length} addresses, exceeding the ${MAX_LOOKUP_TABLE_ADDRESSES} address limit`,
+    );
+  }
+
   const connection = new Connection(baseRpcUrl, "confirmed");
   const recentSlot = await connection.getSlot("finalized");
   const signers = getSignerSet(payer, authority);
@@ -411,10 +617,18 @@ async function main() {
     });
   const summary = {
     status: "prepared",
-    cluster: options.cluster,
+    cluster: baseCluster,
+    requestedCluster: options.cluster,
     baseRpcUrl,
-    ephemeralRpcUrl,
-    validator: validator.toBase58(),
+    ephemeralRpcUrls: ephemeralRpcConfigs.map(config => ({
+      label: config.label,
+      url: config.url,
+    })),
+    validators: validators.map(validator => ({
+      label: validator.label,
+      pubkey: validator.pubkey.toBase58(),
+      rpcUrls: validator.rpcUrls,
+    })),
     lookupTable: lookupTableAddress.toBase58(),
     frozen: false,
     addressCount: entries.length,

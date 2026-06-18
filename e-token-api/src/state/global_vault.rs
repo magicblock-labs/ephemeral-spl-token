@@ -1,5 +1,5 @@
-use pinocchio::{cpi::Seed, error::ProgramError, Address};
-use solana_address::address_eq;
+use pinocchio::{cpi::Seed, error::ProgramError};
+use solana_address::{address_eq, Address};
 
 use super::{Initializable, RawType};
 

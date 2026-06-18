@@ -1,13 +1,14 @@
-use alloc::vec;
-use alloc::vec::Vec;
-use data_layout::variable_offset_layout;
+use ephemeral_spl_api::{
+    instructions::DepositAndDelegateShuttleWithPrivateTransferAndStashCloseArgs, require_eq_keys, require_n_accounts,
+    state::stash::StashPda,
+};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use solana_address::Address;
+use wheels::layout::Decodable as _;
 
-use ephemeral_spl_api::state::stash::StashPda;
-use ephemeral_spl_api::{require_eq_keys, require_n_accounts};
-use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
-
-use crate::processor::deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer::process_with_merge_and_private_transfer_inner;
-use crate::processor::internal::shuttle_delegation::CloseStashArgs;
+use crate::processor::internal::{
+    private_transfer::process_with_merge_and_private_transfer_inner, shuttle_delegation::CloseStashArgs,
+};
 
 ///
 /// Executes on: BASE only. Self-CPI'd by `ExecuteScheduledPrivateTransfer`.
@@ -21,8 +22,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let args =
-        DepositAndDelegateShuttleWithPrivateTransferAndStashCloseArgs::decode(instruction_data)?;
+    let args = DepositAndDelegateShuttleWithPrivateTransferAndStashCloseArgs::decode(instruction_data)?;
 
     let _ = require_n_accounts!(accounts, 19);
     let payer_info = &accounts[0];
@@ -35,11 +35,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
 
     let user_address = Address::new_from_array(user);
     let derived_stash_pda = StashPda::derive_pda(&user_address, mint_info.address(), stash_bump)?;
-    require_eq_keys!(
-        payer_info.address(),
-        &derived_stash_pda,
-        ProgramError::InvalidSeeds
-    );
+    require_eq_keys!(payer_info.address(), &derived_stash_pda, ProgramError::InvalidSeeds);
 
     let close_stash = CloseStashArgs { user, stash_bump };
 
@@ -53,16 +49,4 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
         args.encrypted_data_suffix(),
         Some(close_stash),
     )
-}
-
-#[variable_offset_layout(buffer_offset = 1)]
-pub struct DepositAndDelegateShuttleWithPrivateTransferAndStashCloseArgs {
-    pub shuttle_id: u32,
-    pub amount: u64,
-    pub exact_out: bool,
-    pub encrypted_destination: [u8; 80],
-    pub validator: Option<[u8; 32]>,
-    pub stash_close_seeds: [u8; 33],
-    #[flexible = 1]
-    pub encrypted_data_suffix: Vec<u8>,
 }

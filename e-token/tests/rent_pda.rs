@@ -1,5 +1,4 @@
-use ephemeral_spl_api::instruction;
-use ephemeral_spl_api::ID as PROGRAM;
+use ephemeral_spl_api::{instruction, ID as PROGRAM};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::rent::Rent;
 use solana_program_test::tokio;
@@ -29,26 +28,16 @@ async fn initialize_rent_pda_is_idempotent() {
         data: instruction::ESplInstruction::InitializeRentPda.to_vec(),
     };
 
-    let tx = Transaction::new_signed_with_payer(
-        &[ix.clone()],
-        Some(&payer),
-        &[&payer_kp],
-        context.last_blockhash,
-    );
+    let tx = Transaction::new_signed_with_payer(&[ix.clone()], Some(&payer), &[&payer_kp], context.last_blockhash);
     common::metrics::process_transaction_record_cu(&context.banks_client, tx, "rent_pda::init")
         .await
         .unwrap();
 
     let second_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
-    let tx_reinit =
-        Transaction::new_signed_with_payer(&[ix], Some(&payer), &[&payer_kp], second_blockhash);
-    common::metrics::process_transaction_record_cu(
-        &context.banks_client,
-        tx_reinit,
-        "rent_pda::reinit",
-    )
-    .await
-    .unwrap();
+    let tx_reinit = Transaction::new_signed_with_payer(&[ix], Some(&payer), &[&payer_kp], second_blockhash);
+    common::metrics::process_transaction_record_cu(&context.banks_client, tx_reinit, "rent_pda::reinit")
+        .await
+        .unwrap();
 
     let rent_pda_account = context
         .banks_client

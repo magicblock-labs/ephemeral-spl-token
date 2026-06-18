@@ -1,14 +1,14 @@
 use dlp_api::state::DelegationRecord;
 use ephemeral_rollups_pinocchio::pda::{
-    delegate_buffer_pda_from_delegated_account_and_owner_program,
-    delegation_metadata_pda_from_delegated_account, delegation_record_pda_from_delegated_account,
+    delegate_buffer_pda_from_delegated_account_and_owner_program, delegation_metadata_pda_from_delegated_account,
+    delegation_record_pda_from_delegated_account,
 };
 use ephemeral_spl_api::{
     consts::SPONSORED_LAMPORTS_TRANSFER_SETUP_LAMPORTS,
     instruction::{self, ESplInstruction},
+    instructions::AmountAndSaltArgs,
     ID as PROGRAM,
 };
-use ephemeral_token_program::AmountAndSaltArgs;
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::rent::Rent;
@@ -17,6 +17,7 @@ use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use solana_system_interface::instruction::transfer;
 use solana_transaction::Transaction;
+use wheels::layout::Encodable as _;
 
 use crate::utils::TestInternalInstruction;
 
@@ -30,19 +31,9 @@ const TRANSFER_AMOUNT: u64 = 2_500_000;
 const SALT: [u8; 32] = [42; 32];
 const DUST_LAMPORTS: u64 = 11;
 
-fn derive_lamports_pda(
-    program: Pubkey,
-    payer: Pubkey,
-    destination: Pubkey,
-    salt: [u8; 32],
-) -> (Pubkey, u8) {
+fn derive_lamports_pda(program: Pubkey, payer: Pubkey, destination: Pubkey, salt: [u8; 32]) -> (Pubkey, u8) {
     Pubkey::find_program_address(
-        &[
-            LAMPORTS_PDA_SEED,
-            payer.as_ref(),
-            destination.as_ref(),
-            salt.as_ref(),
-        ],
+        &[LAMPORTS_PDA_SEED, payer.as_ref(), destination.as_ref(), salt.as_ref()],
         &program,
     )
 }
@@ -50,13 +41,10 @@ fn derive_lamports_pda(
 #[tokio::test]
 async fn sponsored_lamports_transfer_delegates_zero_data_pda_and_charges_fee() {
     let validator = utils::test_pubkey("validator");
-    let destination = utils::test_keypair(
-        "sponsored_lamports_transfer_delegates_zero_data_pda_and_charges_fee::destination",
-    );
-    let destination_delegation_record_pda =
-        delegation_record_pda_from_delegated_account(&destination.pubkey());
-    let mut destination_delegation_record_data =
-        vec![0u8; DelegationRecord::size_with_discriminator()];
+    let destination =
+        utils::test_keypair("sponsored_lamports_transfer_delegates_zero_data_pda_and_charges_fee::destination");
+    let destination_delegation_record_pda = delegation_record_pda_from_delegated_account(&destination.pubkey());
+    let mut destination_delegation_record_data = vec![0u8; DelegationRecord::size_with_discriminator()];
     DelegationRecord {
         authority: validator.to_bytes().into(),
         owner: solana_system_interface::program::ID.to_bytes().into(),
@@ -100,8 +88,7 @@ async fn sponsored_lamports_transfer_delegates_zero_data_pda_and_charges_fee() {
 
     let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
     let (lamports_pda, _) = derive_lamports_pda(PROGRAM, payer, destination.pubkey(), SALT);
-    let buffer_pda =
-        delegate_buffer_pda_from_delegated_account_and_owner_program(&lamports_pda, &PROGRAM);
+    let buffer_pda = delegate_buffer_pda_from_delegated_account_and_owner_program(&lamports_pda, &PROGRAM);
     let delegation_record_pda = delegation_record_pda_from_delegated_account(&lamports_pda);
     let delegation_metadata_pda = delegation_metadata_pda_from_delegated_account(&lamports_pda);
 
@@ -121,11 +108,7 @@ async fn sponsored_lamports_transfer_delegates_zero_data_pda_and_charges_fee() {
         &[&payer_kp],
         context.last_blockhash,
     );
-    context
-        .banks_client
-        .process_transaction(tx_init)
-        .await
-        .unwrap();
+    context.banks_client.process_transaction(tx_init).await.unwrap();
 
     let rent_pda_before = context
         .banks_client
@@ -190,10 +173,7 @@ async fn sponsored_lamports_transfer_delegates_zero_data_pda_and_charges_fee() {
         ephemeral_spl_api::program::DELEGATION_PROGRAM_ID
     );
     assert_eq!(lamports_pda_account.data.len(), 0);
-    assert_eq!(
-        lamports_pda_account.lamports,
-        sponsored_rent + TRANSFER_AMOUNT
-    );
+    assert_eq!(lamports_pda_account.lamports, sponsored_rent + TRANSFER_AMOUNT);
     let destination_account = context
         .banks_client
         .get_account(destination.pubkey())
@@ -209,10 +189,8 @@ async fn sponsored_lamports_transfer_delegates_zero_data_pda_and_charges_fee() {
         .unwrap()
         .expect("delegation record must exist");
     let record_len = DelegationRecord::size_with_discriminator();
-    let record = DelegationRecord::try_from_bytes_with_discriminator(
-        &delegation_record_account.data[..record_len],
-    )
-    .expect("delegation record must deserialize");
+    let record = DelegationRecord::try_from_bytes_with_discriminator(&delegation_record_account.data[..record_len])
+        .expect("delegation record must deserialize");
     assert_eq!(record.owner.to_bytes(), PROGRAM.to_bytes());
     assert_eq!(record.authority.to_bytes(), validator.to_bytes());
     assert!(
@@ -236,9 +214,7 @@ async fn sponsored_lamports_transfer_delegates_zero_data_pda_and_charges_fee() {
 
 #[tokio::test]
 async fn transfer_lamports_pda_moves_requested_lamports_to_destination() {
-    let destination = utils::test_keypair(
-        "transfer_lamports_pda_moves_requested_lamports_to_destination::destination",
-    );
+    let destination = utils::test_keypair("transfer_lamports_pda_moves_requested_lamports_to_destination::destination");
 
     let mut context = utils::start_program_test_with(PROGRAM, |pt| {
         pt.add_account(
@@ -256,12 +232,7 @@ async fn transfer_lamports_pda_moves_requested_lamports_to_destination() {
 
     let payer_kp = utils::fixed_payer_keypair();
     let payer = payer_kp.pubkey();
-    let sponsored_rent = context
-        .banks_client
-        .get_rent()
-        .await
-        .unwrap()
-        .minimum_balance(0);
+    let sponsored_rent = context.banks_client.get_rent().await.unwrap().minimum_balance(0);
     let (lamports_pda, _) = derive_lamports_pda(PROGRAM, payer, destination.pubkey(), SALT);
 
     context.set_account(
@@ -326,8 +297,7 @@ async fn transfer_lamports_pda_moves_requested_lamports_to_destination() {
 
 #[tokio::test]
 async fn transfer_lamports_pda_allows_extra_lamports_on_source() {
-    let destination =
-        utils::test_keypair("transfer_lamports_pda_allows_extra_lamports_on_source::destination");
+    let destination = utils::test_keypair("transfer_lamports_pda_allows_extra_lamports_on_source::destination");
     let mut context = utils::start_program_test_with(PROGRAM, |pt| {
         pt.add_account(
             destination.pubkey(),
@@ -344,12 +314,7 @@ async fn transfer_lamports_pda_allows_extra_lamports_on_source() {
 
     let payer_kp = utils::fixed_payer_keypair();
     let payer = payer_kp.pubkey();
-    let sponsored_rent = context
-        .banks_client
-        .get_rent()
-        .await
-        .unwrap()
-        .minimum_balance(0);
+    let sponsored_rent = context.banks_client.get_rent().await.unwrap().minimum_balance(0);
     let (lamports_pda, _) = derive_lamports_pda(PROGRAM, payer, destination.pubkey(), SALT);
 
     context.set_account(
@@ -398,10 +363,7 @@ async fn transfer_lamports_pda_allows_extra_lamports_on_source() {
         .unwrap()
         .expect("lamports pda must exist");
     assert_eq!(lamports_pda_account.owner, PROGRAM);
-    assert_eq!(
-        lamports_pda_account.lamports,
-        sponsored_rent + DUST_LAMPORTS
-    );
+    assert_eq!(lamports_pda_account.lamports, sponsored_rent + DUST_LAMPORTS);
 
     let destination_account = context
         .banks_client
