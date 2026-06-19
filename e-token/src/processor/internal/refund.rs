@@ -5,6 +5,7 @@ use ephemeral_rollups_pinocchio::{
 };
 use ephemeral_spl_api::{
     debug_log,
+    error::EphemeralSplError,
     instructions::ExecuteQueuedTransferArgs,
     require, require_eq_keys, require_owned_by,
     state::transfer_queue::{queue_views_checked, QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA},
@@ -23,6 +24,8 @@ use crate::{
         token_program_for_kind, CALLBACK_SIGNER,
     },
 };
+
+pub(crate) const MAX_REFUND_RETRIES: u8 = 5;
 
 pub(crate) struct RefundOnFailureAccounts<'a> {
     callback_signer: &'a AccountView,
@@ -74,7 +77,16 @@ impl<'a> RefundOnFailureAccounts<'a> {
     }
 }
 
-pub(crate) fn schedule_refund_on_failure(accounts: &RefundOnFailureAccounts<'_>, amount: u64) -> ProgramResult {
+pub(crate) fn schedule_refund_on_failure(
+    accounts: &RefundOnFailureAccounts<'_>,
+    amount: u64,
+    retries_left: u8,
+) -> ProgramResult {
+    if retries_left == 0 {
+        log_refund_permanently_failed(accounts, amount);
+        return Err(EphemeralSplError::RefundPermanentlyFailed.into());
+    }
+
     let RefundOnFailureAccounts {
         callback_signer,
         refund_destination_owner,
@@ -103,7 +115,11 @@ pub(crate) fn schedule_refund_on_failure(accounts: &RefundOnFailureAccounts<'_>,
         queue_info.address(),
         magic_fee_vault_info.address(),
     );
-    let encoded_refund_args = RefundOnFailureArgs { amount }.encode()?;
+    let encoded_refund_args = RefundOnFailureArgs {
+        amount,
+        retries_left: retries_left - 1,
+    }
+    .encode()?;
     let callback = create_callback(&callback_accounts, &encoded_refund_args);
 
     let action_builder = QueuedTransferActionBuilder::new(
@@ -145,6 +161,8 @@ pub(crate) fn schedule_refund_on_failure(accounts: &RefundOnFailureAccounts<'_>,
 pub(crate) struct RefundOnFailureArgs {
     /// Amount to be refunded
     pub amount: u64,
+    /// Remaining retry attempts; when 0 the callback gives up
+    pub retries_left: u8,
 }
 
 fn create_callback_accounts(
@@ -190,5 +208,19 @@ fn create_callback<'a>(accounts: &'a [ShortAccountMeta], payload: &'a [u8]) -> A
         payload,
         compute_units: CALLBACK_COMPUTE_UNITS,
         accounts,
+    }
+}
+
+#[cfg_attr(not(feature = "logging"), allow(unused_variables))]
+fn log_refund_permanently_failed(accounts: &RefundOnFailureAccounts<'_>, amount: u64) {
+    #[cfg(feature = "logging")]
+    {
+        use alloc::string::ToString;
+        pinocchio_log::log!(
+            "Refund permanently failed: amount={} destination={} queue={}",
+            amount,
+            accounts.refund_destination_owner.address().to_string().as_str(),
+            accounts.queue_info.address().to_string().as_str(),
+        );
     }
 }

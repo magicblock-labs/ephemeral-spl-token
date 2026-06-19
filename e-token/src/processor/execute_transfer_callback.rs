@@ -14,7 +14,7 @@ use crate::processor::internal::{
     callbacks::MagicResponseView,
     group_receipt::{derive_group_receipt_id, TransferCallbackArgs, TransferCallbackArgsView},
     group_receipt_close,
-    refund::{schedule_refund_on_failure, RefundOnFailureAccounts},
+    refund::{schedule_refund_on_failure, RefundOnFailureAccounts, MAX_REFUND_RETRIES},
     GroupReceiptAccounts, CALLBACK_SIGNER,
 };
 
@@ -101,6 +101,7 @@ pub fn process_execute_transfer_callback(accounts: &[AccountView], instruction_d
                     magic_program,
                 )?,
                 args.amount(),
+                MAX_REFUND_RETRIES,
             );
         }
     }

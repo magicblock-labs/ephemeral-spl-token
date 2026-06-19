@@ -58,14 +58,19 @@ pub fn process_refund_on_failure_callback(accounts: &[AccountView], instruction_
         use alloc::string::ToString;
         if let Some(signature) = response.signature {
             pinocchio_log::log!(
-                "Failed to refund: {}, signature: {}",
+                "Failed to refund: {}, retries_left: {}, signature: {}",
                 args.amount(),
+                args.retries_left(),
                 signature.to_string().as_str()
             );
         } else {
-            pinocchio_log::log!("Failed to refund: {}", args.amount());
+            pinocchio_log::log!(
+                "Failed to refund: {}, retries_left: {}",
+                args.amount(),
+                args.retries_left()
+            );
         }
     }
 
-    schedule_refund_on_failure(&accounts, args.amount())
+    schedule_refund_on_failure(&accounts, args.amount(), args.retries_left())
 }
