@@ -34,10 +34,11 @@ mod utils;
 #[variable_offset_layout(buffer_offset = 6)]
 struct RefundOnFailureArgs {
     pub amount: u64,
+    pub retries_left: u8,
 }
 
-fn callback_ix_data(ok: bool, amount: u64) -> Vec<u8> {
-    let args = RefundOnFailureArgs { amount }.encode().unwrap();
+fn callback_ix_data(ok: bool, amount: u64, retries_left: u8) -> Vec<u8> {
+    let args = RefundOnFailureArgs { amount, retries_left }.encode().unwrap();
     let mut data = Vec::new();
     data.push(internal::RefundOnFailureCallback.discriminator());
     data.extend_from_slice(&0u32.to_le_bytes()); // variant = 0
@@ -169,6 +170,7 @@ fn callback_ix(
     magic_fee_vault: Pubkey,
     ok: bool,
     amount: u64,
+    retries_left: u8,
 ) -> Instruction {
     Instruction {
         program_id: PROGRAM,
@@ -180,7 +182,7 @@ fn callback_ix(
             AccountMeta::new(MAGIC_CONTEXT_ID, false),                  // 4: magic_context
             AccountMeta::new_readonly(MAGIC_PROGRAM_ID, false),         // 5: magic_program
         ],
-        data: callback_ix_data(ok, amount),
+        data: callback_ix_data(ok, amount, retries_left),
     }
 }
 
@@ -191,8 +193,16 @@ fn callback_executor_ix(
     magic_fee_vault: Pubkey,
     ok: bool,
     amount: u64,
+    retries_left: u8,
 ) -> Instruction {
-    let inner = callback_ix(refund_destination_owner, queue, magic_fee_vault, ok, amount);
+    let inner = callback_ix(
+        refund_destination_owner,
+        queue,
+        magic_fee_vault,
+        ok,
+        amount,
+        retries_left,
+    );
 
     let mut account_metas = vec![
         AccountMeta::new_readonly(validator, true),
@@ -227,6 +237,7 @@ async fn refund_on_failure_success_no_intent_bundle() {
         magic_fee_vault,
         true, // ok = true
         500,
+        4,
     );
 
     let tx = Transaction::new_signed_with_payer(
@@ -263,6 +274,7 @@ async fn refund_on_failure_schedules_intent_bundle() {
         magic_fee_vault,
         false, // ok = false → triggers schedule_refund_on_failure
         AMOUNT,
+        4,
     );
 
     let tx = Transaction::new_signed_with_payer(
@@ -311,8 +323,42 @@ async fn refund_on_failure_schedules_intent_bundle() {
     );
     assert_eq!(cb.compute_units, 100_000);
 
-    // Payload encodes the refund amount: encode() writes 8 bytes (raw u64 LE, no padding).
-    assert_eq!(cb.payload.len(), 8, "payload must be 8 bytes");
+    // Payload encodes amount (u64, 8 bytes) + retries_left (u8, 1 byte) = 9 bytes.
+    // schedule_refund_on_failure decrements retries_left before encoding, so 4 → 3.
+    assert_eq!(cb.payload.len(), 9, "payload must be 9 bytes");
     let decoded_amount = u64::from_le_bytes(cb.payload[0..8].try_into().expect("payload too short"));
     assert_eq!(decoded_amount, AMOUNT, "callback payload must encode AMOUNT");
+    assert_eq!(cb.payload[8], 3, "retries_left must be decremented to 3");
+}
+
+/// Exhausted retries (ok=false, retries_left=0): callback returns RefundPermanentlyFailed,
+/// no intent bundle is scheduled.
+#[tokio::test]
+#[serial]
+async fn refund_on_failure_retries_exhausted() {
+    let (ctx, validator, _mint, queue, magic_fee_vault, refund_destination_owner) = setup_context().await;
+    let magic_program = Pubkey::new_from_array(MAGIC_PROGRAM_ID.to_bytes());
+    const AMOUNT: u64 = 1_000;
+
+    let ix = callback_executor_ix(
+        validator.pubkey(),
+        refund_destination_owner,
+        queue,
+        magic_fee_vault,
+        false, // ok = false
+        AMOUNT,
+        0, // retries_left = 0 → permanent failure
+    );
+
+    let tx = Transaction::new_signed_with_payer(
+        std::slice::from_ref(&ix),
+        Some(&validator.pubkey()),
+        &[&validator],
+        ctx.last_blockhash,
+    );
+    let result = ctx.banks_client.process_transaction(tx).await;
+    assert!(result.is_err(), "expected transaction to fail on exhausted retries");
+
+    let bundles = take_captured_intent_bundles(magic_program);
+    assert!(bundles.is_empty(), "expected no intent bundle when retries exhausted");
 }
