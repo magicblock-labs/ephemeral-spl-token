@@ -20,7 +20,6 @@ The API exposes:
 - `POST /v1/spl/deposit`
 - `POST /v1/spl/withdraw`
 - `POST /v1/spl/transfer`
-- `POST /v1/spl/transfer-stealth`
 - `POST /v1/spl/stealth-pool`
 - `GET /v1/spl/stealth-pool`
 - `GET /v1/spl/balance`
@@ -49,7 +48,7 @@ Important behavior:
 - `withdraw` uses `withdrawSpl(...)`
 - `transfer` uses `transferSpl(...)`
 - stealth handles are derived exactly as provided from UTF-8 bytes and capped at 255 bytes; handles over 64 bytes use a bounded hash seed for PDA derivation
-- `transfer-stealth` uses the derived stealth-pool PDA as the virtual destination owner
+- `transfer` accepts an initialized stealth handle in `to` and uses the derived stealth-pool PDA as the virtual destination owner
 - every SPL endpoint accepts an optional `cluster` parameter
 - `cluster=mainnet` uses `BASE_RPC_URL` and `EPHEMERAL_RPC_URL`
 - `cluster=devnet` uses `BASE_DEVNET_RPC_URL` and `EPHEMERAL_DEVNET_RPC_URL`
@@ -623,6 +622,8 @@ The returned `sendTo` value is:
 Transfer responses also include `from`, which mirrors the request `fromBalance`, and `fees`.
 `fees.lamports` and `fees.tokens` are total fee strings and return `"0"` when that fee type is not charged. `fees.tokens` uses mint base units. Private `base -> base` transfers report the on-chain private-transfer token fee and shuttle setup lamport fee. Gasless transfers add the relay fee to `fees.tokens` only when gasless is honored.
 
+When `to` is not a Solana public key, the API treats it as a stealth handle. The handle must be initialized through `/v1/spl/stealth-pool`; the API derives the stealth-pool PDA, verifies that the base account exists, and builds a private `base -> base` transfer to that PDA. Stealth handle transfers require `visibility: "private"`, `fromBalance: "base"`, and `toBalance: "base"`; those are the defaults when omitted.
+
 Example:
 
 ```bash
@@ -640,6 +641,21 @@ curl -X POST http://127.0.0.1:8787/v1/spl/transfer \
     "minDelayMs": "0",
     "maxDelayMs": "0",
     "gasless": true
+  }'
+```
+
+Stealth handle transfer:
+
+```bash
+curl -X POST http://127.0.0.1:8787/v1/spl/transfer \
+  -H 'content-type: application/json' \
+  -d '{
+    "from": "FROM_OWNER_PUBKEY",
+    "to": "john.doe@magicblock.id",
+    "mint": "MINT_PUBKEY",
+    "amount": 5000000,
+    "minDelayMs": "0",
+    "maxDelayMs": "0"
   }'
 ```
 
@@ -680,7 +696,7 @@ Gasless transfer validation:
 Relevant fields:
 
 - `from`
-- `to`
+- `to` public key or initialized stealth handle
 - `cluster`
 - `mint`
 - `amount`
@@ -731,31 +747,6 @@ Derives the stealth-pool PDA for a handle and reports whether the base account e
 ```bash
 curl "http://127.0.0.1:8787/v1/spl/stealth-pool?handle=john.doe%40magicblock.id"
 ```
-
-### `POST /v1/spl/transfer-stealth`
-
-Builds an unsigned private transfer addressed to a handle. The API derives the stealth-pool PDA from `toHandle`, verifies the pool account exists, and passes that PDA as the private transfer destination owner.
-
-Missing or wrong handles are rejected before an unsigned transaction is returned.
-
-```bash
-curl -X POST http://127.0.0.1:8787/v1/spl/transfer-stealth \
-  -H 'content-type: application/json' \
-  -d '{
-    "from": "FROM_OWNER_PUBKEY",
-    "toHandle": "john.doe@magicblock.id",
-    "mint": "MINT_PUBKEY",
-    "amount": 5000000,
-    "fromBalance": "base",
-    "minDelayMs": "0",
-    "maxDelayMs": "0"
-  }'
-```
-
-Supported stealth transfer routes:
-
-- `base -> base` private transfer, submitted to base
-- `ephemeral -> base` private transfer, submitted to ER and requiring an auth token
 
 ### `GET /v1/spl/balance`
 

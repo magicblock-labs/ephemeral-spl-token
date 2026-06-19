@@ -49,7 +49,6 @@ import {
   StealthPoolResponse,
   StealthPoolStatusRequest,
   StealthPoolStatusResponse,
-  StealthTransferRequest,
   TransactionResponse,
   TransferRequest,
   TransferQueueEnsureCrankRequest,
@@ -413,6 +412,14 @@ function parsePublicKey(value: string, fieldName: string) {
   }
 }
 
+function tryParsePublicKey(value: string) {
+  try {
+    return new PublicKey(value);
+  } catch {
+    return undefined;
+  }
+}
+
 function parseAmount(
   value: string | number,
   fieldName: string,
@@ -600,6 +607,30 @@ async function assertStealthPoolExists(
       owner: accountInfo?.owner.toBase58(),
     });
   }
+}
+
+async function resolveTransferDestination(config: RpcConfig, input: TransferRequest) {
+  const to = tryParsePublicKey(input.to);
+  if (to) {
+    return to;
+  }
+
+  if (
+    input.visibility !== "private"
+    || input.fromBalance !== "base"
+    || input.toBalance !== "base"
+  ) {
+    throw new ApiError(
+      400,
+      "INVALID_STEALTH_TRANSFER",
+      "Stealth handle transfers require visibility=private, fromBalance=base, and toBalance=base",
+      { to: input.to },
+    );
+  }
+
+  const { stealthPool } = resolveStealthPool(input.to);
+  await assertStealthPoolExists(config, input.to, stealthPool);
+  return stealthPool;
 }
 
 function updateStealthPoolInstruction(
@@ -1717,7 +1748,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
   try {
     const config = resolveRpcConfig(env, input.cluster);
     const from = parsePublicKey(input.from, "from");
-    const to = parsePublicKey(input.to, "to");
+    const to = await resolveTransferDestination(config, input);
     const mint = parsePublicKey(input.mint, "mint");
     const allowZeroAmount = input.visibility === "private"
       && input.fromBalance === "base"
@@ -1919,43 +1950,6 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
   } catch (error) {
     throwTransactionBuildError(error);
   }
-}
-
-export async function buildStealthTransferTransaction(
-  env: AppEnv,
-  input: StealthTransferRequest,
-  authToken?: string,
-) {
-  console.log("buildStealthTransferTransaction invoked: ", input);
-
-  const config = resolveRpcConfig(env, input.cluster);
-  const { stealthPool } = await resolveStealthPool(input.toHandle);
-  await assertStealthPoolExists(config, input.toHandle, stealthPool);
-
-  const transferInput: TransferRequest = {
-    from: input.from,
-    to: stealthPool.toBase58(),
-    cluster: input.cluster,
-    mint: input.mint,
-    amount: input.amount,
-    visibility: "private",
-    fromBalance: input.fromBalance,
-    toBalance: "base",
-    validator: input.validator,
-    initIfMissing: input.initIfMissing,
-    initAtasIfMissing: input.initAtasIfMissing,
-    initVaultIfMissing: input.initVaultIfMissing,
-    memo: input.memo,
-    minDelayMs: input.minDelayMs,
-    maxDelayMs: input.maxDelayMs,
-    clientRefId: input.clientRefId,
-    split: input.split,
-    exactOut: input.exactOut,
-    gasless: input.gasless,
-    legacy: input.legacy,
-  };
-
-  return buildTransferTransaction(env, transferInput, authToken);
 }
 
 async function getBalanceInternal(

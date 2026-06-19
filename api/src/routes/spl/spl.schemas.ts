@@ -162,6 +162,14 @@ export const stealthHandleSchema = z.string().min(1).refine(
   description: "Exact canonical handle string, up to 255 UTF-8 bytes. The API derives the stealth-pool PDA from these UTF-8 bytes as-is; it does not trim, lowercase, or normalize.",
 });
 
+const transferDestinationSchema = z.string().min(1).refine(
+  destination => textEncoder.encode(destination).length <= MAX_STEALTH_HANDLE_BYTES,
+  `Destination must be a public key or a stealth handle of ${MAX_STEALTH_HANDLE_BYTES} UTF-8 bytes or fewer.`,
+).openapi({
+  example: TRANSFER_EXAMPLE_TO,
+  description: "Destination owner public key, or an initialized stealth handle for private base-to-base transfers.",
+});
+
 export const stealthPoolRequestSchema = z.object({
   payer: publicKeySchema.openapi({
     example: DEPOSIT_EXAMPLE_OWNER,
@@ -286,13 +294,13 @@ export type WithdrawRequest = z.infer<typeof withdrawRequestSchema>;
 
 export const transferRequestSchema = z.object({
   from: publicKeySchema,
-  to: publicKeySchema,
+  to: transferDestinationSchema,
   cluster: clusterSchema.optional(),
   mint: publicKeySchema,
   amount: amountSchema,
-  visibility: visibilitySchema,
-  fromBalance: balanceLocationSchema,
-  toBalance: balanceLocationSchema,
+  visibility: visibilitySchema.default("private"),
+  fromBalance: balanceLocationSchema.default("base"),
+  toBalance: balanceLocationSchema.default("base"),
   validator: publicKeySchema.openapi({
     example: DEFAULT_DEPOSIT_VALIDATOR,
     description: "Optional. When this transfer route needs a validator and none is provided, the API resolves it from the selected ephemeral RPC via `getIdentity`.",
@@ -348,69 +356,6 @@ export const transferRequestSchema = z.object({
   },
 });
 export type TransferRequest = z.infer<typeof transferRequestSchema>;
-
-export const stealthTransferRequestSchema = z.object({
-  from: publicKeySchema,
-  toHandle: stealthHandleSchema,
-  cluster: clusterSchema.optional(),
-  mint: publicKeySchema,
-  amount: amountSchema,
-  fromBalance: z.literal("base").openapi({
-    example: "base",
-    description: "Stealth transfers are base-chain source only.",
-  }).default("base"),
-  validator: publicKeySchema.openapi({
-    example: DEFAULT_DEPOSIT_VALIDATOR,
-    description: "Optional. When none is provided, the API resolves it from the selected ephemeral RPC via `getIdentity`.",
-  }).optional(),
-  initIfMissing: z.boolean().optional(),
-  initAtasIfMissing: z.boolean().optional(),
-  initVaultIfMissing: z.boolean().optional(),
-  memo: z.string().openapi({
-    example: "Order #1042",
-    description: "Optional. Appends a final Memo Program instruction with this UTF-8 message.",
-  }).optional(),
-  minDelayMs: optionalBigIntStringSchema.openapi({
-    example: "0",
-    description: "Optional. Defaults to 0.",
-  }).optional(),
-  maxDelayMs: optionalBigIntStringSchema.openapi({
-    example: "0",
-    description: "Optional. Defaults to 0 when omitted, or to minDelayMs when minDelayMs is set.",
-  }).optional(),
-  clientRefId: optionalBigIntStringSchema.openapi({
-    example: "42",
-    description: "Optional. Encrypted client reference ID that can be used to confirm a payment.",
-  }).optional(),
-  split: z.int().positive().max(15).openapi({
-    example: 1,
-    description: "Optional. Defaults to 1. Must be between 1 and 15.",
-  }).optional(),
-  exactOut: z.boolean().openapi({
-    example: boolean,
-    description: "Optional. If true, the fees are deducted from the sender, else from the recipient amount.",
-  }).optional(),
-  gasless: z.boolean().openapi({
-    example: true,
-    description: "Optional. Same gasless policy as `/v1/spl/transfer`.",
-  }).optional(),
-  legacy: z.boolean().openapi({
-    description: "Optional. Defaults to false. When true, skips lookup-table compilation and returns a legacy transaction.",
-  }).optional(),
-}).openapi("StealthTransferRequest", {
-  example: {
-    from: DEPOSIT_EXAMPLE_OWNER,
-    toHandle: "john.doe@magicblock.id",
-    mint: DEFAULT_DEPOSIT_MINT,
-    amount: 5000000,
-    fromBalance: "base",
-    minDelayMs: "0",
-    maxDelayMs: "0",
-    clientRefId: "42",
-    gasless: true,
-  },
-});
-export type StealthTransferRequest = z.infer<typeof stealthTransferRequestSchema>;
 
 export const balanceRequestSchema = z.object({
   address: publicKeySchema,

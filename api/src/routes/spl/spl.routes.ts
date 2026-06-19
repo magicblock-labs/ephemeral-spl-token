@@ -30,7 +30,6 @@ import {
   stealthPoolResponseSchema,
   stealthPoolStatusRequestSchema,
   stealthPoolStatusResponseSchema,
-  stealthTransferRequestSchema,
   TransferQueueEnsureCrankResponse,
   transferQueueEnsureCrankRequestSchema,
   transferQueueEnsureCrankResponseSchema,
@@ -195,7 +194,7 @@ export const transferRoute = createRoute({
   path: "/v1/spl/transfer",
   method: "post",
   tags,
-  description: "Transfer SPL tokens publicly or privately trough an ephemeral rollup.",
+  description: "Transfer SPL tokens publicly, privately, or to an initialized stealth handle through an ephemeral rollup.",
   request: {
     body: jsonContentRequired(transferRequestSchema, "Transfer request"),
     headers: optionalAuthTokenSchema,
@@ -218,22 +217,6 @@ export const undelegateEphemeralAtaRoute = createRoute({
   },
   responses: {
     200: jsonContent(undelegateEphemeralAtaResponseSchema, "Unsigned serialized transaction", undelegateEphemeralAtaResponseExample),
-    400: jsonContent(errorResponseSchema, "Build error"),
-    422: jsonContent(validationErrorResponseSchema, "Validation error"),
-  },
-});
-
-export const stealthTransferRoute = createRoute({
-  path: "/v1/spl/transfer-stealth",
-  method: "post",
-  tags,
-  description: "Build an unsigned private transfer transaction addressed to an initialized stealth handle.",
-  request: {
-    body: jsonContentRequired(stealthTransferRequestSchema, "Stealth transfer request"),
-    headers: optionalAuthTokenSchema,
-  },
-  responses: {
-    200: jsonContent(transactionResponseSchema, "Unsigned serialized transaction"),
     400: jsonContent(errorResponseSchema, "Build error"),
     422: jsonContent(validationErrorResponseSchema, "Validation error"),
   },

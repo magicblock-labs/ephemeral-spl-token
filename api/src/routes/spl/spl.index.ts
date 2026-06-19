@@ -12,7 +12,6 @@ import {
   privateBalanceHandler,
   stealthPoolHandler,
   stealthPoolStatusHandler,
-  stealthTransferHandler,
   transferQueueEnsureCrankHandler,
   transferHandler,
   undelegateEphemeralAtaHandler,
@@ -28,7 +27,6 @@ import {
   privateBalanceRoute,
   stealthPoolRoute,
   stealthPoolStatusRoute,
-  stealthTransferRoute,
   transferQueueEnsureCrankRoute,
   transferRoute,
   undelegateEphemeralAtaRoute,
@@ -44,7 +42,6 @@ app.openapi(withdrawRoute, withdrawHandler);
 app.openapi(initializeMintRoute, initializeMintHandler);
 app.openapi(transferRoute, transferHandler);
 app.openapi(undelegateEphemeralAtaRoute, undelegateEphemeralAtaHandler);
-app.openapi(stealthTransferRoute, stealthTransferHandler);
 app.openapi(stealthPoolRoute, stealthPoolHandler);
 app.openapi(stealthPoolStatusRoute, stealthPoolStatusHandler);
 app.openapi(balanceRoute, balanceHandler);
