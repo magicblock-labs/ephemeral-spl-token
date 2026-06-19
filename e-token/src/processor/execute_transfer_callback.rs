@@ -37,24 +37,24 @@ use crate::processor::internal::{
 /// 11: []                   - Program : Magic program.
 /// 12: [writable]           - PDA     : Magic context account.
 ///
+/// Accounts (11-account shape, legacy — no refund on failure):
+///
+///  0-9: same as above.
+/// 10: []                   - Program : Magic program.
+///
 /// Instruction Data: MagicResponse
 ///
 pub fn process_execute_transfer_callback(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
-    let [
-        callback_signer, // force multi-line
-        group_receipt,
-        queue_info,
-        _vault,
-        mint,
-        _vault_token_account,
-        source,
-        _source_token_account,
-        _token_program,
-        magic_vault,
-        magic_fee_vault,
-        magic_program,
-        magic_context,
-    ] = require_n_accounts!(accounts, 13);
+    // TODO(edwin/snawaz): remove 11-account compat path after next deployment
+    let (callback_signer, group_receipt, queue_info, mint, source, magic_vault, magic_program, maybe_refund) =
+        if accounts.len() >= 13 {
+            let [cb, gr, qi, _vault, mint, _vault_ta, src, _src_ta, _tp, mv, mfv, mp, mc] =
+                require_n_accounts!(accounts, 13);
+            (cb, gr, qi, mint, src, mv, mp, Some((mfv, mc)))
+        } else {
+            let [cb, gr, qi, _vault, mint, _vault_ta, src, _src_ta, _tp, mv, mp] = require_n_accounts!(accounts, 11);
+            (cb, gr, qi, mint, src, mv, mp, None)
+        };
 
     // Verify validator & queue info
     let (header, _) = queue_views_checked(unsafe { queue_info.borrow_unchecked() })?;
@@ -90,20 +90,22 @@ pub fn process_execute_transfer_callback(accounts: &[AccountView], instruction_d
             }
         }
 
-        schedule_refund_on_failure(
-            &RefundOnFailureAccounts::try_new(
-                callback_signer,
-                source,
-                queue_info,
-                magic_fee_vault,
-                magic_context,
-                magic_program,
-            )?,
-            args.amount(),
-        )
-    } else {
-        Ok(())
+        if let Some((magic_fee_vault, magic_context)) = maybe_refund {
+            return schedule_refund_on_failure(
+                &RefundOnFailureAccounts::try_new(
+                    callback_signer,
+                    source,
+                    queue_info,
+                    magic_fee_vault,
+                    magic_context,
+                    magic_program,
+                )?,
+                args.amount(),
+            );
+        }
     }
+
+    Ok(())
 }
 
 fn validate_common(
