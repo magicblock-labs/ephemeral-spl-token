@@ -113,7 +113,8 @@ pub enum ESplInstruction {
     /// 22 - EnsureStealthPoolDelegated: ensure the zeroed stealth-pool PDA
     ///      and its ACL permission PDA exist on base, then ensure the pool is
     ///      delegated. Destination keys are not part of this instruction; they
-    ///      are written later inside the ER via UpdateStealthPool.
+    ///      are written later inside the ER via UpdateStealthPool. The pool
+    ///      authority must sign and is added to the ACL permission account.
     EnsureStealthPoolDelegated = 22,
 
     /// 23 - InitializeRentPda: initialize the global rent-sponsoring PDA derived from ["rent"]

@@ -1838,6 +1838,7 @@ name = "ephemeral-spl-api"
 version = "0.0.0"
 dependencies = [
  "bytemuck",
+ "const-crypto",
  "ephemeral-rollups-pinocchio",
  "pinocchio 0.10.2",
  "pinocchio-log",

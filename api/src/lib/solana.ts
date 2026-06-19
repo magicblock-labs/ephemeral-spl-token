@@ -22,6 +22,7 @@ import {
   undelegateIx,
   withdrawSpl, initVaultIx, initVaultAtaIx, delegateEphemeralAtaIx, deriveVault, deriveEphemeralAta, deriveVaultAta,
 } from "@magicblock-labs/ephemeral-rollups-sdk";
+import { sha256 } from "@noble/hashes/sha256";
 import {
   Connection,
   Keypair,
@@ -103,10 +104,12 @@ const SOLANA_WIRE_TRANSACTION_SIZE_LIMIT = 1232;
 const UPDATE_STEALTH_POOL_DISCRIMINATOR = 21;
 const ENSURE_STEALTH_POOL_DELEGATED_DISCRIMINATOR = 22;
 const STEALTH_POOL_SEED = Buffer.from("stealth_pool");
+const STEALTH_POOL_LONG_HANDLE_HASH_DOMAIN = Buffer.from("stealth_pool_handle");
 const STEALTH_POOL_SPLIT_ACROSS_KEYS_FLAG = 1 << 0;
-const MAX_STEALTH_HANDLE_BYTES = 64;
+const MAX_STEALTH_HANDLE_BYTES = 255;
 const STEALTH_HANDLE_STORAGE_BYTES = 1 + MAX_STEALTH_HANDLE_BYTES;
 const MAX_STEALTH_HANDLE_SEED_BYTES = 32;
+const MAX_INLINE_STEALTH_HANDLE_SEED_BYTES = 2 * MAX_STEALTH_HANDLE_SEED_BYTES;
 // Keep these defaults aligned with scripts/create-private-transfer-lut.js. Updating them requires a redeploy.
 const PRIVATE_BASE_TO_BASE_TRANSFER_LOOKUP_TABLES = {
   mainnet: new PublicKey("54M1BrqVSg1UGTmhH44gQPsPVyuMpmcVBkaY2wYNSVZB"),
@@ -537,13 +540,15 @@ function encodeStealthHandleStorage(handleBytes: Uint8Array) {
 
 function deriveStealthPoolFromHandleBytes(handleBytes: Uint8Array): [PublicKey, number] {
   const handleSeed = Buffer.from(handleBytes);
-  const seeds = handleBytes.length <= MAX_STEALTH_HANDLE_SEED_BYTES
-    ? [STEALTH_POOL_SEED, handleSeed]
+  const handleSeeds = handleSeed.length <= MAX_STEALTH_HANDLE_SEED_BYTES
+    ? [handleSeed]
     : [
-        STEALTH_POOL_SEED,
         handleSeed.subarray(0, MAX_STEALTH_HANDLE_SEED_BYTES),
-        handleSeed.subarray(MAX_STEALTH_HANDLE_SEED_BYTES),
+        handleSeed.length <= MAX_INLINE_STEALTH_HANDLE_SEED_BYTES
+          ? handleSeed.subarray(MAX_STEALTH_HANDLE_SEED_BYTES)
+          : Buffer.from(sha256(Buffer.concat([STEALTH_POOL_LONG_HANDLE_HASH_DOMAIN, handleSeed]))),
       ];
+  const seeds = [STEALTH_POOL_SEED, ...handleSeeds];
   return PublicKey.findProgramAddressSync(
     seeds,
     EPHEMERAL_SPL_TOKEN_PROGRAM_ID,
@@ -606,7 +611,7 @@ function updateStealthPoolInstruction(
   flags: number,
 ) {
   if (handleStorage.length !== STEALTH_HANDLE_STORAGE_BYTES) {
-    throw new ApiError(400, "INVALID_STEALTH_HANDLE", "handle storage must be 65 bytes");
+    throw new ApiError(400, "INVALID_STEALTH_HANDLE", "handle storage must be 256 bytes");
   }
 
   const data = Buffer.alloc(1 + STEALTH_HANDLE_STORAGE_BYTES + 1 + 1 + destinations.length * 32);
@@ -640,11 +645,12 @@ function updateStealthPoolInstruction(
 function ensureStealthPoolDelegatedInstruction(
   payer: PublicKey,
   stealthPool: PublicKey,
+  authority: PublicKey,
   handleStorage: Uint8Array,
   validator?: PublicKey,
 ) {
   if (handleStorage.length !== STEALTH_HANDLE_STORAGE_BYTES) {
-    throw new ApiError(400, "INVALID_STEALTH_HANDLE", "handle storage must be 65 bytes");
+    throw new ApiError(400, "INVALID_STEALTH_HANDLE", "handle storage must be 256 bytes");
   }
 
   const data = Buffer.alloc(1 + STEALTH_HANDLE_STORAGE_BYTES + (validator ? 32 : 0));
@@ -685,6 +691,7 @@ function ensureStealthPoolDelegatedInstruction(
       { pubkey: DELEGATION_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       { pubkey: PERMISSION_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: authority, isSigner: true, isWritable: false },
     ],
     data,
   });
@@ -1638,6 +1645,7 @@ export async function buildUpdateStealthPoolTransaction(
       ensureStealthPoolDelegatedInstruction(
         payer,
         stealthPool,
+        authority,
         handleStorage,
         validator,
       ),

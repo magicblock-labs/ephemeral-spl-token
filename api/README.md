@@ -48,7 +48,7 @@ Important behavior:
 - `deposit` always uses `escrowIndex = 0`
 - `withdraw` uses `withdrawSpl(...)`
 - `transfer` uses `transferSpl(...)`
-- stealth handles are derived exactly as provided from UTF-8 bytes, capped at 64 bytes and split into 32-byte PDA seed chunks when needed
+- stealth handles are derived exactly as provided from UTF-8 bytes and capped at 255 bytes; handles over 64 bytes use a bounded hash seed for PDA derivation
 - `transfer-stealth` uses the derived stealth-pool PDA as the virtual destination owner
 - every SPL endpoint accepts an optional `cluster` parameter
 - `cluster=mainnet` uses `BASE_RPC_URL` and `EPHEMERAL_RPC_URL`
@@ -703,7 +703,7 @@ Relevant fields:
 
 Builds an unsigned base-chain transaction that initializes or updates a stealth pool. The caller provides the exact handle string, payer, authority, and 1 to 10 destination owner keys.
 
-The API does not canonicalize the handle. For example, `John.Doe@magicblock.id` and `john.doe@magicblock.id` derive different pools. The update transaction stores the exact handle bytes in the stealth-pool PDA for off-chain display/lookup, capped at 64 UTF-8 bytes.
+The API does not canonicalize the handle. For example, `John.Doe@magicblock.id` and `john.doe@magicblock.id` derive different pools. The update transaction stores the exact handle bytes in the stealth-pool PDA for off-chain display/lookup, capped at 255 UTF-8 bytes.
 
 Temporary integration note: this setup transaction is currently built for base so the end-to-end handle flow can be exercised without ER auth. The ER is expected to read/clone the pool state for private transfer resolution.
 

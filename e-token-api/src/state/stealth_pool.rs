@@ -1,9 +1,10 @@
 use bytemuck::{Pod, Zeroable};
+use const_crypto::sha2::Sha256;
 use pinocchio::error::ProgramError;
-use solana_address::Address;
+use solana_address::{address_eq, Address};
 
 use crate::{
-    require, require_eq_keys,
+    require,
     state::{Initializable, RawType},
 };
 
@@ -26,8 +27,8 @@ pub struct StealthPool {
     pub authority: Address,
     //
     // Exact UTF-8 handle bytes used to derive this PDA. Byte 0 stores the
-    // handle length, followed by up to 64 handle bytes.
-    pub handle: [u8; 65],
+    // handle length, followed by up to 255 handle bytes.
+    pub handle: [u8; 256],
     pub destination_count: u8,
     pub destinations: [Address; 10],
 }
@@ -52,10 +53,14 @@ impl StealthPool {
     pub const DISCRIMINATOR: [u8; 8] = *b"stpool@1";
 
     pub const SEED: &'static [u8] = b"stealth_pool";
+    pub const LONG_HANDLE_HASH_DOMAIN: &'static [u8] = b"stealth_pool_handle";
 
-    pub const MAX_HANDLE_BYTES: usize = 64;
+    pub const MAX_HANDLE_BYTES: usize = u8::MAX as usize;
     pub const HANDLE_STORAGE_LEN: usize = 1 + Self::MAX_HANDLE_BYTES;
     pub const MAX_HANDLE_SEED_BYTES: usize = 32;
+    pub const MAX_INLINE_HANDLE_SEED_BYTES: usize = 2 * Self::MAX_HANDLE_SEED_BYTES;
+    pub const MAX_PDA_SEEDS: usize = 3;
+    pub const MAX_PDA_SIGNER_SEEDS: usize = Self::MAX_PDA_SEEDS + 1;
 
     pub const MAX_DESTINATIONS: usize = 10;
 
@@ -70,7 +75,7 @@ impl StealthPool {
     }
 
     #[inline(always)]
-    pub fn handle_from_storage(storage: &[u8; 65]) -> Result<&[u8], ProgramError> {
+    pub fn handle_from_storage(storage: &[u8; Self::HANDLE_STORAGE_LEN]) -> Result<&[u8], ProgramError> {
         let len = storage[0] as usize;
         require!(
             len != 0 && len <= Self::MAX_HANDLE_BYTES,
@@ -81,7 +86,7 @@ impl StealthPool {
     }
 
     #[inline(always)]
-    pub fn store_handle(handle: &[u8]) -> Result<[u8; 65], ProgramError> {
+    pub fn store_handle(handle: &[u8]) -> Result<[u8; Self::HANDLE_STORAGE_LEN], ProgramError> {
         Self::validate_handle(handle)?;
 
         let mut storage = [0u8; Self::HANDLE_STORAGE_LEN];
@@ -91,44 +96,142 @@ impl StealthPool {
     }
 
     #[inline(always)]
-    pub fn derive_pda(handle: &[u8], bump_seed: u8) -> Result<Address, ProgramError> {
+    pub fn long_handle_hash_seed(handle: &[u8]) -> Result<[u8; 32], ProgramError> {
         Self::validate_handle(handle)?;
-        let bump = [bump_seed];
 
-        if handle.len() <= Self::MAX_HANDLE_SEED_BYTES {
-            Ok(Address::create_program_address(
-                &[Self::SEED, handle, &bump],
-                &crate::ID,
-            )?)
+        Ok(Sha256::new()
+            .update(Self::LONG_HANDLE_HASH_DOMAIN)
+            .update(handle)
+            .finalize())
+    }
+
+    #[inline(always)]
+    pub fn seed_slices<'a>(
+        handle: &'a [u8],
+        long_handle_hash_seed: &'a mut [u8; 32],
+        out: &'a mut [&'a [u8]; Self::MAX_PDA_SEEDS],
+    ) -> Result<&'a [&'a [u8]], ProgramError> {
+        let hash_seed = if handle.len() > Self::MAX_INLINE_HANDLE_SEED_BYTES {
+            *long_handle_hash_seed = Self::long_handle_hash_seed(handle)?;
+            Some(&*long_handle_hash_seed)
         } else {
-            Ok(Address::create_program_address(
-                &[
-                    Self::SEED,
-                    &handle[..Self::MAX_HANDLE_SEED_BYTES],
-                    &handle[Self::MAX_HANDLE_SEED_BYTES..],
-                    &bump,
-                ],
-                &crate::ID,
-            )?)
+            None
+        };
+        Self::seed_slices_with_hash(handle, hash_seed, out)
+    }
+
+    #[inline(always)]
+    pub fn seed_slices_with_hash<'a>(
+        handle: &'a [u8],
+        long_handle_hash_seed: Option<&'a [u8; 32]>,
+        out: &'a mut [&'a [u8]; Self::MAX_PDA_SEEDS],
+    ) -> Result<&'a [&'a [u8]], ProgramError> {
+        Self::validate_handle(handle)?;
+
+        out[0] = Self::SEED;
+        if handle.len() <= Self::MAX_HANDLE_SEED_BYTES {
+            out[1] = handle;
+            return Ok(&out[..2]);
         }
+
+        out[1] = &handle[..Self::MAX_HANDLE_SEED_BYTES];
+        if handle.len() <= Self::MAX_INLINE_HANDLE_SEED_BYTES {
+            out[2] = &handle[Self::MAX_HANDLE_SEED_BYTES..];
+        } else {
+            let hash_seed = long_handle_hash_seed.ok_or(ProgramError::InvalidInstructionData)?;
+            let hash_seed: &'a [u8] = &hash_seed[..];
+            out[2] = hash_seed;
+        }
+
+        Ok(&out[..3])
+    }
+
+    #[inline(always)]
+    pub fn seed_slices_with_bump<'a>(
+        handle: &'a [u8],
+        bump: &'a [u8],
+        long_handle_hash_seed: &'a mut [u8; 32],
+        out: &'a mut [&'a [u8]; Self::MAX_PDA_SIGNER_SEEDS],
+    ) -> Result<&'a [&'a [u8]], ProgramError> {
+        let hash_seed = if handle.len() > Self::MAX_INLINE_HANDLE_SEED_BYTES {
+            *long_handle_hash_seed = Self::long_handle_hash_seed(handle)?;
+            Some(&*long_handle_hash_seed)
+        } else {
+            None
+        };
+        Self::seed_slices_with_bump_and_hash(handle, bump, hash_seed, out)
+    }
+
+    #[inline(always)]
+    pub fn seed_slices_with_bump_and_hash<'a>(
+        handle: &'a [u8],
+        bump: &'a [u8],
+        long_handle_hash_seed: Option<&'a [u8; 32]>,
+        out: &'a mut [&'a [u8]; Self::MAX_PDA_SIGNER_SEEDS],
+    ) -> Result<&'a [&'a [u8]], ProgramError> {
+        Self::validate_handle(handle)?;
+
+        out[0] = Self::SEED;
+        if handle.len() <= Self::MAX_HANDLE_SEED_BYTES {
+            out[1] = handle;
+            out[2] = bump;
+            return Ok(&out[..3]);
+        }
+
+        out[1] = &handle[..Self::MAX_HANDLE_SEED_BYTES];
+        if handle.len() <= Self::MAX_INLINE_HANDLE_SEED_BYTES {
+            out[2] = &handle[Self::MAX_HANDLE_SEED_BYTES..];
+        } else {
+            let hash_seed = long_handle_hash_seed.ok_or(ProgramError::InvalidInstructionData)?;
+            let hash_seed: &'a [u8] = &hash_seed[..];
+            out[2] = hash_seed;
+        }
+        out[3] = bump;
+
+        Ok(&out[..4])
+    }
+
+    #[inline(always)]
+    pub fn derive_pda(handle: &[u8], bump_seed: u8) -> Result<Address, ProgramError> {
+        let bump = [bump_seed];
+        let mut long_handle_hash_seed = [0u8; 32];
+        let mut seed_buf: [&[u8]; Self::MAX_PDA_SIGNER_SEEDS] = [&[]; Self::MAX_PDA_SIGNER_SEEDS];
+        let seeds = Self::seed_slices_with_bump(handle, &bump, &mut long_handle_hash_seed, &mut seed_buf)?;
+
+        Ok(Address::create_program_address(seeds, &crate::ID)?)
+    }
+
+    #[inline(always)]
+    pub fn derive_pda_with_hash(
+        handle: &[u8],
+        bump_seed: u8,
+        long_handle_hash_seed: Option<&[u8; 32]>,
+    ) -> Result<Address, ProgramError> {
+        let bump = [bump_seed];
+        let mut seed_buf: [&[u8]; Self::MAX_PDA_SIGNER_SEEDS] = [&[]; Self::MAX_PDA_SIGNER_SEEDS];
+        let seeds = Self::seed_slices_with_bump_and_hash(handle, &bump, long_handle_hash_seed, &mut seed_buf)?;
+
+        Ok(Address::create_program_address(seeds, &crate::ID)?)
     }
 
     #[inline(always)]
     pub fn find_pda(handle: &[u8]) -> Result<(Address, u8), ProgramError> {
-        Self::validate_handle(handle)?;
+        let mut long_handle_hash_seed = [0u8; 32];
+        let mut seed_buf: [&[u8]; Self::MAX_PDA_SEEDS] = [&[]; Self::MAX_PDA_SEEDS];
+        let seeds = Self::seed_slices(handle, &mut long_handle_hash_seed, &mut seed_buf)?;
 
-        if handle.len() <= Self::MAX_HANDLE_SEED_BYTES {
-            Ok(Address::find_program_address(&[Self::SEED, handle], &crate::ID))
-        } else {
-            Ok(Address::find_program_address(
-                &[
-                    Self::SEED,
-                    &handle[..Self::MAX_HANDLE_SEED_BYTES],
-                    &handle[Self::MAX_HANDLE_SEED_BYTES..],
-                ],
-                &crate::ID,
-            ))
-        }
+        Ok(Address::find_program_address(seeds, &crate::ID))
+    }
+
+    #[inline(always)]
+    pub fn find_pda_with_hash(
+        handle: &[u8],
+        long_handle_hash_seed: Option<&[u8; 32]>,
+    ) -> Result<(Address, u8), ProgramError> {
+        let mut seed_buf: [&[u8]; Self::MAX_PDA_SEEDS] = [&[]; Self::MAX_PDA_SEEDS];
+        let seeds = Self::seed_slices_with_hash(handle, long_handle_hash_seed, &mut seed_buf)?;
+
+        Ok(Address::find_program_address(seeds, &crate::ID))
     }
 
     #[inline(always)]
@@ -137,7 +240,7 @@ impl StealthPool {
 
         let derived = Self::derive_pda(self.handle_bytes(), self.bump)?;
 
-        require_eq_keys!(&derived, address_of_self, ProgramError::InvalidSeeds);
+        require!(address_eq(&derived, address_of_self), ProgramError::InvalidSeeds);
 
         Ok(())
     }
@@ -187,7 +290,39 @@ impl StealthPoolFlags {
 
 #[cfg(test)]
 mod tests {
-    use super::StealthPoolFlags;
+    use super::{StealthPool, StealthPoolFlags};
+
+    #[test]
+    fn stealth_pool_handle_storage_accepts_255_bytes() {
+        let handle = [b'a'; StealthPool::MAX_HANDLE_BYTES];
+        let storage = StealthPool::store_handle(&handle).unwrap();
+
+        assert_eq!(storage[0] as usize, StealthPool::MAX_HANDLE_BYTES);
+        assert_eq!(&storage[1..], &handle);
+        assert_eq!(StealthPool::handle_from_storage(&storage).unwrap(), &handle);
+    }
+
+    #[test]
+    fn stealth_pool_handle_storage_rejects_more_than_255_bytes() {
+        let handle = [b'a'; StealthPool::MAX_HANDLE_BYTES + 1];
+
+        assert!(StealthPool::store_handle(&handle).is_err());
+        assert!(StealthPool::find_pda(&handle).is_err());
+    }
+
+    #[test]
+    fn stealth_pool_pda_seeds_hash_255_byte_handles() {
+        let handle = [b'a'; StealthPool::MAX_HANDLE_BYTES];
+        let expected_hash = StealthPool::long_handle_hash_seed(&handle).unwrap();
+        let mut long_handle_hash_seed = [0u8; 32];
+        let mut seeds = [&[][..]; StealthPool::MAX_PDA_SEEDS];
+        let seeds = StealthPool::seed_slices(&handle, &mut long_handle_hash_seed, &mut seeds).unwrap();
+
+        assert_eq!(seeds.len(), StealthPool::MAX_PDA_SEEDS);
+        assert_eq!(seeds[0], StealthPool::SEED);
+        assert_eq!(seeds[1], &handle[..StealthPool::MAX_HANDLE_SEED_BYTES]);
+        assert_eq!(seeds[2], &expected_hash);
+    }
 
     #[test]
     fn stealth_pool_flags_accept_empty_and_known_bits() {
