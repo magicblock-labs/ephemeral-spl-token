@@ -40,6 +40,10 @@ pub(crate) enum ESplInternalInstruction {
     /// 208 - ExecuteTransferCallback: callback with result of `ExecuteReadyQueuedTransfer`
     ///       maintains `GroupReceipt`, adds `TransferReceipt`
     ExecuteTransferCallback = 208,
+
+    /// 209 - RefundOnFailureCallback: callback that schedules refund action on failure of `ExecuteReadyQueuedTransfer`
+    ///       failures of `RefundOnFailureCallback` itself are handled recursively until success
+    RefundOnFailureCallback = 209,
 }
 
 impl ESplInternalInstruction {
@@ -83,6 +87,7 @@ impl TryFrom<u8> for ESplInternalInstruction {
             206 => Ok(Self::CloseLamportsPdaIntent),
             207 => Ok(Self::MarkTransferQueueRefillPending),
             208 => Ok(Self::ExecuteTransferCallback),
+            209 => Ok(Self::RefundOnFailureCallback),
             _ => Err(()),
         }
     }

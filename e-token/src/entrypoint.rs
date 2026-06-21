@@ -273,5 +273,10 @@ fn process_internal_instruction(accounts: &[AccountView], instruction_data: &[u8
 
             process_execute_transfer_callback(accounts, data)
         }
+        ESplInternalInstruction::RefundOnFailureCallback => {
+            debug_log!("Instruction: RefundOnFailureCallback");
+
+            process_refund_on_failure_callback(accounts, data)
+        }
     }
 }

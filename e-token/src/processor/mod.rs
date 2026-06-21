@@ -26,6 +26,7 @@ pub(crate) mod initialize_transfer_queue;
 pub(crate) mod internal;
 pub(crate) mod mark_transfer_queue_refill_pending;
 pub(crate) mod merge_shuttle_into_ephemeral_ata;
+pub(crate) mod refund_on_failure_callback;
 pub(crate) mod reset_ephemeral_ata_permission;
 pub(crate) mod schedule_private_transfer;
 pub(crate) mod sponsored_lamports_transfer;
@@ -67,6 +68,7 @@ pub(crate) use initialize_shuttle_ephemeral_ata::process_initialize_shuttle_ephe
 pub(crate) use initialize_transfer_queue::process_initialize_transfer_queue;
 pub(crate) use mark_transfer_queue_refill_pending::process_mark_transfer_queue_refill_pending;
 pub(crate) use merge_shuttle_into_ephemeral_ata::process_merge_shuttle_into_ephemeral_ata;
+pub(crate) use refund_on_failure_callback::process_refund_on_failure_callback;
 pub(crate) use reset_ephemeral_ata_permission::process_reset_ephemeral_ata_permission;
 pub(crate) use schedule_private_transfer::process_schedule_private_transfer;
 pub(crate) use sponsored_lamports_transfer::process_sponsored_lamports_transfer;

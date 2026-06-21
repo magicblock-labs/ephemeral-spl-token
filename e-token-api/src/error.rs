@@ -17,6 +17,8 @@ pub enum EphemeralSplError {
     TooManyAccountKeys = 6,
     // ephemeral ATA is already delegated to another validator
     EphemeralAtaValidatorMismatch = 7,
+    // refund scheduling exhausted all retry attempts
+    RefundPermanentlyFailed = 8,
     // internal invariant / unreachable conversion failure
     InfallibleError = 255,
 }
@@ -39,6 +41,7 @@ impl ToStr for EphemeralSplError {
             VaultTokenAccountMismatch => "EphemeralSplError::VaultTokenAccountMismatch",
             TooManyAccountKeys => "EphemeralSplError::TooManyAccountKeys",
             EphemeralAtaValidatorMismatch => "EphemeralSplError::EphemeralAtaValidatorMismatch",
+            RefundPermanentlyFailed => "EphemeralSplError::RefundPermanentlyFailed",
             InfallibleError => "EphemeralSplError::InfallibleError",
         }
     }
@@ -55,6 +58,7 @@ impl core::convert::TryFrom<u32> for EphemeralSplError {
             5 => Ok(EphemeralSplError::VaultTokenAccountMismatch),
             6 => Ok(EphemeralSplError::TooManyAccountKeys),
             7 => Ok(EphemeralSplError::EphemeralAtaValidatorMismatch),
+            8 => Ok(EphemeralSplError::RefundPermanentlyFailed),
             255 => Ok(EphemeralSplError::InfallibleError),
             _ => Err(ProgramError::InvalidArgument),
         }
