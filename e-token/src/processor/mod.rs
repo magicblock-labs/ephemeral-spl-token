@@ -9,7 +9,6 @@ pub(crate) mod delegate_shuttle_ephemeral_ata;
 pub(crate) mod delegate_transfer_queue;
 pub(crate) mod deposit_and_delegate_shuttle_ephemeral_ata_with_merge;
 pub(crate) mod deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer;
-pub(crate) mod deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer_and_stash_close;
 pub(crate) mod deposit_and_queue_transfer;
 pub(crate) mod deposit_spl_tokens;
 pub(crate) mod ensure_stealth_pool_delegated;
@@ -52,7 +51,6 @@ pub(crate) use delegate_shuttle_ephemeral_ata::process_delegate_shuttle_ephemera
 pub(crate) use delegate_transfer_queue::process_delegate_transfer_queue;
 pub(crate) use deposit_and_delegate_shuttle_ephemeral_ata_with_merge::process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge;
 pub(crate) use deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer::process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer;
-pub(crate) use deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer_and_stash_close::process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer_and_stash_close;
 pub(crate) use deposit_and_queue_transfer::process_deposit_and_queue_transfer;
 pub(crate) use deposit_spl_tokens::process_deposit_spl_tokens;
 pub(crate) use ensure_stealth_pool_delegated::process_ensure_stealth_pool_delegated;

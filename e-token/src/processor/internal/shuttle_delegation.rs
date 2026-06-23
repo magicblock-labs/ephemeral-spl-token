@@ -12,6 +12,7 @@ use ephemeral_rollups_pinocchio::{
 use ephemeral_spl_api::{
     debug_log,
     instruction::ESplInstruction,
+    instructions::CloseStashArgsView,
     require, require_eq_keys, require_owned_by,
     state::{
         ephemeral_ata::EphemeralAta, load_initialized, load_mut_initialized, shuttle_ephemeral_ata::ShuttleMetadata,
@@ -323,15 +324,9 @@ pub(crate) fn merge_shuttle_into_token_account_action(
     }
 }
 
-#[derive(Clone, Copy)]
-pub(crate) struct CloseStashArgs {
-    pub(crate) user: [u8; 32],
-    pub(crate) stash_bump: u8,
-}
-
 pub(crate) fn undelegate_and_close_shuttle_action(
     accounts: &DepositAndDelegateShuttleAccounts<'_>,
-    close_stash: Option<CloseStashArgs>,
+    close_stash: Option<CloseStashArgsView<'_>>,
 ) -> Instruction {
     build_undelegate_and_close_shuttle_instruction(
         accounts.payer_info.address(),
@@ -353,7 +348,7 @@ pub(crate) fn build_undelegate_and_close_shuttle_instruction(
     shuttle_wallet_ata: &Address,
     refund_token: &Address,
     token_program: &Address,
-    close_stash: Option<CloseStashArgs>,
+    close_stash: Option<CloseStashArgsView<'_>>,
 ) -> Instruction {
     let accounts = alloc::vec![
         AccountMeta::new_readonly(*payer, true), // TODO: can be removed, or passed as pubkey
@@ -370,8 +365,8 @@ pub(crate) fn build_undelegate_and_close_shuttle_instruction(
     if let Some(close) = close_stash {
         // Explicit escrow_index byte: the parser would otherwise consume `user[0]` as it.
         data.push(DEFAULT_ESCROW_INDEX);
-        data.extend_from_slice(&close.user);
-        data.push(close.stash_bump);
+        data.extend_from_slice(close.user().as_ref());
+        data.push(close.stash_bump());
     }
     Instruction {
         program_id: crate::ID,

@@ -31,7 +31,7 @@ consolidate-commits = false
 
 [workspace.dependencies]
 ephemeral-rollups-pinocchio = "0.10.9"
-wheels = { git = "https://github.com/magicblock-labs/magicblock-wheels.git" }
+wheels = { git = "https://github.com/magicblock-labs/magicblock-wheels.git", rev = "5b83b56" }
 
 pinocchio = { version = "0.10.1", features = ["cpi"] }
 solana-address = { version = "2.0", features = ["curve25519"] }

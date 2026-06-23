@@ -4,7 +4,7 @@ use core::mem::MaybeUninit;
 use ephemeral_spl_api::{
     instruction::ESplInstruction,
     instructions::{
-        DepositAndDelegateShuttleWithPrivateTransferAndStashCloseArgs, ExecuteScheduledPrivateTransferArgs,
+        CloseStashArgs, DepositAndDelegateShuttleWithPrivateTransferArgs, ExecuteScheduledPrivateTransferArgs,
     },
     require, require_eq_keys, require_n_accounts,
     state::stash::StashPda,
@@ -21,9 +21,12 @@ use pinocchio_token_2022::instructions::{CloseAccount, TransferChecked};
 use solana_address::Address;
 use wheels::layout::{Decodable as _, Encodable as _};
 
-use crate::processor::internal::{
-    derive_hydra_seed, get_associated_token_address, is_supported_token_program,
-    private_transfer::SCHEDULED_PT_INNER_ACCOUNTS, read_mint_decimals, rent_pda::RENT_PDA, validate_token_account,
+use crate::processor::{
+    deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer::SCHEDULED_PT_INNER_ACCOUNTS,
+    internal::{
+        derive_hydra_seed, get_associated_token_address, is_supported_token_program, read_mint_decimals,
+        rent_pda::RENT_PDA, validate_token_account,
+    },
 };
 
 // Five minutes at an estimated 400 ms/slot.
@@ -34,20 +37,20 @@ const REFUND_TIMEOUT_SLOTS: u64 = 750;
 ///
 /// Hydra forbids signer metas in scheduled instructions, so every account
 /// here arrives non-signer. The processor re-derives the stash PDA from
-/// `[b"stash", user, mint]` and `invoke_signed`s into instruction 31 with
-/// the stash PDA covering both the `payer` and `owner` signer slots.
+/// `[b"stash", user, mint]` and `invoke_signed`s into instruction 25 with
+/// a stash-close tail, so the PDA covers both the `payer` and `owner` signer slots.
 ///
-/// Accounts: slots 0..18 mirror instruction 31's layout verbatim so the
+/// Accounts: slots 0..18 mirror the scheduled instruction 25 layout so the
 /// self-CPI can forward that prefix unchanged. Slot 20 is the Hydra crank
 /// PDA, the provenance witness — `crank.authority == RENT_PDA` and
 /// `crank.authority_signer == 1` proves ix 29 created the schedule.
 ///
-///  0: [writable]          - PDA     : Stash PDA (payer in ix 31).
+///  0: [writable]          - PDA     : Stash PDA (payer in ix 25).
 ///  1: [writable]          - PDA     : Rent PDA account.
 ///  2: [writable]          - PDA     : Shuttle metadata account.
 ///  3: [writable]          - PDA     : Shuttle EATA account.
 ///  4: [writable]          - SPL     : Shuttle wallet ATA account.
-///  5: []                  - PDA     : Stash PDA (owner in ix 31; same key as 0).
+///  5: []                  - PDA     : Stash PDA (owner in ix 25; same key as 0).
 ///  6: []                  - Program : Owner program (this program).
 ///  7: [writable]          - PDA     : Buffer account.
 ///  8: [writable]          - PDA     : Delegation record account.
@@ -58,7 +61,7 @@ const REFUND_TIMEOUT_SLOTS: u64 = 750;
 /// 13: []                  - SPL     : Mint account.
 /// 14: []                  - SPL     : Token program.
 /// 15: []                  - PDA     : Global vault account.
-/// 16: [writable]          - SPL     : Stash ATA (owner_source_token in ix 31).
+/// 16: [writable]          - SPL     : Stash ATA (owner_source_token in ix 25).
 /// 17: [writable]          - SPL     : Vault token account.
 /// 18: [writable]          - PDA     : Transfer queue account.
 /// 19: [writable]          - SPL     : User ATA for timeout refund.
@@ -182,26 +185,28 @@ pub fn process_execute_scheduled_private_transfer(accounts: &[AccountView], inst
         return Ok(());
     }
 
-    // -------- build ix 31 instruction data --------
-    let mut stash_close_seeds = [0u8; 33];
-    stash_close_seeds[0..32].copy_from_slice(args.user().as_ref());
-    stash_close_seeds[32] = args.stash_bump();
+    // -------- build ix 25 instruction data with stash-close tail --------
+    let mut private_transfer_data = DepositAndDelegateShuttleWithPrivateTransferArgs {
+        shuttle_id: args.shuttle_id(),
+        amount: effective_amount,
+        exact_out: false,
+        validator: Some(*args.validator()),
+        encrypted_destination: args.encrypted_destination().to_owned(),
+        encrypted_data_suffix: args.encrypted_data_suffix().to_owned(),
+    }
+    .encode()?;
+    private_transfer_data.extend_from_slice(
+        &CloseStashArgs {
+            user: *args.user(),
+            stash_bump: args.stash_bump(),
+        }
+        .encode()?,
+    );
 
-    let ix_data = ESplInstruction::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransferAndStashClose
-        .with_data(
-            &DepositAndDelegateShuttleWithPrivateTransferAndStashCloseArgs {
-                shuttle_id: args.shuttle_id(),
-                amount: effective_amount,
-                exact_out: false,
-                validator: Some(*args.validator()),
-                encrypted_destination: args.encrypted_destination().to_owned(),
-                stash_close_seeds,
-                encrypted_data_suffix: args.encrypted_data_suffix().to_owned(),
-            }
-            .encode()?,
-        );
+    let ix_data = ESplInstruction::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer
+        .with_data(&private_transfer_data);
 
-    // -------- build ix 31 account metas (19) --------
+    // -------- build ix 25 account metas (19) --------
     let mut metas = [const { MaybeUninit::<InstructionAccount>::uninit() }; SCHEDULED_PT_INNER_ACCOUNTS];
     unsafe {
         metas

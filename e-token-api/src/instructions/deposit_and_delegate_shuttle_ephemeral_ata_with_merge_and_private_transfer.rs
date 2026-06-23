@@ -13,3 +13,12 @@ pub struct DepositAndDelegateShuttleWithPrivateTransferArgs {
     #[flexible = 1]
     pub encrypted_data_suffix: Vec<u8>,
 }
+
+#[variable_offset_layout(buffer_offset = unaligned)]
+#[derive(Clone, Copy)]
+pub struct CloseStashArgs {
+    pub user: Address,
+    pub stash_bump: u8,
+}
+
+static_assertions::const_assert_eq!(CloseStashArgs::DATA_LEN, 33);
