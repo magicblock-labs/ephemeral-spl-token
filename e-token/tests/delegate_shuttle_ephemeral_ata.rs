@@ -12,7 +12,6 @@ use solana_instruction::{AccountMeta, Instruction};
 use solana_program_test::tokio;
 use solana_signer::Signer;
 use solana_transaction::Transaction;
-use wheels::layout::Encodable as _;
 
 mod common;
 mod utils;
@@ -93,7 +92,8 @@ async fn delegate_shuttle_ephemeral_ata_succeeds() {
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
         data: instruction::ESplInstruction::DelegateShuttleEphemeralAta
-            .with_data(&DelegateShuttleArgs { validator: None }.encode().unwrap()),
+            .with(&DelegateShuttleArgs { validator: None })
+            .unwrap(),
     };
 
     let tx = Transaction::new_signed_with_payer(

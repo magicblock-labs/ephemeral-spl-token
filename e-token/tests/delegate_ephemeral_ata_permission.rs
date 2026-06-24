@@ -5,7 +5,9 @@ use ephemeral_rollups_pinocchio::{
         delegation_record_pda_from_delegated_account,
     },
 };
-use ephemeral_spl_api::{instruction, state::ephemeral_ata::EphemeralAta, ID as PROGRAM};
+use ephemeral_spl_api::{
+    instruction, instructions::CreateEphemeralAtaPermissionArgs, state::ephemeral_ata::EphemeralAta, ID as PROGRAM,
+};
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::rent::Rent;
@@ -66,7 +68,9 @@ async fn delegate_ephemeral_ata_permission_succeeds() {
         ],
         data: {
             let flag = ephemeral_rollups_pinocchio::acl::types::MemberFlags::default().to_acl_flag_byte();
-            instruction::ESplInstruction::CreateEphemeralAtaPermission.with_data(&[flag])
+            instruction::ESplInstruction::CreateEphemeralAtaPermission
+                .with(&CreateEphemeralAtaPermissionArgs { flag_byte: flag })
+                .unwrap()
         },
     };
 
@@ -179,7 +183,9 @@ async fn delegate_ephemeral_ata_permission_non_owner_succeeds() {
         ],
         data: {
             let flag = ephemeral_rollups_pinocchio::acl::types::MemberFlags::default().to_acl_flag_byte();
-            instruction::ESplInstruction::CreateEphemeralAtaPermission.with_data(&[flag])
+            instruction::ESplInstruction::CreateEphemeralAtaPermission
+                .with(&CreateEphemeralAtaPermissionArgs { flag_byte: flag })
+                .unwrap()
         },
     };
 

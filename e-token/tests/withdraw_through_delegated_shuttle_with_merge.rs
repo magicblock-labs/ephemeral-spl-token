@@ -28,7 +28,6 @@ use solana_signer::Signer;
 use solana_system_interface::instruction::transfer;
 use solana_transaction::Transaction;
 use spl_token_interface::state::Account as SplAccount;
-use wheels::layout::Encodable as _;
 
 use crate::utils::TestInternalInstruction;
 
@@ -243,15 +242,13 @@ async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_clean
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new_readonly(spl_token_interface::ID, false),
         ],
-        data: instruction::ESplInstruction::WithdrawThroughDelegatedShuttleWithMerge.with_data(
-            &DepositAndDelegateShuttleArgs {
+        data: instruction::ESplInstruction::WithdrawThroughDelegatedShuttleWithMerge
+            .with(&DepositAndDelegateShuttleArgs {
                 shuttle_id,
                 amount: TRANSFER_AMOUNT,
                 validator: Some(validator),
-            }
-            .encode()
+            })
             .unwrap(),
-        ),
     };
 
     let tx_withdraw = Transaction::new_signed_with_payer(

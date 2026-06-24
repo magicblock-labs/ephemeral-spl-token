@@ -24,7 +24,7 @@ use pinocchio::{
 use pinocchio_system::instructions::Transfer;
 use solana_address::Address;
 use solana_pubkey::Pubkey;
-use wheels::layout::{Decodable as _, Encodable as _};
+use wheels::layout::Decodable as _;
 
 use crate::processor::{
     deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer::SCHEDULED_PT_ACCOUNTS,
@@ -179,6 +179,15 @@ pub fn process_schedule_private_transfer(accounts: &[AccountView], instruction_d
             }
         })
         .collect();
+    let scheduled_data =
+        ESplInstruction::ExecuteScheduledPrivateTransfer.with(&ExecuteScheduledPrivateTransferArgs {
+            user: *user_info.address(),
+            stash_bump: args.stash_bump(),
+            shuttle_id: args.shuttle_id(),
+            validator: *args.validator(),
+            encrypted_destination: args.encrypted_destination().to_owned(),
+            encrypted_data_suffix: args.encrypted_data_suffix().to_owned(),
+        })?;
     let create_ix = hydra_ix::create(
         Pubkey::new_from_array(*rent_pda_info.address().as_array()),
         Pubkey::new_from_array(*hydra_crank_pda_info.address().as_array()),
@@ -192,17 +201,7 @@ pub fn process_schedule_private_transfer(accounts: &[AccountView], instruction_d
             cu_limit: 0,
             scheduled_program_id: Pubkey::new_from_array(*crate::ID.as_array()),
             scheduled_metas: &sched_metas_vec,
-            scheduled_data: &ESplInstruction::ExecuteScheduledPrivateTransfer.with_data(
-                &ExecuteScheduledPrivateTransferArgs {
-                    user: *user_info.address(),
-                    stash_bump: args.stash_bump(),
-                    shuttle_id: args.shuttle_id(),
-                    validator: *args.validator(),
-                    encrypted_destination: args.encrypted_destination().to_owned(),
-                    encrypted_data_suffix: args.encrypted_data_suffix().to_owned(),
-                }
-                .encode()?,
-            ),
+            scheduled_data: &scheduled_data,
         },
     );
 
