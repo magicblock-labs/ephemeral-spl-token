@@ -108,6 +108,7 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
     let vault_ata = utils::derive_associated_token_address(vault, mint);
     let owner_source_ata = owner_token.pubkey();
     let (queue, _) = TransferQueue::find_pda(&mint, &validator);
+    let queue_vault_ata = utils::derive_associated_token_address(queue, mint);
     let ix_init_rent = Instruction {
         program_id: PROGRAM,
         accounts: vec![
@@ -420,6 +421,20 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
             .windows(fee_transfer_data.len())
             .any(|window| window == fee_transfer_data.as_slice()),
         "expected stored post-delegation payload to include the fee transfer action"
+    );
+    #[cfg(not(feature = "no-fees"))]
+    assert!(
+        action_payload
+            .windows(queue_vault_ata.to_bytes().len())
+            .any(|window| window == queue_vault_ata.to_bytes()),
+        "expected stored post-delegation payload to include the validator-scoped queue vault ATA"
+    );
+    #[cfg(not(feature = "no-fees"))]
+    assert!(
+        !action_payload
+            .windows(vault_ata.to_bytes().len())
+            .any(|window| window == vault_ata.to_bytes()),
+        "expected stored post-delegation payload not to write the global vault ATA"
     );
     #[cfg(feature = "no-fees")]
     assert!(
