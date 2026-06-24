@@ -2,7 +2,11 @@ use ephemeral_rollups_pinocchio::{
     acl::{permission_pda_from_permissioned_account, PERMISSION_PROGRAM_ID},
     spl::EphemeralAta,
 };
-use ephemeral_spl_api::{instruction, ID as PROGRAM};
+use ephemeral_spl_api::{
+    instruction,
+    instructions::{CreateEphemeralAtaPermissionArgs, ResetEphemeralAtaPermissionArgs},
+    ID as PROGRAM,
+};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program_test::tokio;
 use solana_pubkey::Pubkey;
@@ -65,7 +69,9 @@ async fn reset_ephemeral_ata_permission() {
         ],
         data: {
             let flag = ephemeral_rollups_pinocchio::acl::types::MemberFlags::default().to_acl_flag_byte();
-            instruction::ESplInstruction::CreateEphemeralAtaPermission.with_data(&[flag])
+            instruction::ESplInstruction::CreateEphemeralAtaPermission
+                .with(&CreateEphemeralAtaPermissionArgs { flag_byte: flag })
+                .unwrap()
         },
     };
 
@@ -78,7 +84,9 @@ async fn reset_ephemeral_ata_permission() {
             AccountMeta::new(payer, true),
             AccountMeta::new_readonly(PERMISSION_PROGRAM_ID, false),
         ],
-        data: instruction::ESplInstruction::ResetEphemeralAtaPermission.with_data(&[reset_flag]),
+        data: instruction::ESplInstruction::ResetEphemeralAtaPermission
+            .with(&ResetEphemeralAtaPermissionArgs { flag_byte: reset_flag })
+            .unwrap(),
     };
 
     let tx = Transaction::new_signed_with_payer(

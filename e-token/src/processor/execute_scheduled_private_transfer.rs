@@ -19,7 +19,7 @@ use pinocchio::{
 use pinocchio_system::instructions::Transfer;
 use pinocchio_token_2022::instructions::{CloseAccount, TransferChecked};
 use solana_address::Address;
-use wheels::layout::{Decodable as _, Encodable as _};
+use wheels::layout::Decodable as _;
 
 use crate::processor::{
     deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer::SCHEDULED_PT_INNER_ACCOUNTS,
@@ -186,25 +186,20 @@ pub fn process_execute_scheduled_private_transfer(accounts: &[AccountView], inst
     }
 
     // -------- build ix 25 instruction data with stash-close tail --------
-    let mut private_transfer_data = DepositAndDelegateShuttleWithPrivateTransferArgs {
-        shuttle_id: args.shuttle_id(),
-        amount: effective_amount,
-        exact_out: false,
-        validator: Some(*args.validator()),
-        encrypted_destination: args.encrypted_destination().to_owned(),
-        encrypted_data_suffix: args.encrypted_data_suffix().to_owned(),
-    }
-    .encode()?;
-    private_transfer_data.extend_from_slice(
-        &CloseStashArgs {
+    let ix_data = ESplInstruction::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer.with(&(
+        DepositAndDelegateShuttleWithPrivateTransferArgs {
+            shuttle_id: args.shuttle_id(),
+            amount: effective_amount,
+            exact_out: false,
+            validator: Some(*args.validator()),
+            encrypted_destination: args.encrypted_destination().to_owned(),
+            encrypted_data_suffix: args.encrypted_data_suffix().to_owned(),
+        },
+        CloseStashArgs {
             user: *args.user(),
             stash_bump: args.stash_bump(),
-        }
-        .encode()?,
-    );
-
-    let ix_data = ESplInstruction::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer
-        .with_data(&private_transfer_data);
+        },
+    ))?;
 
     // -------- build ix 25 account metas (19) --------
     let mut metas = [const { MaybeUninit::<InstructionAccount>::uninit() }; SCHEDULED_PT_INNER_ACCOUNTS];

@@ -23,7 +23,6 @@ use solana_pubkey::{pubkey, Pubkey};
 use solana_signer::Signer;
 use solana_transaction::{InstructionError, Transaction, TransactionError};
 use spl_token_interface::state::Account;
-use wheels::layout::Encodable as _;
 
 use crate::utils::{pre_create_group_receipt, pre_create_stealth_pool};
 
@@ -182,8 +181,8 @@ fn build_deposit_and_queue_ix_for_destination(
     group_receipt: Pubkey,
 ) -> Instruction {
     let g = group_id.to_le_bytes();
-    let data = instruction::ESplInstruction::DepositAndQueueTransfer.with_data(
-        &DepositAndQueueTransferArgs {
+    let data = instruction::ESplInstruction::DepositAndQueueTransfer
+        .with(&DepositAndQueueTransferArgs {
             amount,
             group_id: [g[0], g[1], g[2]],
             min_delay_ms,
@@ -191,10 +190,8 @@ fn build_deposit_and_queue_ix_for_destination(
             split,
             flags,
             client_ref_id,
-        }
-        .encode()
-        .unwrap(),
-    );
+        })
+        .unwrap();
 
     Instruction {
         program_id: PROGRAM,
@@ -229,15 +226,13 @@ fn build_update_stealth_pool_ix(
         .map(|destination| Address::new_from_array(destination.to_bytes()))
         .collect::<Vec<_>>();
 
-    let data = instruction::ESplInstruction::UpdateStealthPool.with_data(
-        &UpdateStealthPoolArgs {
+    let data = instruction::ESplInstruction::UpdateStealthPool
+        .with(&UpdateStealthPoolArgs {
             handle: StealthPool::store_handle(handle).unwrap(),
             flags,
             destinations: destination_addresses,
-        }
-        .encode()
-        .unwrap(),
-    );
+        })
+        .unwrap();
 
     (
         stealth_pool,
@@ -875,8 +870,8 @@ async fn deposit_and_queue_transfer_return_to_shuttle() {
     let (group_receipt_pda, _) = utils::derive_group_receipt(fixture.queue, fixture.payer, group_id);
     let ix = {
         let g = group_id.to_le_bytes();
-        let data = instruction::ESplInstruction::DepositAndQueueTransfer.with_data(
-            &DepositAndQueueTransferArgs {
+        let data = instruction::ESplInstruction::DepositAndQueueTransfer
+            .with(&DepositAndQueueTransferArgs {
                 amount,
                 group_id: [g[0], g[1], g[2]],
                 min_delay_ms: 0,
@@ -884,10 +879,8 @@ async fn deposit_and_queue_transfer_return_to_shuttle() {
                 split,
                 flags: None,
                 client_ref_id: None,
-            }
-            .encode()
-            .unwrap(),
-        );
+            })
+            .unwrap();
 
         Instruction {
             program_id: PROGRAM,

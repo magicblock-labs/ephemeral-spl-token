@@ -1,5 +1,7 @@
 use alloc::vec::Vec;
 
+use wheels::{layout::Encodable, DataLayoutError};
+
 ///
 /// ESplInstruction defines the public instructions
 ///
@@ -241,11 +243,19 @@ impl ESplInstruction {
     }
 
     #[inline(always)]
-    pub fn with_data(self, instruction_data: &[u8]) -> Vec<u8> {
-        let mut data = Vec::with_capacity(1 + instruction_data.len());
-        data.extend_from_slice(&self.to_bytes());
-        data.extend_from_slice(instruction_data);
-        data
+    pub fn with_data(self, data: &[u8]) -> Vec<u8> {
+        let mut rv = Vec::with_capacity(1 + data.len());
+        rv.push(self.value());
+        rv.extend_from_slice(data);
+        rv
+    }
+
+    #[inline(always)]
+    pub fn with(self, data: &impl Encodable) -> Result<Vec<u8>, DataLayoutError> {
+        let mut rv = alloc::vec![0; 1 + data.encoded_len()?];
+        rv[0] = self.value();
+        data.encode_to(&mut rv[1..])?;
+        Ok(rv)
     }
 }
 
