@@ -12,7 +12,6 @@ use pinocchio::{
 };
 use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
 use solana_address::Address;
-use wheels::layout::Encodable as _;
 
 use crate::processor::{internal, internal::rent_pda::RENT_PDA};
 
@@ -81,8 +80,9 @@ impl QueuedTransferActionBuilder {
         token_program: &Address,
         args: ExecuteQueuedTransferArgs,
     ) -> Self {
-        let data =
-            crate::instruction::ESplInternalInstruction::ExecuteReadyQueuedTransfer.with_data(&args.encode().unwrap());
+        let data = crate::instruction::ESplInternalInstruction::ExecuteReadyQueuedTransfer
+            .with(&args)
+            .unwrap();
 
         Self {
             queue_info: queue_info.clone(),

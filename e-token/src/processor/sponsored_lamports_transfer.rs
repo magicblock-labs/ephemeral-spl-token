@@ -175,10 +175,9 @@ fn transfer_lamports_pda_action(
     amount: u64,
     salt: &[u8; 32],
 ) -> Instruction {
-    let mut payload = [0_u8; 40];
-    payload[..8].copy_from_slice(&amount.to_le_bytes());
-    payload[8..].copy_from_slice(salt);
-    let data = ESplInternalInstruction::TransferLamportsPda.with_data(&payload);
+    let data = ESplInternalInstruction::TransferLamportsPda
+        .with(&AmountAndSaltArgs { amount, salt: *salt })
+        .unwrap();
 
     Instruction {
         program_id: crate::ID,

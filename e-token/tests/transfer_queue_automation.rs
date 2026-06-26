@@ -27,7 +27,6 @@ use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use solana_transaction::Transaction;
 use spl_token_interface::state::Account;
-use wheels::layout::Encodable as _;
 
 use crate::{common::magic_mock, utils::TestInternalInstruction};
 
@@ -255,8 +254,8 @@ async fn enqueue_transfer_with_client_ref_id(
     let group_receipt =
         utils::pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, group_id, 1);
 
-    let data = instruction::ESplInstruction::DepositAndQueueTransfer.with_data(
-        &DepositAndQueueTransferArgs {
+    let data = instruction::ESplInstruction::DepositAndQueueTransfer
+        .with(&DepositAndQueueTransferArgs {
             amount: QUEUED_AMOUNT,
             group_id: group_id_bytes,
             min_delay_ms,
@@ -264,10 +263,8 @@ async fn enqueue_transfer_with_client_ref_id(
             split: 1,
             flags: None,
             client_ref_id,
-        }
-        .encode()
-        .unwrap(),
-    );
+        })
+        .unwrap();
 
     let ix = Instruction {
         program_id: PROGRAM,
@@ -871,7 +868,7 @@ async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
         escrow_index: EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
         flags: ephemeral_spl_api::state::transfer_queue::QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
     };
-    let expected_action_data = TestInternalInstruction::ExecuteReadyQueuedTransfer.with_data(&args.encode().unwrap());
+    let expected_action_data = TestInternalInstruction::ExecuteReadyQueuedTransfer.with(&args).unwrap();
 
     assert_eq!(standalone_action.args.data, expected_action_data);
     assert_eq!(standalone_action.accounts.len(), 9);
@@ -1042,6 +1039,6 @@ async fn recurring_queue_crank_includes_client_ref_id_in_execute_action_when_pre
         escrow_index: EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
         flags: ephemeral_spl_api::state::transfer_queue::QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
     };
-    let expected_action_data = TestInternalInstruction::ExecuteReadyQueuedTransfer.with_data(&args.encode().unwrap());
+    let expected_action_data = TestInternalInstruction::ExecuteReadyQueuedTransfer.with(&args).unwrap();
     assert_eq!(transfer_action.args.data, expected_action_data);
 }

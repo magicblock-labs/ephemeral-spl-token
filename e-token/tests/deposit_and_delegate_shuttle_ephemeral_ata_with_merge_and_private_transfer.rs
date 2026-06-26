@@ -245,7 +245,8 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
             AccountMeta::new(queue, false),
         ],
         data: instruction::ESplInstruction::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer
-            .with_data(&args.encode().unwrap()),
+            .with(&args)
+            .unwrap(),
     };
 
     let ix_delegate_queue = Instruction {

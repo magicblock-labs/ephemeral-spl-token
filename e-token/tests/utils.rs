@@ -39,7 +39,7 @@ use spl_token_interface::{
     instruction::{initialize_account, initialize_mint, TokenInstruction},
     state::{Account as SplAccount, Mint},
 };
-use wheels::layout::Encodable as _;
+use wheels::{layout::Encodable, DataLayoutError};
 
 // this must be same as ESplInternalInstruction
 #[repr(u8)]
@@ -72,6 +72,12 @@ impl TestInternalInstruction {
         data.extend_from_slice(&self.to_bytes());
         data.extend_from_slice(instruction_data);
         data
+    }
+    pub fn with(self, instruction_data: &impl Encodable) -> Result<Vec<u8>, DataLayoutError> {
+        let mut data = vec![0; 1 + instruction_data.encoded_len()?];
+        data[0] = self.discriminator();
+        instruction_data.encode_to(&mut data[1..])?;
+        Ok(data)
     }
 }
 
@@ -394,7 +400,8 @@ pub fn build_initialize_transfer_queue_ix(
             AccountMeta::new_readonly(ephemeral_rollups_pinocchio::ID, false),
         ],
         data: instruction::ESplInstruction::InitializeTransferQueue
-            .with_data(&InitializeTransferQueueArgs { requested_items }.encode().unwrap()),
+            .with(&InitializeTransferQueueArgs { requested_items })
+            .unwrap(),
     }
 }
 

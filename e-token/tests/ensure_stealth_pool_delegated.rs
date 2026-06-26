@@ -17,7 +17,6 @@ use solana_program::rent::Rent;
 use solana_program_test::tokio;
 use solana_signer::Signer;
 use solana_transaction::Transaction;
-use wheels::layout::Encodable as _;
 
 mod common;
 mod utils;
@@ -33,14 +32,12 @@ fn build_ensure_stealth_pool_delegated_ix(
     let delegation_record_pda = delegation_record_pda_from_delegated_account(&stealth_pool);
     let delegation_metadata_pda = delegation_metadata_pda_from_delegated_account(&stealth_pool);
 
-    let data = instruction::ESplInstruction::EnsureStealthPoolDelegated.with_data(
-        &EnsureStealthPoolDelegatedArgs {
+    let data = instruction::ESplInstruction::EnsureStealthPoolDelegated
+        .with(&EnsureStealthPoolDelegatedArgs {
             handle: StealthPool::store_handle(handle).unwrap(),
             validator: None,
-        }
-        .encode()
-        .unwrap(),
-    );
+        })
+        .unwrap();
 
     (
         stealth_pool,
