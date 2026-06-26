@@ -19,7 +19,7 @@ use ephemeral_spl_api::{
         transfer_queue::{queue_views, TransferQueue},
     },
 };
-use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use pinocchio::{error::ProgramError, AccountView, Address, ProgramResult};
 #[cfg(not(feature = "no-fees"))]
 use solana_instruction::{AccountMeta, Instruction};
 use wheels::layout::{Decodable as _, PrefixDecodable as _};
@@ -179,6 +179,12 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
 
     let total_amount = private_transfer_amount + fee_amount;
 
+    let queue_vault_ata = get_associated_token_address(
+        queue_info.address(),
+        common_accounts.mint_info.address(),
+        common_accounts.token_program_info.address(),
+    );
+
     debug_log!(
         "exact_out:  {}, fee_amount: {}, private_transfer_amount: {}",
         args.exact_out(),
@@ -190,6 +196,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
         let private_transfer = private_transfer_action_encrypted(
             &common_accounts,
             queue_info,
+            &queue_vault_ata,
             args.encrypted_destination(),
             args.encrypted_data_suffix(),
             private_transfer_amount,
@@ -203,7 +210,12 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
         #[cfg(not(feature = "no-fees"))]
         {
             let mint_decimals = read_mint_decimals(common_accounts.mint_info, common_accounts.token_program_info)?;
-            post_actions.push(private_transfer_fee_action(&common_accounts, fee_amount, mint_decimals));
+            post_actions.push(private_transfer_fee_action(
+                &common_accounts,
+                &queue_vault_ata,
+                fee_amount,
+                mint_decimals,
+            ));
         }
 
         post_actions.push(undelegate_and_close_shuttle_action(&common_accounts, close_stash));
@@ -225,6 +237,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
 fn private_transfer_action_encrypted(
     common_accounts: &DepositAndDelegateShuttleAccounts<'_>,
     queue_info: &AccountView,
+    queue_vault_ata: &Address,
     encrypted_destination: &[u8; 80],
     encrypted_data_suffix: &[u8],
     amount: u64,
@@ -237,11 +250,6 @@ fn private_transfer_action_encrypted(
     let group_id = u32::from(group_id_raw[0]) | (u32::from(group_id_raw[1]) << 8) | (u32::from(group_id_raw[2]) << 16);
     let group_receipt_info =
         derive_group_receipt_id(queue_info.address(), common_accounts.owner_info.address(), group_id).0;
-    let queue_vault_token_info = get_associated_token_address(
-        queue_info.address(),
-        common_accounts.mint_info.address(),
-        common_accounts.token_program_info.address(),
-    );
     Ok(PostDelegationActions {
         inserted_signers: 0,
         inserted_non_signers: 0,
@@ -252,7 +260,7 @@ fn private_transfer_action_encrypted(
             MaybeEncryptedPubkey::ClearText(queue_info.address().to_bytes()),
             MaybeEncryptedPubkey::ClearText(common_accounts.mint_info.address().to_bytes()),
             MaybeEncryptedPubkey::ClearText(common_accounts.owner_source_token_info.address().to_bytes()),
-            MaybeEncryptedPubkey::ClearText(queue_vault_token_info.to_bytes()),
+            MaybeEncryptedPubkey::ClearText(queue_vault_ata.to_bytes()),
             MaybeEncryptedPubkey::Encrypted(EncryptedBuffer::new(encrypted_destination.into())),
             MaybeEncryptedPubkey::ClearText(common_accounts.token_program_info.address().to_bytes()),
             MaybeEncryptedPubkey::ClearText(common_accounts.shuttle_wallet_ata_info.address().to_bytes()),
@@ -297,6 +305,7 @@ fn private_transfer_fee_amount(amount: u64) -> Result<u64, ProgramError> {
 #[cfg(not(feature = "no-fees"))]
 fn private_transfer_fee_action(
     common_accounts: &DepositAndDelegateShuttleAccounts<'_>,
+    queue_vault_ata: &Address,
     fee_amount: u64,
     mint_decimals: u8,
 ) -> Instruction {
@@ -309,7 +318,7 @@ fn private_transfer_fee_action(
         accounts: alloc::vec![
             AccountMeta::new(*common_accounts.owner_source_token_info.address(), false),
             AccountMeta::new_readonly(*common_accounts.mint_info.address(), false),
-            AccountMeta::new(*common_accounts.vault_token_info.address(), false),
+            AccountMeta::new(*queue_vault_ata, false),
             AccountMeta::new_readonly(*common_accounts.owner_info.address(), true),
         ],
         data,
