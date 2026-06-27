@@ -1,7 +1,6 @@
 ## Private Payments
 
-`process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer`
-(instruction `25`, `StartAsyncPrivateTransfer`) does not directly deliver funds
+`StartAsyncPrivateTransfer` (instruction `25`) does not directly deliver funds
 to the recipient.
 Old Name: `DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer`.
 It stages a temporary sponsored shuttle flow, injects an encrypted
@@ -33,12 +32,12 @@ sequenceDiagram
     U->>ET: ix 25 StartAsyncPrivateTransfer<br/>args = shuttle_id, amount, validator?, encrypted destination, encrypted delay/split suffix
     ET->>ET: Parse args<br/>Resolve validator (explicit or DEFAULT_VALIDATOR_IDENTITY)<br/>Validate queue PDA seeds and require queue owner = delegation program
     ET->>RP: Charge sponsored shuttle setup fee
-    ET->>ET: initialize_shuttle_ephemeral_ata_with_sponsor()<br/>Create shuttle metadata + shuttle EATA + shuttle wallet ATA if needed
+    ET->>ET: initialize_shuttle_with_sponsor()<br/>Create shuttle metadata + shuttle EATA + shuttle wallet ATA if needed
     ET->>GV: transfer_to_vault_for_mint()<br/>owner_source_token -> vault_token (amount)
     ET->>ET: shuttle_eata.amount += amount
-    ET->>ER: delegate_sponsored_shuttle_with_post_actions()<br/>post actions = [1 merge back, 2 encrypted depositAndQueueTransfer, 3 undelegate+close]
+    ET->>ER: delegate_sponsored_shuttle_with_post_actions()<br/>post actions = [1 sweep back, 2 encrypted depositAndQueueTransfer, 3 async shuttle close]
 
-    ER->>ET: Action 1<br/>MERGE_SHUTTLE_INTO_EPHEMERAL_ATA(owner_source_token)
+    ER->>ET: Action 1<br/>SWEEP_SHUTTLE_BALANCE(owner_source_token)
     ET->>U: shuttle_wallet_ata -> owner_source_token
 
     ER->>ER: Decrypt destination payload<br/>Decrypt queue suffix (min_delay_ms, max_delay_ms, split, flags)
@@ -46,7 +45,7 @@ sequenceDiagram
     ET->>GV: owner_source_token -> vault_token (amount)
     ET->>Q: Enqueue queued transfer items<br/>Store destination owner + ready_at + flags per split
 
-    ER->>ET: Action 3<br/>UNDELEGATE_AND_CLOSE_SHUTTLE_TO_OWNER
+    ER->>ET: Action 3<br/>START_ASYNC_SHUTTLE_CLOSE
     ET->>MG: commit_and_undelegate()<br/>schedule SETTLE_AND_CLOSE_SHUTTLE_INTENT
     MG->>ET: SETTLE_AND_CLOSE_SHUTTLE_INTENT
     ET->>RP: Refund shuttle rents and close temporary shuttle accounts

@@ -105,7 +105,7 @@ async fn sweep_shuttle_balance_transfers_from_shuttle_ata_to_destination() {
     };
 
     let tx_merge = Transaction::new_signed_with_payer(&[ix_merge], Some(&payer), &[&payer_kp], context.last_blockhash);
-    common::metrics::process_transaction_record_cu(&context.banks_client, tx_merge, "merge_shuttle::merge")
+    common::metrics::process_transaction_record_cu(&context.banks_client, tx_merge, "sweep_shuttle_balance::sweep")
         .await
         .unwrap();
 

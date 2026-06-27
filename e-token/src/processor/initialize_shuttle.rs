@@ -1,8 +1,8 @@
-use ephemeral_spl_api::{instructions::InitializeShuttleEphemeralAtaArgs, require, require_n_accounts};
+use ephemeral_spl_api::{instructions::InitializeShuttleArgs, require, require_n_accounts};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use wheels::layout::Decodable as _;
 
-use crate::processor::internal::ephemeral_ata::initialize_shuttle_ephemeral_ata_with_sponsor;
+use crate::processor::internal::ephemeral_ata::initialize_shuttle_with_sponsor;
 
 ///
 /// Executes on:
@@ -19,7 +19,7 @@ use crate::processor::internal::ephemeral_ata::initialize_shuttle_ephemeral_ata_
 ///  7: []                  - SPL     : Associated token program.
 ///  8: []                  - Builtin : System program.
 ///
-/// Instruction Data: InitializeShuttleEphemeralAtaArgs
+/// Instruction Data: InitializeShuttleArgs
 ///
 #[inline(always)]
 pub fn process_initialize_shuttle(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
@@ -35,11 +35,11 @@ pub fn process_initialize_shuttle(accounts: &[AccountView], instruction_data: &[
         system_program_info,
     ] = require_n_accounts!(accounts, 9);
 
-    let args = InitializeShuttleEphemeralAtaArgs::decode(instruction_data)?;
+    let args = InitializeShuttleArgs::decode(instruction_data)?;
 
     require!(payer_info.is_signer(), ProgramError::MissingRequiredSignature);
 
-    initialize_shuttle_ephemeral_ata_with_sponsor(
+    initialize_shuttle_with_sponsor(
         payer_info,
         None,
         shuttle_info,

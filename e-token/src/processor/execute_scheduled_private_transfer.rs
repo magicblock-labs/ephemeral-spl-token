@@ -3,9 +3,7 @@ use core::mem::MaybeUninit;
 
 use ephemeral_spl_api::{
     instruction::ESplInstruction,
-    instructions::{
-        CloseStashArgs, DepositAndDelegateShuttleWithPrivateTransferArgs, ExecuteScheduledPrivateTransferArgs,
-    },
+    instructions::{CloseStashArgs, ExecuteScheduledPrivateTransferArgs, StartAsyncPrivateTransferArgs},
     require, require_eq_keys, require_n_accounts,
     state::stash::StashPda,
 };
@@ -195,7 +193,7 @@ pub fn process_execute_scheduled_private_transfer(accounts: &[AccountView], inst
 
     // -------- build ix 25 instruction data with stash-close tail --------
     let ix_data = ESplInstruction::StartAsyncPrivateTransfer.with(&(
-        DepositAndDelegateShuttleWithPrivateTransferArgs {
+        StartAsyncPrivateTransferArgs {
             shuttle_id: args.shuttle_id(),
             amount: effective_amount,
             exact_out: false,

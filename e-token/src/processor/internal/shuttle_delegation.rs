@@ -29,14 +29,14 @@ use solana_instruction::{AccountMeta, Instruction};
 use solana_pubkey::Pubkey;
 
 use crate::processor::internal::{
-    ephemeral_ata::initialize_shuttle_ephemeral_ata_with_sponsor,
+    ephemeral_ata::initialize_shuttle_with_sponsor,
     rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
     token_vault::transfer_to_vault_for_mint,
 };
 
 pub(crate) const DEFAULT_ESCROW_INDEX: u8 = u8::MAX;
 
-pub(crate) struct DepositAndDelegateShuttleAccounts<'a> {
+pub(crate) struct StartAsyncShuttleAccounts<'a> {
     pub(crate) payer_info: &'a AccountView,
     pub(crate) rent_pda_info: &'a AccountView,
     pub(crate) shuttle_info: &'a AccountView,
@@ -61,15 +61,15 @@ pub(crate) struct PreparedShuttleDelegation {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct DepositAndDelegateShuttleCommonArgs<'a> {
+pub(crate) struct StartAsyncShuttleCommonArgs<'a> {
     pub(crate) shuttle_id: u32,
     pub(crate) total_amount: u64,
     pub(crate) validator: Option<&'a Address>,
 }
 
-pub(crate) fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions(
-    accounts: &DepositAndDelegateShuttleAccounts<'_>,
-    args: DepositAndDelegateShuttleCommonArgs<'_>,
+pub(crate) fn process_start_async_shuttle_with_post_actions(
+    accounts: &StartAsyncShuttleAccounts<'_>,
+    args: StartAsyncShuttleCommonArgs<'_>,
     extra_setup_lamports: u64,
     post_actions: PostDelegationActions,
 ) -> ProgramResult {
@@ -188,7 +188,7 @@ pub(crate) fn prepare_sponsored_shuttle_delegation(
     let rent_signer_seed = [Seed::from(RENT_PDA_SEED), Seed::from(&rent_bump_seed)];
     let rent_signer = Signer::from(&rent_signer_seed);
 
-    initialize_shuttle_ephemeral_ata_with_sponsor(
+    initialize_shuttle_with_sponsor(
         rent_pda_info,
         Some(rent_signer),
         shuttle_info,
@@ -267,7 +267,7 @@ pub(crate) fn delegate_sponsored_shuttle_with_post_actions(
     delegation_record: &AccountView,
     delegation_metadata: &AccountView,
     system_program: &AccountView,
-    args: DepositAndDelegateShuttleCommonArgs,
+    args: StartAsyncShuttleCommonArgs,
     mint: &Address,
     shuttle_eata_bump: u8,
     post_actions: PostDelegationActions,
@@ -314,7 +314,7 @@ pub(crate) fn delegate_sponsored_shuttle_with_post_actions(
 }
 
 pub(crate) fn sweep_shuttle_balance_action(
-    accounts: &DepositAndDelegateShuttleAccounts<'_>,
+    accounts: &StartAsyncShuttleAccounts<'_>,
     destination_token_info: &AccountView,
 ) -> Instruction {
     Instruction {
@@ -332,7 +332,7 @@ pub(crate) fn sweep_shuttle_balance_action(
 }
 
 pub(crate) fn start_async_shuttle_close_action(
-    accounts: &DepositAndDelegateShuttleAccounts<'_>,
+    accounts: &StartAsyncShuttleAccounts<'_>,
     close_stash: Option<CloseStashArgsView<'_>>,
 ) -> Instruction {
     build_start_async_shuttle_close_instruction(

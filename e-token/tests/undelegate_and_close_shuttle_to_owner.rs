@@ -38,7 +38,7 @@ async fn setup(label: &str) -> Fixture {
     let (shuttle_eata, _) = utils::derive_shuttle_eata(PROGRAM, shuttle_metadata, mint);
     let shuttle_wallet_ata = utils::derive_associated_token_address(shuttle_metadata, mint);
 
-    let mut data = instruction::ESplInstruction::InitializeShuttleEphemeralAta.to_vec();
+    let mut data = instruction::ESplInstruction::InitializeShuttle.to_vec();
     data.extend_from_slice(&SHUTTLE_ID.to_le_bytes());
     let init = Instruction {
         program_id: PROGRAM,
@@ -83,7 +83,7 @@ fn undelegate_and_close_ix(fixture: &Fixture, shuttle_eata: Pubkey) -> Instructi
             AccountMeta::new(utils::magic_context_id(), false),
             AccountMeta::new_readonly(utils::magic_program_id(), false),
         ],
-        data: instruction::ESplInstruction::UndelegateAndCloseShuttleToOwner.to_vec(),
+        data: instruction::ESplInstruction::StartAsyncShuttleClose.to_vec(),
     }
 }
 

@@ -6,7 +6,7 @@ use std::{
 use dlp_api::state::DelegationRecord;
 use ephemeral_spl_api::{
     instruction,
-    instructions::DepositAndDelegateShuttleArgs,
+    instructions::StartAsyncShuttleWithdrawArgs,
     state::{
         ephemeral_ata::EphemeralAta, load, load_initialized, load_mut, shuttle_ephemeral_ata::ShuttleMetadata,
         Initializable, RawType,
@@ -238,7 +238,7 @@ async fn start_async_shuttle_withdraw_stores_transfer_and_cleanup_actions() {
             AccountMeta::new_readonly(spl_token_interface::ID, false),
         ],
         data: instruction::ESplInstruction::StartAsyncShuttleWithdraw
-            .with(&DepositAndDelegateShuttleArgs {
+            .with(&StartAsyncShuttleWithdrawArgs {
                 shuttle_id,
                 amount: TRANSFER_AMOUNT,
                 validator: Some(validator),
@@ -252,7 +252,7 @@ async fn start_async_shuttle_withdraw_stores_transfer_and_cleanup_actions() {
         &[&payer_kp, &owner],
         context.banks_client.get_latest_blockhash().await.unwrap(),
     );
-    common::metrics::process_transaction_record_cu(&context.banks_client, tx_withdraw, "wd_shuttle::withdraw")
+    common::metrics::process_transaction_record_cu(&context.banks_client, tx_withdraw, "async_shuttle_withdraw::start")
         .await
         .unwrap();
 
@@ -438,9 +438,13 @@ async fn undelegate_and_close_shuttle_ephemeral_ata_schedules_close_action() {
         &[&payer_kp],
         context.banks_client.get_latest_blockhash().await.unwrap(),
     );
-    common::metrics::process_transaction_record_cu(&context.banks_client, tx_undelegate, "ud_wd_close::undelegate")
-        .await
-        .unwrap();
+    common::metrics::process_transaction_record_cu(
+        &context.banks_client,
+        tx_undelegate,
+        "async_shuttle_withdraw::close",
+    )
+    .await
+    .unwrap();
 
     let captured_bundles = peek_captured_intent_bundles(magic_program);
     assert_eq!(captured_bundles.len(), 1);

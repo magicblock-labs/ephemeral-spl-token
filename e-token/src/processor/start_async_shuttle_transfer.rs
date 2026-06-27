@@ -1,18 +1,18 @@
 use alloc::vec::Vec;
 
 use dlp_api::compact::ClearText;
-use ephemeral_spl_api::{instructions::DepositAndDelegateShuttleArgs, require_n_accounts};
+use ephemeral_spl_api::{instructions::StartAsyncShuttleTransferArgs, require_n_accounts};
 use pinocchio::{AccountView, ProgramResult};
 use solana_instruction::Instruction;
 use wheels::layout::Decodable as _;
 
 use crate::processor::internal::shuttle_delegation::{
-    process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions, start_async_shuttle_close_action,
-    sweep_shuttle_balance_action, DepositAndDelegateShuttleAccounts, DepositAndDelegateShuttleCommonArgs,
+    process_start_async_shuttle_with_post_actions, start_async_shuttle_close_action, sweep_shuttle_balance_action,
+    StartAsyncShuttleAccounts, StartAsyncShuttleCommonArgs,
 };
 
 struct StartAsyncShuttleTransferAccounts<'a> {
-    pub(crate) common: DepositAndDelegateShuttleAccounts<'a>,
+    pub(crate) common: StartAsyncShuttleAccounts<'a>,
     pub(crate) destination_token_info: &'a AccountView,
 }
 
@@ -41,7 +41,7 @@ struct StartAsyncShuttleTransferAccounts<'a> {
 /// 17: [writable]          - SPL     : Owner source token account.
 /// 18: [writable]          - SPL     : Vault token account.
 ///
-/// Instruction Data: DepositAndDelegateShuttleArgs
+/// Instruction Data: StartAsyncShuttleTransferArgs
 ///
 #[inline(never)]
 pub fn process_start_async_shuttle_transfer(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
@@ -67,10 +67,10 @@ pub fn process_start_async_shuttle_transfer(accounts: &[AccountView], instructio
         vault_token_info,
     ] = require_n_accounts!(accounts, 19);
 
-    let args = DepositAndDelegateShuttleArgs::decode(instruction_data)?;
+    let args = StartAsyncShuttleTransferArgs::decode(instruction_data)?;
 
     let accounts = StartAsyncShuttleTransferAccounts {
-        common: DepositAndDelegateShuttleAccounts {
+        common: StartAsyncShuttleAccounts {
             payer_info,
             rent_pda_info,
             shuttle_info,
@@ -91,9 +91,9 @@ pub fn process_start_async_shuttle_transfer(accounts: &[AccountView], instructio
         destination_token_info,
     };
 
-    process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions(
+    process_start_async_shuttle_with_post_actions(
         &accounts.common,
-        DepositAndDelegateShuttleCommonArgs {
+        StartAsyncShuttleCommonArgs {
             shuttle_id: args.shuttle_id(),
             total_amount: args.amount(),
             validator: args.validator(),
@@ -105,11 +105,11 @@ pub fn process_start_async_shuttle_transfer(accounts: &[AccountView], instructio
 
 fn default_post_delegation_actions(accounts: &StartAsyncShuttleTransferAccounts<'_>) -> Vec<Instruction> {
     alloc::vec![
-        merge_shuttle_into_destination_action(accounts),
+        sweep_shuttle_balance_to_destination_action(accounts),
         start_async_shuttle_close_action(&accounts.common, None),
     ]
 }
 
-fn merge_shuttle_into_destination_action(accounts: &StartAsyncShuttleTransferAccounts<'_>) -> Instruction {
+fn sweep_shuttle_balance_to_destination_action(accounts: &StartAsyncShuttleTransferAccounts<'_>) -> Instruction {
     sweep_shuttle_balance_action(&accounts.common, accounts.destination_token_info)
 }

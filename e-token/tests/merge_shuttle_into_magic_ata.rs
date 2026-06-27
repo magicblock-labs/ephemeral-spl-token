@@ -80,7 +80,7 @@ async fn setup(label: &str, shuttle_id: u32) -> Fixture {
 
     utils::setup_mint_and_token_accounts(&mut context, &payer_kp, &mint_kp, DECIMALS, STARTING_BALANCE, 1).await;
 
-    let mut shuttle_init_data = instruction::ESplInstruction::InitializeShuttleEphemeralAta.to_vec();
+    let mut shuttle_init_data = instruction::ESplInstruction::InitializeShuttle.to_vec();
     shuttle_init_data.extend_from_slice(&shuttle_id.to_le_bytes());
     let ix_init_shuttle = Instruction {
         program_id: PROGRAM,

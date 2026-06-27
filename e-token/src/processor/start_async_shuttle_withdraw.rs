@@ -6,7 +6,7 @@ use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
 use ephemeral_spl_api::{
     debug_log,
     error::EphemeralSplError,
-    instructions::DepositAndDelegateShuttleArgs,
+    instructions::StartAsyncShuttleWithdrawArgs,
     require, require_eq_keys, require_n_accounts,
     state::{
         ephemeral_ata::EphemeralAta,
@@ -27,7 +27,7 @@ use crate::processor::internal::{
     get_associated_token_address, read_mint_decimals,
     shuttle_delegation::{
         build_start_async_shuttle_close_instruction, delegate_sponsored_shuttle_with_post_actions,
-        prepare_sponsored_shuttle_delegation, DepositAndDelegateShuttleCommonArgs,
+        prepare_sponsored_shuttle_delegation, StartAsyncShuttleCommonArgs,
     },
     validate_token_account,
 };
@@ -72,7 +72,7 @@ struct StartAsyncShuttleWithdrawAccounts<'a> {
 /// 15: []                  - SPL     : Token program.
 /// 16: []                  - PDA     : Delegated transfer queue (`with_fee` only).
 ///
-/// Instruction Data: DepositAndDelegateShuttleArgs, then fee (u64 LE) when
+/// Instruction Data: StartAsyncShuttleWithdrawArgs, then fee (u64 LE) when
 /// `with_fee`; the fee goes to the queue vault ATA in the same ER transaction.
 ///
 #[inline(never)]
@@ -112,7 +112,7 @@ pub fn process_start_async_shuttle_withdraw(
         token_program_info,
     ] = require_n_accounts!(accounts, 16);
 
-    let args = DepositAndDelegateShuttleArgs::decode(instruction_data)?;
+    let args = StartAsyncShuttleWithdrawArgs::decode(instruction_data)?;
     let fee = match fee {
         Some((fee, queue_info)) => {
             require!(fee > 0 && fee < args.amount(), ProgramError::InvalidArgument);
@@ -236,7 +236,7 @@ pub fn process_start_async_shuttle_withdraw(
         accounts.delegation_record,
         accounts.delegation_metadata,
         accounts.system_program,
-        DepositAndDelegateShuttleCommonArgs {
+        StartAsyncShuttleCommonArgs {
             shuttle_id: args.shuttle_id(),
             total_amount: shuttled_amount,
             validator: args.validator(),

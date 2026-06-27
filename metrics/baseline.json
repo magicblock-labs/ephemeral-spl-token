@@ -35,19 +35,19 @@
   "del_shuttle_eata::redelegate": {
     "compute_units_consumed": 182
   },
-  "del_shuttle_merge::delegate": {
+  "async_shuttle_transfer::start": {
     "compute_units_consumed": 80961
   },
-  "del_shuttle_priv::queue::exact_in": {
+  "async_private_transfer::queue::exact_in": {
     "compute_units_consumed": 28490
   },
-  "del_shuttle_priv::queue::exact_out": {
+  "async_private_transfer::queue::exact_out": {
     "compute_units_consumed": 28490
   },
-  "del_shuttle_priv::shuttle::exact_in": {
+  "async_private_transfer::shuttle::exact_in": {
     "compute_units_consumed": 129090
   },
-  "del_shuttle_priv::shuttle::exact_out": {
+  "async_private_transfer::shuttle::exact_out": {
     "compute_units_consumed": 129091
   },
   "del_tq::delegate": {
@@ -122,13 +122,13 @@
   "lamports_pda::allow_extra_lamports": {
     "compute_units_consumed": 1869
   },
-  "lamports_pda::sponsored_lamports_transfer": {
+  "lamports_pda::start_async_lamports_transfer": {
     "compute_units_consumed": 61110
   },
   "lamports_pda::transfer_lamports_pda": {
     "compute_units_consumed": 6369
   },
-  "merge_shuttle::merge": {
+  "sweep_shuttle_balance::sweep": {
     "compute_units_consumed": 9497
   },
   "rent_pda::init": {
@@ -185,7 +185,7 @@
   "tq_auto::tick_not_ready": {
     "compute_units_consumed": 2206
   },
-  "ud_wd_close::undelegate": {
+  "async_shuttle_withdraw::close": {
     "compute_units_consumed": 13866
   },
   "undel_eata_cb::undelegate": {
@@ -194,7 +194,7 @@
   "undel_perm_cb::undelegate": {
     "compute_units_consumed": 34444
   },
-  "wd_shuttle::withdraw": {
+  "async_shuttle_withdraw::start": {
     "compute_units_consumed": 64584
   },
   "wd_spl::withdraw": {

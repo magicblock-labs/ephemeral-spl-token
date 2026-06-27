@@ -6,7 +6,7 @@ use ephemeral_rollups_pinocchio::pda::{
 use ephemeral_spl_api::{
     consts::SPONSORED_LAMPORTS_TRANSFER_SETUP_LAMPORTS,
     instruction::{self, ESplInstruction},
-    instructions::AmountAndSaltArgs,
+    instructions::StartAsyncLamportsTransferArgs,
     ID as PROGRAM,
 };
 use solana_account::Account;
@@ -134,7 +134,7 @@ async fn start_async_lamports_transfer_delegates_zero_data_pda_and_charges_fee()
             AccountMeta::new_readonly(destination_delegation_record_pda, false),
         ],
         data: ESplInstruction::StartAsyncLamportsTransfer
-            .with(&AmountAndSaltArgs {
+            .with(&StartAsyncLamportsTransferArgs {
                 amount: TRANSFER_AMOUNT,
                 salt: SALT,
             })

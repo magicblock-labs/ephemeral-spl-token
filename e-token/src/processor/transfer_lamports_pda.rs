@@ -1,4 +1,4 @@
-use ephemeral_spl_api::{instructions::AmountAndSaltArgs, require, require_eq_keys, require_n_accounts};
+use ephemeral_spl_api::{instructions::StartAsyncLamportsTransferArgs, require, require_eq_keys, require_n_accounts};
 use pinocchio::{
     error::ProgramError,
     sysvars::{rent::Rent, Sysvar},
@@ -27,7 +27,7 @@ pub fn process_transfer_lamports_pda(accounts: &[AccountView], instruction_data:
         destination_info,
     ] = require_n_accounts!(accounts, 3);
 
-    let args = AmountAndSaltArgs::decode(instruction_data)?;
+    let args = StartAsyncLamportsTransferArgs::decode(instruction_data)?;
 
     require!(payer_info.is_signer(), ProgramError::MissingRequiredSignature);
     require!(

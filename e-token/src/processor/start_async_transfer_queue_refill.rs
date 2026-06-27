@@ -1,5 +1,6 @@
 use ephemeral_spl_api::{
-    instruction::ESplInstruction, instructions::AmountAndSaltArgs, require, require_eq_keys, require_n_accounts,
+    instruction::ESplInstruction, instructions::StartAsyncLamportsTransferArgs, require, require_eq_keys,
+    require_n_accounts,
 };
 use pinocchio::{
     cpi::{invoke_signed_with_bounds, Seed, Signer},
@@ -125,10 +126,11 @@ fn trigger_queue_refill_via_sponsored_transfer(
         InstructionAccount::writable(queue_info.address()),
         InstructionAccount::readonly(queue_delegation_record_info.address()),
     ];
-    let sponsored_transfer_data = ESplInstruction::StartAsyncLamportsTransfer.with(&AmountAndSaltArgs {
-        amount: refill_lamports,
-        salt: *salt,
-    })?;
+    let sponsored_transfer_data =
+        ESplInstruction::StartAsyncLamportsTransfer.with(&StartAsyncLamportsTransferArgs {
+            amount: refill_lamports,
+            salt: *salt,
+        })?;
     let sponsored_transfer_instruction = InstructionView {
         program_id: owner_program_info.address(),
         accounts: &sponsored_transfer_accounts,
