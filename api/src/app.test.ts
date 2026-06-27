@@ -1979,7 +1979,7 @@ describe("app", () => {
     });
     vi.spyOn(Connection.prototype, "getBalance").mockResolvedValue(20_000_000);
     vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(
-      async address => {
+      async (address) => {
         if (address.equals(mint)) {
           return createMintAccountInfo(TOKEN_PROGRAM_ID);
         }
@@ -2050,7 +2050,7 @@ describe("app", () => {
     });
     vi.spyOn(Connection.prototype, "getBalance").mockResolvedValue(20_000_000);
     vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(
-      async address => {
+      async (address) => {
         if (address.equals(mint)) {
           return createMintAccountInfo(TOKEN_PROGRAM_ID);
         }
@@ -2118,7 +2118,7 @@ describe("app", () => {
     });
     vi.spyOn(Connection.prototype, "getBalance").mockResolvedValue(500_000);
     vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(
-      async address => {
+      async (address) => {
         if (address.equals(mint)) {
           return createMintAccountInfo(TOKEN_PROGRAM_ID);
         }
