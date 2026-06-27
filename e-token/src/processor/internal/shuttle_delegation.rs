@@ -313,7 +313,7 @@ pub(crate) fn delegate_sponsored_shuttle_with_post_actions(
     )
 }
 
-pub(crate) fn merge_shuttle_into_token_account_action(
+pub(crate) fn sweep_shuttle_balance_action(
     accounts: &DepositAndDelegateShuttleAccounts<'_>,
     destination_token_info: &AccountView,
 ) -> Instruction {
@@ -327,15 +327,15 @@ pub(crate) fn merge_shuttle_into_token_account_action(
             AccountMeta::new_readonly(*accounts.mint_info.address(), false),
             AccountMeta::new_readonly(*accounts.token_program_info.address(), false),
         ],
-        data: ESplInstruction::MergeShuttleIntoEphemeralAta.to_vec(),
+        data: ESplInstruction::SweepShuttleBalance.to_vec(),
     }
 }
 
-pub(crate) fn undelegate_and_close_shuttle_action(
+pub(crate) fn start_async_shuttle_close_action(
     accounts: &DepositAndDelegateShuttleAccounts<'_>,
     close_stash: Option<CloseStashArgsView<'_>>,
 ) -> Instruction {
-    build_undelegate_and_close_shuttle_instruction(
+    build_start_async_shuttle_close_instruction(
         accounts.payer_info.address(),
         accounts.rent_pda_info.address(),
         accounts.shuttle_info.address(),
@@ -347,7 +347,7 @@ pub(crate) fn undelegate_and_close_shuttle_action(
     )
 }
 
-pub(crate) fn build_undelegate_and_close_shuttle_instruction(
+pub(crate) fn build_start_async_shuttle_close_instruction(
     payer: &Address,
     rent_pda: &Address,
     shuttle: &Address,
@@ -368,7 +368,7 @@ pub(crate) fn build_undelegate_and_close_shuttle_instruction(
         AccountMeta::new(Pubkey::from(MAGIC_CONTEXT_ID.to_bytes()), false),
         AccountMeta::new_readonly(Pubkey::from(MAGIC_PROGRAM_ID.to_bytes()), false),
     ];
-    let mut data = ESplInstruction::UndelegateAndCloseShuttleToOwner.to_vec();
+    let mut data = ESplInstruction::StartAsyncShuttleClose.to_vec();
     if let Some(close) = close_stash {
         // Explicit escrow_index byte: the parser would otherwise consume `user[0]` as it.
         data.push(DEFAULT_ESCROW_INDEX);

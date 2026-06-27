@@ -45,7 +45,7 @@ use crate::{
 /// Instruction Data: amount (u64) + salt ([u8; 32])
 ///
 #[inline(never)]
-pub fn process_sponsored_lamports_transfer(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
+pub fn process_start_async_lamports_transfer(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         payer_info, // force multi-line
         rent_pda_info,

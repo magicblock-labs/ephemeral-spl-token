@@ -14,7 +14,7 @@ use crate::processor::internal::{
     rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
     transfer_queue_refill::{refill_transfer_queue_amounts, validate_queue_refill_state_address, validate_rent_pda},
 };
-const SPONSORED_LAMPORTS_TRANSFER_CPI_ACCOUNTS: usize = 11;
+const START_ASYNC_LAMPORTS_TRANSFER_CPI_ACCOUNTS: usize = 11;
 
 ///
 /// Executes on:
@@ -36,10 +36,7 @@ const SPONSORED_LAMPORTS_TRANSFER_CPI_ACCOUNTS: usize = 11;
 /// Instruction Data: None
 ///
 #[inline(never)]
-pub fn process_execute_pending_transfer_queue_refill(
-    accounts: &[AccountView],
-    _instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_start_async_transfer_queue_refill(accounts: &[AccountView], _instruction_data: &[u8]) -> ProgramResult {
     let [
         refill_state_info, // force multi-line
         queue_info,
@@ -128,7 +125,7 @@ fn trigger_queue_refill_via_sponsored_transfer(
         InstructionAccount::writable(queue_info.address()),
         InstructionAccount::readonly(queue_delegation_record_info.address()),
     ];
-    let sponsored_transfer_data = ESplInstruction::SponsoredLamportsTransfer.with(&AmountAndSaltArgs {
+    let sponsored_transfer_data = ESplInstruction::StartAsyncLamportsTransfer.with(&AmountAndSaltArgs {
         amount: refill_lamports,
         salt: *salt,
     })?;
@@ -154,7 +151,7 @@ fn trigger_queue_refill_via_sponsored_transfer(
     let rent_signer_seeds = [Seed::from(RENT_PDA_SEED), Seed::from(&rent_bump_seed)];
     let rent_signer = Signer::from(&rent_signer_seeds);
 
-    invoke_signed_with_bounds::<SPONSORED_LAMPORTS_TRANSFER_CPI_ACCOUNTS>(
+    invoke_signed_with_bounds::<START_ASYNC_LAMPORTS_TRANSFER_CPI_ACCOUNTS>(
         &sponsored_transfer_instruction,
         &sponsored_transfer_account_refs,
         core::slice::from_ref(&rent_signer),

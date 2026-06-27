@@ -122,12 +122,10 @@ fn associated_token_create_idempotent_ix(funding: Pubkey, ata: Pubkey, wallet: P
 }
 
 #[tokio::test]
-async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_cleanup_actions() {
-    let owner =
-        utils::test_keypair("withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_cleanup_actions::owner");
-    let owner_token = utils::test_keypair(
-        "withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_cleanup_actions::owner_token",
-    );
+async fn start_async_shuttle_withdraw_stores_transfer_and_cleanup_actions() {
+    let owner = utils::test_keypair("start_async_shuttle_withdraw_stores_transfer_and_cleanup_actions::owner");
+    let owner_token =
+        utils::test_keypair("start_async_shuttle_withdraw_stores_transfer_and_cleanup_actions::owner_token");
 
     let mut context = utils::start_program_test_with(PROGRAM, |pt| {
         pt.add_account(
@@ -145,13 +143,10 @@ async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_clean
 
     let payer_kp = utils::fixed_payer_keypair();
     let payer = payer_kp.pubkey();
-    let mint_kp =
-        utils::test_keypair("withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_cleanup_actions::mint");
+    let mint_kp = utils::test_keypair("start_async_shuttle_withdraw_stores_transfer_and_cleanup_actions::mint");
     let mint = mint_kp.pubkey();
     let shuttle_id = 9_u32;
-    let validator = utils::test_pubkey(
-        "withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_cleanup_actions::validator",
-    );
+    let validator = utils::test_pubkey("start_async_shuttle_withdraw_stores_transfer_and_cleanup_actions::validator");
     let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
 
     let (shuttle_metadata, _) = utils::derive_shuttle_ephemeral_ata(PROGRAM, owner.pubkey(), mint, shuttle_id);
@@ -242,7 +237,7 @@ async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_clean
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new_readonly(spl_token_interface::ID, false),
         ],
-        data: instruction::ESplInstruction::WithdrawThroughDelegatedShuttleWithMerge
+        data: instruction::ESplInstruction::StartAsyncShuttleWithdraw
             .with(&DepositAndDelegateShuttleArgs {
                 shuttle_id,
                 amount: TRANSFER_AMOUNT,
@@ -435,7 +430,7 @@ async fn undelegate_and_close_shuttle_ephemeral_ata_schedules_close_action() {
             AccountMeta::new(magic_context, false),
             AccountMeta::new_readonly(magic_program, false),
         ],
-        data: instruction::ESplInstruction::UndelegateAndCloseShuttleToOwner.to_vec(),
+        data: instruction::ESplInstruction::StartAsyncShuttleClose.to_vec(),
     };
     let tx_undelegate = Transaction::new_signed_with_payer(
         &[ix_undelegate],

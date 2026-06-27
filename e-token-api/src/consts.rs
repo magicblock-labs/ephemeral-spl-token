@@ -23,7 +23,7 @@ pub const SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS: u64 =
 pub const SPONSORED_SHUTTLE_MERGE_TO_ENCRYPTED_DESTINATION_EXTRA_LAMPORTS: u64 =
     if cfg!(feature = "no-fees") { 0 } else { 1_539_280 };
 
-/// Private transfer fee charged on instruction 25 (`DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer`).
+/// Private transfer fee charged on instruction 25 (`StartAsyncPrivateTransfer`).
 ///
 /// 10 basis points = 0.1%.
 pub const PRIVATE_TRANSFER_FEE_BASIS_POINTS: u64 = if cfg!(feature = "no-fees") { 0 } else { 10 };

@@ -34,8 +34,8 @@ use crate::processor::internal::{
     group_receipt::derive_group_receipt_id,
     rent_pda::RENT_PDA,
     shuttle_delegation::{
-        merge_shuttle_into_token_account_action, process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions,
-        undelegate_and_close_shuttle_action, DepositAndDelegateShuttleAccounts, DepositAndDelegateShuttleCommonArgs,
+        process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions, start_async_shuttle_close_action,
+        sweep_shuttle_balance_action, DepositAndDelegateShuttleAccounts, DepositAndDelegateShuttleCommonArgs,
     },
     MAGIC_VAULT_ID,
 };
@@ -79,10 +79,7 @@ pub(crate) const SCHEDULED_PT_ACCOUNTS: usize = SCHEDULED_PT_INNER_ACCOUNTS + 2;
 /// stash-close private transfers.
 ///
 #[inline(never)]
-pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_start_async_private_transfer(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         payer_info, // force multi-line
         rent_pda_info,
@@ -206,7 +203,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
             private_transfer_amount,
         )?;
 
-        let mut post_actions = alloc::vec![merge_shuttle_into_token_account_action(
+        let mut post_actions = alloc::vec![sweep_shuttle_balance_action(
             &common_accounts,
             common_accounts.owner_source_token_info,
         )];
@@ -222,17 +219,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
             ));
         }
 
-        // DLP requires every reference to a bundle signer to be a signer reference,
-        // and the rent PDA signs this bundle (see the private transfer action).
-        let mut undelegate = undelegate_and_close_shuttle_action(&common_accounts, close_stash);
-        for meta in undelegate
-            .accounts
-            .iter_mut()
-            .filter(|meta| meta.pubkey.to_bytes() == RENT_PDA.to_bytes())
-        {
-            meta.is_signer = true;
-        }
-        post_actions.push(undelegate);
+        post_actions.push(start_async_shuttle_close_action(&common_accounts, close_stash));
         post_actions.cleartext_with_insertable(private_transfer, 1)
     };
 

@@ -21,7 +21,7 @@ use crate::processor::internal::{read_mint_decimals, validate_token_account};
 /// Instruction Data: None
 ///
 #[inline(always)]
-pub fn process_merge_shuttle_into_ephemeral_ata(accounts: &[AccountView], _instruction_data: &[u8]) -> ProgramResult {
+pub fn process_sweep_shuttle_balance(accounts: &[AccountView], _instruction_data: &[u8]) -> ProgramResult {
     let [
         owner_info, // force multi-line
         destination_token_info,
