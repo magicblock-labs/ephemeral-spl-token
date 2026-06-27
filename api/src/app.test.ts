@@ -39,6 +39,7 @@ import {
 
 import app from "./app";
 import {
+  ASSOCIATED_TOKEN_PROGRAM_ID,
   deriveStealthPoolFromHandle,
   TOKEN_2022_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
@@ -69,11 +70,15 @@ function createStealthHandleStorage(handle: string) {
   return storage;
 }
 
-function deriveAssociatedTokenAddress(mint: string, owner: string) {
+function deriveAssociatedTokenAddress(
+  mint: string,
+  owner: string,
+  tokenProgram = TOKEN_PROGRAM_ID,
+) {
   const [ata] = PublicKey.findProgramAddressSync(
     [
       new PublicKey(owner).toBuffer(),
-      TOKEN_PROGRAM_ID.toBuffer(),
+      tokenProgram.toBuffer(),
       new PublicKey(mint).toBuffer(),
     ],
     new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"),
@@ -99,12 +104,15 @@ function createTokenAccountData(amount: bigint) {
   return data;
 }
 
-function createAccountInfo(amount: bigint): AccountInfo<Buffer> {
+function createAccountInfo(
+  amount: bigint,
+  tokenProgram = TOKEN_PROGRAM_ID,
+): AccountInfo<Buffer> {
   return {
     data: createTokenAccountData(amount),
     executable: false,
     lamports: 0,
-    owner: TOKEN_PROGRAM_ID,
+    owner: tokenProgram,
     rentEpoch: 0,
   };
 }
@@ -1953,6 +1961,211 @@ describe("app", () => {
     expect(privatePermissionIx).toBeDefined();
     expect(depositIx.data[0]).toBe(24);
     expect(depositIx.data.length).toBe(45);
+  });
+
+  it("wraps native SOL before a SOL deposit when the WSOL balance is short", async () => {
+    const depositEnv = {
+      ...env,
+      EPHEMERAL_RPC_URL: "https://ephemeral.sol-deposit.rpc.test",
+    };
+    const mint = new PublicKey("So11111111111111111111111111111111111111112");
+    const sourceAta = new PublicKey(deriveAssociatedTokenAddress(mint.toBase58(), owner));
+    const amount = 100_000_000;
+    const wrappedBalance = 25_000_000n;
+
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123,
+    });
+    vi.spyOn(Connection.prototype, "getBalance").mockResolvedValue(20_000_000);
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(
+      async address => {
+        if (address.equals(mint)) {
+          return createMintAccountInfo(TOKEN_PROGRAM_ID);
+        }
+
+        if (address.equals(sourceAta)) {
+          return createAccountInfo(wrappedBalance);
+        }
+
+        return null;
+      },
+    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(depositEnv.EPHEMERAL_RPC_URL);
+      return createIdentityResponse(resolvedValidator);
+    });
+
+    const response = await app.request(
+      "/v1/spl/deposit",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          owner,
+          mint: mint.toBase58(),
+          amount,
+          idempotent: true,
+          initIfMissing: true,
+          initAtasIfMissing: true,
+          initVaultIfMissing: true,
+        }),
+      },
+      depositEnv,
+    );
+
+    expect(response.status).toBe(200);
+
+    const json = (await response.json()) as {
+      transactionBase64: string;
+    };
+    const transaction = Transaction.from(
+      Buffer.from(json.transactionBase64, "base64"),
+    );
+    const createAtaIx = transaction.instructions[0]!;
+    const transferIx = transaction.instructions[1]!;
+    const syncNativeIx = transaction.instructions[2]!;
+    const decodedTransfer = SystemInstruction.decodeTransfer(transferIx);
+
+    expect(createAtaIx.programId.equals(ASSOCIATED_TOKEN_PROGRAM_ID)).toBe(true);
+    expect(createAtaIx.keys[1]?.pubkey.toBase58()).toBe(sourceAta.toBase58());
+    expect(decodedTransfer.fromPubkey.toBase58()).toBe(owner);
+    expect(decodedTransfer.toPubkey.toBase58()).toBe(sourceAta.toBase58());
+    expect(BigInt(decodedTransfer.lamports)).toBe(BigInt(amount) - wrappedBalance);
+    expect(syncNativeIx.programId.equals(TOKEN_PROGRAM_ID)).toBe(true);
+    expect(syncNativeIx.keys[0]?.pubkey.toBase58()).toBe(sourceAta.toBase58());
+    expect(syncNativeIx.data[0]).toBe(17);
+  });
+
+  it("does not wrap native SOL before a SOL deposit when WSOL is sufficient", async () => {
+    const mint = new PublicKey("So11111111111111111111111111111111111111112");
+    const sourceAta = new PublicKey(deriveAssociatedTokenAddress(mint.toBase58(), owner));
+    const amount = 100_000_000;
+
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123,
+    });
+    vi.spyOn(Connection.prototype, "getBalance").mockResolvedValue(20_000_000);
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(
+      async address => {
+        if (address.equals(mint)) {
+          return createMintAccountInfo(TOKEN_PROGRAM_ID);
+        }
+
+        if (address.equals(sourceAta)) {
+          return createAccountInfo(BigInt(amount));
+        }
+
+        return null;
+      },
+    );
+
+    const response = await app.request(
+      "/v1/spl/deposit",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          owner,
+          mint: mint.toBase58(),
+          amount,
+          validator: resolvedValidator,
+          idempotent: true,
+          initIfMissing: true,
+          initAtasIfMissing: true,
+          initVaultIfMissing: true,
+        }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(200);
+
+    const json = (await response.json()) as {
+      transactionBase64: string;
+    };
+    const transaction = Transaction.from(
+      Buffer.from(json.transactionBase64, "base64"),
+    );
+    const syncNativeIx = transaction.instructions.find(
+      ix => ix.programId.equals(TOKEN_PROGRAM_ID)
+        && ix.keys[0]?.pubkey.equals(sourceAta)
+        && ix.data[0] === 17,
+    );
+    const systemTransferIx = transaction.instructions.find(
+      ix => ix.programId.equals(SystemProgram.programId)
+        && ix.keys[1]?.pubkey.equals(sourceAta),
+    );
+
+    expect(syncNativeIx).toBeUndefined();
+    expect(systemTransferIx).toBeUndefined();
+  });
+
+  it("tops up the rent PDA before a SOL deposit when the rent PDA is short", async () => {
+    const mint = new PublicKey("So11111111111111111111111111111111111111112");
+    const sourceAta = new PublicKey(deriveAssociatedTokenAddress(mint.toBase58(), owner));
+    const [rentPda] = deriveRentPda();
+    const amount = 100_000_000;
+
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123,
+    });
+    vi.spyOn(Connection.prototype, "getBalance").mockResolvedValue(500_000);
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(
+      async address => {
+        if (address.equals(mint)) {
+          return createMintAccountInfo(TOKEN_PROGRAM_ID);
+        }
+
+        if (address.equals(sourceAta)) {
+          return createAccountInfo(BigInt(amount));
+        }
+
+        return null;
+      },
+    );
+
+    const response = await app.request(
+      "/v1/spl/deposit",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          owner,
+          mint: mint.toBase58(),
+          amount,
+          validator: resolvedValidator,
+          idempotent: true,
+          initIfMissing: true,
+          initAtasIfMissing: true,
+          initVaultIfMissing: true,
+        }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(200);
+
+    const json = (await response.json()) as {
+      transactionBase64: string;
+    };
+    const transaction = Transaction.from(
+      Buffer.from(json.transactionBase64, "base64"),
+    );
+    const rentTopUpIx = transaction.instructions[0]!;
+    const decodedTransfer = SystemInstruction.decodeTransfer(rentTopUpIx);
+
+    expect(decodedTransfer.fromPubkey.toBase58()).toBe(owner);
+    expect(decodedTransfer.toPubkey.toBase58()).toBe(rentPda.toBase58());
+    expect(BigInt(decodedTransfer.lamports)).toBe(19_500_000n);
   });
 
   it("builds a public deposit transaction when private is false", async () => {
@@ -4031,7 +4244,7 @@ describe("app", () => {
     expect(secondResponse.status).toBe(200);
     expect(getLatestBlockhashSpy).toHaveBeenCalledTimes(2);
     expect(getAddressLookupTableSpy).toHaveBeenCalledOnce();
-    expect(getAccountInfoSpy).toHaveBeenCalledTimes(3);
+    expect(getAccountInfoSpy).toHaveBeenCalledTimes(5);
   });
 
   it("returns a legacy private base transfer when legacy=true even if the LUT is useful", async () => {
@@ -5059,6 +5272,68 @@ describe("app", () => {
     expect(privateJson.balance).toBe("9");
   });
 
+  it("returns Token-2022 private balance from the Token-2022 ATA", async () => {
+    const mint = "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo";
+    const balanceEnv = {
+      ...env,
+      EPHEMERAL_RPC_URL: "https://ephemeral.token-2022-balance.rpc.test",
+    };
+    const delegationRecord = deriveEataDelegationRecord(owner, mint);
+    const validator = new PublicKey(resolvedValidator);
+    const token2022Ata = deriveAssociatedTokenAddress(
+      mint,
+      owner,
+      TOKEN_2022_PROGRAM_ID,
+    );
+    const legacyAta = deriveAssociatedTokenAddress(mint, owner);
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(balanceEnv.EPHEMERAL_RPC_URL);
+      return createIdentityResponse(resolvedValidator);
+    });
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(
+      async function getAccountInfo(
+        this: Connection & { _rpcEndpoint: string },
+        address,
+      ) {
+        const endpoint = (this as Connection & { _rpcEndpoint: string })
+          ._rpcEndpoint;
+
+        if (endpoint === balanceEnv.BASE_RPC_URL && address.toBase58() === mint) {
+          return createMintAccountInfo(TOKEN_2022_PROGRAM_ID);
+        }
+
+        if (address.toBase58() === delegationRecord.toBase58()) {
+          expect(endpoint).toBe(balanceEnv.BASE_RPC_URL);
+          return createDelegationAccountInfo(validator);
+        }
+
+        expect(endpoint).toContain(balanceEnv.EPHEMERAL_RPC_URL);
+        expect(address.toBase58()).toBe(token2022Ata);
+        expect(address.toBase58()).not.toBe(legacyAta);
+        return createAccountInfo(4n, TOKEN_2022_PROGRAM_ID);
+      },
+    );
+
+    const privateResponse = await app.request(
+      `/v1/spl/private-balance?address=${owner}&mint=${mint}`,
+      { headers: { authorization: "Bearer 1234567890" } },
+      balanceEnv,
+    );
+
+    expect(privateResponse.status).toBe(200);
+
+    const privateJson = (await privateResponse.json()) as {
+      ata: string;
+      location: string;
+      balance: string;
+    };
+
+    expect(privateJson.ata).toBe(token2022Ata);
+    expect(privateJson.location).toBe("ephemeral");
+    expect(privateJson.balance).toBe("4");
+  });
+
   it("returns zero private balance when the eATA is not delegated", async () => {
     const mint = DEVNET_USDC_MINT;
     const balanceEnv = {
@@ -5075,6 +5350,9 @@ describe("app", () => {
         const endpoint = (this as Connection & { _rpcEndpoint: string })
           ._rpcEndpoint;
         expect(endpoint).toBe(balanceEnv.BASE_RPC_URL);
+        if (address.toBase58() === mint) {
+          return createMintAccountInfo(TOKEN_PROGRAM_ID);
+        }
         expect(address.toBase58()).toBe(delegationRecord.toBase58());
         return null;
       });
@@ -5086,7 +5364,7 @@ describe("app", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(getAccountInfoSpy).toHaveBeenCalledOnce();
+    expect(getAccountInfoSpy).toHaveBeenCalledTimes(2);
 
     const json = (await response.json()) as {
       location: string;
@@ -5114,6 +5392,9 @@ describe("app", () => {
         const endpoint = (this as Connection & { _rpcEndpoint: string })
           ._rpcEndpoint;
         expect(endpoint).toBe(balanceEnv.BASE_RPC_URL);
+        if (address.toBase58() === mint) {
+          return createMintAccountInfo(TOKEN_PROGRAM_ID);
+        }
         expect(address.toBase58()).toBe(delegationRecord.toBase58());
         return createDelegationAccountInfo(otherValidator);
       });
@@ -5130,7 +5411,7 @@ describe("app", () => {
     );
 
     expect(response.status).toBe(400);
-    expect(getAccountInfoSpy).toHaveBeenCalledOnce();
+    expect(getAccountInfoSpy).toHaveBeenCalledTimes(2);
 
     const json = (await response.json()) as {
       error: {
