@@ -4398,6 +4398,78 @@ describe("app", () => {
     expect(getAddressLookupTableSpy).toHaveBeenCalledOnce();
   });
 
+  it("wraps enough native SOL for exact-out private transfer fees", async () => {
+    const mint = new PublicKey("So11111111111111111111111111111111111111112");
+    const sourceAta = new PublicKey(deriveAssociatedTokenAddress(mint.toBase58(), owner));
+    const amount = 100_000_000;
+    const wrappedBalance = 25_000_000n;
+    const expectedFee = BigInt(amount) * 10n / 10_000n;
+
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123,
+    });
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(
+      async (address) => {
+        if (address.equals(mint)) {
+          return createMintAccountInfo(TOKEN_PROGRAM_ID);
+        }
+
+        if (address.equals(sourceAta)) {
+          return createAccountInfo(wrappedBalance);
+        }
+
+        return null;
+      },
+    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(env.EPHEMERAL_RPC_URL);
+      return createIdentityResponse(resolvedValidator);
+    });
+
+    const response = await app.request(
+      "/v1/spl/transfer",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          from: owner,
+          to: destination,
+          mint: mint.toBase58(),
+          amount,
+          visibility: "private",
+          fromBalance: "base",
+          toBalance: "base",
+          minDelayMs: "0",
+          maxDelayMs: "0",
+          split: 1,
+          legacy: true,
+        }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(200);
+
+    const json = (await response.json()) as {
+      transactionBase64: string;
+    };
+    const transaction = Transaction.from(
+      Buffer.from(json.transactionBase64, "base64"),
+    );
+    const wrapTransferIx = transaction.instructions.find(
+      ix => ix.programId.equals(SystemProgram.programId)
+        && ix.keys[1]?.pubkey.equals(sourceAta),
+    )!;
+    const decodedTransfer = SystemInstruction.decodeTransfer(wrapTransferIx);
+
+    expect(BigInt(decodedTransfer.lamports)).toBe(
+      BigInt(amount) + expectedFee - wrappedBalance,
+    );
+  });
+
   it("builds a gasless private transfer with the sponsor as fee payer", async () => {
     const sponsor = Keypair.generate();
     const mint = DEVNET_USDC_MINT;

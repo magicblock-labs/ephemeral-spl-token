@@ -2024,12 +2024,15 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
 
     const sendTo: SendTarget = input.fromBalance === "ephemeral" ? "ephemeral" : "base";
     const blockhash = await getBlockhash(config, sendTo, authToken);
+    const nativeSolWrapAmount = isPrivateBaseToBaseTransfer(input) && (input.exactOut ?? true)
+      ? amount + privateTransferFee
+      : amount;
     const nativeSolWrapInstructions = input.visibility === "private" && input.fromBalance === "base"
       ? await createNativeSolWrapInstructionsIfNeeded(
           config,
           from,
           mint,
-          amount,
+          nativeSolWrapAmount,
           payer,
           tokenProgram,
         )
