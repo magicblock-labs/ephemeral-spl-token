@@ -22,11 +22,11 @@ use solana_address::Address;
 use wheels::layout::Decodable as _;
 
 use crate::processor::{
-    deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer::SCHEDULED_PT_INNER_ACCOUNTS,
     internal::{
         derive_hydra_seed, get_associated_token_address, is_supported_token_program, read_mint_decimals,
         rent_pda::RENT_PDA, validate_token_account,
     },
+    start_async_private_transfer::SCHEDULED_PT_INNER_ACCOUNTS,
 };
 
 // Five minutes at an estimated 400 ms/slot.
@@ -186,7 +186,7 @@ pub fn process_execute_scheduled_private_transfer(accounts: &[AccountView], inst
     }
 
     // -------- build ix 25 instruction data with stash-close tail --------
-    let ix_data = ESplInstruction::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer.with(&(
+    let ix_data = ESplInstruction::StartAsyncPrivateTransfer.with(&(
         DepositAndDelegateShuttleWithPrivateTransferArgs {
             shuttle_id: args.shuttle_id(),
             amount: effective_amount,

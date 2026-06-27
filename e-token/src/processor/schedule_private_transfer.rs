@@ -27,11 +27,11 @@ use solana_pubkey::Pubkey;
 use wheels::layout::Decodable as _;
 
 use crate::processor::{
-    deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer::SCHEDULED_PT_ACCOUNTS,
     internal::{
         derive_ata, derive_hydra_seed, get_associated_token_address, is_supported_token_program,
         rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
     },
+    start_async_private_transfer::SCHEDULED_PT_ACCOUNTS,
 };
 
 const SETUP_LAMPORTS: u64 = ephemeral_spl_api::consts::SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS

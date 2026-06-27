@@ -41,7 +41,7 @@ async fn deposit_spl_tokens_increments_shuttle_amount() {
     let (vault_eata, _) = EphemeralAta::find_pda(&vault, &mint);
     let vault_ata = utils::derive_associated_token_address(vault, mint);
 
-    let mut shuttle_init_data = instruction::ESplInstruction::InitializeShuttleEphemeralAta.to_vec();
+    let mut shuttle_init_data = instruction::ESplInstruction::InitializeShuttle.to_vec();
     shuttle_init_data.extend_from_slice(&shuttle_id.to_le_bytes());
     let ix_init_shuttle = Instruction {
         program_id: PROGRAM,

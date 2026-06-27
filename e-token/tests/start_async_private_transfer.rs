@@ -52,22 +52,18 @@ fn read_header_unaligned(data: &[u8]) -> TransferQueueHeader {
 }
 
 #[tokio::test]
-async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer_stores_third_action_exact_in() {
-    deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer_stores_third_action(false).await;
+async fn deposit_and_delegate_shuttle_with_merge_and_private_transfer_stores_third_action_exact_in() {
+    deposit_and_delegate_shuttle_with_merge_and_private_transfer_stores_third_action(false).await;
 }
 
 #[tokio::test]
-async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer_stores_third_action_exact_out() {
-    deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer_stores_third_action(true).await;
+async fn deposit_and_delegate_shuttle_with_merge_and_private_transfer_stores_third_action_exact_out() {
+    deposit_and_delegate_shuttle_with_merge_and_private_transfer_stores_third_action(true).await;
 }
 
-async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer_stores_third_action(
-    exact_out: bool,
-) {
-    let owner =
-        utils::test_keypair("deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer::owner");
-    let owner_token =
-        utils::test_keypair("deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer::owner_token");
+async fn deposit_and_delegate_shuttle_with_merge_and_private_transfer_stores_third_action(exact_out: bool) {
+    let owner = utils::test_keypair("deposit_and_delegate_shuttle_with_merge_and_private_transfer::owner");
+    let owner_token = utils::test_keypair("deposit_and_delegate_shuttle_with_merge_and_private_transfer::owner_token");
 
     let mut context = utils::start_program_test_with(PROGRAM, |pt| {
         pt.add_account(
@@ -85,13 +81,11 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
 
     let payer_kp = utils::fixed_payer_keypair();
     let payer = payer_kp.pubkey();
-    let mint_kp =
-        utils::test_keypair("deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer::mint");
+    let mint_kp = utils::test_keypair("deposit_and_delegate_shuttle_with_merge_and_private_transfer::mint");
     let mint = mint_kp.pubkey();
     let shuttle_id = 9_u32;
     let validator =
-        utils::test_keypair("deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer::validator")
-            .pubkey();
+        utils::test_keypair("deposit_and_delegate_shuttle_with_merge_and_private_transfer::validator").pubkey();
 
     let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
 
@@ -244,7 +238,7 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
             AccountMeta::new(vault_ata, false),
             AccountMeta::new(queue, false),
         ],
-        data: instruction::ESplInstruction::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer
+        data: instruction::ESplInstruction::StartAsyncPrivateTransfer
             .with(&args)
             .unwrap(),
     };

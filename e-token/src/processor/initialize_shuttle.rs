@@ -22,7 +22,7 @@ use crate::processor::internal::ephemeral_ata::initialize_shuttle_ephemeral_ata_
 /// Instruction Data: InitializeShuttleEphemeralAtaArgs
 ///
 #[inline(always)]
-pub fn process_initialize_shuttle_ephemeral_ata(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
+pub fn process_initialize_shuttle(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         payer_info, // force multi-line
         shuttle_info,
