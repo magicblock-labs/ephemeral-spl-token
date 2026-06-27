@@ -25,7 +25,7 @@ use wheels::layout::Decodable as _;
 ///
 /// Instruction Data: DelegateShuttleArgs
 ///
-pub fn process_delegate_shuttle_ephemeral_ata(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
+pub fn process_delegate_shuttle(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         payer_info, // force multi-line
         shuttle_info,

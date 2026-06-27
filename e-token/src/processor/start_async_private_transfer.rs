@@ -30,8 +30,8 @@ use crate::processor::internal::{
     get_associated_token_address,
     group_receipt::derive_group_receipt_id,
     shuttle_delegation::{
-        merge_shuttle_into_token_account_action, process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions,
-        undelegate_and_close_shuttle_action, DepositAndDelegateShuttleAccounts, DepositAndDelegateShuttleCommonArgs,
+        process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions, start_async_shuttle_close_action,
+        sweep_shuttle_balance_action, DepositAndDelegateShuttleAccounts, DepositAndDelegateShuttleCommonArgs,
     },
     MAGIC_VAULT_ID,
 };
@@ -75,10 +75,7 @@ pub(crate) const SCHEDULED_PT_ACCOUNTS: usize = SCHEDULED_PT_INNER_ACCOUNTS + 2;
 /// stash-close private transfers.
 ///
 #[inline(never)]
-pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_start_async_private_transfer(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         payer_info, // force multi-line
         rent_pda_info,
@@ -202,7 +199,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
             private_transfer_amount,
         )?;
 
-        let mut post_actions = alloc::vec![merge_shuttle_into_token_account_action(
+        let mut post_actions = alloc::vec![sweep_shuttle_balance_action(
             &common_accounts,
             common_accounts.owner_source_token_info,
         )];
@@ -218,7 +215,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
             ));
         }
 
-        post_actions.push(undelegate_and_close_shuttle_action(&common_accounts, close_stash));
+        post_actions.push(start_async_shuttle_close_action(&common_accounts, close_stash));
         post_actions.cleartext_with_insertable(private_transfer, 1)
     };
 

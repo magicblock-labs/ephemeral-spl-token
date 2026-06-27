@@ -17,13 +17,13 @@ mod common;
 mod utils;
 
 #[tokio::test]
-async fn delegate_shuttle_ephemeral_ata_succeeds() {
+async fn delegate_shuttle_succeeds() {
     let mut context = utils::start_program_test(PROGRAM).await;
 
     let payer_kp = utils::fixed_payer_keypair();
     let payer = payer_kp.pubkey();
-    let owner = utils::test_pubkey("delegate_shuttle_ephemeral_ata::owner");
-    let mint_kp = utils::test_keypair("delegate_shuttle_ephemeral_ata::mint");
+    let owner = utils::test_pubkey("delegate_shuttle::owner");
+    let mint_kp = utils::test_keypair("delegate_shuttle::mint");
     let mint = mint_kp.pubkey();
     let shuttle_id = 9_u32;
 
@@ -33,7 +33,7 @@ async fn delegate_shuttle_ephemeral_ata_succeeds() {
     let (shuttle_eata, _) = EphemeralAta::find_pda(&shuttle_ephemeral_ata, &mint);
     let shuttle_wallet_ata = utils::derive_associated_token_address(shuttle_ephemeral_ata, mint);
 
-    let mut init_data = instruction::ESplInstruction::InitializeShuttleEphemeralAta.to_vec();
+    let mut init_data = instruction::ESplInstruction::InitializeShuttle.to_vec();
     init_data.extend_from_slice(&shuttle_id.to_le_bytes());
 
     let ix_init_shuttle = Instruction {
@@ -91,7 +91,7 @@ async fn delegate_shuttle_ephemeral_ata_succeeds() {
             AccountMeta::new_readonly(ephemeral_rollups_pinocchio::ID, false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: instruction::ESplInstruction::DelegateShuttleEphemeralAta
+        data: instruction::ESplInstruction::DelegateShuttle
             .with(&DelegateShuttleArgs { validator: None })
             .unwrap(),
     };

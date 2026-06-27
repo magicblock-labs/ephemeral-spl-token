@@ -14,13 +14,13 @@ mod common;
 mod utils;
 
 #[tokio::test]
-async fn initialize_shuttle_ephemeral_ata() {
+async fn initialize_shuttle() {
     let mut context = utils::start_program_test(PROGRAM).await;
 
     let payer_kp = utils::fixed_payer_keypair();
     let payer = payer_kp.pubkey();
-    let owner = utils::test_pubkey("initialize_shuttle_ephemeral_ata::owner");
-    let mint_kp = utils::test_keypair("initialize_shuttle_ephemeral_ata::mint");
+    let owner = utils::test_pubkey("initialize_shuttle::owner");
+    let mint_kp = utils::test_keypair("initialize_shuttle::mint");
     let mint = mint_kp.pubkey();
     let shuttle_id = 7_u32;
 
@@ -30,7 +30,7 @@ async fn initialize_shuttle_ephemeral_ata() {
     let (shuttle_eata, _) = utils::derive_shuttle_eata(PROGRAM, shuttle_ephemeral_ata, mint);
     let shuttle_wallet_ata = utils::derive_associated_token_address(shuttle_ephemeral_ata, mint);
 
-    let mut data = instruction::ESplInstruction::InitializeShuttleEphemeralAta.to_vec();
+    let mut data = instruction::ESplInstruction::InitializeShuttle.to_vec();
     data.extend_from_slice(&shuttle_id.to_le_bytes());
 
     let ix = Instruction {

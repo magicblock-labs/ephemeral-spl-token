@@ -41,10 +41,7 @@ struct CloseStashForward {
 /// `[user(32) | stash_bump(1)]` for the stash close path. In that path the
 /// executor is the stash PDA and account 1 is the rent sink.
 ///
-pub fn process_undelegate_and_close_shuttle_to_owner(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_start_async_shuttle_close(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let head_accounts = match accounts.len() {
         9 | 11 => &accounts[..9],
         _ => return Err(ProgramError::NotEnoughAccountKeys),

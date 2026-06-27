@@ -1,7 +1,9 @@
 ## Private Payments
 
 `process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer`
-(instruction `25`) does not directly deliver funds to the recipient.
+(instruction `25`, `StartAsyncPrivateTransfer`) does not directly deliver funds
+to the recipient.
+Old Name: `DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer`.
 It stages a temporary sponsored shuttle flow, injects an encrypted
 `DEPOSIT_AND_QUEUE_TRANSFER` as a post-delegation action, and only later settles
 to the recipient through the validator-scoped transfer queue.
@@ -28,7 +30,7 @@ sequenceDiagram
 
     Note over U,Q: Prerequisite: queue PDA for [QUEUE_SEED, mint, validator] already exists, is delegated, and is normally crank-enabled.
 
-    U->>ET: ix 25 DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer<br/>args = shuttle_id, amount, validator?, encrypted destination, encrypted delay/split suffix
+    U->>ET: ix 25 StartAsyncPrivateTransfer<br/>args = shuttle_id, amount, validator?, encrypted destination, encrypted delay/split suffix
     ET->>ET: Parse args<br/>Resolve validator (explicit or DEFAULT_VALIDATOR_IDENTITY)<br/>Validate queue PDA seeds and require queue owner = delegation program
     ET->>RP: Charge sponsored shuttle setup fee
     ET->>ET: initialize_shuttle_ephemeral_ata_with_sponsor()<br/>Create shuttle metadata + shuttle EATA + shuttle wallet ATA if needed

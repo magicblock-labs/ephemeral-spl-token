@@ -18,7 +18,7 @@ const DECIMALS: u8 = 6;
 const STARTING_BALANCE: u64 = 10_000 * 10u64.pow(DECIMALS as u32);
 
 #[tokio::test]
-async fn merge_shuttle_into_ephemeral_ata_transfers_from_shuttle_ata_to_destination() {
+async fn sweep_shuttle_balance_transfers_from_shuttle_ata_to_destination() {
     let mut context = utils::start_program_test(PROGRAM).await;
 
     let payer_kp = utils::fixed_payer_keypair();
@@ -26,7 +26,7 @@ async fn merge_shuttle_into_ephemeral_ata_transfers_from_shuttle_ata_to_destinat
     let owner = payer;
     let shuttle_id = 42_u32;
 
-    let mint_kp = utils::test_keypair("merge_shuttle_into_ephemeral_ata::mint");
+    let mint_kp = utils::test_keypair("sweep_shuttle_balance::mint");
     let mint = mint_kp.pubkey();
 
     let (shuttle_ephemeral_ata, _) = ShuttleMetadata::find_pda(&owner, &mint, shuttle_id);
@@ -37,7 +37,7 @@ async fn merge_shuttle_into_ephemeral_ata_transfers_from_shuttle_ata_to_destinat
         utils::setup_mint_and_token_accounts(&mut context, &payer_kp, &mint_kp, DECIMALS, STARTING_BALANCE, 1).await;
     let destination_ata = setup.user_tokens[0];
 
-    let mut shuttle_init_data = instruction::ESplInstruction::InitializeShuttleEphemeralAta.to_vec();
+    let mut shuttle_init_data = instruction::ESplInstruction::InitializeShuttle.to_vec();
     shuttle_init_data.extend_from_slice(&shuttle_id.to_le_bytes());
     let ix_init_shuttle = Instruction {
         program_id: PROGRAM,
@@ -101,7 +101,7 @@ async fn merge_shuttle_into_ephemeral_ata_transfers_from_shuttle_ata_to_destinat
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new_readonly(spl_token_interface::ID, false),
         ],
-        data: instruction::ESplInstruction::MergeShuttleIntoEphemeralAta.to_vec(),
+        data: instruction::ESplInstruction::SweepShuttleBalance.to_vec(),
     };
 
     let tx_merge = Transaction::new_signed_with_payer(&[ix_merge], Some(&payer), &[&payer_kp], context.last_blockhash);

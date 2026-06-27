@@ -464,11 +464,12 @@
       "args": []
     },
     {
-      "name": "initializeShuttleEphemeralAta",
+      "name": "initializeShuttle",
       "discriminator": [
         11
       ],
       "docs": [
+        "Old Name: InitializeShuttleEphemeralAta.",
         "Idempotently initializes shuttle metadata, shuttle EATA, and shuttle wallet ATA for [owner, mint, shuttle_id].",
         "Instruction data: [0..4] shuttle_id (u32 LE)."
       ],
@@ -561,11 +562,12 @@
       ]
     },
     {
-      "name": "delegateShuttleEphemeralAta",
+      "name": "delegateShuttle",
       "discriminator": [
         13
       ],
       "docs": [
+        "Old Name: DelegateShuttleEphemeralAta.",
         "Delegates a shuttle Ephemeral ATA to the delegation program.",
         "Instruction data: empty, or exactly 32 raw validator bytes appended after the discriminator."
       ],
@@ -609,11 +611,12 @@
       "args": []
     },
     {
-      "name": "undelegateShuttleEphemeralAta",
+      "name": "startAsyncShuttleClose",
       "discriminator": [
         14
       ],
       "docs": [
+        "Old Name: UndelegateAndCloseShuttleToOwner.",
         "Commits and undelegates a shuttle wallet ATA, then schedules shuttle close/refund handling.",
         "Instruction data: empty, or [0] escrow index. Omitting the byte uses the default escrow slot."
       ],
@@ -660,11 +663,12 @@
       ]
     },
     {
-      "name": "mergeShuttleIntoEphemeralAta",
+      "name": "sweepShuttleBalance",
       "discriminator": [
         15
       ],
       "docs": [
+        "Old Name: MergeShuttleIntoEphemeralAta.",
         "Transfers the full shuttle wallet ATA balance into a destination token account."
       ],
       "accounts": [
@@ -838,11 +842,12 @@
       "args": []
     },
     {
-      "name": "sponsoredLamportsTransfer",
+      "name": "startAsyncLamportsTransfer",
       "discriminator": [
         20
       ],
       "docs": [
+        "Old Name: SponsoredLamportsTransfer.",
         "Creates a zero-data PDA derived from [\"lamports\", payer, destination, salt], funds it with the requested lamports plus sponsored rent, delegates it, then schedules transfer and cleanup.",
         "The destination account must already be delegated; the validator is read from its delegation record.",
         "Instruction data: [0..8] amount (u64 LE), [8..40] salt ([u8; 32])."
@@ -934,11 +939,12 @@
       "args": []
     },
     {
-      "name": "setupAndDelegateShuttleEphemeralAtaWithMerge",
+      "name": "startAsyncShuttleTransfer",
       "discriminator": [
         24
       ],
       "docs": [
+        "Old Name: SetupAndDelegateShuttleEphemeralAtaWithMerge.",
         "Initializes shuttle accounts if needed, deposits into the vault, sponsors delegation from the rent PDA, and schedules merge plus cleanup.",
         "Instruction data: [0..4] shuttle_id (u32 LE), [4..12] amount (u64 LE), with an optional trailing 32-byte validator pubkey."
       ],
@@ -1029,11 +1035,12 @@
       ]
     },
     {
-      "name": "depositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer",
+      "name": "startAsyncPrivateTransfer",
       "discriminator": [
         25
       ],
       "docs": [
+        "Old Name: DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer.",
         "Same sponsored shuttle setup/deposit/delegate flow as discriminator 24, but merges back into the owner's source token account before scheduling a private queued transfer.",
         "Instruction data starts with [0..4] shuttle_id (u32 LE) and [4..12] amount (u64 LE), then appends three single-byte-length-prefixed raw buffers: validator bytes, encrypted destination bytes, and encrypted queue suffix bytes."
       ],
@@ -1124,11 +1131,12 @@
       ]
     },
     {
-      "name": "withdrawThroughDelegatedShuttleWithMerge",
+      "name": "startAsyncShuttleWithdraw",
       "discriminator": [
         26
       ],
       "docs": [
+        "Old Name: WithdrawThroughDelegatedShuttleWithMerge.",
         "Sponsors shuttle delegation, then schedules an owner-to-shuttle transfer followed by shuttle undelegation and cleanup.",
         "Instruction data: [0..4] shuttle_id (u32 LE), [4..12] amount (u64 LE), with an optional trailing 32-byte validator pubkey."
       ],
@@ -1224,6 +1232,62 @@
         {
           "name": "systemProgram",
           "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "startAsyncTransferQueueRefill",
+      "discriminator": [
+        28
+      ],
+      "docs": [
+        "Old Name: ExecutePendingTransferQueueRefill.",
+        "Permissionless idempotent helper that checks the queue-refill-state PDA and, when pending, starts a delegated lamports-PDA top-up path that refills the queue lamports from the global rent PDA.",
+        "Instruction data: none."
+      ],
+      "accounts": [
+        {
+          "name": "refillState",
+          "writable": true
+        },
+        {
+          "name": "queue",
+          "writable": true
+        },
+        {
+          "name": "rentPda",
+          "writable": true
+        },
+        {
+          "name": "lamportsPda",
+          "writable": true
+        },
+        {
+          "name": "ownerProgram"
+        },
+        {
+          "name": "buffer",
+          "writable": true
+        },
+        {
+          "name": "delegationRecord",
+          "writable": true
+        },
+        {
+          "name": "delegationMetadata",
+          "writable": true
+        },
+        {
+          "name": "delegationProgram",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "queueDelegationRecord"
         }
       ],
       "args": []

@@ -17,13 +17,13 @@ const TRANSFER_CHECKED_DISCRIMINATOR: u8 = 12;
 use crate::processor::internal::{
     read_mint_decimals,
     shuttle_delegation::{
-        build_undelegate_and_close_shuttle_instruction, delegate_sponsored_shuttle_with_post_actions,
+        build_start_async_shuttle_close_instruction, delegate_sponsored_shuttle_with_post_actions,
         prepare_sponsored_shuttle_delegation, DepositAndDelegateShuttleCommonArgs,
     },
     validate_token_account,
 };
 
-struct WithdrawThroughDelegatedShuttleAccounts<'a> {
+struct StartAsyncShuttleWithdrawAccounts<'a> {
     pub(crate) payer_info: &'a AccountView,
     pub(crate) rent_pda_info: &'a AccountView,
     pub(crate) shuttle_info: &'a AccountView,
@@ -65,10 +65,7 @@ struct WithdrawThroughDelegatedShuttleAccounts<'a> {
 /// Instruction Data: DepositAndDelegateShuttleArgs
 ///
 #[inline(never)]
-pub fn process_withdraw_through_delegated_shuttle_with_merge(
-    accounts: &[AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
+pub fn process_start_async_shuttle_withdraw(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         payer_info, // force multi-line
         rent_pda_info,
@@ -90,7 +87,7 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
 
     let args = DepositAndDelegateShuttleArgs::decode(instruction_data)?;
 
-    let accounts = WithdrawThroughDelegatedShuttleAccounts {
+    let accounts = StartAsyncShuttleWithdrawAccounts {
         payer_info,
         rent_pda_info,
         shuttle_info,
@@ -148,7 +145,7 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
     let decimals = read_mint_decimals(accounts.mint_info, accounts.token_program_info)?;
     let post_actions = alloc::vec![
         transfer_owner_tokens_into_shuttle_action(&accounts, args.amount(), decimals)?,
-        build_undelegate_and_close_shuttle_instruction(
+        build_start_async_shuttle_close_instruction(
             accounts.payer_info.address(),
             accounts.rent_pda_info.address(),
             accounts.shuttle_info.address(),
@@ -186,7 +183,7 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
 }
 
 fn transfer_owner_tokens_into_shuttle_action(
-    accounts: &WithdrawThroughDelegatedShuttleAccounts<'_>,
+    accounts: &StartAsyncShuttleWithdrawAccounts<'_>,
     amount: u64,
     decimals: u8,
 ) -> Result<Instruction, ProgramError> {

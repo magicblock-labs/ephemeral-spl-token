@@ -26,20 +26,21 @@ Delegation and permissions
 - `9` `ResetEphemeralAtaPermission` — reset permission members to the owner plus the requested ACL flags. Raw data is a single permission-flags byte.
 
 Shuttle flows
-- `11` `InitializeShuttleEphemeralAta` — initialize shuttle metadata, its shuttle Ephemeral ATA, and the shuttle wallet ATA for `[owner, mint, shuttle_id]`.
-- `13` `DelegateShuttleEphemeralAta` — delegate a shuttle Ephemeral ATA. Raw data is empty or an appended 32-byte validator pubkey.
-- `14` `UndelegateShuttleEphemeralAta` — commit and undelegate a shuttle wallet ATA, then schedule shuttle close/refund handling. Raw data is empty or a single escrow-index byte.
-- `15` `MergeShuttleIntoEphemeralAta` — transfer the entire shuttle wallet ATA balance into a destination token account.
-- `24` `SetupAndDelegateShuttleEphemeralAtaWithMerge` — initialize shuttle accounts if needed, deposit into the vault, sponsor delegation from the rent PDA, then schedule merge plus cleanup. Raw data is `shuttle_id:u32`, `amount:u64`, and an optional trailing 32-byte validator pubkey.
-- `25` `DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer` — same sponsored shuttle setup/deposit/delegate flow as `24`, but schedules a private queued transfer after merging back into the owner's source token account. Raw data starts with `shuttle_id:u32` and `amount:u64`, then carries three single-byte-length-prefixed buffers: validator bytes, encrypted destination bytes, and encrypted queue-suffix bytes.
-- `26` `WithdrawThroughDelegatedShuttleWithMerge` — sponsor shuttle delegation, then schedule an owner-to-shuttle transfer followed by shuttle undelegation and cleanup. Raw data is `shuttle_id:u32`, `amount:u64`, and an optional trailing 32-byte validator pubkey.
+- `11` `InitializeShuttle` — initialize or validate shuttle metadata, its shuttle Ephemeral ATA, and the shuttle wallet ATA for `[owner, mint, shuttle_id]`. Old Name: `InitializeShuttleEphemeralAta`.
+- `13` `DelegateShuttle` — delegate a shuttle Ephemeral ATA. Raw data is empty or an appended 32-byte validator pubkey. Old Name: `DelegateShuttleEphemeralAta`.
+- `14` `StartAsyncShuttleClose` — commit and undelegate a shuttle wallet ATA, then schedule shuttle close/refund handling. Raw data is empty or a single escrow-index byte. Old Name: `UndelegateAndCloseShuttleToOwner`.
+- `15` `SweepShuttleBalance` — transfer the entire shuttle wallet ATA balance into a destination token account. Old Name: `MergeShuttleIntoEphemeralAta`.
+- `24` `StartAsyncShuttleTransfer` — initialize shuttle accounts if needed, deposit into the vault, sponsor delegation from the rent PDA, then schedule merge plus cleanup. Raw data is `shuttle_id:u32`, `amount:u64`, and an optional trailing 32-byte validator pubkey. Old Name: `SetupAndDelegateShuttleEphemeralAtaWithMerge`.
+- `25` `StartAsyncPrivateTransfer` — start the queue-backed private-transfer flow by using the sponsored shuttle setup/deposit/delegate flow from `24`, merging back into the owner's source token account, and later settling to the recipient through transfer-queue automation. Raw data starts with `shuttle_id:u32` and `amount:u64`, then carries three single-byte-length-prefixed buffers: validator bytes, encrypted destination bytes, and encrypted queue-suffix bytes. Old Name: `DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer`.
+- `26` `StartAsyncShuttleWithdraw` — sponsor shuttle delegation, then schedule an owner-to-shuttle transfer followed by shuttle undelegation and cleanup. Raw data is `shuttle_id:u32`, `amount:u64`, and an optional trailing 32-byte validator pubkey. Old Name: `WithdrawThroughDelegatedShuttleWithMerge`.
 
 Transfer queue and automation
 - `12` `InitializeTransferQueue` — create the per-mint transfer queue PDA derived from `["queue", mint]`. Raw data may be omitted, or may contain `size_bytes:u32`; `0` selects the default queue size.
 - `16` `DepositAndQueueTransfer` — deposit into the vault and enqueue one or more delayed transfers. Raw data is `amount:u64`, `min_delay_ms:u64`, `max_delay_ms:u64`, `split:u32`, with an optional trailing flags byte.
 - `17` `EnsureTransferQueueCrank` — ensure the recurring transfer-queue crank is scheduled.
 - `19` `DelegateTransferQueue` — delegate the per-mint transfer queue PDA.
-- `20` `SponsoredLamportsTransfer` — transfer lamports via the sponsored rent mechanism.
+- `20` `StartAsyncLamportsTransfer` — start a sponsored lamports transfer through a delegated lamports PDA and scheduled cleanup. Old Name: `SponsoredLamportsTransfer`.
+- `28` `StartAsyncTransferQueueRefill` — start the async queue-refill top-up path through delegated lamports PDA mechanics. Old Name: `ExecutePendingTransferQueueRefill`.
 
 Rent PDA
 - `23` `InitializeRentPda` — initialize the global rent-sponsoring PDA derived from `["rent"]`.
