@@ -75,6 +75,10 @@ export const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey(
   "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
 );
 
+const NATIVE_MINT = new PublicKey(
+  "So11111111111111111111111111111111111111112",
+);
+
 const MEMO_PROGRAM_ID = new PublicKey(
   "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
 );
@@ -521,6 +525,133 @@ function createMemoInstruction(memo: string) {
     keys: [],
     data: Buffer.from(memo, "utf8"),
   });
+}
+
+function createAssociatedTokenAccountIdempotentInstruction(
+  payer: PublicKey,
+  associatedToken: PublicKey,
+  owner: PublicKey,
+  mint: PublicKey,
+  programId: PublicKey = TOKEN_PROGRAM_ID,
+  associatedTokenProgramId: PublicKey = ASSOCIATED_TOKEN_PROGRAM_ID,
+) {
+  return new TransactionInstruction({
+    programId: associatedTokenProgramId,
+    keys: [
+      { pubkey: payer, isSigner: true, isWritable: true },
+      { pubkey: associatedToken, isSigner: false, isWritable: true },
+      { pubkey: owner, isSigner: false, isWritable: false },
+      { pubkey: mint, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: programId, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.from([1]),
+  });
+}
+
+function createSyncNativeInstruction(
+  nativeAccount: PublicKey,
+  programId: PublicKey = TOKEN_PROGRAM_ID,
+) {
+  return new TransactionInstruction({
+    programId,
+    keys: [
+      { pubkey: nativeAccount, isSigner: false, isWritable: true },
+    ],
+    data: Buffer.from([17]),
+  });
+}
+
+async function createNativeSolWrapInstructionsIfNeeded(
+  config: RpcConfig,
+  sourceOwner: PublicKey,
+  mint: PublicKey,
+  amount: bigint,
+  payer: PublicKey,
+  tokenProgram: PublicKey,
+) {
+  if (
+    amount === 0n
+    || !mint.equals(NATIVE_MINT)
+    || !tokenProgram.equals(TOKEN_PROGRAM_ID)
+  ) {
+    return [];
+  }
+
+  const sourceAta = getAssociatedTokenAddressSync(mint, sourceOwner, false, tokenProgram);
+  let wrappedBalance = 0n;
+
+  try {
+    const accountInfo = await getBaseConnection(config).getAccountInfo(sourceAta, "confirmed");
+    wrappedBalance = accountInfo ? (parseTokenAmount(accountInfo) ?? 0n) : 0n;
+  } catch (error) {
+    throw new ApiError(502, "RPC_ERROR", "Failed to fetch wrapped SOL balance", {
+      ata: sourceAta.toBase58(),
+      message: getSanitizedErrorMessage(error),
+    });
+  }
+
+  if (wrappedBalance >= amount) {
+    return [];
+  }
+
+  const wrapLamports = amount - wrappedBalance;
+  return [
+    createAssociatedTokenAccountIdempotentInstruction(
+      payer,
+      sourceAta,
+      sourceOwner,
+      mint,
+      tokenProgram,
+    ),
+    SystemProgram.transfer({
+      fromPubkey: sourceOwner,
+      toPubkey: sourceAta,
+      lamports: wrapLamports,
+    }),
+    createSyncNativeInstruction(sourceAta, tokenProgram),
+  ];
+}
+
+async function createNativeSolRentPdaTopUpInstructionsIfNeeded(
+  config: RpcConfig,
+  payer: PublicKey,
+  mint: PublicKey,
+  amount: bigint,
+  tokenProgram: PublicKey,
+) {
+  if (
+    amount === 0n
+    || !mint.equals(NATIVE_MINT)
+    || !tokenProgram.equals(TOKEN_PROGRAM_ID)
+  ) {
+    return [];
+  }
+
+  const [rentPda] = deriveRentPda();
+  const targetLamports = BigInt(TRANSFER_QUEUE_RENT_LAMPORTS);
+  let currentLamports: bigint;
+
+  try {
+    currentLamports = BigInt(await getBaseConnection(config).getBalance(rentPda, "confirmed"));
+  } catch (error) {
+    throw new ApiError(502, "RPC_ERROR", "Failed to fetch rent PDA balance", {
+      rentPda: rentPda.toBase58(),
+      message: getSanitizedErrorMessage(error),
+    });
+  }
+
+  if (currentLamports >= targetLamports) {
+    return [];
+  }
+
+  return [
+    SystemProgram.transfer({
+      fromPubkey: payer,
+      toPubkey: rentPda,
+      lamports: targetLamports - currentLamports,
+    }),
+  ];
 }
 
 function requireAuthToken(authToken: string | undefined, message: string) {
@@ -1476,8 +1607,23 @@ export async function buildDepositTransaction(env: AppEnv, input: DepositRequest
       ? await resolveMintTokenProgram(config, mint)
       : TOKEN_PROGRAM_ID;
     const blockhash = await getBlockhash(config, "base");
+    const nativeSolWrapInstructions = await createNativeSolWrapInstructionsIfNeeded(
+      config,
+      owner,
+      mint,
+      amount,
+      payer,
+      tokenProgram,
+    );
+    const nativeSolRentPdaTopUpInstructions = await createNativeSolRentPdaTopUpInstructionsIfNeeded(
+      config,
+      payer,
+      mint,
+      amount,
+      tokenProgram,
+    );
 
-    const instructions = await delegateSpl(owner, mint, amount, {
+    const delegateInstructions = await delegateSpl(owner, mint, amount, {
       payer,
       validator,
       tokenProgram,
@@ -1489,6 +1635,11 @@ export async function buildDepositTransaction(env: AppEnv, input: DepositRequest
       idempotent: input.idempotent,
       private: input.private ?? true,
     });
+    const instructions = [
+      ...nativeSolWrapInstructions,
+      ...nativeSolRentPdaTopUpInstructions,
+      ...delegateInstructions,
+    ];
 
     return serializeTransaction(
       "deposit",
@@ -1873,6 +2024,19 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
 
     const sendTo: SendTarget = input.fromBalance === "ephemeral" ? "ephemeral" : "base";
     const blockhash = await getBlockhash(config, sendTo, authToken);
+    const nativeSolWrapAmount = isPrivateBaseToBaseTransfer(input) && (input.exactOut ?? true)
+      ? amount + privateTransferFee
+      : amount;
+    const nativeSolWrapInstructions = input.visibility === "private" && input.fromBalance === "base"
+      ? await createNativeSolWrapInstructionsIfNeeded(
+          config,
+          from,
+          mint,
+          nativeSolWrapAmount,
+          payer,
+          tokenProgram,
+        )
+      : [];
 
     const transferInstructions = await transferSpl(from, to, mint, amount, {
       visibility: input.visibility,
@@ -1909,6 +2073,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       : normalizedTransferInstructions;
 
     const instructions = [
+      ...nativeSolWrapInstructions,
       ...gaslessFeeInstructions,
       ...effectiveTransferInstructions,
       ...(input.memo !== undefined ? [createMemoInstruction(input.memo)] : []),
@@ -1961,7 +2126,8 @@ async function getBalanceInternal(
   const config = resolveRpcConfig(env, input.cluster);
   const owner = parsePublicKey(input.address, "address");
   const mint = parsePublicKey(input.mint, "mint");
-  const ata = getAssociatedTokenAddressSync(mint, owner, true, TOKEN_PROGRAM_ID);
+  const tokenProgram = await resolveMintTokenProgram(config, mint);
+  const ata = getAssociatedTokenAddressSync(mint, owner, true, tokenProgram);
   const connection = location === "base"
     ? getBaseConnection(config)
     : getEphemeralConnection(config, authToken);
@@ -1993,7 +2159,8 @@ export async function getPrivateBalance(env: AppEnv, input: BalanceRequest, auth
   const config = resolveRpcConfig(env, input.cluster);
   const owner = parsePublicKey(input.address, "address");
   const mint = parsePublicKey(input.mint, "mint");
-  const ata = getAssociatedTokenAddressSync(mint, owner, true, TOKEN_PROGRAM_ID);
+  const tokenProgram = await resolveMintTokenProgram(config, mint);
+  const ata = getAssociatedTokenAddressSync(mint, owner, true, tokenProgram);
   const [eata] = deriveEphemeralAta(owner, mint);
   const zeroBalanceResponse: BalanceResponse = {
     address: owner.toBase58(),
