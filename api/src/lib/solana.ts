@@ -122,7 +122,7 @@ const PRIVATE_TRANSFER_SETUP_LAMPORTS = 2_039_280n;
 const PRIVATE_TRANSFER_FEE_BASIS_POINTS = 10n;
 const BASIS_POINTS_FACTOR = 10_000n;
 const GASLESS_RELAY_FEE_MICRO_USDC = 200_000n; // 0.2 USDC/USDT
-const GASLESS_STABLECOIN_MIN_AMOUNT = BigInt(5 * 1_000_000); // 5 USDC/USDT
+const GASLESS_STABLECOIN_MIN_AMOUNT = 500_000n; // 0.5 USDC/USDT
 
 const validatorCache = new Map<string, Promise<PublicKey | undefined>>();
 const transferQueueAuthErrorCounts = new Map<string, number>();

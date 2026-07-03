@@ -633,7 +633,7 @@ curl -X POST http://127.0.0.1:8787/v1/spl/transfer \
     "from": "FROM_OWNER_PUBKEY",
     "to": "TO_OWNER_PUBKEY",
     "mint": "MINT_PUBKEY",
-    "amount": 5000000,
+    "amount": 500000,
     "visibility": "private",
     "fromBalance": "base",
     "toBalance": "base",
@@ -690,7 +690,7 @@ Gasless transfer validation:
 - the configured sponsor becomes the transaction fee payer and signs the transaction
 - the API prepends a 0.2 USDC/USDT relay-fee token transfer from the sender to the sponsor ATA
 - gasless transfers require an approved stablecoin mint: mainnet USDC, mainnet USDT, or devnet USDC
-- gasless transfers must be at least 5 USDC/USDT
+- gasless transfers must be at least 0.5 USDC/USDT
 - if `from` is an off-curve PDA owner, `gasless: true` is ignored because gasless transfers require a supported wallet sender
 
 Relevant fields:
