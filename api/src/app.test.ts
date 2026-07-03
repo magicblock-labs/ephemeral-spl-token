@@ -399,7 +399,7 @@ describe("app", () => {
       "stealth handle",
     );
     expect(transferRequestSchema?.example).toMatchObject({
-      amount: 5000000,
+      amount: 500000,
       gasless: true,
     });
     expect(transferRequestSchema?.example).not.toHaveProperty("initIfMissing");
@@ -4473,7 +4473,7 @@ describe("app", () => {
   it("builds a gasless private transfer with the sponsor as fee payer", async () => {
     const sponsor = Keypair.generate();
     const mint = DEVNET_USDC_MINT;
-    const amount = 5_000_000;
+    const amount = 500_000;
     const ownerAta = deriveAssociatedTokenAddress(mint, owner);
     const sponsorAta = deriveAssociatedTokenAddress(
       mint,
@@ -4545,7 +4545,7 @@ describe("app", () => {
     };
     expect(json.fees).toEqual({
       lamports: "2039280",
-      tokens: "205000",
+      tokens: "200500",
     });
     expect(json.requiredSigners).toEqual(
       expect.arrayContaining([owner, sponsor.publicKey.toBase58()]),

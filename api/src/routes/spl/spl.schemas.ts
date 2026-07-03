@@ -334,7 +334,7 @@ export const transferRequestSchema = z.object({
   }).optional(),
   gasless: z.boolean().openapi({
     example: true,
-    description: "Optional. When true, the API uses the configured sponsor as transaction fee payer and prepends a 0.2 USDC/USDT relay-fee token transfer to the sponsor ATA. Requires GASLESS_SPONSOR_SECRET_KEY, an approved stablecoin mint (mainnet USDC/USDT or devnet USDC), and at least 5 USDC/USDT.",
+    description: "Optional. When true, the API uses the configured sponsor as transaction fee payer and prepends a 0.2 USDC/USDT relay-fee token transfer to the sponsor ATA. Requires GASLESS_SPONSOR_SECRET_KEY, an approved stablecoin mint (mainnet USDC/USDT or devnet USDC), and at least 0.5 USDC/USDT.",
   }).optional(),
   legacy: z.boolean().openapi({
     description: "Optional. Defaults to false. When true, skips lookup-table compilation and returns a legacy transaction.",
@@ -344,7 +344,7 @@ export const transferRequestSchema = z.object({
     from: DEPOSIT_EXAMPLE_OWNER,
     to: TRANSFER_EXAMPLE_TO,
     mint: DEFAULT_DEPOSIT_MINT,
-    amount: 5000000,
+    amount: 500000,
     visibility: "private",
     fromBalance: "base",
     toBalance: "base",
