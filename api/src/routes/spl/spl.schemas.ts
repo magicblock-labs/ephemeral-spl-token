@@ -332,6 +332,14 @@ export const transferRequestSchema = z.object({
     example: boolean,
     description: "Optional. If true, the fees are deducted from the sender, else from the recipient amount",
   }).optional(),
+  platformFeeBps: z.number().int().nonnegative().max(10_000).openapi({
+    example: 100,
+    description: "Optional platform fee in basis points, charged in the transferred token.",
+  }).optional(),
+  platformFeeAccount: publicKeySchema.openapi({
+    example: "6QxLzE2KfM1NAB7sTzUPk4cNsA6V9fB3eYq9s6d9r9hP",
+    description: "Required when platformFeeBps is greater than 0. Initialized token account that collects the platform fee.",
+  }).optional(),
   gasless: z.boolean().openapi({
     example: true,
     description: "Optional. When true, the API uses the configured sponsor as transaction fee payer and prepends a 0.2 USDC/USDT relay-fee token transfer to the sponsor ATA. Requires GASLESS_SPONSOR_SECRET_KEY, an approved stablecoin mint (mainnet USDC/USDT or devnet USDC), and at least 0.5 USDC/USDT.",

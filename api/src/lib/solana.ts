@@ -1404,6 +1404,10 @@ function privateTransferFeeAmount(amount: bigint) {
   return amount * PRIVATE_TRANSFER_FEE_BASIS_POINTS / BASIS_POINTS_FACTOR;
 }
 
+function platformTransferFeeAmount(amount: bigint, platformFeeBps: number) {
+  return amount * BigInt(platformFeeBps) / BASIS_POINTS_FACTOR;
+}
+
 function isPrivateBaseToBaseTransfer(input: TransferRequest) {
   return input.visibility === "private"
     && input.fromBalance === "base"
@@ -1913,6 +1917,32 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
     const maxDelayMs = parseOptionalAmount(input.maxDelayMs, "maxDelayMs");
     const clientRefId = parseOptionalAmount(input.clientRefId, "clientRefId");
     const split = input.split;
+    const exactOut = input.exactOut ?? true;
+    const platformFeeBps = input.platformFeeBps ?? 0;
+    let platformFeeAccount: PublicKey | undefined;
+
+    if (!Number.isSafeInteger(platformFeeBps) || platformFeeBps < 0 || platformFeeBps > 10_000) {
+      throw new ApiError(400, "INVALID_PLATFORM_FEE", "platformFeeBps must be an integer between 0 and 10000");
+    }
+
+    if (platformFeeBps > 0) {
+      if (input.platformFeeAccount === undefined) {
+        throw new ApiError(400, "INVALID_PLATFORM_FEE", "platformFeeAccount is required when platformFeeBps is greater than 0");
+      }
+
+      if (input.fromBalance !== "base") {
+        throw new ApiError(400, "INVALID_PLATFORM_FEE", "platform fees are supported only when fromBalance is \"base\"");
+      }
+
+      platformFeeAccount = parsePublicKey(input.platformFeeAccount, "platformFeeAccount");
+    }
+
+    const platformFee = platformTransferFeeAmount(amount, platformFeeBps);
+    if (!exactOut && platformFee >= amount) {
+      throw new ApiError(400, "INVALID_PLATFORM_FEE", "platform fee must be less than amount when exactOut is false");
+    }
+
+    const transferAmount = exactOut ? amount : amount - platformFee;
 
     if (minDelayMs !== undefined && minDelayMs < 0n) {
       throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "minDelayMs must be non-negative");
@@ -1952,8 +1982,8 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "split must be an integer between 1 and 15");
     }
 
-    if (split !== undefined && BigInt(split) > amount) {
-      throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "split cannot exceed amount");
+    if (split !== undefined && BigInt(split) > transferAmount) {
+      throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "split cannot exceed transfer amount");
     }
 
     const useGasless = input.gasless === true && PublicKey.isOnCurve(from.toBuffer());
@@ -1977,10 +2007,10 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
     const sponsor = useGasless ? getGaslessSponsorKeypair(env) : undefined;
     const payer = sponsor?.publicKey ?? from;
     const feePayer = sponsor?.publicKey ?? from;
-    const privateTransferFee = isPrivateBaseToBaseTransfer(input) ? privateTransferFeeAmount(amount) : 0n;
+    const privateTransferFee = isPrivateBaseToBaseTransfer(input) ? privateTransferFeeAmount(transferAmount) : 0n;
     const fees = createTransferFees(
       privateTransferSetupLamports(input),
-      privateTransferFee + (sponsor ? GASLESS_RELAY_FEE_MICRO_USDC : 0n),
+      privateTransferFee + platformFee + (sponsor ? GASLESS_RELAY_FEE_MICRO_USDC : 0n),
     );
 
     const shouldResolveValidator = input.validator
@@ -2024,9 +2054,9 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
 
     const sendTo: SendTarget = input.fromBalance === "ephemeral" ? "ephemeral" : "base";
     const blockhash = await getBlockhash(config, sendTo, authToken);
-    const nativeSolWrapAmount = isPrivateBaseToBaseTransfer(input) && (input.exactOut ?? true)
-      ? amount + privateTransferFee
-      : amount;
+    const nativeSolWrapAmount = transferAmount + platformFee + (
+      isPrivateBaseToBaseTransfer(input) && exactOut ? privateTransferFee : 0n
+    );
     const nativeSolWrapInstructions = input.visibility === "private" && input.fromBalance === "base"
       ? await createNativeSolWrapInstructionsIfNeeded(
           config,
@@ -2037,8 +2067,19 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
           tokenProgram,
         )
       : [];
+    const platformFeeInstructions = platformFee > 0n && platformFeeAccount
+      ? [
+          createTokenTransferInstruction(
+            getAssociatedTokenAddressSync(mint, from, false, tokenProgram),
+            platformFeeAccount,
+            from,
+            platformFee,
+            tokenProgram,
+          ),
+        ]
+      : [];
 
-    const transferInstructions = await transferSpl(from, to, mint, amount, {
+    const transferInstructions = await transferSpl(from, to, mint, transferAmount, {
       visibility: input.visibility,
       fromBalance: input.fromBalance,
       toBalance: input.toBalance,
@@ -2055,12 +2096,12 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
             maxDelayMs,
             clientRefId,
             split,
-            exactOut: input.exactOut ?? true,
+            exactOut,
           }
         : undefined,
     });
     const normalizedTransferInstructions = transferInstructions.map(instruction =>
-      withPrivateTransferExactOut(instruction, input.exactOut ?? true));
+      withPrivateTransferExactOut(instruction, exactOut));
     // Gasless private base->base already adds a relay-fee token transfer. Dropping
     // the opportunistic queue-refill ix keeps the full transaction under Solana's
     // packet limit while preserving the actual private transfer instruction.
@@ -2075,6 +2116,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
     const instructions = [
       ...nativeSolWrapInstructions,
       ...gaslessFeeInstructions,
+      ...platformFeeInstructions,
       ...effectiveTransferInstructions,
       ...(input.memo !== undefined ? [createMemoInstruction(input.memo)] : []),
     ];
