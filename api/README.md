@@ -620,7 +620,7 @@ The returned `sendTo` value is:
 - `"ephemeral"` when `fromBalance` is `"ephemeral"`
 
 Transfer responses also include `from`, which mirrors the request `fromBalance`, and `fees`.
-`fees.lamports` and `fees.tokens` are total fee strings and return `"0"` when that fee type is not charged. `fees.tokens` uses mint base units. Private `base -> base` transfers report the on-chain private-transfer token fee and shuttle setup lamport fee. Gasless transfers add the relay fee to `fees.tokens` only when gasless is honored.
+`fees.lamports` and `fees.tokens` are total fee strings and return `"0"` when that fee type is not charged. `fees.tokens` uses mint base units. Private `base -> base` transfers report the on-chain private-transfer token fee and shuttle setup lamport fee. Platform fees and gasless relay fees are added to `fees.tokens` only when charged.
 
 When `to` is not a Solana public key, the API treats it as a stealth handle. The handle must be initialized through `/v1/spl/stealth-pool`; the API derives the stealth-pool PDA, verifies that the base account exists, and builds a private `base -> base` transfer to that PDA. Stealth handle transfers require `visibility: "private"`, `fromBalance: "base"`, and `toBalance: "base"`; those are the defaults when omitted.
 
@@ -680,8 +680,18 @@ Private transfer validation:
 - `minDelayMs` must be an integer string
 - `maxDelayMs` must be an integer string
 - `split` must be an integer between `1` and `15`
-- `split` cannot exceed `amount`
+- `split` cannot exceed the transfer amount after platform-fee adjustment
 - if both delays are present, `maxDelayMs >= minDelayMs`
+
+Platform fee validation:
+
+- `platformFeeBps` is optional and defaults to `0`
+- `platformFeeBps` must be an integer between `0` and `10000`
+- when `platformFeeBps` is greater than `0`, `platformFeeAccount` is required
+- `platformFeeAccount` must be an initialized token account for the transferred mint
+- platform fees are supported only when `fromBalance` is `"base"`
+- with `exactOut: true`, the recipient receives `amount` and the sender pays `amount + platformFee`
+- with `exactOut: false`, the sender pays `amount` and the recipient receives `amount - platformFee`
 
 Gasless transfer validation:
 
@@ -712,6 +722,8 @@ Relevant fields:
 - `maxDelayMs`
 - `split`
 - `exactOut`
+- `platformFeeBps`
+- `platformFeeAccount`
 - `gasless`
 - `legacy`
 
