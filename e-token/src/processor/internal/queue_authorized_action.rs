@@ -11,10 +11,15 @@ use pinocchio::{
     AccountView, ProgramResult,
 };
 use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
-use solana_address::Address;
+use solana_address::{address_eq, Address};
+use spl_token_interface::ID as SPL_TOKEN_PROGRAM_ID;
 use wheels::layout::Encodable as _;
 
-use crate::processor::{internal, internal::rent_pda::RENT_PDA};
+use crate::processor::{
+    internal,
+    internal::rent_pda::RENT_PDA,
+    internal::unwrap_pda::{NATIVE_MINT, UNWRAP_PDA},
+};
 
 const MAGIC_INTENT_BUNDLE_DATA_LEN: usize = 512;
 pub(crate) const EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX: u8 = 0;
@@ -66,7 +71,7 @@ pub(crate) fn invoke_standalone_action(
 /// Action builder for `ExecuteReadyQueuedTransfer`
 pub(crate) struct QueuedTransferActionBuilder {
     queue_info: AccountView,
-    accounts: [ShortAccountMeta; 9],
+    accounts: Vec<ShortAccountMeta>,
     data: Vec<u8>,
 }
 
@@ -81,12 +86,16 @@ impl QueuedTransferActionBuilder {
         token_program: &Address,
         args: ExecuteQueuedTransferArgs,
     ) -> Self {
+        // Native-mint (wrapped SOL) settlements always deliver native lamports when the
+        // recipient state allows it, so the scratch/unwrap accounts are scheduled for the
+        // native mint unconditionally.
+        let deliver_native = address_eq(mint, &NATIVE_MINT) && address_eq(token_program, &SPL_TOKEN_PROGRAM_ID);
         let data =
             crate::instruction::ESplInternalInstruction::ExecuteReadyQueuedTransfer.with_data(&args.encode().unwrap());
 
         Self {
             queue_info: queue_info.clone(),
-            accounts: Self::action_accounts(destination_owner, vault, mint, token_program),
+            accounts: Self::action_accounts(destination_owner, vault, mint, token_program, deliver_native),
             data,
         }
     }
@@ -107,14 +116,16 @@ impl QueuedTransferActionBuilder {
         vault: &Address,
         mint: &Address,
         token_program: &Address,
-    ) -> [ShortAccountMeta; 9] {
+        deliver_native: bool,
+    ) -> Vec<ShortAccountMeta> {
         let vault_token_account = internal::get_associated_token_address(vault, mint, token_program);
         let destination_token_account = internal::get_associated_token_address(destination_owner, mint, token_program);
 
-        // Note that we initialize CallHandler with 9 accounts only, and then 3 more accounts [source_program,
-        // escrow_authority, escrow_signer] are appended by DLP's CallHandlerV2 instruction, which is
-        // why EXECUTE_READY_QUEUED_TRANSFER receives 12 accounts (not 9).
-        [
+        // Note that we initialize CallHandler with 9 (or 11, for native delivery) accounts, and then
+        // 3 more accounts [source_program, escrow_authority, escrow_signer] are appended by DLP's
+        // CallHandlerV2 instruction, which is why EXECUTE_READY_QUEUED_TRANSFER receives 12 (or 14)
+        // accounts.
+        let mut accounts = alloc::vec![
             ShortAccountMeta {
                 pubkey: vault.clone(),
                 is_writable: false,
@@ -128,8 +139,9 @@ impl QueuedTransferActionBuilder {
                 is_writable: true,
             },
             ShortAccountMeta {
+                // Writable for native delivery so the recipient wallet can be credited lamports.
                 pubkey: *destination_owner,
-                is_writable: false,
+                is_writable: deliver_native,
             },
             ShortAccountMeta {
                 pubkey: destination_token_account,
@@ -151,6 +163,21 @@ impl QueuedTransferActionBuilder {
                 pubkey: SYSTEM_PROGRAM_ID,
                 is_writable: false,
             },
-        ]
+        ];
+
+        if deliver_native {
+            // Scratch WSOL account (ATA of the unwrap PDA) plus the unwrap PDA authority.
+            let scratch_wsol_ata = internal::get_associated_token_address(&UNWRAP_PDA, mint, token_program);
+            accounts.push(ShortAccountMeta {
+                pubkey: scratch_wsol_ata,
+                is_writable: true,
+            });
+            accounts.push(ShortAccountMeta {
+                pubkey: UNWRAP_PDA,
+                is_writable: false,
+            });
+        }
+
+        accounts
     }
 }

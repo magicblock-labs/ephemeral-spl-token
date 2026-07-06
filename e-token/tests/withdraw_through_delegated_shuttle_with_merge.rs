@@ -51,6 +51,12 @@ fn captured_intent_bundles() -> &'static Mutex<HashMap<Pubkey, Vec<CapturedInten
     CAPTURED.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+/// Serializes tests that capture intent bundles under the shared MAGIC_PROGRAM_ID key.
+fn scheduling_test_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
 fn clear_captured_intent_bundles(magic_program: Pubkey) {
     captured_intent_bundles().lock().unwrap().remove(&magic_program);
 }
@@ -319,6 +325,7 @@ async fn withdraw_through_delegated_shuttle_with_merge_stores_transfer_and_clean
 
 #[tokio::test]
 async fn undelegate_and_close_shuttle_ephemeral_ata_schedules_close_action() {
+    let _test_guard = scheduling_test_lock().lock().unwrap();
     let magic_program = Pubkey::new_from_array(ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID.to_bytes());
     let magic_context = convert_magic_pubkey(MAGIC_CONTEXT_PUBKEY);
     clear_captured_intent_bundles(magic_program);
@@ -486,4 +493,184 @@ async fn undelegate_and_close_shuttle_ephemeral_ata_schedules_close_action() {
         captured_bundles[0].schedule_accounts[close_action.escrow_authority as usize],
         payer
     );
+}
+
+#[tokio::test]
+async fn undelegate_and_close_shuttle_with_native_flag_schedules_native_close_action() {
+    let _test_guard = scheduling_test_lock().lock().unwrap();
+    let magic_program = Pubkey::new_from_array(ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID.to_bytes());
+    let magic_context = convert_magic_pubkey(MAGIC_CONTEXT_PUBKEY);
+    clear_captured_intent_bundles(magic_program);
+
+    let owner = utils::test_keypair("undelegate_and_close_shuttle_with_native_flag::owner");
+    // Native delivery is keyed on the wrapped-SOL mint; no per-transfer flag exists.
+    let mint = utils::NATIVE_MINT;
+    let shuttle_id = 6_u32;
+    let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
+    let (unwrap_pda, _) = Pubkey::find_program_address(&[b"unwrap"], &PROGRAM);
+    let scratch_wsol_ata = utils::derive_associated_token_address(unwrap_pda, mint);
+    let (shuttle_metadata, _) = utils::derive_shuttle_ephemeral_ata(PROGRAM, owner.pubkey(), mint, shuttle_id);
+    let (shuttle_eata, _) = utils::derive_shuttle_eata(PROGRAM, shuttle_metadata, mint);
+    let shuttle_wallet_ata = utils::derive_associated_token_address(shuttle_metadata, mint);
+    let owner_destination_ata = utils::derive_associated_token_address(owner.pubkey(), mint);
+
+    let mut shuttle_data = vec![0u8; ShuttleMetadata::LEN];
+    let shuttle_state = load_mut::<ShuttleMetadata>(shuttle_data.as_mut_slice()).unwrap();
+    shuttle_state.owner = owner.pubkey();
+    shuttle_state.payer = rent_pda;
+    shuttle_state.id = shuttle_id;
+
+    let mut shuttle_eata_data = vec![0u8; EphemeralAta::LEN];
+    let shuttle_eata_state = load_mut::<EphemeralAta>(shuttle_eata_data.as_mut_slice()).unwrap();
+    shuttle_eata_state.owner = shuttle_metadata;
+    shuttle_eata_state.mint = mint;
+    shuttle_eata_state.amount = 0;
+
+    let mut context = utils::start_program_test_with(PROGRAM, |mut pt| {
+        pt.add_account(
+            owner.pubkey(),
+            Account {
+                lamports: Rent::default().minimum_balance(0).max(1),
+                data: vec![],
+                owner: solana_system_interface::program::ID,
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+        pt.add_account(
+            rent_pda,
+            Account {
+                lamports: Rent::default().minimum_balance(0).max(1),
+                data: vec![],
+                owner: solana_system_interface::program::ID,
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+        pt.add_account(
+            shuttle_metadata,
+            Account {
+                lamports: Rent::default().minimum_balance(ShuttleMetadata::LEN).max(1),
+                data: shuttle_data,
+                owner: PROGRAM,
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+        pt.add_account(
+            shuttle_eata,
+            Account {
+                lamports: Rent::default().minimum_balance(EphemeralAta::LEN).max(1),
+                data: shuttle_eata_data,
+                owner: PROGRAM,
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+        pt.add_account(
+            magic_context,
+            Account {
+                lamports: 1_000_000,
+                data: vec![0; 8],
+                owner: magic_program,
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+        add_magic_program_mock(&mut pt, magic_program);
+    })
+    .await;
+
+    let payer_kp = utils::fixed_payer_keypair();
+    let payer = payer_kp.pubkey();
+
+    utils::setup_native_mint_and_token_accounts(&mut context, &payer_kp, DECIMALS, STARTING_BALANCE, 1).await;
+
+    let ix_create_owner_destination =
+        associated_token_create_idempotent_ix(payer, owner_destination_ata, owner.pubkey(), mint);
+    let ix_create_shuttle_wallet =
+        associated_token_create_idempotent_ix(payer, shuttle_wallet_ata, shuttle_metadata, mint);
+    let tx_create_token_accounts = Transaction::new_signed_with_payer(
+        &[ix_create_owner_destination, ix_create_shuttle_wallet],
+        Some(&payer),
+        &[&payer_kp],
+        context.last_blockhash,
+    );
+    context
+        .banks_client
+        .process_transaction(tx_create_token_accounts)
+        .await
+        .unwrap();
+
+    // Plain legacy wire format: native scheduling is triggered by the mint alone.
+    let ix_undelegate = Instruction {
+        program_id: PROGRAM,
+        accounts: vec![
+            AccountMeta::new_readonly(payer, true),
+            AccountMeta::new_readonly(rent_pda, false),
+            AccountMeta::new_readonly(shuttle_metadata, false),
+            AccountMeta::new_readonly(shuttle_eata, false),
+            AccountMeta::new(shuttle_wallet_ata, false),
+            AccountMeta::new_readonly(owner_destination_ata, false),
+            AccountMeta::new_readonly(spl_token_interface::ID, false),
+            AccountMeta::new(magic_context, false),
+            AccountMeta::new_readonly(magic_program, false),
+        ],
+        data: instruction::ESplInstruction::UndelegateAndCloseShuttleToOwner.to_vec(),
+    };
+    let tx_undelegate = Transaction::new_signed_with_payer(
+        &[ix_undelegate],
+        Some(&payer),
+        &[&payer_kp],
+        context.banks_client.get_latest_blockhash().await.unwrap(),
+    );
+    common::metrics::process_transaction_record_cu(
+        &context.banks_client,
+        tx_undelegate,
+        "ud_wd_close::undelegate_native",
+    )
+    .await
+    .unwrap();
+
+    let captured_bundles = peek_captured_intent_bundles(magic_program);
+    assert_eq!(captured_bundles.len(), 1);
+    let commit_and_undelegate = captured_bundles[0]
+        .args
+        .commit_and_undelegate
+        .as_ref()
+        .expect("expected commit_and_undelegate bundle");
+    let UndelegateTypeArgs::WithBaseActions { base_actions } = &commit_and_undelegate.undelegate_type else {
+        panic!("expected undelegate base actions");
+    };
+    assert_eq!(base_actions.len(), 1);
+
+    let close_action = &base_actions[0];
+    // Close-intent data is the legacy shape; native delivery is signalled by the account set.
+    assert_eq!(
+        close_action.args.data,
+        vec![
+            TestInternalInstruction::SettleAndCloseShuttleIntent.discriminator(),
+            u8::MAX
+        ]
+    );
+    // Native delivery appends [rent PDA, scratch WSOL ATA, unwrap PDA, owner wallet,
+    // system program, ATA program] to the legacy 9 accounts.
+    assert_eq!(close_action.accounts.len(), 15);
+    assert_eq!(close_action.accounts[9].pubkey.to_bytes(), rent_pda.to_bytes());
+    assert!(close_action.accounts[9].is_writable);
+    assert_eq!(close_action.accounts[10].pubkey.to_bytes(), scratch_wsol_ata.to_bytes());
+    assert!(close_action.accounts[10].is_writable);
+    assert_eq!(close_action.accounts[11].pubkey.to_bytes(), unwrap_pda.to_bytes());
+    assert_eq!(close_action.accounts[12].pubkey.to_bytes(), owner.pubkey().to_bytes());
+    assert!(close_action.accounts[12].is_writable);
+    assert_eq!(
+        close_action.accounts[13].pubkey.to_bytes(),
+        solana_system_interface::program::ID.to_bytes()
+    );
+    assert_eq!(
+        close_action.accounts[14].pubkey.to_bytes(),
+        utils::associated_token_program_id().to_bytes()
+    );
+    // Native close intents get extra compute headroom; legacy stays at 100k.
+    assert_eq!(close_action.compute_units, 140_000);
 }

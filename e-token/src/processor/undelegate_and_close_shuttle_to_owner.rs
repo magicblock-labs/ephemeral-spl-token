@@ -4,17 +4,27 @@ use ephemeral_spl_api::{
     state::{ephemeral_ata::EphemeralAta, load_initialized, shuttle_ephemeral_ata::ShuttleMetadata},
 };
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
-use solana_address::Address;
+use solana_address::{address_eq, Address};
+use spl_token_interface::ID as SPL_TOKEN_PROGRAM_ID;
+
+use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
 
 use crate::{
     instruction::ESplInternalInstruction,
     processor::internal::{
-        get_associated_token_address, shuttle_delegation::DEFAULT_ESCROW_INDEX, validate_token_account,
+        get_associated_token_address,
+        rent_pda::RENT_PDA,
+        shuttle_delegation::DEFAULT_ESCROW_INDEX,
+        unwrap_pda::{NATIVE_MINT, UNWRAP_PDA},
+        validate_token_account,
     },
 };
 
 const INTENT_BUNDLE_DATA_BUF_SIZE: usize = 1536;
 const CLOSE_SHUTTLE_ATA_COMPUTE_UNITS: u32 = 100_000;
+/// Native delivery adds a scratch-ATA create, token close, and lamports transfer to the close
+/// intent, so it gets extra compute headroom; the legacy budget stays unchanged.
+const CLOSE_SHUTTLE_ATA_NATIVE_COMPUTE_UNITS: u32 = 140_000;
 const CLOSE_STASH_DATA_LEN: usize = 33;
 
 struct CloseStashForward {
@@ -100,6 +110,11 @@ pub fn process_undelegate_and_close_shuttle_to_owner(
         shuttle_ephemeral_ata.mint
     };
 
+    // Native-mint (wrapped SOL) close intents always schedule the unwrap accounts so any
+    // residual shuttle balance is paid out as native lamports when the owner state allows it.
+    let deliver_native =
+        address_eq(&mint, &NATIVE_MINT) && address_eq(token_program_info.address(), &SPL_TOKEN_PROGRAM_ID);
+
     let (derived_shuttle_ephemeral_ata, _) =
         Address::find_program_address(&[shuttle_info.address().as_ref(), mint.as_ref()], &crate::ID);
     require_eq_keys!(
@@ -142,6 +157,8 @@ pub fn process_undelegate_and_close_shuttle_to_owner(
         magic_program,
         escrow_index,
         close_stash.as_ref(),
+        &shuttle.owner,
+        deliver_native,
     )
 }
 
@@ -178,6 +195,8 @@ fn schedule_shuttle_close_after_undelegate(
     magic_program: &AccountView,
     escrow_index: u8,
     close_stash: Option<&CloseStashForward>,
+    owner: &Address,
+    deliver_native: bool,
 ) -> ProgramResult {
     let (vault_info, _) = Address::find_program_address(&[mint.as_ref()], &crate::ID);
     let vault_token_info = get_associated_token_address(&vault_info, mint, token_program_info.address());
@@ -186,7 +205,7 @@ fn schedule_shuttle_close_after_undelegate(
         close_handler_data.extend_from_slice(&close.user);
         close_handler_data.push(close.stash_bump);
     }
-    let close_handler_accounts = alloc::vec![
+    let mut close_handler_accounts = alloc::vec![
         ShortAccountMeta {
             pubkey: *rent_reimbursement.address(),
             is_writable: true,
@@ -224,11 +243,46 @@ fn schedule_shuttle_close_after_undelegate(
             is_writable: false,
         },
     ];
+
+    if deliver_native {
+        // Extra accounts consumed by the native-unwrap branch of the close intent: the global rent
+        // PDA (funds/sinks the scratch account and forwards lamports), the unwrap PDA and its
+        // scratch WSOL ATA, the owner's wallet (native recipient), and the system/ATA programs.
+        let scratch_wsol_ata = get_associated_token_address(&UNWRAP_PDA, mint, token_program_info.address());
+        close_handler_accounts.push(ShortAccountMeta {
+            pubkey: RENT_PDA,
+            is_writable: true,
+        });
+        close_handler_accounts.push(ShortAccountMeta {
+            pubkey: scratch_wsol_ata,
+            is_writable: true,
+        });
+        close_handler_accounts.push(ShortAccountMeta {
+            pubkey: UNWRAP_PDA,
+            is_writable: false,
+        });
+        close_handler_accounts.push(ShortAccountMeta {
+            pubkey: *owner,
+            is_writable: true,
+        });
+        close_handler_accounts.push(ShortAccountMeta {
+            pubkey: SYSTEM_PROGRAM_ID,
+            is_writable: false,
+        });
+        close_handler_accounts.push(ShortAccountMeta {
+            pubkey: pinocchio_associated_token_account::ID,
+            is_writable: false,
+        });
+    }
     let close_handler = [CallHandler {
         destination_program: crate::ID,
         escrow_authority: executor.clone(),
         args: ActionArgs::new(&close_handler_data).with_escrow_index(escrow_index),
-        compute_units: CLOSE_SHUTTLE_ATA_COMPUTE_UNITS,
+        compute_units: if deliver_native {
+            CLOSE_SHUTTLE_ATA_NATIVE_COMPUTE_UNITS
+        } else {
+            CLOSE_SHUTTLE_ATA_COMPUTE_UNITS
+        },
         accounts: &close_handler_accounts,
         callback: None,
     }];

@@ -13,6 +13,7 @@ pub(crate) mod shuttle_delegation;
 pub(crate) mod token;
 pub(crate) mod token_vault;
 pub(crate) mod transfer_queue_refill;
+pub(crate) mod unwrap_pda;
 
 pub(crate) use ephemeral_account::MAGIC_VAULT_ID;
 #[cfg(feature = "logging")]

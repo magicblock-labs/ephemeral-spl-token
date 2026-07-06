@@ -334,11 +334,11 @@ export const transferRequestSchema = z.object({
   }).optional(),
   platformFeeBps: z.number().int().nonnegative().max(10_000).openapi({
     example: 100,
-    description: "Optional platform fee in basis points, charged in the transferred token.",
+    description: "Optional platform fee in basis points, charged in the transferred token. For the wrapped SOL mint the fee is charged as native lamports from the sender wallet.",
   }).optional(),
   platformFeeAccount: publicKeySchema.openapi({
     example: "6QxLzE2KfM1NAB7sTzUPk4cNsA6V9fB3eYq9s6d9r9hP",
-    description: "Required when platformFeeBps is greater than 0. Initialized token account that collects the platform fee.",
+    description: "Required when platformFeeBps is greater than 0. Initialized token account that collects the platform fee. For the wrapped SOL mint, a wallet (or any lamport-receivable) address that collects the fee as native SOL.",
   }).optional(),
   gasless: z.boolean().openapi({
     example: true,

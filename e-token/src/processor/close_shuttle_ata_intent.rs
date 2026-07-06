@@ -7,13 +7,22 @@ use ephemeral_spl_api::{
         stash::StashPda,
     },
 };
-use pinocchio::{cpi::Signer, error::ProgramError, AccountView, ProgramResult};
-use pinocchio_system::instructions::Transfer;
+use pinocchio::{
+    cpi::{Seed, Signer},
+    error::ProgramError,
+    sysvars::{rent::Rent, Sysvar},
+    AccountView, ProgramResult,
+};
+use pinocchio_system::{instructions::Transfer, ID as SYSTEM_PROGRAM_ID};
 use pinocchio_token_2022::instructions::CloseAccount;
-use solana_address::Address;
+use solana_address::{address_eq, Address};
+use spl_token_interface::ID as SPL_TOKEN_PROGRAM_ID;
 
 use crate::processor::internal::{
-    get_associated_token_address, rent_pda::RENT_PDA, token_vault::withdraw_ephemeral_ata_tokens,
+    get_associated_token_address,
+    rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
+    token_vault::withdraw_ephemeral_ata_tokens,
+    unwrap_pda::{NATIVE_MINT, UNWRAP_PDA, UNWRAP_PDA_BUMP, UNWRAP_PDA_SEED},
     validate_token_account,
 };
 const DLP_EPHEMERAL_BALANCE_TAG: &[u8] = b"balance";
@@ -43,8 +52,15 @@ const CLOSE_STASH_DATA_LEN: usize = 33;
 /// escrow authority is the stash PDA and account 0 is the rent sink.
 ///
 pub fn process_close_shuttle_ata_intent(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
-    let (head_accounts, source_program, escrow_authority, escrow_signer) = match accounts.len() {
-        12 => (&accounts[..9], &accounts[9], &accounts[10], &accounts[11]),
+    let (head_accounts, native_accounts, source_program, escrow_authority, escrow_signer) = match accounts.len() {
+        12 => (&accounts[..9], None, &accounts[9], &accounts[10], &accounts[11]),
+        18 => (
+            &accounts[..9],
+            Some(&accounts[9..15]),
+            &accounts[15],
+            &accounts[16],
+            &accounts[17],
+        ),
         _ => return Err(ProgramError::NotEnoughAccountKeys),
     };
     let [
@@ -168,17 +184,46 @@ pub fn process_close_shuttle_ata_intent(accounts: &[AccountView], instruction_da
         if shuttle_ephemeral_amount != 0 {
             require_eq_keys!(&mint, mint_info.address(), ProgramError::InvalidAccountData);
 
-            withdraw_ephemeral_ata_tokens(
-                shuttle_info,
-                false,
-                shuttle_ephemeral_ata_info,
-                vault_info,
-                mint_info,
-                vault_source_token_acc,
-                destination_token_info,
-                token_program_info,
-                shuttle_ephemeral_amount,
-            )?;
+            match native_accounts {
+                Some(native_accounts)
+                    if shuttle_native_delivery_eligible(
+                        native_accounts,
+                        mint_info,
+                        token_program_info,
+                        shuttle_ephemeral_amount,
+                    )? =>
+                {
+                    deliver_shuttle_native(
+                        native_accounts,
+                        shuttle_owner,
+                        shuttle_info,
+                        shuttle_ephemeral_ata_info,
+                        vault_info,
+                        mint_info,
+                        vault_source_token_acc,
+                        token_program_info,
+                        shuttle_ephemeral_amount,
+                    )?;
+                }
+                _ => {
+                    if native_accounts.is_some() {
+                        // Owner wallet or mint state no longer supports a native payout;
+                        // deliver the wrapped token to the owner ATA instead of failing.
+                        pinocchio_log::log!("deliver_native: falling back to token delivery");
+                    }
+                    withdraw_ephemeral_ata_tokens(
+                        shuttle_info,
+                        false,
+                        shuttle_ephemeral_ata_info,
+                        vault_info,
+                        mint_info,
+                        vault_source_token_acc,
+                        destination_token_info,
+                        token_program_info,
+                        shuttle_ephemeral_amount,
+                    )?;
+                }
+            }
         }
 
         let derived_shuttle = ShuttleMetadata::derive_pda(shuttle_owner, &mint, shuttle_id, shuttle_bump)?;
@@ -292,4 +337,159 @@ fn close_program_account_to_recipient(account: &AccountView, recipient: &Account
     recipient.set_lamports(updated_recipient_lamports);
     account.set_lamports(0);
     account.close()
+}
+
+/// A native payout is only attempted when the mint, token program, and owner-wallet state all
+/// support it; anything else degrades to the regular wrapped-token delivery so the withdrawal
+/// still completes.
+///
+/// Unlike queued-transfer settlement (which hard-fails into the refund path so third-party
+/// recipients never receive wrapped SOL), this close intent deliberately keeps the fallback:
+/// it pays the withdrawing owner their own funds, and a failed close intent has no retry, so
+/// degrading to the owner's wrapped-SOL ATA is strictly safer than stranding the balance.
+/// Identity checks on program-derived accounts stay hard errors inside
+/// `deliver_shuttle_native`.
+#[inline(always)]
+fn shuttle_native_delivery_eligible(
+    native_accounts: &[AccountView],
+    mint_info: &AccountView,
+    token_program_info: &AccountView,
+    amount: u64,
+) -> Result<bool, ProgramError> {
+    let owner_wallet_info = native_accounts.get(3).ok_or(ProgramError::NotEnoughAccountKeys)?;
+
+    if !address_eq(mint_info.address(), &NATIVE_MINT)
+        || !address_eq(token_program_info.address(), &SPL_TOKEN_PROGRAM_ID)
+    {
+        return Ok(false);
+    }
+
+    if !owner_wallet_info.owned_by(&SYSTEM_PROGRAM_ID) {
+        return Ok(false);
+    }
+
+    // An unfunded wallet must end at or above the rent-exempt floor or the system transfer
+    // would fail the whole close intent.
+    if owner_wallet_info.lamports() == 0 && amount < Rent::get()?.try_minimum_balance(0)? {
+        return Ok(false);
+    }
+
+    Ok(true)
+}
+
+/// Unwrap the shuttle's wrapped-SOL balance and pay the owner in native lamports.
+///
+/// The scratch WSOL account is created, filled with exactly `amount` (moved from the vault while
+/// decrementing the shuttle ephemeral ATA), and closed within this instruction, so the rent PDA is
+/// net-neutral and the owner receives exactly `amount` native lamports.
+#[allow(clippy::too_many_arguments)]
+#[inline(never)]
+fn deliver_shuttle_native(
+    native_accounts: &[AccountView],
+    owner: &Address,
+    shuttle_info: &AccountView,
+    shuttle_ephemeral_ata_info: &AccountView,
+    vault_info: &AccountView,
+    mint_info: &AccountView,
+    vault_source_token_acc: &AccountView,
+    token_program_info: &AccountView,
+    amount: u64,
+) -> ProgramResult {
+    let [
+        rent_pda_info, // force multi-line
+        scratch_wsol_ata_info,
+        unwrap_pda_info,
+        owner_wallet_info,
+        system_program_info,
+        associated_token_program_info,
+    ] = require_n_accounts!(native_accounts, 6);
+
+    // Native unwrap only applies to the classic SPL Token wrapped-SOL mint.
+    require_eq_keys!(mint_info.address(), &NATIVE_MINT, ProgramError::InvalidAccountData);
+    require!(
+        address_eq(token_program_info.address(), &SPL_TOKEN_PROGRAM_ID),
+        ProgramError::IncorrectProgramId
+    );
+
+    // Recipient must be the shuttle owner's plain system wallet.
+    require_eq_keys!(owner_wallet_info.address(), owner, ProgramError::InvalidAccountData);
+    require!(
+        owner_wallet_info.owned_by(&SYSTEM_PROGRAM_ID),
+        ProgramError::InvalidAccountOwner
+    );
+
+    // Rent PDA funds the scratch account and sinks the unwrapped lamports.
+    require!(
+        rent_pda_info.owned_by(&SYSTEM_PROGRAM_ID),
+        ProgramError::InvalidAccountOwner
+    );
+    require_eq_keys!(&RENT_PDA, rent_pda_info.address(), ProgramError::InvalidSeeds);
+    require!(rent_pda_info.data_len() == 0, ProgramError::InvalidAccountData);
+    require!(
+        associated_token_program_info.address() == &pinocchio_associated_token_account::ID
+            && system_program_info.address() == &SYSTEM_PROGRAM_ID,
+        ProgramError::InvalidAccountData
+    );
+
+    // Scratch account must be the unwrap PDA's ATA for this mint.
+    require_eq_keys!(unwrap_pda_info.address(), &UNWRAP_PDA, ProgramError::InvalidSeeds);
+    let expected_scratch =
+        get_associated_token_address(&UNWRAP_PDA, mint_info.address(), token_program_info.address());
+    require_eq_keys!(
+        &expected_scratch,
+        scratch_wsol_ata_info.address(),
+        ProgramError::InvalidSeeds
+    );
+
+    let rent_bump_seed = [RENT_PDA_BUMP];
+    let rent_signer_seed = [Seed::from(RENT_PDA_SEED), Seed::from(&rent_bump_seed)];
+    let rent_signer = Signer::from(&rent_signer_seed);
+
+    // 1. Create the scratch WSOL account (funded by the rent PDA).
+    (pinocchio_associated_token_account::instructions::CreateIdempotent {
+        funding_account: rent_pda_info,
+        account: scratch_wsol_ata_info,
+        wallet: unwrap_pda_info,
+        mint: mint_info,
+        system_program: system_program_info,
+        token_program: token_program_info,
+    })
+    .invoke_signed(&[rent_signer])?;
+
+    // 2. Move exactly `amount` wrapped SOL from the vault into the scratch account and decrement
+    //    the shuttle ephemeral ATA balance (vault-PDA signed inside the helper).
+    withdraw_ephemeral_ata_tokens(
+        shuttle_info,
+        false,
+        shuttle_ephemeral_ata_info,
+        vault_info,
+        mint_info,
+        vault_source_token_acc,
+        scratch_wsol_ata_info,
+        token_program_info,
+        amount,
+    )?;
+
+    // 3. Close the scratch account, unwrapping lamports (scratch rent + `amount`) to the rent PDA.
+    let unwrap_bump_seed = [UNWRAP_PDA_BUMP];
+    let unwrap_signer_seed = [Seed::from(UNWRAP_PDA_SEED), Seed::from(&unwrap_bump_seed)];
+    let unwrap_signer = Signer::from(&unwrap_signer_seed);
+    CloseAccount {
+        account: scratch_wsol_ata_info,
+        destination: rent_pda_info,
+        authority: unwrap_pda_info,
+        token_program: token_program_info.address(),
+    }
+    .invoke_signed(&[unwrap_signer])?;
+
+    // 4. Forward exactly `amount` native lamports from the rent PDA to the owner wallet.
+    let rent_signer = Signer::from(&rent_signer_seed);
+    Transfer {
+        from: rent_pda_info,
+        to: owner_wallet_info,
+        lamports: amount,
+    }
+    .invoke_signed(&[rent_signer])?;
+
+    Ok(())
 }

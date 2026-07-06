@@ -242,6 +242,9 @@ describe("app", () => {
     vi.spyOn(Connection.prototype, "getMultipleAccountsInfo").mockImplementation(
       async addresses => addresses.map(() => null),
     );
+    // Private SOL transfers read the rent PDA (top-up) and recipient (dust floor) balances.
+    // Default to fully funded; tests exercising those paths override this spy.
+    vi.spyOn(Connection.prototype, "getBalance").mockResolvedValue(1_000_000_000);
   });
 
   afterEach(() => {
@@ -5298,6 +5301,257 @@ describe("app", () => {
     expect(json.error.message).toBe(
       "maxDelayMs must be less than or equal to 600000",
     );
+  });
+
+  it("rejects private SOL dust transfers to unfunded recipients", async () => {
+    vi.spyOn(Connection.prototype, "getBalance").mockResolvedValue(0);
+
+    const response = await app.request(
+      "/v1/spl/transfer",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          from: owner,
+          to: destination,
+          mint: "So11111111111111111111111111111111111111112",
+          amount: 1000,
+          visibility: "private",
+          fromBalance: "base",
+          toBalance: "base",
+        }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(400);
+
+    const json = (await response.json()) as {
+      error: {
+        code: string;
+        message: string;
+      };
+    };
+
+    expect(json.error.code).toBe("INVALID_PRIVATE_TRANSFER");
+    expect(json.error.message).toBe(
+      "private SOL transfers settle as native SOL and require at least 890880 lamports per split for an unfunded recipient",
+    );
+  });
+
+  it("charges SOL platform fees as native lamports from the sender wallet", async () => {
+    const mint = new PublicKey("So11111111111111111111111111111111111111112");
+    const sourceAta = new PublicKey(
+      deriveAssociatedTokenAddress(mint.toBase58(), owner),
+    );
+    const platformFeeWallet = Keypair.generate().publicKey;
+    const amount = 5_000_000;
+    const expectedFee = 50_000n; // 100 bps of amount
+
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123,
+    });
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(
+      async (address) => {
+        if (address.equals(mint)) {
+          return createMintAccountInfo(TOKEN_PROGRAM_ID);
+        }
+
+        if (address.equals(sourceAta)) {
+          return createAccountInfo(1_000_000_000n);
+        }
+
+        return null;
+      },
+    );
+
+    const response = await app.request(
+      "/v1/spl/transfer",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          from: owner,
+          to: destination,
+          mint: mint.toBase58(),
+          amount,
+          visibility: "private",
+          fromBalance: "base",
+          toBalance: "base",
+          validator: resolvedValidator,
+          platformFeeBps: 100,
+          platformFeeAccount: platformFeeWallet.toBase58(),
+          legacy: true,
+        }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(200);
+
+    const json = (await response.json()) as {
+      transactionBase64: string;
+    };
+    const transaction = Transaction.from(
+      Buffer.from(json.transactionBase64, "base64"),
+    );
+
+    // The fee arrives as a native lamport transfer to the fee wallet, not a token transfer.
+    const feeIx = transaction.instructions.find((ix) => {
+      if (!ix.programId.equals(SystemProgram.programId)) {
+        return false;
+      }
+      try {
+        return SystemInstruction.decodeTransfer(ix).toPubkey.equals(
+          platformFeeWallet,
+        );
+      } catch {
+        return false;
+      }
+    });
+    expect(feeIx).toBeDefined();
+    const decodedFee = SystemInstruction.decodeTransfer(feeIx!);
+    expect(decodedFee.fromPubkey.toBase58()).toBe(owner);
+    expect(BigInt(decodedFee.lamports)).toBe(expectedFee);
+
+    const tokenTransferToFeeWallet = transaction.instructions.some(
+      (ix) =>
+        ix.programId.equals(TOKEN_PROGRAM_ID)
+        && ix.keys.some(key => key.pubkey.equals(platformFeeWallet)),
+    );
+    expect(tokenTransferToFeeWallet).toBe(false);
+  });
+
+  it("allows private SOL dust transfers when the recipient is already funded", async () => {
+    const mint = new PublicKey("So11111111111111111111111111111111111111112");
+    const sourceAta = new PublicKey(
+      deriveAssociatedTokenAddress(mint.toBase58(), owner),
+    );
+
+    vi.spyOn(Connection.prototype, "getBalance").mockResolvedValue(
+      1_000_000_000,
+    );
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123,
+    });
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(
+      async (address) => {
+        if (address.equals(mint)) {
+          return createMintAccountInfo(TOKEN_PROGRAM_ID);
+        }
+
+        if (address.equals(sourceAta)) {
+          return createAccountInfo(1_000_000_000n);
+        }
+
+        return null;
+      },
+    );
+
+    const response = await app.request(
+      "/v1/spl/transfer",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          from: owner,
+          to: destination,
+          mint: mint.toBase58(),
+          amount: 1000,
+          visibility: "private",
+          fromBalance: "base",
+          toBalance: "base",
+          validator: resolvedValidator,
+          legacy: true,
+        }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(200);
+  });
+
+  it("tops up the rent PDA for private SOL transfers when the rent PDA is short", async () => {
+    const mint = new PublicKey("So11111111111111111111111111111111111111112");
+    const sourceAta = new PublicKey(
+      deriveAssociatedTokenAddress(mint.toBase58(), owner),
+    );
+    const [rentPda] = deriveRentPda();
+    // Above the unfunded-recipient minimum, so no recipient balance lookup happens and
+    // getBalance only serves the rent PDA top-up check.
+    const amount = 5_000_000;
+
+    vi.spyOn(Connection.prototype, "getBalance").mockResolvedValue(500_000);
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123,
+    });
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(
+      async (address) => {
+        if (address.equals(mint)) {
+          return createMintAccountInfo(TOKEN_PROGRAM_ID);
+        }
+
+        if (address.equals(sourceAta)) {
+          return createAccountInfo(1_000_000_000n);
+        }
+
+        return null;
+      },
+    );
+
+    const response = await app.request(
+      "/v1/spl/transfer",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          from: owner,
+          to: destination,
+          mint: mint.toBase58(),
+          amount,
+          visibility: "private",
+          fromBalance: "base",
+          toBalance: "base",
+          validator: resolvedValidator,
+          legacy: true,
+        }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(200);
+
+    const json = (await response.json()) as {
+      transactionBase64: string;
+    };
+    const transaction = Transaction.from(
+      Buffer.from(json.transactionBase64, "base64"),
+    );
+    const rentTopUpIx = transaction.instructions.find((ix) => {
+      if (!ix.programId.equals(SystemProgram.programId)) {
+        return false;
+      }
+      try {
+        return SystemInstruction.decodeTransfer(ix).toPubkey.equals(rentPda);
+      } catch {
+        return false;
+      }
+    });
+    expect(rentTopUpIx).toBeDefined();
+    const decodedTransfer = SystemInstruction.decodeTransfer(rentTopUpIx!);
+    expect(decodedTransfer.fromPubkey.toBase58()).toBe(owner);
+    expect(BigInt(decodedTransfer.lamports)).toBe(19_500_000n);
   });
 
   it("appends a memo instruction to transfers when memo is provided", async () => {

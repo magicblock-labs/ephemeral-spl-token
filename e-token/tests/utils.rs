@@ -92,6 +92,10 @@ pub fn associated_token_program_id() -> Pubkey {
     ASSOCIATED_TOKEN_PROGRAM_ID
 }
 
+/// Wrapped SOL (native) mint address.
+#[allow(dead_code)]
+pub const NATIVE_MINT: Pubkey = pubkey!("So11111111111111111111111111111111111111112");
+
 /// Deterministic pubkey for integration tests (SHA-256 over `e-token::pubkey::{label}`).
 pub fn test_pubkey(label: &str) -> Pubkey {
     let input = format!("e-token::pubkey::{label}");
@@ -507,6 +511,82 @@ pub async fn setup_mint_and_token_accounts(
     // Submit transaction
     let tx = Transaction::new_signed_with_payer(&instructions, Some(&payer), &signers, context.last_blockhash);
 
+    context.banks_client.process_transaction(tx).await.unwrap();
+
+    TokenSetup { user_tokens }
+}
+
+/// Like `setup_mint_and_token_accounts`, but for the fixed-address wrapped-SOL mint, which has
+/// no keypair to sign account creation. Seeds a blank SPL-token-owned account at `NATIVE_MINT`
+/// and initializes it in place, then creates and funds the user token accounts.
+#[allow(dead_code)]
+pub async fn setup_native_mint_and_token_accounts(
+    context: &mut ProgramTestContext,
+    payer_signer: &Keypair,
+    decimals: u8,
+    starting_balance: u64,
+    user_accounts: usize,
+) -> TokenSetup {
+    assert!(user_accounts >= 1, "at least one user token account required");
+
+    let payer = payer_signer.pubkey();
+    let mint = NATIVE_MINT;
+
+    let rent = context.banks_client.get_rent().await.unwrap();
+
+    context.set_account(
+        &mint,
+        &Account {
+            lamports: rent.minimum_balance(Mint::LEN).max(1),
+            data: vec![0u8; Mint::LEN],
+            owner: spl_token_interface::ID,
+            executable: false,
+            rent_epoch: 0,
+        }
+        .into(),
+    );
+
+    let mut instructions = vec![];
+    let mut signers: Vec<&Keypair> = vec![payer_signer];
+
+    let mut init_mint_ix = initialize_mint(&spl_token_interface::ID, &mint, &payer, Some(&payer), decimals).unwrap();
+    init_mint_ix.program_id = spl_token_interface::ID;
+    instructions.push(init_mint_ix);
+
+    let token_acc_space = SplAccount::LEN;
+    let token_acc_lamports = rent.minimum_balance(token_acc_space);
+
+    let mut user_tokens: Vec<Pubkey> = vec![];
+    let mut user_token_kps: Vec<Keypair> = vec![];
+
+    for i in 0..user_accounts {
+        let kp = test_keypair(&format!("setup_native_mint_and_token_accounts::user_token_{i}"));
+        let pk = kp.pubkey();
+        user_token_kps.push(kp);
+        user_tokens.push(pk);
+
+        // The token program rejects mint_to for the native mint, so fund the first account by
+        // over-provisioning lamports: initialize_account records lamports above the rent-exempt
+        // reserve as wrapped balance.
+        let extra_lamports = if i == 0 { starting_balance } else { 0 };
+        instructions.push(create_account(
+            &payer,
+            &pk,
+            token_acc_lamports + extra_lamports,
+            token_acc_space as u64,
+            &spl_token_interface::ID,
+        ));
+
+        let mut init_user_ix = initialize_account(&spl_token_interface::ID, &pk, &mint, &payer).unwrap();
+        init_user_ix.program_id = spl_token_interface::ID;
+        instructions.push(init_user_ix);
+    }
+
+    for kp in &user_token_kps {
+        signers.push(kp);
+    }
+
+    let tx = Transaction::new_signed_with_payer(&instructions, Some(&payer), &signers, context.last_blockhash);
     context.banks_client.process_transaction(tx).await.unwrap();
 
     TokenSetup { user_tokens }

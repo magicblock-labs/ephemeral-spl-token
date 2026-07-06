@@ -123,6 +123,10 @@ const PRIVATE_TRANSFER_FEE_BASIS_POINTS = 10n;
 const BASIS_POINTS_FACTOR = 10_000n;
 const GASLESS_RELAY_FEE_MICRO_USDC = 200_000n; // 0.2 USDC/USDT
 const GASLESS_STABLECOIN_MIN_AMOUNT = 500_000n; // 0.5 USDC/USDT
+// Rent-exempt minimum for a zero-data system account. Private wrapped-SOL transfers settle as
+// native SOL for wallet recipients; a payout that would leave an unfunded wallet below this
+// floor falls back to wrapped-SOL delivery at settlement, so reject it at build time instead.
+const NATIVE_DELIVERY_MIN_UNFUNDED_RECIPIENT_LAMPORTS = 890_880n;
 
 const validatorCache = new Map<string, Promise<PublicKey | undefined>>();
 const transferQueueAuthErrorCounts = new Map<string, number>();
@@ -1986,6 +1990,49 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "split cannot exceed transfer amount");
     }
 
+    // Private SOL transfers settle as native lamports or bounce back to the sender through
+    // the refund path — recipients never receive wrapped SOL. Reject builds that are
+    // guaranteed to bounce at settlement.
+    if (
+      input.visibility === "private"
+      && input.toBalance === "base"
+      && input.mint === NATIVE_MINT.toBase58()
+    ) {
+      const walletDestination = tryParsePublicKey(input.to);
+      const chunkAmount = transferAmount / BigInt(split ?? 1);
+
+      if (chunkAmount < NATIVE_DELIVERY_MIN_UNFUNDED_RECIPIENT_LAMPORTS) {
+        if (walletDestination === undefined) {
+          // Stealth destinations resolve to fresh one-time keys at settlement, which cannot
+          // absorb sub-rent-exempt payouts.
+          throw new ApiError(
+            400,
+            "INVALID_PRIVATE_TRANSFER",
+            `private SOL transfers settle as native SOL and require at least ${NATIVE_DELIVERY_MIN_UNFUNDED_RECIPIENT_LAMPORTS} lamports per split for stealth destinations`,
+          );
+        }
+
+        let recipientLamports: bigint;
+        try {
+          recipientLamports = BigInt(await getBaseConnection(config).getBalance(to, "confirmed"));
+        } catch (error) {
+          throw new ApiError(502, "RPC_ERROR", "Failed to fetch recipient balance", {
+            recipient: to.toBase58(),
+            message: getSanitizedErrorMessage(error),
+          });
+        }
+
+        if (recipientLamports === 0n) {
+          throw new ApiError(
+            400,
+            "INVALID_PRIVATE_TRANSFER",
+            `private SOL transfers settle as native SOL and require at least ${NATIVE_DELIVERY_MIN_UNFUNDED_RECIPIENT_LAMPORTS} lamports per split for an unfunded recipient`,
+          );
+        }
+      }
+
+    }
+
     const useGasless = input.gasless === true && PublicKey.isOnCurve(from.toBuffer());
 
     if (useGasless && !isSupportedGaslessMint(config.cluster, mint)) {
@@ -2054,7 +2101,11 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
 
     const sendTo: SendTarget = input.fromBalance === "ephemeral" ? "ephemeral" : "base";
     const blockhash = await getBlockhash(config, sendTo, authToken);
-    const nativeSolWrapAmount = transferAmount + platformFee + (
+    // SOL-mint platform fees are charged as native lamports straight from the sender wallet
+    // (platformFeeAccount is then a wallet or any lamport-receivable account, consistent with
+    // native SOL delivery semantics), so the fee portion is excluded from the wrap amount.
+    const chargePlatformFeeInLamports = mint.equals(NATIVE_MINT) && tokenProgram.equals(TOKEN_PROGRAM_ID);
+    const nativeSolWrapAmount = transferAmount + (chargePlatformFeeInLamports ? 0n : platformFee) + (
       isPrivateBaseToBaseTransfer(input) && exactOut ? privateTransferFee : 0n
     );
     const nativeSolWrapInstructions = input.visibility === "private" && input.fromBalance === "base"
@@ -2069,14 +2120,33 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       : [];
     const platformFeeInstructions = platformFee > 0n && platformFeeAccount
       ? [
-          createTokenTransferInstruction(
-            getAssociatedTokenAddressSync(mint, from, false, tokenProgram),
-            platformFeeAccount,
-            from,
-            platformFee,
-            tokenProgram,
-          ),
+          chargePlatformFeeInLamports
+            ? SystemProgram.transfer({
+                fromPubkey: from,
+                toPubkey: platformFeeAccount,
+                lamports: platformFee,
+              })
+            : createTokenTransferInstruction(
+                getAssociatedTokenAddressSync(mint, from, false, tokenProgram),
+                platformFeeAccount,
+                from,
+                platformFee,
+                tokenProgram,
+              ),
         ]
+      : [];
+    // Native SOL settlement runs through a rent-PDA-funded scratch account, so keep the rent
+    // PDA topped up from the sender, mirroring the SOL deposit flow (the helper is a no-op for
+    // non-native mints). Ephemeral-sourced transfers execute on the ER where the base-layer
+    // rent PDA is unreachable; those rely on deposit-time top-ups instead.
+    const nativeSolRentPdaTopUpInstructions = input.visibility === "private" && input.fromBalance === "base"
+      ? await createNativeSolRentPdaTopUpInstructionsIfNeeded(
+          config,
+          payer,
+          mint,
+          transferAmount,
+          tokenProgram,
+        )
       : [];
 
     const transferInstructions = await transferSpl(from, to, mint, transferAmount, {
@@ -2115,6 +2185,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
 
     const instructions = [
       ...nativeSolWrapInstructions,
+      ...nativeSolRentPdaTopUpInstructions,
       ...gaslessFeeInstructions,
       ...platformFeeInstructions,
       ...effectiveTransferInstructions,

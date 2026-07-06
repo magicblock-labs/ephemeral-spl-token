@@ -134,6 +134,15 @@ async fn latest_blockhash(context: &mut ProgramTestContext) -> solana_program::h
 }
 
 async fn setup_fixture() -> Fixture {
+    setup_fixture_impl(false).await
+}
+
+/// Fixture over the fixed-address wrapped-SOL mint, which triggers native-delivery scheduling.
+async fn setup_wsol_fixture() -> Fixture {
+    setup_fixture_impl(true).await
+}
+
+async fn setup_fixture_impl(native_mint: bool) -> Fixture {
     let magic_program =
         solana_pubkey::Pubkey::new_from_array(ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID.to_bytes());
     let magic_context = convert_magic_pubkey(MAGIC_CONTEXT_PUBKEY);
@@ -156,13 +165,20 @@ async fn setup_fixture() -> Fixture {
 
     let payer_kp = utils::fixed_payer_keypair();
     let payer = payer_kp.pubkey();
-    let mint_kp = utils::test_keypair("tq_auto::setup_fixture::mint");
-    let mint = mint_kp.pubkey();
     let validator = automation_validator();
     let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
 
-    let setup =
-        utils::setup_mint_and_token_accounts(&mut context, &payer_kp, &mint_kp, DECIMALS, STARTING_BALANCE, 2).await;
+    let (mint, setup) = if native_mint {
+        let setup =
+            utils::setup_native_mint_and_token_accounts(&mut context, &payer_kp, DECIMALS, STARTING_BALANCE, 2).await;
+        (utils::NATIVE_MINT, setup)
+    } else {
+        let mint_kp = utils::test_keypair("tq_auto::setup_fixture::mint");
+        let setup =
+            utils::setup_mint_and_token_accounts(&mut context, &payer_kp, &mint_kp, DECIMALS, STARTING_BALANCE, 2)
+                .await;
+        (mint_kp.pubkey(), setup)
+    };
 
     let (queue, _) = TransferQueue::find_pda(&mint, &validator);
     let magic_fee_vault = magic_fee_vault(&validator);
@@ -980,6 +996,53 @@ async fn process_transfer_queue_tick_uses_token_2022_accounts_from_queue_header(
         standalone_action.accounts[6].pubkey.to_bytes(),
         token_2022_program.to_bytes()
     );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn process_transfer_queue_tick_schedules_native_delivery_accounts_for_wsol() {
+    use ephemeral_spl_api::state::transfer_queue::QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA;
+
+    let _test_guard = test_lock().lock().unwrap();
+    let mut fixture = setup_wsol_fixture().await;
+    // A plain enqueue on the wrapped-SOL queue; native delivery is keyed on the mint,
+    // not on any per-transfer flag.
+    enqueue_transfer(&mut fixture, 0, "tq_auto::enqueue_native").await;
+
+    let blockhash = latest_blockhash(&mut fixture.context).await;
+    let tx = Transaction::new_signed_with_payer(
+        &[process_queue_tick_ix(&fixture)],
+        Some(&fixture.payer),
+        &[&fixture.payer_kp],
+        blockhash,
+    );
+    common::metrics::process_transaction_record_cu(&fixture.context.banks_client, tx, "tq_auto::tick_native")
+        .await
+        .unwrap();
+
+    let captured_bundles = peek_captured_intent_bundles(fixture.magic_program);
+    assert_eq!(captured_bundles.len(), 1);
+    let action = &captured_bundles[0].args.standalone_actions[0];
+
+    // Native delivery appends the scratch WSOL ATA and the unwrap PDA (9 -> 11 accounts).
+    assert_eq!(action.accounts.len(), 11);
+    // The recipient (index 3) must be writable so it can be credited native lamports.
+    assert!(action.accounts[3].is_writable);
+
+    let unwrap_pda = Pubkey::find_program_address(&[b"unwrap"], &PROGRAM).0;
+    let scratch_wsol_ata = utils::derive_associated_token_address(unwrap_pda, fixture.mint);
+    assert_eq!(action.accounts[9].pubkey.to_bytes(), scratch_wsol_ata.to_bytes());
+    assert!(action.accounts[9].is_writable);
+    assert_eq!(action.accounts[10].pubkey.to_bytes(), unwrap_pda.to_bytes());
+
+    // Settlement args are unchanged from the legacy shape; no per-transfer native flag exists.
+    let args = ExecuteQueuedTransferArgs {
+        amount: QUEUED_AMOUNT,
+        client_ref_id: None,
+        escrow_index: EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
+        flags: QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
+    };
+    let expected_action_data = TestInternalInstruction::ExecuteReadyQueuedTransfer.with_data(&args.encode().unwrap());
+    assert_eq!(action.args.data, expected_action_data);
 }
 
 #[tokio::test(flavor = "current_thread")]
