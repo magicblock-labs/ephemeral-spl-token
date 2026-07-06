@@ -5,7 +5,6 @@ pub(crate) mod group_receipt;
 pub(crate) mod group_receipt_accounts;
 pub(crate) mod lamports_pda;
 pub(crate) mod pda;
-pub(crate) mod private_transfer;
 pub(crate) mod queue_authorized_action;
 pub(crate) mod refund;
 pub(crate) mod rent_pda;

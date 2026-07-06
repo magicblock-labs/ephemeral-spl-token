@@ -2,7 +2,6 @@ pub mod create_ephemeral_ata_permission;
 pub mod delegate_ephemeral_ata;
 pub mod delegate_shuttle_ephemeral_ata;
 pub mod deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer;
-pub mod deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer_and_stash_close;
 pub mod deposit_and_queue_transfer;
 pub mod deposit_spl_tokens;
 pub mod ensure_stealth_pool_delegated;
@@ -21,8 +20,9 @@ pub mod withdraw_through_delegated_shuttle_with_merge;
 pub use create_ephemeral_ata_permission::CreateEphemeralAtaPermissionArgs;
 pub use delegate_ephemeral_ata::DelegateArgs;
 pub use delegate_shuttle_ephemeral_ata::DelegateShuttleArgs;
-pub use deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer::DepositAndDelegateShuttleWithPrivateTransferArgs;
-pub use deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer_and_stash_close::DepositAndDelegateShuttleWithPrivateTransferAndStashCloseArgs;
+pub use deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer::{
+    CloseStashArgs, CloseStashArgsView, DepositAndDelegateShuttleWithPrivateTransferArgs,
+};
 pub use deposit_and_queue_transfer::DepositAndQueueTransferArgs;
 pub use deposit_spl_tokens::DepositArgs;
 pub use ensure_stealth_pool_delegated::EnsureStealthPoolDelegatedArgs;

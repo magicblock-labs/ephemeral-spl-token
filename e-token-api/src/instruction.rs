@@ -149,6 +149,8 @@ pub enum ESplInstruction {
     ///      [...]    len-prefixed encrypted packed suffix
     ///               (min_delay_ms:u64, max_delay_ms:u64, split:u32, client_ref_id?:u64)
     ///               Legacy payloads may still append flags before client_ref_id.
+    ///      [...]    optional stash close seeds: [user(32) | stash_bump(1)].
+    ///               Present only for scheduled stash-close private transfers.
     DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer = 25,
 
     /// 26 - WithdrawThroughDelegatedShuttleWithMerge: initialize shuttle metadata/EATA/wallet ATA,
@@ -220,12 +222,6 @@ pub enum ESplInstruction {
     ///      [...]    len-prefixed encrypted destination owner pubkey
     ///      [...]    len-prefixed encrypted packed suffix (same format as ix 25)
     ExecuteScheduledPrivateTransfer = 30,
-
-    /// 31 - DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransferAndStashClose:
-    ///      ix 25 + a fixed `stash_close_seeds: [user(32) | stash_bump(1)]` appended
-    ///      before `encrypted_data_suffix`. Self-CPI'd by `ExecuteScheduledPrivateTransfer`.
-    ///      Triggers stash ATA + stash PDA refund to the rent PDA after settlement.
-    DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransferAndStashClose = 31,
 }
 
 impl ESplInstruction {
@@ -289,7 +285,6 @@ impl TryFrom<u8> for ESplInstruction {
             28 => Ok(Self::ExecutePendingTransferQueueRefill),
             29 => Ok(Self::SchedulePrivateTransfer),
             30 => Ok(Self::ExecuteScheduledPrivateTransfer),
-            31 => Ok(Self::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransferAndStashClose),
             _ => Err(()),
         }
     }
