@@ -47,6 +47,46 @@ pub fn process_close_shuttle_ata_intent(accounts: &[AccountView], instruction_da
         12 => (&accounts[..9], &accounts[9], &accounts[10], &accounts[11]),
         _ => return Err(ProgramError::NotEnoughAccountKeys),
     };
+
+    let (escrow_index, close_stash_seeds) = parse_close_shuttle_intent_data(instruction_data)?;
+
+    require_eq_keys!(source_program.address(), &crate::ID, ProgramError::IncorrectAuthority);
+
+    require!(escrow_signer.is_signer(), ProgramError::MissingRequiredSignature);
+
+    let escrow_index_seed = [escrow_index];
+    let (expected_escrow, _) = Address::find_program_address(
+        &[
+            DLP_EPHEMERAL_BALANCE_TAG,
+            escrow_authority.address().as_ref(),
+            escrow_index_seed.as_ref(),
+        ],
+        &ephemeral_rollups_pinocchio::ID,
+    );
+    require_eq_keys!(&expected_escrow, escrow_signer.address(), ProgramError::InvalidSeeds);
+
+    settle_and_close_shuttle_accounts(
+        head_accounts,
+        close_stash_seeds.map(|(user, stash_bump)| (escrow_authority, user, stash_bump)),
+    )
+}
+
+fn parse_close_shuttle_intent_data(instruction_data: &[u8]) -> Result<(u8, Option<([u8; 32], u8)>), ProgramError> {
+    match instruction_data.len() {
+        1 => Ok((instruction_data[0], None)),
+        n if n == 1 + CLOSE_STASH_DATA_LEN => {
+            let mut user = [0u8; 32];
+            user.copy_from_slice(&instruction_data[1..33]);
+            Ok((instruction_data[0], Some((user, instruction_data[33]))))
+        }
+        _ => Err(ProgramError::InvalidInstructionData),
+    }
+}
+
+pub(crate) fn settle_and_close_shuttle_accounts(
+    head_accounts: &[AccountView],
+    close_stash: Option<(&AccountView, [u8; 32], u8)>,
+) -> ProgramResult {
     let [
         rent_reimbursement_info, // force multi-line
         shuttle_info,
@@ -58,33 +98,6 @@ pub fn process_close_shuttle_ata_intent(accounts: &[AccountView], instruction_da
         vault_source_token_acc,
         token_program_info,
     ] = require_n_accounts!(head_accounts, 9);
-
-    let (escrow_index, close_stash_seeds) = match instruction_data.len() {
-        1 => (&instruction_data[0], None),
-        n if n == 1 + CLOSE_STASH_DATA_LEN => (
-            &instruction_data[0],
-            Some((
-                <&[u8; 32]>::try_from(&instruction_data[1..33]).map_err(|_| ProgramError::InvalidInstructionData)?,
-                instruction_data[33],
-            )),
-        ),
-        _ => return Err(ProgramError::InvalidInstructionData),
-    };
-
-    require_eq_keys!(source_program.address(), &crate::ID, ProgramError::IncorrectAuthority);
-
-    require!(escrow_signer.is_signer(), ProgramError::MissingRequiredSignature);
-
-    let escrow_index_seed = [*escrow_index];
-    let (expected_escrow, _) = Address::find_program_address(
-        &[
-            DLP_EPHEMERAL_BALANCE_TAG,
-            escrow_authority.address().as_ref(),
-            escrow_index_seed.as_ref(),
-        ],
-        &ephemeral_rollups_pinocchio::ID,
-    );
-    require_eq_keys!(&expected_escrow, escrow_signer.address(), ProgramError::InvalidSeeds);
 
     let shuttle_present = shuttle_info.lamports() > 0;
     let shuttle_ephemeral_present = shuttle_ephemeral_ata_info.lamports() > 0;
@@ -193,14 +206,14 @@ pub fn process_close_shuttle_ata_intent(accounts: &[AccountView], instruction_da
         );
     }
 
-    if let Some((user, stash_bump)) = close_stash_seeds {
+    if let Some((stash_pda_info, user, stash_bump)) = close_stash {
         close_empty_stash_after_settlement(
-            escrow_authority,
+            stash_pda_info,
             rent_reimbursement_info,
             destination_token_info,
             mint_info,
             token_program_info,
-            user,
+            &user,
             stash_bump,
         )?;
     }
