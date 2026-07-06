@@ -9,11 +9,11 @@ use ephemeral_spl_api::{
 };
 use pinocchio::{cpi::Signer, error::ProgramError, AccountView, ProgramResult};
 use pinocchio_system::instructions::Transfer;
-use pinocchio_token_2022::instructions::CloseAccount;
+use pinocchio_token_2022::instructions::{CloseAccount, TransferChecked};
 use solana_address::Address;
 
 use crate::processor::internal::{
-    get_associated_token_address, rent_pda::RENT_PDA, token_vault::withdraw_ephemeral_ata_tokens,
+    get_associated_token_address, read_mint_decimals, rent_pda::RENT_PDA, token_vault::withdraw_ephemeral_ata_tokens,
     validate_token_account,
 };
 const DLP_EPHEMERAL_BALANCE_TAG: &[u8] = b"balance";
@@ -139,8 +139,6 @@ pub(crate) fn settle_and_close_shuttle_accounts(
             (token_account.mint(), token_account.amount())
         };
 
-        require!(shuttle_wallet_amount == 0, ProgramError::InvalidArgument);
-
         let shuttle_id_seed = shuttle_id.to_le_bytes();
         let derived_shuttle = ShuttleMetadata::derive_pda(shuttle_owner, mint, shuttle_id, shuttle_bump)?;
         require_eq_keys!(&derived_shuttle, shuttle_info.address(), ProgramError::InvalidSeeds);
@@ -148,6 +146,20 @@ pub(crate) fn settle_and_close_shuttle_accounts(
         let bump = [shuttle_bump];
         let signer_seeds = ShuttleMetadata::signer_seeds(shuttle_owner, mint, &shuttle_id_seed, &bump);
         let signer = Signer::from(&signer_seeds);
+
+        if shuttle_wallet_amount != 0 {
+            let decimals = read_mint_decimals(mint_info, token_program_info)?;
+            TransferChecked {
+                mint: mint_info,
+                from: shuttle_wallet_ata_info,
+                to: destination_token_info,
+                authority: shuttle_info,
+                token_program: token_program_info.address(),
+                amount: shuttle_wallet_amount,
+                decimals,
+            }
+            .invoke_signed(core::slice::from_ref(&signer))?;
+        }
 
         CloseAccount {
             account: shuttle_wallet_ata_info,

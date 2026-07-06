@@ -16,6 +16,7 @@ mod utils;
 const DECIMALS: u8 = 6;
 const STARTING_BALANCE: u64 = 10_000 * 10u64.pow(DECIMALS as u32);
 const RECOVERY_AMOUNT: u64 = 100 * 10u64.pow(DECIMALS as u32);
+const SHUTTLE_WALLET_AMOUNT: u64 = 7 * 10u64.pow(DECIMALS as u32);
 
 #[tokio::test]
 async fn recover_and_close_shuttle_to_owner_settles_full_balance_to_owner_token_account() {
@@ -127,6 +128,30 @@ async fn recover_and_close_shuttle_to_owner_settles_full_balance_to_owner_token_
     );
     context.banks_client.process_transaction(tx_deposit).await.unwrap();
 
+    let mut ix_fund_shuttle_wallet = spl_token_interface::instruction::transfer_checked(
+        &spl_token_interface::ID,
+        &owner_source_ata,
+        &mint,
+        &shuttle_wallet_ata,
+        &owner,
+        &[],
+        SHUTTLE_WALLET_AMOUNT,
+        DECIMALS,
+    )
+    .unwrap();
+    ix_fund_shuttle_wallet.program_id = spl_token_interface::ID;
+    let tx_fund_shuttle_wallet = Transaction::new_signed_with_payer(
+        &[ix_fund_shuttle_wallet],
+        Some(&payer),
+        &[&payer_kp],
+        context.banks_client.get_latest_blockhash().await.unwrap(),
+    );
+    context
+        .banks_client
+        .process_transaction(tx_fund_shuttle_wallet)
+        .await
+        .unwrap();
+
     let bad_recovery = recover_ix(
         payer,
         shuttle,
@@ -172,7 +197,7 @@ async fn recover_and_close_shuttle_to_owner_settles_full_balance_to_owner_token_
         .unwrap()
         .expect("owner destination token account must exist");
     let owner_destination_state = SplAccount::unpack(&owner_destination_after.data).unwrap();
-    assert_eq!(owner_destination_state.amount, RECOVERY_AMOUNT);
+    assert_eq!(owner_destination_state.amount, RECOVERY_AMOUNT + SHUTTLE_WALLET_AMOUNT);
 
     let vault_after = context
         .banks_client

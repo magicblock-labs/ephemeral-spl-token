@@ -7,6 +7,7 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy --keep-vars --secrets-file .prod.vars",
     "create:private-transfer-lut": "node scripts/create-private-transfer-lut.js",
+    "recover:shuttles": "node scripts/recover-shuttle-closes.ts",
     "build": "tsc --noEmit",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
