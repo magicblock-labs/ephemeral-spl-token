@@ -395,6 +395,8 @@ describe("app", () => {
       type: "boolean",
       example: true,
     });
+    expect(transferRequestSchema?.properties?.platformFeeBps).toBeDefined();
+    expect(transferRequestSchema?.properties?.platformFeeAccount).toBeDefined();
     expect(transferRequestSchema?.properties?.to?.description).toContain(
       "stealth handle",
     );
@@ -3536,6 +3538,164 @@ describe("app", () => {
     expect(json.version).toBe("legacy");
   });
 
+  it.each([
+    {
+      name: "exact-out",
+      exactOut: undefined,
+      expectedTransferAmount: 500_000n,
+    },
+    {
+      name: "exact-in",
+      exactOut: false,
+      expectedTransferAmount: 495_000n,
+    },
+  ])("builds a public transfer with an $name platform fee", async ({
+    exactOut,
+    expectedTransferAmount,
+  }) => {
+    const mint = DEVNET_USDC_MINT;
+    const amount = 500_000;
+    const ownerAta = deriveAssociatedTokenAddress(mint, owner);
+    const destinationAta = deriveAssociatedTokenAddress(mint, destination);
+    const platformFeeAccount = Keypair.generate().publicKey.toBase58();
+
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123,
+    });
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockResolvedValue(
+      createMintAccountInfo(TOKEN_PROGRAM_ID),
+    );
+
+    const response = await app.request(
+      "/v1/spl/transfer",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          from: owner,
+          to: destination,
+          mint,
+          amount,
+          cluster: "devnet",
+          validator: resolvedValidator,
+          visibility: "public",
+          fromBalance: "base",
+          toBalance: "base",
+          platformFeeBps: 100,
+          platformFeeAccount,
+          ...(exactOut === undefined ? {} : { exactOut }),
+        }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(200);
+
+    const json = (await response.json()) as {
+      transactionBase64: string;
+      fees: {
+        lamports: string;
+        tokens: string;
+      };
+    };
+    expect(json.fees).toEqual({
+      lamports: "0",
+      tokens: "5000",
+    });
+
+    const transaction = Transaction.from(
+      Buffer.from(json.transactionBase64, "base64"),
+    );
+    expect(transaction.instructions).toHaveLength(2);
+
+    const platformFeeIx = transaction.instructions[0]!;
+    expect(platformFeeIx.programId.toBase58()).toBe(TOKEN_PROGRAM_ID.toBase58());
+    expect(platformFeeIx.keys.map(key => key.pubkey.toBase58())).toEqual([
+      ownerAta,
+      platformFeeAccount,
+      owner,
+    ]);
+    expect(platformFeeIx.data[0]).toBe(3);
+    expect(platformFeeIx.data.readBigUInt64LE(1)).toBe(5_000n);
+
+    const publicTransferIx = transaction.instructions[1]!;
+    expect(publicTransferIx.programId.toBase58()).toBe(
+      TOKEN_PROGRAM_ID.toBase58(),
+    );
+    expect(publicTransferIx.keys.map(key => key.pubkey.toBase58())).toEqual([
+      ownerAta,
+      destinationAta,
+      owner,
+    ]);
+    expect(publicTransferIx.data[0]).toBe(3);
+    expect(publicTransferIx.data.readBigUInt64LE(1)).toBe(
+      expectedTransferAmount,
+    );
+  });
+
+  it("rejects platform fee bps without a platform fee account", async () => {
+    const response = await app.request(
+      "/v1/spl/transfer",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          from: owner,
+          to: destination,
+          mint: DEVNET_USDC_MINT,
+          amount: 500_000,
+          cluster: "devnet",
+          visibility: "public",
+          fromBalance: "base",
+          toBalance: "base",
+          platformFeeBps: 100,
+        }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(400);
+
+    const json = (await response.json()) as { error: { code: string } };
+    expect(json.error.code).toBe("INVALID_PLATFORM_FEE");
+  });
+
+  it("rejects exact-in platform fees that consume the amount", async () => {
+    const response = await app.request(
+      "/v1/spl/transfer",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          from: owner,
+          to: destination,
+          mint: DEVNET_USDC_MINT,
+          amount: 1,
+          cluster: "devnet",
+          visibility: "public",
+          fromBalance: "base",
+          toBalance: "base",
+          exactOut: false,
+          platformFeeBps: 10_000,
+          platformFeeAccount: Keypair.generate().publicKey.toBase58(),
+        }),
+      },
+      env,
+    );
+
+    expect(response.status).toBe(400);
+
+    const json = (await response.json()) as { error: { code: string } };
+    expect(json.error.code).toBe("INVALID_PLATFORM_FEE");
+  });
+
   it("rejects private base transfers when the source eATA is delegated to another validator", async () => {
     const transferEnv = {
       ...env,
@@ -4716,11 +4876,12 @@ describe("app", () => {
     ).toBe(true);
   });
 
-  it("builds a gasless public transfer with the sponsor as fee payer", async () => {
+  it("builds a gasless public transfer with the sponsor as fee payer and platform fee", async () => {
     const sponsor = Keypair.generate();
     const mint = DEVNET_USDC_MINT;
     const amount = 5_000_000;
     const ownerAta = deriveAssociatedTokenAddress(mint, owner);
+    const platformFeeAccount = Keypair.generate().publicKey.toBase58();
     const sponsorAta = deriveAssociatedTokenAddress(
       mint,
       sponsor.publicKey.toBase58(),
@@ -4762,6 +4923,8 @@ describe("app", () => {
           fromBalance: "base",
           toBalance: "base",
           gasless: true,
+          platformFeeBps: 100,
+          platformFeeAccount,
         }),
       },
       transferEnv,
@@ -4779,7 +4942,7 @@ describe("app", () => {
     };
     expect(json.fees).toEqual({
       lamports: "0",
-      tokens: "200000",
+      tokens: "250000",
     });
     expect(json.requiredSigners).toEqual(
       expect.arrayContaining([owner, sponsor.publicKey.toBase58()]),
@@ -4789,7 +4952,12 @@ describe("app", () => {
       Buffer.from(json.transactionBase64, "base64"),
     );
     expect(transaction.feePayer?.toBase58()).toBe(sponsor.publicKey.toBase58());
-    expect(transaction.instructions).toHaveLength(2);
+    expect(transaction.instructions).toHaveLength(3);
+    const sponsorSignature = transaction.signatures.find(
+      signature =>
+        signature.publicKey.toBase58() === sponsor.publicKey.toBase58(),
+    );
+    expect(sponsorSignature?.signature).not.toBeNull();
 
     const relayFeeIx = transaction.instructions[0]!;
     expect(relayFeeIx.programId.toBase58()).toBe(TOKEN_PROGRAM_ID.toBase58());
@@ -4801,7 +4969,17 @@ describe("app", () => {
     expect(relayFeeIx.data[0]).toBe(3);
     expect(relayFeeIx.data.readBigUInt64LE(1)).toBe(200_000n);
 
-    const publicTransferIx = transaction.instructions[1]!;
+    const platformFeeIx = transaction.instructions[1]!;
+    expect(platformFeeIx.programId.toBase58()).toBe(TOKEN_PROGRAM_ID.toBase58());
+    expect(platformFeeIx.keys.map(key => key.pubkey.toBase58())).toEqual([
+      ownerAta,
+      platformFeeAccount,
+      owner,
+    ]);
+    expect(platformFeeIx.data[0]).toBe(3);
+    expect(platformFeeIx.data.readBigUInt64LE(1)).toBe(50_000n);
+
+    const publicTransferIx = transaction.instructions[2]!;
     expect(publicTransferIx.programId.toBase58()).toBe(
       TOKEN_PROGRAM_ID.toBase58(),
     );
