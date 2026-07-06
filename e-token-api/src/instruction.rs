@@ -228,8 +228,9 @@ pub enum ESplInstruction {
     DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransferAndStashClose = 31,
 
     /// 32 - RecoverAndCloseShuttleToOwner: permissionless recovery for an already
-    ///      undelegated shuttle. Settles the full shuttle EATA balance to a token
-    ///      account owned by the shuttle owner, then closes shuttle accounts.
+    ///      undelegated shuttle. Settles the full shuttle EATA balance and any
+    ///      remaining shuttle wallet ATA balance to a token account owned by the
+    ///      shuttle owner, then closes shuttle accounts.
     RecoverAndCloseShuttleToOwner = 32,
 }
 

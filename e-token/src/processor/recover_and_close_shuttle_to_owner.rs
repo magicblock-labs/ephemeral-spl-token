@@ -1,17 +1,21 @@
 use ephemeral_spl_api::{
-    require,
+    require, require_eq_keys,
     state::{load_initialized, shuttle_ephemeral_ata::ShuttleMetadata},
 };
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
-use crate::processor::{close_shuttle_ata_intent::settle_and_close_shuttle_accounts, internal::validate_token_account};
+use crate::processor::{
+    close_shuttle_ata_intent::settle_and_close_shuttle_accounts,
+    internal::{get_associated_token_address, validate_token_account},
+};
 
 ///
 /// Executes on: BASE only.
 ///
 /// Permissionless recovery for a shuttle whose EATA is already undelegated.
-/// The caller pays the transaction fee, but settlement can only go to a token
-/// account owned by `ShuttleMetadata.owner`.
+/// Settles the shuttle EATA balance and any remaining shuttle wallet ATA
+/// balance to a token account owned by `ShuttleMetadata.owner`. The caller pays
+/// the transaction fee.
 ///
 /// Accounts:
 ///
@@ -34,7 +38,7 @@ pub fn process_recover_and_close_shuttle_to_owner(accounts: &[AccountView], inst
         _rent_reimbursement_info, // force multi-line
         shuttle_info,
         shuttle_ephemeral_ata_info,
-        _shuttle_wallet_ata_info,
+        shuttle_wallet_ata_info,
         destination_token_info,
         mint_info,
         _vault_info,
@@ -52,6 +56,16 @@ pub fn process_recover_and_close_shuttle_to_owner(accounts: &[AccountView], inst
         let shuttle = load_initialized::<ShuttleMetadata>(unsafe { shuttle_info.borrow_unchecked() })?;
         shuttle.owner
     };
+    let expected_shuttle_wallet_ata = get_associated_token_address(
+        shuttle_info.address(),
+        mint_info.address(),
+        token_program_info.address(),
+    );
+    require_eq_keys!(
+        &expected_shuttle_wallet_ata,
+        shuttle_wallet_ata_info.address(),
+        ProgramError::InvalidSeeds
+    );
     validate_token_account(
         destination_token_info,
         mint_info.address(),

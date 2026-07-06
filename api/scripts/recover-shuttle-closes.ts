@@ -12,6 +12,7 @@ import {
   SystemProgram,
   Transaction,
   TransactionInstruction,
+  VersionedTransaction,
 } from "@solana/web3.js";
 import type { AccountInfo, Commitment } from "@solana/web3.js";
 
@@ -79,22 +80,6 @@ type RecoveryCandidate = {
   tokenProgram: PublicKey;
   vault: PublicKey;
   vaultAta: PublicKey;
-};
-
-type SimulateResponse = {
-  value?: {
-    err?: unknown;
-    logs?: string[] | null;
-  };
-};
-
-type RpcResponse<T> = {
-  error?: unknown;
-  result?: T;
-};
-
-type RpcRequestConnection = Connection & {
-  _rpcRequest(method: string, args: unknown[]): Promise<RpcResponse<SimulateResponse>>;
 };
 
 function usage() {
@@ -600,21 +585,18 @@ async function discoverRecoveryCandidates(connection: Connection, options: Optio
     });
   }
 
-  const limitedCandidates = typeof options.limit === "number"
-    ? candidates.slice(0, options.limit)
-    : candidates;
   const shuttleWalletInfos = await getMultipleAccountInfoMap(
     connection,
-    limitedCandidates.map(candidate => candidate.shuttleWalletAta),
+    candidates.map(candidate => candidate.shuttleWalletAta),
   );
   const destinationInfos = await getMultipleAccountInfoMap(
     connection,
-    limitedCandidates.map(candidate => candidate.destinationAta),
+    candidates.map(candidate => candidate.destinationAta),
   );
   const recoverableCandidates: RecoveryCandidate[] = [];
   let existingShuttleWallets = 0;
 
-  for (const candidate of limitedCandidates) {
+  for (const candidate of candidates) {
     const shuttleWalletInfo = shuttleWalletInfos.get(candidate.shuttleWalletAta.toBase58()) ?? null;
 
     if (shuttleWalletInfo) {
@@ -671,8 +653,12 @@ async function discoverRecoveryCandidates(connection: Connection, options: Optio
     recoverableCandidates.push(candidate);
   }
 
+  const limitedCandidates = typeof options.limit === "number"
+    ? recoverableCandidates.slice(0, options.limit)
+    : recoverableCandidates;
+
   return {
-    candidates: recoverableCandidates,
+    candidates: limitedCandidates,
     existingShuttleWallets,
     scanned: {
       eataAccounts: programAccounts.length,
@@ -680,36 +666,24 @@ async function discoverRecoveryCandidates(connection: Connection, options: Optio
       shuttleCandidates: candidates.length,
     },
     skipped,
-    totalBeforeLimit: candidates.length,
+    totalBeforeLimit: recoverableCandidates.length,
   };
 }
 
 async function simulateTransaction(connection: Connection, transaction: Transaction) {
   transaction.recentBlockhash = (await connection.getLatestBlockhash(COMMITMENT)).blockhash;
-  const wireTransaction = transaction.serialize({
-    requireAllSignatures: false,
-    verifySignatures: false,
-  }).toString("base64");
-  const response = await (connection as RpcRequestConnection)._rpcRequest("simulateTransaction", [
-    wireTransaction,
+  const response = await connection.simulateTransaction(
+    new VersionedTransaction(transaction.compileMessage()),
     {
       commitment: COMMITMENT,
-      encoding: "base64",
       replaceRecentBlockhash: true,
       sigVerify: false,
     },
-  ]);
-
-  if (response.error !== undefined) {
-    return {
-      err: response.error,
-      logs: [],
-    };
-  }
+  );
 
   return {
-    err: response.result?.value?.err ?? null,
-    logs: response.result?.value?.logs ?? [],
+    err: response.value.err,
+    logs: response.value.logs ?? [],
   };
 }
 

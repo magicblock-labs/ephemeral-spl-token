@@ -170,6 +170,28 @@ async fn recover_and_close_shuttle_to_owner_settles_full_balance_to_owner_token_
     );
     assert!(context.banks_client.process_transaction(tx_bad_recovery).await.is_err());
 
+    let bad_wallet_recovery = recover_ix(
+        payer,
+        shuttle,
+        shuttle_eata,
+        attacker_token.pubkey(),
+        owner_destination_ata,
+        mint,
+        vault,
+        vault_ata,
+    );
+    let tx_bad_wallet_recovery = Transaction::new_signed_with_payer(
+        &[bad_wallet_recovery],
+        Some(&payer),
+        &[&payer_kp],
+        context.banks_client.get_latest_blockhash().await.unwrap(),
+    );
+    assert!(context
+        .banks_client
+        .process_transaction(tx_bad_wallet_recovery)
+        .await
+        .is_err());
+
     let ix_recover = recover_ix(
         payer,
         shuttle,
