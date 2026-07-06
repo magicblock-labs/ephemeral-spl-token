@@ -192,6 +192,103 @@ async fn recover_and_close_shuttle_to_owner_settles_full_balance_to_owner_token_
         .await
         .is_err());
 
+    let wrong_mint_kp = utils::test_keypair("recover_and_close_shuttle_to_owner::wrong_mint");
+    let wrong_mint = wrong_mint_kp.pubkey();
+    let wrong_setup =
+        utils::setup_mint_and_token_accounts(&mut context, &payer_kp, &wrong_mint_kp, DECIMALS, 1, 1).await;
+    let wrong_destination_ata = wrong_setup.user_tokens[0];
+    let zero_shuttle_id = 74_u32;
+    let (zero_shuttle, _) = ShuttleMetadata::find_pda(&owner, &mint, zero_shuttle_id);
+    let (zero_shuttle_eata, _) = EphemeralAta::find_pda(&zero_shuttle, &mint);
+    let zero_shuttle_wallet_ata = utils::derive_associated_token_address(zero_shuttle, mint);
+    let ix_init_zero_shuttle = Instruction {
+        program_id: PROGRAM,
+        accounts: vec![
+            AccountMeta::new_readonly(payer, true),
+            AccountMeta::new(zero_shuttle, false),
+            AccountMeta::new(zero_shuttle_eata, false),
+            AccountMeta::new(zero_shuttle_wallet_ata, false),
+            AccountMeta::new_readonly(owner, false),
+            AccountMeta::new_readonly(mint, false),
+            AccountMeta::new_readonly(spl_token_interface::ID, false),
+            AccountMeta::new_readonly(utils::associated_token_program_id(), false),
+            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+        ],
+        data: instruction::ESplInstruction::InitializeShuttleEphemeralAta.with_data(&zero_shuttle_id.to_le_bytes()),
+    };
+    let tx_init_zero_shuttle = Transaction::new_signed_with_payer(
+        &[ix_init_zero_shuttle],
+        Some(&payer),
+        &[&payer_kp],
+        context.banks_client.get_latest_blockhash().await.unwrap(),
+    );
+    context
+        .banks_client
+        .process_transaction(tx_init_zero_shuttle)
+        .await
+        .unwrap();
+
+    let mut ix_fund_zero_shuttle_wallet = spl_token_interface::instruction::transfer_checked(
+        &spl_token_interface::ID,
+        &owner_source_ata,
+        &mint,
+        &zero_shuttle_wallet_ata,
+        &owner,
+        &[],
+        SHUTTLE_WALLET_AMOUNT,
+        DECIMALS,
+    )
+    .unwrap();
+    ix_fund_zero_shuttle_wallet.program_id = spl_token_interface::ID;
+    let tx_fund_zero_shuttle_wallet = Transaction::new_signed_with_payer(
+        &[ix_fund_zero_shuttle_wallet],
+        Some(&payer),
+        &[&payer_kp],
+        context.banks_client.get_latest_blockhash().await.unwrap(),
+    );
+    context
+        .banks_client
+        .process_transaction(tx_fund_zero_shuttle_wallet)
+        .await
+        .unwrap();
+
+    let wrong_pdas = utils::derive_pdas(PROGRAM, owner, wrong_mint);
+    let wrong_shuttle_wallet_ata = utils::derive_associated_token_address(zero_shuttle, wrong_mint);
+    let wrong_mint_recovery = recover_ix(
+        payer,
+        zero_shuttle,
+        zero_shuttle_eata,
+        wrong_shuttle_wallet_ata,
+        wrong_destination_ata,
+        wrong_mint,
+        wrong_pdas.vault,
+        utils::derive_associated_token_address(wrong_pdas.vault, wrong_mint),
+    );
+    let tx_wrong_mint_recovery = Transaction::new_signed_with_payer(
+        &[wrong_mint_recovery],
+        Some(&payer),
+        &[&payer_kp],
+        context.banks_client.get_latest_blockhash().await.unwrap(),
+    );
+    assert!(context
+        .banks_client
+        .process_transaction(tx_wrong_mint_recovery)
+        .await
+        .is_err());
+    assert!(context.banks_client.get_account(zero_shuttle).await.unwrap().is_some());
+    assert!(context
+        .banks_client
+        .get_account(zero_shuttle_eata)
+        .await
+        .unwrap()
+        .is_some());
+    assert!(context
+        .banks_client
+        .get_account(zero_shuttle_wallet_ata)
+        .await
+        .unwrap()
+        .is_some());
+
     let ix_recover = recover_ix(
         payer,
         shuttle,

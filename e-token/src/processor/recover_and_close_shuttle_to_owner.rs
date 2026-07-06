@@ -1,6 +1,6 @@
 use ephemeral_spl_api::{
     require, require_eq_keys,
-    state::{load_initialized, shuttle_ephemeral_ata::ShuttleMetadata},
+    state::{ephemeral_ata::read_ephemeral_ata_compat, load_initialized, shuttle_ephemeral_ata::ShuttleMetadata},
 };
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
@@ -56,11 +56,19 @@ pub fn process_recover_and_close_shuttle_to_owner(accounts: &[AccountView], inst
         let shuttle = load_initialized::<ShuttleMetadata>(unsafe { shuttle_info.borrow_unchecked() })?;
         shuttle.owner
     };
-    let expected_shuttle_wallet_ata = get_associated_token_address(
-        shuttle_info.address(),
-        mint_info.address(),
-        token_program_info.address(),
-    );
+    let shuttle_mint = {
+        let shuttle_ephemeral_ata_data = shuttle_ephemeral_ata_info.try_borrow()?;
+        let (ephemeral_owner, mint, _amount, _bump) = read_ephemeral_ata_compat(&shuttle_ephemeral_ata_data)?;
+        require_eq_keys!(
+            &ephemeral_owner,
+            shuttle_info.address(),
+            ProgramError::InvalidAccountData
+        );
+        mint
+    };
+    require_eq_keys!(&shuttle_mint, mint_info.address(), ProgramError::InvalidAccountData);
+    let expected_shuttle_wallet_ata =
+        get_associated_token_address(shuttle_info.address(), &shuttle_mint, token_program_info.address());
     require_eq_keys!(
         &expected_shuttle_wallet_ata,
         shuttle_wallet_ata_info.address(),
@@ -68,7 +76,7 @@ pub fn process_recover_and_close_shuttle_to_owner(accounts: &[AccountView], inst
     );
     validate_token_account(
         destination_token_info,
-        mint_info.address(),
+        &shuttle_mint,
         Some(&shuttle_owner),
         Some(token_program_info.address()),
     )?;
