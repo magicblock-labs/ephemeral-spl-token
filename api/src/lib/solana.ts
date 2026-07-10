@@ -15,6 +15,7 @@ import {
   getAuthToken,
   initRentPdaIx,
   initTransferQueueIx,
+  isRentPendingTokenAccount,
   magicFeeVaultPdaFromValidator,
   PERMISSION_PROGRAM_ID,
   permissionPdaFromAccount,
@@ -2156,6 +2157,13 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
         ]
       : [];
 
+    // Zero-amount (setup-only) requests must use the legacy route: the
+    // encrypted-destination route requires a positively funded rent-pending ATA.
+    const useLegacyCleartextDestination = input.visibility === "private"
+      && input.fromBalance === "base"
+      && input.toBalance === "ephemeral"
+      && (transferAmount === 0n || input.legacy === true);
+
     const transferInstructions = await transferSpl(from, to, mint, transferAmount, {
       visibility: input.visibility,
       fromBalance: input.fromBalance,
@@ -2166,6 +2174,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       initIfMissing: input.initIfMissing,
       initAtasIfMissing: input.initAtasIfMissing,
       initVaultIfMissing: input.initVaultIfMissing,
+      legacyCleartextDestination: useLegacyCleartextDestination || undefined,
       shuttleId,
       privateTransfer: input.visibility === "private"
         ? {
@@ -2293,6 +2302,18 @@ export async function getPrivateBalance(env: AppEnv, input: BalanceRequest, auth
   try {
     const delegationRecord = await getDelegationRecord(getBaseConnection(config), eata);
     if (delegationRecord.status !== DelegationStatus.Delegated) {
+      // The owner may hold a rent-pending ATA that exists only inside the ER.
+      // Only a rent-pending account counts: the ER clones undelegated base
+      // accounts on demand, so a plain token account is just the base balance.
+      try {
+        const accountInfo = await getEphemeralConnection(config, authToken).getAccountInfo(ata, "confirmed");
+        if (accountInfo && isRentPendingTokenAccount(accountInfo.data)) {
+          const balance = parseTokenAmount(accountInfo) ?? 0n;
+          return { ...zeroBalanceResponse, balance: balance.toString() };
+        }
+      } catch {
+        // The ER may be unreachable or gate the read; keep the zero response.
+      }
       return zeroBalanceResponse;
     }
 

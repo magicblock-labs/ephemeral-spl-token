@@ -50,7 +50,9 @@ solana-account = { workspace = true }
 spl-token-interface = { workspace = true }
 magicblock-delegation-program-api = { workspace = true, default-features = true }
 #magicblock-magic-program-api = "=0.8.7"
-magicblock-magic-program-api = { git = "https://github.com/magicblock-labs/magicblock-validator.git", rev = "69d3381e" }
+# Local path while the rent-pending ATA feature branch (feature/rent-pending-ata-materialization)
+# is unreleased; switch back to a git rev once merged.
+magicblock-magic-program-api = { path = "../../../validator/magicblock-validator/magicblock-magic-program-api" }
 bincode = "1.3.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

@@ -9,6 +9,7 @@ pub(crate) mod private_transfer;
 pub(crate) mod queue_authorized_action;
 pub(crate) mod refund;
 pub(crate) mod rent_pda;
+pub(crate) mod rent_pending_destination;
 pub(crate) mod shuttle_delegation;
 pub(crate) mod token;
 pub(crate) mod token_vault;
