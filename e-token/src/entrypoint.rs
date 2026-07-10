@@ -220,6 +220,11 @@ fn process_public_instruction(accounts: &[AccountView], instruction_data: &[u8])
 
             process_schedule_private_transfer(accounts, data)
         }
+        ESplInstruction::RecoverAndCloseShuttleToOwner => {
+            debug_log!("Instruction: RecoverAndCloseShuttleToOwner");
+
+            process_recover_and_close_shuttle_to_owner(accounts, data)
+        }
     }
 }
 
