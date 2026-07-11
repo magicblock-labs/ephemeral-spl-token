@@ -40,6 +40,7 @@ type Options = {
   dryRun: boolean;
   envFile: string;
   help?: boolean;
+  includeOffCurveOwners: boolean;
   limit?: number;
   mint?: PublicKey;
   payerPath?: string;
@@ -95,6 +96,7 @@ function usage() {
     "  --dry-run                   Simulate only. This is the default",
     "  --execute                   Send recovery transactions",
     "  --create-destination-atas    Create missing owner destination ATAs idempotently",
+    "  --include-off-curve-owners  Include shuttles whose logical owner is off-curve, such as a PDA",
     "  --owner <pubkey>             Only process shuttles for this owner",
     "  --mint <pubkey>              Only process shuttles for this mint",
     "  --limit <n>                  Limit recoverable candidates after filtering",
@@ -108,6 +110,7 @@ function parseArgs(argv: string[]): Options {
     createDestinationAtas: false,
     dryRun: true,
     envFile: DEFAULT_ENV_FILE,
+    includeOffCurveOwners: false,
     skipSimulation: false,
   };
 
@@ -140,6 +143,12 @@ function parseArgs(argv: string[]): Options {
 
     if (arg === "--create-destination-atas") {
       options.createDestinationAtas = true;
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--include-off-curve-owners") {
+      options.includeOffCurveOwners = true;
       index += 1;
       continue;
     }
@@ -533,6 +542,7 @@ async function discoverRecoveryCandidates(connection: Connection, options: Optio
     invalidShuttleWalletAta: 0,
     missingDestinationAta: 0,
     nonShuttleEatas: 0,
+    offCurveOwner: 0,
     ownerFilter: 0,
     unsupportedMint: 0,
   };
@@ -555,6 +565,12 @@ async function discoverRecoveryCandidates(connection: Connection, options: Optio
 
     if (options.owner !== undefined && !shuttle.owner.equals(options.owner)) {
       skipped.ownerFilter += 1;
+      continue;
+    }
+
+    // Off-curve owners can require a provenance-specific cleanup path, such as stash recovery.
+    if (!options.includeOffCurveOwners && !PublicKey.isOnCurve(shuttle.owner.toBytes())) {
+      skipped.offCurveOwner += 1;
       continue;
     }
 
@@ -714,6 +730,7 @@ function candidateSummary(candidate: RecoveryCandidate) {
     destinationAta: candidate.destinationAta.toBase58(),
     mint: candidate.mint.toBase58(),
     owner: candidate.owner.toBase58(),
+    ownerIsOnCurve: PublicKey.isOnCurve(candidate.owner.toBytes()),
     payer: candidate.payer.toBase58(),
     shuttle: candidate.shuttle.toBase58(),
     shuttleEata: candidate.shuttleEata.toBase58(),
@@ -808,6 +825,7 @@ async function main() {
     dryRun: options.dryRun,
     existingShuttleWallets: discovery.existingShuttleWallets,
     failed,
+    includeOffCurveOwners: options.includeOffCurveOwners,
     payer: payer.keypair.publicKey.toBase58(),
     payerSource: payer.source,
     recoverableCandidates: discovery.candidates.length,
