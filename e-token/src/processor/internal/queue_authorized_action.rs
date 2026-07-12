@@ -11,10 +11,17 @@ use pinocchio::{
     AccountView, ProgramResult,
 };
 use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
-use solana_address::Address;
+use solana_address::{address_eq, Address};
+use spl_token_interface::ID as SPL_TOKEN_PROGRAM_ID;
 use wheels::layout::Encodable as _;
 
-use crate::processor::{internal, internal::rent_pda::RENT_PDA};
+use crate::processor::{
+    internal,
+    internal::{
+        rent_pda::RENT_PDA,
+        unwrap_pda::{NATIVE_MINT, UNWRAP_PDA},
+    },
+};
 
 const MAGIC_INTENT_BUNDLE_DATA_LEN: usize = 512;
 pub(crate) const EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX: u8 = 0;
@@ -66,7 +73,7 @@ pub(crate) fn invoke_standalone_action(
 /// Action builder for `ExecuteReadyQueuedTransfer`
 pub(crate) struct QueuedTransferActionBuilder {
     queue_info: AccountView,
-    accounts: [ShortAccountMeta; 9],
+    accounts: Vec<ShortAccountMeta>,
     data: Vec<u8>,
 }
 
@@ -107,20 +114,19 @@ impl QueuedTransferActionBuilder {
         vault: &Address,
         mint: &Address,
         token_program: &Address,
-    ) -> [ShortAccountMeta; 9] {
+    ) -> Vec<ShortAccountMeta> {
+        let deliver_native = address_eq(mint, &NATIVE_MINT) && address_eq(token_program, &SPL_TOKEN_PROGRAM_ID);
         let vault_token_account = internal::get_associated_token_address(vault, mint, token_program);
         let destination_token_account = internal::get_associated_token_address(destination_owner, mint, token_program);
 
-        // Note that we initialize CallHandler with 9 accounts only, and then 3 more accounts [source_program,
-        // escrow_authority, escrow_signer] are appended by DLP's CallHandlerV2 instruction, which is
-        // why EXECUTE_READY_QUEUED_TRANSFER receives 12 accounts (not 9).
-        [
+        // DLP appends [source_program, escrow_authority, escrow_signer].
+        let mut accounts = alloc::vec![
             ShortAccountMeta {
-                pubkey: vault.clone(),
+                pubkey: *vault,
                 is_writable: false,
             },
             ShortAccountMeta {
-                pubkey: mint.clone(),
+                pubkey: *mint,
                 is_writable: false,
             },
             ShortAccountMeta {
@@ -129,7 +135,7 @@ impl QueuedTransferActionBuilder {
             },
             ShortAccountMeta {
                 pubkey: *destination_owner,
-                is_writable: false,
+                is_writable: deliver_native,
             },
             ShortAccountMeta {
                 pubkey: destination_token_account,
@@ -151,6 +157,49 @@ impl QueuedTransferActionBuilder {
                 pubkey: SYSTEM_PROGRAM_ID,
                 is_writable: false,
             },
-        ]
+        ];
+
+        if deliver_native {
+            accounts.push(ShortAccountMeta {
+                pubkey: internal::get_associated_token_address(&UNWRAP_PDA, mint, token_program),
+                is_writable: true,
+            });
+            accounts.push(ShortAccountMeta {
+                pubkey: UNWRAP_PDA,
+                is_writable: false,
+            });
+        }
+
+        accounts
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_delivery_only_extends_the_wsol_action_accounts() {
+        let destination = Address::new_from_array([1; 32]);
+        let vault = Address::new_from_array([2; 32]);
+
+        let native_accounts =
+            QueuedTransferActionBuilder::action_accounts(&destination, &vault, &NATIVE_MINT, &SPL_TOKEN_PROGRAM_ID);
+        assert_eq!(native_accounts.len(), 11);
+        assert!(native_accounts[3].is_writable);
+        assert_eq!(
+            native_accounts[9].pubkey,
+            internal::get_associated_token_address(&UNWRAP_PDA, &NATIVE_MINT, &SPL_TOKEN_PROGRAM_ID)
+        );
+        assert_eq!(native_accounts[10].pubkey, UNWRAP_PDA);
+
+        let spl_accounts = QueuedTransferActionBuilder::action_accounts(
+            &destination,
+            &vault,
+            &Address::new_from_array([3; 32]),
+            &SPL_TOKEN_PROGRAM_ID,
+        );
+        assert_eq!(spl_accounts.len(), 9);
+        assert!(!spl_accounts[3].is_writable);
     }
 }

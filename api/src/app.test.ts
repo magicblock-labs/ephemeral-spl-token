@@ -242,6 +242,7 @@ describe("app", () => {
     vi.spyOn(Connection.prototype, "getMultipleAccountsInfo").mockImplementation(
       async addresses => addresses.map(() => null),
     );
+    vi.spyOn(Connection.prototype, "getBalance").mockResolvedValue(20_000_000);
   });
 
   afterEach(() => {
@@ -2967,6 +2968,36 @@ describe("app", () => {
       = transaction.instructions[transaction.instructions.length - 1]!;
     expect(withdrawIx.data[0]).toBe(26);
     expect(withdrawIx.data.length).toBe(45);
+
+    const legacyResponse = await app.request(
+      "/v1/spl/withdraw",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          owner,
+          mint: "So11111111111111111111111111111111111111112",
+          amount: 1,
+          idempotent: false,
+        }),
+      },
+      withdrawEnv,
+    );
+    expect(legacyResponse.status).toBe(200);
+
+    const legacyJson = (await legacyResponse.json()) as {
+      transactionBase64: string;
+    };
+    const legacyTransaction = Transaction.from(
+      Buffer.from(legacyJson.transactionBase64, "base64"),
+    );
+    const closeIx
+      = legacyTransaction.instructions[legacyTransaction.instructions.length - 1]!;
+    expect(closeIx.programId.equals(TOKEN_PROGRAM_ID)).toBe(true);
+    expect([...closeIx.data]).toEqual([9]);
+    expect(closeIx.keys[1]?.pubkey.toBase58()).toBe(owner);
   });
 
   it("uses the mint token program when building a withdraw", async () => {
@@ -4561,6 +4592,7 @@ describe("app", () => {
   it("wraps enough native SOL for exact-out private transfer fees", async () => {
     const mint = new PublicKey("So11111111111111111111111111111111111111112");
     const sourceAta = new PublicKey(deriveAssociatedTokenAddress(mint.toBase58(), owner));
+    const [rentPda] = deriveRentPda();
     const amount = 100_000_000;
     const wrappedBalance = 25_000_000n;
     const expectedFee = BigInt(amount) * 10n / 10_000n;
@@ -4569,6 +4601,7 @@ describe("app", () => {
       blockhash: "11111111111111111111111111111111",
       lastValidBlockHeight: 123,
     });
+    vi.spyOn(Connection.prototype, "getBalance").mockResolvedValue(500_000);
     vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(
       async (address) => {
         if (address.equals(mint)) {
@@ -4628,6 +4661,11 @@ describe("app", () => {
     expect(BigInt(decodedTransfer.lamports)).toBe(
       BigInt(amount) + expectedFee - wrappedBalance,
     );
+    const rentTopUpIx = transaction.instructions.find(
+      ix => ix.programId.equals(SystemProgram.programId)
+        && ix.keys[1]?.pubkey.equals(rentPda),
+    )!;
+    expect(BigInt(SystemInstruction.decodeTransfer(rentTopUpIx).lamports)).toBe(19_500_000n);
   });
 
   it("builds a gasless private transfer with the sponsor as fee payer", async () => {

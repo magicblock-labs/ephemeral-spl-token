@@ -81,5 +81,5 @@ pub fn process_recover_and_close_shuttle_to_owner(accounts: &[AccountView], inst
         Some(token_program_info.address()),
     )?;
 
-    settle_and_close_shuttle_accounts(accounts, None)
+    settle_and_close_shuttle_accounts(accounts, None, None)
 }
