@@ -44,6 +44,7 @@ const CLOSE_STASH_DATA_LEN: usize = 33;
 ///  7: [writable]          - SPL     : Vault source token account.
 ///  8: []                  - SPL     : Token program account.
 ///  9: [writable]          - Any     : Owner wallet (native SOL only).
+/// 10: []                  - Program : System program (native SOL only).
 ///
 /// The following accounts are appended by DLP after the action accounts:
 ///
@@ -58,12 +59,12 @@ const CLOSE_STASH_DATA_LEN: usize = 33;
 pub fn process_close_shuttle_ata_intent(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let (head_accounts, native_accounts, source_program, escrow_authority, escrow_signer) = match accounts.len() {
         12 => (&accounts[..9], None, &accounts[9], &accounts[10], &accounts[11]),
-        13 => (
+        14 => (
             &accounts[..9],
-            Some(&accounts[9..10]),
-            &accounts[10],
+            Some(&accounts[9..11]),
             &accounts[11],
             &accounts[12],
+            &accounts[13],
         ),
         _ => return Err(ProgramError::NotEnoughAccountKeys),
     };
@@ -309,11 +310,16 @@ fn native_delivery_eligible(
     let Some(native_accounts) = native_accounts else {
         return Ok(false);
     };
-    let [owner_wallet_info] = require_n_accounts!(native_accounts, 1);
+    let [owner_wallet_info, system_program_info] = require_n_accounts!(native_accounts, 2);
     let Some(shuttle_owner) = shuttle_owner else {
         return Ok(false);
     };
 
+    require_eq_keys!(
+        system_program_info.address(),
+        &SYSTEM_PROGRAM_ID,
+        ProgramError::IncorrectProgramId
+    );
     require_eq_keys!(
         owner_wallet_info.address(),
         shuttle_owner,
@@ -346,7 +352,12 @@ fn transfer_native_to_owner(
     rent_pda_info: &AccountView,
     amount: u64,
 ) -> ProgramResult {
-    let [owner_wallet_info] = require_n_accounts!(native_accounts, 1);
+    let [owner_wallet_info, system_program_info] = require_n_accounts!(native_accounts, 2);
+    require_eq_keys!(
+        system_program_info.address(),
+        &SYSTEM_PROGRAM_ID,
+        ProgramError::IncorrectProgramId
+    );
     require_eq_keys!(rent_pda_info.address(), &RENT_PDA, ProgramError::InvalidSeeds);
 
     let rent_bump_seed = [RENT_PDA_BUMP];

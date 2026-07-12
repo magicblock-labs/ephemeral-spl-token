@@ -4,6 +4,7 @@ use ephemeral_spl_api::{
     state::{ephemeral_ata::EphemeralAta, load_initialized, shuttle_ephemeral_ata::ShuttleMetadata},
 };
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
 use solana_address::{address_eq, Address};
 use spl_token_interface::ID as SPL_TOKEN_PROGRAM_ID;
 
@@ -234,10 +235,7 @@ fn schedule_shuttle_close_after_undelegate(
         },
     ];
     if deliver_native {
-        close_handler_accounts.push(ShortAccountMeta {
-            pubkey: *owner,
-            is_writable: true,
-        });
+        close_handler_accounts.extend(native_close_action_accounts(owner));
     }
     let close_handler = [CallHandler {
         destination_program: crate::ID,
@@ -258,4 +256,34 @@ fn schedule_shuttle_close_after_undelegate(
         .commit_and_undelegate(&committed_accounts)
         .add_post_undelegate_actions(&close_handler)
         .build_and_invoke(&mut intent_bundle_data)
+}
+
+#[inline(always)]
+fn native_close_action_accounts(owner: &Address) -> [ShortAccountMeta; 2] {
+    [
+        ShortAccountMeta {
+            pubkey: *owner,
+            is_writable: true,
+        },
+        ShortAccountMeta {
+            pubkey: SYSTEM_PROGRAM_ID,
+            is_writable: false,
+        },
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_close_action_includes_owner_and_system_program() {
+        let owner = Address::new_from_array([1; 32]);
+        let accounts = native_close_action_accounts(&owner);
+
+        assert_eq!(accounts[0].pubkey, owner);
+        assert!(accounts[0].is_writable);
+        assert_eq!(accounts[1].pubkey, SYSTEM_PROGRAM_ID);
+        assert!(!accounts[1].is_writable);
+    }
 }
