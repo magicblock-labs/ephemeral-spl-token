@@ -562,6 +562,23 @@ function createSyncNativeInstruction(
   });
 }
 
+function createCloseTokenAccountInstruction(
+  account: PublicKey,
+  destination: PublicKey,
+  authority: PublicKey,
+  programId: PublicKey = TOKEN_PROGRAM_ID,
+) {
+  return new TransactionInstruction({
+    programId,
+    keys: [
+      { pubkey: account, isSigner: false, isWritable: true },
+      { pubkey: destination, isSigner: false, isWritable: true },
+      { pubkey: authority, isSigner: true, isWritable: false },
+    ],
+    data: Buffer.from([9]),
+  });
+}
+
 async function createNativeSolWrapInstructionsIfNeeded(
   config: RpcConfig,
   sourceOwner: PublicKey,
@@ -1681,6 +1698,21 @@ export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawReque
       idempotent: input.idempotent,
     });
 
+    if (
+      input.idempotent === false
+      && mint.equals(NATIVE_MINT)
+      && tokenProgram.equals(TOKEN_PROGRAM_ID)
+    ) {
+      instructions.push(
+        createCloseTokenAccountInstruction(
+          getAssociatedTokenAddressSync(mint, owner, false, tokenProgram),
+          owner,
+          owner,
+          tokenProgram,
+        ),
+      );
+    }
+
     return serializeTransaction(
       "withdraw",
       "base",
@@ -2067,6 +2099,15 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
           tokenProgram,
         )
       : [];
+    const nativeSolRentPdaTopUpInstructions = input.visibility === "private" && input.fromBalance === "base"
+      ? await createNativeSolRentPdaTopUpInstructionsIfNeeded(
+          config,
+          payer,
+          mint,
+          transferAmount,
+          tokenProgram,
+        )
+      : [];
     const platformFeeInstructions = platformFee > 0n && platformFeeAccount
       ? [
           createTokenTransferInstruction(
@@ -2115,6 +2156,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
 
     const instructions = [
       ...nativeSolWrapInstructions,
+      ...nativeSolRentPdaTopUpInstructions,
       ...gaslessFeeInstructions,
       ...platformFeeInstructions,
       ...effectiveTransferInstructions,
