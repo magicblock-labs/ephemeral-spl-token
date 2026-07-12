@@ -6,6 +6,7 @@ use ephemeral_spl_api::{
 use pinocchio::{
     cpi::{Seed, Signer},
     error::ProgramError,
+    sysvars::{rent::Rent, Sysvar},
     AccountView, ProgramResult,
 };
 use pinocchio_system::{instructions::Transfer, ID as SYSTEM_PROGRAM_ID};
@@ -80,7 +81,9 @@ pub fn process_execute_ready_queued_transfer(accounts: &[AccountView], instructi
     let expected_escrow = ephemeral_balance_pda_from_payer(escrow_authority.address(), args.escrow_index());
     require_eq_keys!(&expected_escrow, escrow_signer.address(), ProgramError::InvalidSeeds);
 
-    if let Some((scratch_wsol_ata_info, unwrap_pda_info)) = native_accounts {
+    // Preserve token delivery for recipients that cannot safely receive native lamports.
+    if native_accounts.is_some() && native_delivery_eligible(destination_owner_info, args.amount())? {
+        let (scratch_wsol_ata_info, unwrap_pda_info) = native_accounts.ok_or(ProgramError::NotEnoughAccountKeys)?;
         process_native_delivery(
             NativeDeliveryAccounts {
                 vault_info,
@@ -159,6 +162,19 @@ pub fn process_execute_ready_queued_transfer(accounts: &[AccountView], instructi
     }
 
     Ok(())
+}
+
+#[inline(always)]
+fn native_delivery_eligible(destination_owner_info: &AccountView, amount: u64) -> Result<bool, ProgramError> {
+    if !destination_owner_info.owned_by(&SYSTEM_PROGRAM_ID) {
+        return Ok(false);
+    }
+
+    if destination_owner_info.lamports() == 0 && amount < Rent::get()?.try_minimum_balance(0)? {
+        return Ok(false);
+    }
+
+    Ok(true)
 }
 
 struct NativeDeliveryAccounts<'a> {
