@@ -5605,6 +5605,138 @@ describe("app", () => {
     expect(setupInstruction?.data.readBigUInt64LE(5)).toBe(0n);
   });
 
+  it("uses the legacy route for native private base-to-ephemeral transfers", async () => {
+    const transferEnv = {
+      ...env,
+      EPHEMERAL_RPC_URL: "https://ephemeral.native-legacy.rpc.test",
+    };
+    const mint = new PublicKey("So11111111111111111111111111111111111111112");
+    const sourceAta = new PublicKey(deriveAssociatedTokenAddress(mint.toBase58(), owner));
+
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123,
+    });
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(
+      async (address) => {
+        if (address.equals(mint)) {
+          return createMintAccountInfo(TOKEN_PROGRAM_ID);
+        }
+        if (address.equals(sourceAta)) {
+          return createAccountInfo(1n);
+        }
+        return null;
+      },
+    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(transferEnv.EPHEMERAL_RPC_URL);
+      return createIdentityResponse(resolvedValidator);
+    });
+
+    const response = await app.request(
+      "/v1/spl/transfer",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          from: owner,
+          to: destination,
+          mint,
+          amount: 1,
+          visibility: "private",
+          fromBalance: "base",
+          toBalance: "ephemeral",
+        }),
+      },
+      transferEnv,
+    );
+
+    expect(response.status).toBe(200);
+
+    const json = (await response.json()) as {
+      transactionBase64: string;
+    };
+    const transaction = Transaction.from(
+      Buffer.from(json.transactionBase64, "base64"),
+    );
+    expect(
+      transaction.instructions.some(
+        ix => ix.programId.equals(EPHEMERAL_SPL_TOKEN_PROGRAM_ID) && ix.data[0] === 24,
+      ),
+    ).toBe(true);
+    expect(
+      transaction.instructions.some(
+        ix => ix.programId.equals(EPHEMERAL_SPL_TOKEN_PROGRAM_ID) && ix.data[0] === 32,
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps private base-to-ephemeral destinations encrypted in legacy transactions", async () => {
+    const transferEnv = {
+      ...env,
+      EPHEMERAL_DEVNET_RPC_URL: "https://ephemeral.legacy-encrypted.rpc.test",
+    };
+
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123,
+    });
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockResolvedValue(
+      createMintAccountInfo(TOKEN_PROGRAM_ID),
+    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe(transferEnv.EPHEMERAL_DEVNET_RPC_URL);
+      return createIdentityResponse(resolvedValidator);
+    });
+
+    const response = await app.request(
+      "/v1/spl/transfer",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          from: owner,
+          to: destination,
+          mint: DEVNET_USDC_MINT,
+          amount: 1,
+          cluster: "devnet",
+          visibility: "private",
+          fromBalance: "base",
+          toBalance: "ephemeral",
+          legacy: true,
+        }),
+      },
+      transferEnv,
+    );
+
+    expect(response.status).toBe(200);
+
+    const json = (await response.json()) as {
+      transactionBase64: string;
+    };
+    const transaction = Transaction.from(
+      Buffer.from(json.transactionBase64, "base64"),
+    );
+    const privateTransferInstruction = transaction.instructions.find(
+      ix => ix.programId.equals(EPHEMERAL_SPL_TOKEN_PROGRAM_ID) && ix.data[0] === 32,
+    );
+
+    expect(privateTransferInstruction).toBeDefined();
+    expect(
+      transaction.instructions.some(
+        ix => ix.programId.equals(EPHEMERAL_SPL_TOKEN_PROGRAM_ID) && ix.data[0] === 24,
+      ),
+    ).toBe(false);
+    expect(
+      privateTransferInstruction?.keys.some(key => key.pubkey.toBase58() === destination),
+    ).toBe(false);
+    expect(privateTransferInstruction?.data.includes(new PublicKey(destination).toBuffer())).toBe(false);
+  });
+
   it("returns base and private balances from different RPCs", async () => {
     const mint = "So11111111111111111111111111111111111111112";
     const balanceEnv = {

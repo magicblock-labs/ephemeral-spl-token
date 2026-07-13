@@ -15,7 +15,7 @@ pub const SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS: u64 =
 /// Additional flat lamport fee charged by sponsored shuttle delegation setup
 /// flows that merge into an encrypted destination on the ER (instruction 32).
 ///
-/// Covers the ER-side rent-pending ATA creation and ephemeral permission CPIs.
+/// Covers the ER-side rent-pending ATA creation and shuttle merge CPIs.
 pub const SPONSORED_SHUTTLE_MERGE_TO_ENCRYPTED_DESTINATION_EXTRA_LAMPORTS: u64 =
     if cfg!(feature = "no-fees") { 0 } else { 1_539_280 };
 

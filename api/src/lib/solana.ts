@@ -2157,12 +2157,13 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
         ]
       : [];
 
-    // Zero-amount (setup-only) requests must use the legacy route: the
-    // encrypted-destination route requires a positively funded rent-pending ATA.
+    // Zero-amount setup and native SOL requests must use the legacy route: the
+    // encrypted-destination route requires a positively funded, non-native
+    // rent-pending ATA.
     const useLegacyCleartextDestination = input.visibility === "private"
       && input.fromBalance === "base"
       && input.toBalance === "ephemeral"
-      && (transferAmount === 0n || input.legacy === true);
+      && (transferAmount === 0n || mint.equals(NATIVE_MINT));
 
     const transferInstructions = await transferSpl(from, to, mint, transferAmount, {
       visibility: input.visibility,

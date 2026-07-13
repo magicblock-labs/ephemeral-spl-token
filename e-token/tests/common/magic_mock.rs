@@ -135,6 +135,7 @@ pub fn clear_all_captured(program: Pubkey) {
     captured_ephemeral_creates().lock().unwrap().remove(&program);
     captured_ephemeral_resizes().lock().unwrap().remove(&program);
     captured_ephemeral_closes().lock().unwrap().remove(&program);
+    captured_rent_pending_ata_creates().lock().unwrap().remove(&program);
 }
 
 pub fn take_captured_schedules(program: Pubkey) -> Vec<CapturedScheduleTask> {

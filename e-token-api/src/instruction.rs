@@ -237,8 +237,8 @@ pub enum ESplInstruction {
     ///      transfer where the destination never appears in cleartext on base. Same
     ///      setup/deposit/delegate shuttle flow as instruction 24, but the destination is
     ///      carried only inside encrypted post-delegation actions: on the ER the first action
-    ///      runs instruction 34 (rent-pending ATA + ephemeral EATA permission + merge), the
-    ///      second undelegates and closes the shuttle.
+    ///      runs instruction 34 (rent-pending ATA creation + merge), then the second
+    ///      undelegates and closes the shuttle.
     ///      Instruction data: DepositAndDelegateShuttleWithMergeToEncryptedDestinationArgs
     DepositAndDelegateShuttleWithMergeToEncryptedDestination = 33,
 

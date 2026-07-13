@@ -24,6 +24,16 @@ jobs:
           cache: yarn
           cache-dependency-path: api/yarn.lock
 
+      - name: Prepare ephemeral rollups SDK dependency
+        working-directory: .
+        run: |
+          git init ../ephemeral-rollups-sdk
+          git -C ../ephemeral-rollups-sdk remote add origin https://github.com/magicblock-labs/ephemeral-rollups-sdk.git
+          git -C ../ephemeral-rollups-sdk fetch --depth 1 origin efde77d72f811cba5a1220eba164395d3df1a3e5
+          git -C ../ephemeral-rollups-sdk checkout --detach FETCH_HEAD
+          yarn --cwd ../ephemeral-rollups-sdk/ts/web3js install --frozen-lockfile
+          yarn --cwd ../ephemeral-rollups-sdk/ts/web3js build
+
       - name: Install API dependencies
         run: yarn install --frozen-lockfile
 
