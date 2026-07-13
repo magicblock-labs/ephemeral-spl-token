@@ -102,7 +102,7 @@ export const clusterSchema = z
   .openapi({
     example: "mainnet",
     description:
-      "Optional, defaults to `mainnet`. `mainnet` and `devnet` route to the public ephemeral RPC for that network; `mainnet-private` and `devnet-private` route to the TEE-backed Private Ephemeral Rollup. The auth endpoints (`/v1/spl/challenge`, `/v1/spl/login`) and bearer-token-gated reads are only served by the TEE validators, so those calls must use a `-private` cluster. A custom http(s) RPC URL overrides only the base RPC while keeping the configured ephemeral RPC.",
+      "Optional, defaults to `mainnet`. `mainnet` and `devnet` route to the public ephemeral RPC for that network; `mainnet-private` and `devnet-private` route to the TEE-backed Private Ephemeral Rollup and are required for auth and bearer-token-gated reads. A custom http(s) RPC URL overrides only the base RPC while keeping the configured ephemeral RPC.",
   });
 
 export const visibilitySchema = z

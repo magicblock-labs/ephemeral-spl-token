@@ -482,7 +482,7 @@ http://127.0.0.1:6274
   - use `mainnet-private` to use `BASE_RPC_URL` and `EPHEMERAL_TEE_RPC_URL`
   - use `devnet-private` to use `BASE_DEVNET_RPC_URL` and `EPHEMERAL_DEVNET_TEE_RPC_URL`
   - use any other valid http(s) URL to override only the base RPC and keep the configured ephemeral RPC
-- auth (`/v1/spl/challenge`, `/v1/spl/login`) and bearer-token-gated reads only work on the `-private` clusters: the auth service runs on the TEE validators, not on the public ephemeral RPCs. On `mainnet`/`devnet` the API currently falls back to a `MOCK:`-prefixed challenge and `mock-auth-token` (no signature verification) — treat those values as a misconfigured cluster, and keep the whole auth + private-read flow on the same `-private` cluster because tokens are scoped per validator
+- auth (`/v1/spl/challenge`, `/v1/spl/login`) and bearer-token-gated reads require a `-private` cluster; keep the whole flow on the same cluster because tokens are scoped per validator
 - amount encoding depends on the route:
   - deposit, withdraw, and transfer: integer JSON values with minimum `1`, for example `1` or `1000000`
 - do not send UI-decimal token strings like `"1.5"`
@@ -802,9 +802,7 @@ Note:
 
 ### `GET /v1/spl/challenge`
 
-Returns a challenge string for the wallet to sign as the first step of the Private Ephemeral Rollup login flow.
-
-Requires `cluster=mainnet-private` or `cluster=devnet-private`: the auth service runs on the TEE validators only. With `cluster` omitted or set to `mainnet`/`devnet`, the ephemeral RPC has no `/auth/challenge` endpoint and the API returns a placeholder challenge prefixed with `MOCK:` that no validator will accept.
+Returns a challenge string for the wallet to sign as the first step of the Private Ephemeral Rollup login flow. Requires `cluster=mainnet-private` or `cluster=devnet-private`; the auth service runs on the TEE validators only.
 
 Example:
 
@@ -822,9 +820,7 @@ Response:
 
 ### `POST /v1/spl/login`
 
-Verifies the wallet's signature over the challenge and returns a bearer token for auth-gated routes such as `/v1/spl/private-balance` and ephemeral-side transfers.
-
-Use the same `-private` cluster as the challenge request; tokens are scoped to the validator that issued them. As with the challenge route, `mainnet`/`devnet` have no auth service and the API falls back to `{"token": "mock-auth-token"}` without verifying the signature — a client that receives `mock-auth-token` should treat it as a cluster misconfiguration, not a successful login.
+Verifies the wallet's signature over the challenge and returns a bearer token for auth-gated routes such as `/v1/spl/private-balance` and ephemeral-side transfers. Use the same `-private` cluster as the challenge request; tokens are scoped to the validator that issued them.
 
 Example:
 
