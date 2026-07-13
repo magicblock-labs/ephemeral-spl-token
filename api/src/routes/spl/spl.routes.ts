@@ -318,7 +318,7 @@ export const challengeRoute = createRoute({
   path: "/v1/spl/challenge",
   method: "get",
   tags,
-  description: "Generate a challenge string for the wallet to sign.",
+  description: "Generate a challenge string for the wallet to sign. The auth service only runs on the TEE validators, so pass `cluster=mainnet-private` or `cluster=devnet-private`. On `mainnet`/`devnet` (or when `cluster` is omitted) the ephemeral RPC has no auth endpoints and the API returns a placeholder challenge prefixed with `MOCK:` that no validator will accept.",
   request: {
     query: challengeRequestSchema,
   },
@@ -333,7 +333,7 @@ export const loginRoute = createRoute({
   path: "/v1/spl/login",
   method: "post",
   tags,
-  description: "Login the wallet to the Private Ephemeral Rollup.",
+  description: "Login the wallet to the Private Ephemeral Rollup. Verifies the wallet's signature over the challenge from `/v1/spl/challenge` and returns a bearer token scoped to that validator. Use the same `-private` cluster as the challenge request; on `mainnet`/`devnet` (or when `cluster` is omitted) there is no auth service and the API returns `mock-auth-token` without verifying the signature — treat a `MOCK:` challenge or `mock-auth-token` as a misconfigured cluster, not a successful login.",
   request: {
     body: jsonContentRequired(loginRequestSchema, "Login request"),
   },
