@@ -4795,14 +4795,28 @@ describe("app", () => {
     );
   });
 
-  it("builds a gasless v0 private transfer with the sponsor signature", async () => {
+  it("builds an oversized gasless v0 private transfer with a platform fee and sponsor signature", async () => {
     const sponsor = Keypair.generate();
     const mint = new PublicKey(DEVNET_USDC_MINT);
+    const platformFeeAccount = Keypair.generate().publicKey.toBase58();
     const validator = new PublicKey(resolvedValidator);
     const [transferQueue] = deriveTransferQueue(mint, validator);
     const [rentPda] = deriveRentPda();
     const [vault] = deriveVault(mint);
     const vaultAta = deriveVaultAta(mint, vault);
+    const lookupTable = createLookupTableAccount(
+      [
+        mint,
+        transferQueue,
+        rentPda,
+        vault,
+        vaultAta,
+        TOKEN_PROGRAM_ID,
+        EPHEMERAL_SPL_TOKEN_PROGRAM_ID,
+        SystemProgram.programId,
+      ],
+      new PublicKey("E26JGdRsdKkGe6oRU4Un24agZjBF2Bg9z1ctfZByETRo"),
+    );
     const transferEnv = {
       ...env,
       BASE_DEVNET_RPC_URL: "https://base.devnet.gasless-transfer.v0.rpc.test",
@@ -4816,21 +4830,7 @@ describe("app", () => {
       lastValidBlockHeight: 123,
     });
     vi.spyOn(Connection.prototype, "getAddressLookupTable").mockResolvedValue(
-      createLookupTableResponse(
-        createLookupTableAccount(
-          [
-            mint,
-            transferQueue,
-            rentPda,
-            vault,
-            vaultAta,
-            TOKEN_PROGRAM_ID,
-            EPHEMERAL_SPL_TOKEN_PROGRAM_ID,
-            SystemProgram.programId,
-          ],
-          new PublicKey("E26JGdRsdKkGe6oRU4Un24agZjBF2Bg9z1ctfZByETRo"),
-        ),
-      ),
+      createLookupTableResponse(lookupTable),
     );
     vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(
       async address =>
@@ -4863,6 +4863,8 @@ describe("app", () => {
           maxDelayMs: "0",
           split: 1,
           gasless: true,
+          platformFeeBps: 100,
+          platformFeeAccount,
         }),
       },
       transferEnv,
@@ -4882,15 +4884,26 @@ describe("app", () => {
     expect(json.version).toBe("v0");
     expect(json.fees).toEqual({
       lamports: "2039280",
-      tokens: "205000",
+      tokens: "255000",
     });
     expect(json.requiredSigners).toEqual(
       expect.arrayContaining([owner, sponsor.publicKey.toBase58()]),
     );
 
-    const transaction = VersionedTransaction.deserialize(
-      Buffer.from(json.transactionBase64, "base64"),
-    );
+    const serializedTransaction = Buffer.from(json.transactionBase64, "base64");
+    expect(serializedTransaction.length).toBeLessThanOrEqual(1232);
+
+    const transaction = VersionedTransaction.deserialize(serializedTransaction);
+    const decompiled = TransactionMessage.decompile(transaction.message, {
+      addressLookupTableAccounts: [lookupTable],
+    });
+    const legacyTransaction = new Transaction({
+      feePayer: decompiled.payerKey,
+      recentBlockhash: decompiled.recentBlockhash,
+    }).add(...decompiled.instructions);
+    expect(
+      new VersionedTransaction(legacyTransaction.compileMessage()).serialize().length,
+    ).toBeGreaterThan(1232);
     const requiredSigners = transaction.message.staticAccountKeys.slice(
       0,
       transaction.message.header.numRequiredSignatures,
