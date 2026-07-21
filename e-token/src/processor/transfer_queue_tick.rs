@@ -2,6 +2,7 @@
 use alloc::string::ToString;
 
 use ephemeral_rollups_pinocchio::{
+    acl::{consts::PERMISSION_PROGRAM_ID, pda::permission_pda_from_permissioned_account},
     consts::{MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID},
     intent_bundle::{ActionArgs, ActionCallback, CallHandler, ShortAccountMeta},
 };
@@ -320,11 +321,12 @@ fn create_action_callback_accounts(
     vault: &Address,
     mint: &Address,
     token_program: &Address,
-) -> [ShortAccountMeta; 13] {
+) -> [ShortAccountMeta; 15] {
     let vault_token_account = get_associated_token_address(vault, mint, token_program);
     let source_token_account = get_associated_token_address(&queued_transfer.source, mint, token_program);
     let (group_receipt_account, _) =
         derive_group_receipt_id(queue_address, &queued_transfer.source, queued_transfer.group_id());
+    let group_receipt_permission = permission_pda_from_permissioned_account(&group_receipt_account);
     [
         ShortAccountMeta {
             pubkey: CALLBACK_SIGNER,
@@ -378,11 +380,19 @@ fn create_action_callback_accounts(
             pubkey: MAGIC_CONTEXT_ID,
             is_writable: true,
         },
+        ShortAccountMeta {
+            pubkey: group_receipt_permission,
+            is_writable: true,
+        },
+        ShortAccountMeta {
+            pubkey: PERMISSION_PROGRAM_ID,
+            is_writable: false,
+        },
     ]
 }
 
 fn create_action_callback<'a>(accounts: &'a [ShortAccountMeta], payload: &'a [u8]) -> ActionCallback<'a> {
-    const CALLBACK_COMPUTE_UNITS: u32 = 100_000;
+    const CALLBACK_COMPUTE_UNITS: u32 = 120_000;
 
     ActionCallback {
         destination_program: crate::ID,

@@ -698,8 +698,9 @@
         16
       ],
       "docs": [
-        "Deposits into the global vault and enqueues one or more delayed transfers.",
-        "Instruction data: [0..8] amount, [8..16] min_delay_ms, [16..24] max_delay_ms, [24..28] split, optionally [28] flags."
+        "Deposits into the vault and enqueues one or more delayed transfers.",
+        "Instruction data: [0..8] amount, [8..16] min_delay_ms, [16..24] max_delay_ms, [24..28] split, optionally [28] flags.",
+        "groupReceiptPermission + permissionProgram create a private ACL permission on the group receipt; legacy clients may omit both trailing accounts (12-account shape)."
       ],
       "accounts": [
         {
@@ -721,7 +722,7 @@
           "writable": true
         },
         {
-          "name": "destinationTokenOrOwner"
+          "name": "destinationOwner"
         },
         {
           "name": "userAuthority",
@@ -731,8 +732,26 @@
           "name": "tokenProgram"
         },
         {
-          "name": "shuttleWalletAta",
+          "name": "reimbursementToken",
           "writable": true
+        },
+        {
+          "name": "groupReceipt",
+          "writable": true
+        },
+        {
+          "name": "magicVault",
+          "writable": true
+        },
+        {
+          "name": "magicProgram"
+        },
+        {
+          "name": "groupReceiptPermission",
+          "writable": true
+        },
+        {
+          "name": "permissionProgram"
         }
       ],
       "args": [

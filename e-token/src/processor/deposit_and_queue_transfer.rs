@@ -5,8 +5,9 @@ use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
 use ephemeral_spl_api::state::transfer_queue::capacity_from_data_len;
 use ephemeral_spl_api::{
     debug_log,
+    error::EphemeralSplError,
     instructions::DepositAndQueueTransferArgs,
-    require, require_eq_keys, require_n_accounts,
+    require, require_eq_keys, require_n_accounts_with_optionals,
     state::{
         stealth_pool::StealthPool,
         transfer_queue::{
@@ -29,7 +30,7 @@ use crate::processor::internal::{
     group_receipt::derive_group_receipt_id,
     group_receipt_create, read_mint_decimals, token_program_kind,
     token_vault::{transfer_to_queue_vault_for_mint, transfer_to_vault_for_mint, validate_queue_vault_for_mint},
-    GroupReceiptAccounts,
+    GroupReceiptAccounts, GroupReceiptPermissionAccounts,
 };
 
 const MILLIS_PER_SECOND: u64 = 1_000;
@@ -52,24 +53,47 @@ const MILLIS_PER_SECOND: u64 = 1_000;
 ///  10: [writable]         - SPL     : Magic vault
 ///  11: []                 - Magic   : Magic program
 ///
+/// Accounts (14-account shape — adds a private ACL permission on the group receipt):
+///
+///  0-11: same as above.
+///  12: [writable]         - PDA     : Group receipt permission (derived from ["permission:", group_receipt]).
+///  13: []                 - Program : Permission program (ACL).
+///
 /// Instruction Data: DepositAndQueueTransferArgs
 ///
 #[inline(always)]
 pub fn process_deposit_and_queue_transfer(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
-    let [
-        queue_info, // force multi-line
-        vault_info,
-        mint_info,
-        user_source_token_acc,
-        vault_token_acc,
-        destination_info,
-        user_authority,
-        token_program_info,
-        reimbursement_token_info,
-        group_receipt_info,
-        magic_vault,
-        magic_program,
-    ] = require_n_accounts!(accounts, 12);
+    // TODO (snawaz): fold the 12-account shape into the 14-account one once all clients
+    // pass the group receipt permission accounts.
+    let (
+        [
+            queue_info, // force multi-line
+            vault_info,
+            mint_info,
+            user_source_token_acc,
+            vault_token_acc,
+            destination_info,
+            user_authority,
+            token_program_info,
+            reimbursement_token_info,
+            group_receipt_info,
+            magic_vault,
+            magic_program,
+        ],
+        optional_accounts,
+    ) = require_n_accounts_with_optionals!(accounts, 12);
+
+    // Only the 12- and 14-account shapes are valid: a partial permission pair
+    // must fail loudly rather than silently create an unprotected receipt.
+    let receipt_permission = match optional_accounts {
+        [] => None,
+        [permission_info, permission_program] => Some(GroupReceiptPermissionAccounts {
+            permission_info,
+            permission_program,
+        }),
+        [_] => return Err(ProgramError::NotEnoughAccountKeys),
+        _ => return Err(EphemeralSplError::TooManyAccountKeys.into()),
+    };
 
     let args = DepositAndQueueTransferArgs::decode(instruction_data)?;
 
@@ -237,7 +261,8 @@ pub fn process_deposit_and_queue_transfer(accounts: &[AccountView], instruction_
             group_receipt_info,
             source: user_authority,
             magic_vault,
-            _magic_program: magic_program,
+            magic_program,
+            permission: receipt_permission,
         },
         group_receipt_bump,
         group_id,

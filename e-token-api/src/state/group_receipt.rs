@@ -82,6 +82,11 @@ impl<'a> GroupReceipt<'a> {
     pub fn splits(&self) -> u32 {
         self.header.splits()
     }
+
+    #[inline(always)]
+    pub fn bump(&self) -> u8 {
+        self.header.bump()
+    }
 }
 
 /// Header for group receipts

@@ -21,7 +21,7 @@ use utils::TestInternalInstruction as internal;
 use wheels::{layout::Encodable as _, variable_offset_layout};
 
 use crate::common::{
-    callback_mock,
+    acl_mock, callback_mock,
     callback_mock::take_execute_callbacks,
     magic_mock,
     magic_mock::{take_captured_ephemeral_closes, take_captured_ephemeral_creates},
@@ -124,6 +124,7 @@ async fn setup_context(
     pt.add_program("ephemeral_token_program", PROGRAM, None);
     magic_mock::add_mock(&mut pt);
     callback_mock::add_mock(&mut pt);
+    acl_mock::add_mock(&mut pt);
 
     let queue_data = queue_account_data(mint, validator.pubkey(), queue_bump);
     pt.add_account(
@@ -175,6 +176,8 @@ async fn setup_context(
     let ctx = pt.start_with_context().await;
 
     magic_mock::clear_all_captured(MAGIC_PROGRAM_ID);
+    acl_mock::clear_all_captured();
+    let _ = take_execute_callbacks();
 
     (ctx, validator, mint, queue, receipt, vault, vault_token, source)
 }
@@ -211,6 +214,11 @@ fn callback_executor_ix(
         group_id,
     );
 
+    callback_executor_ix_from(validator, callback_ix)
+}
+
+/// Wraps an inner callback instruction in the callback-executor instruction.
+fn callback_executor_ix_from(validator: Pubkey, callback_ix: Instruction) -> Instruction {
     // Mandatory accounts for magic-program
     let mut account_metas = vec![
         AccountMeta::new_readonly(validator, true),
@@ -231,6 +239,24 @@ fn callback_executor_ix(
         },
         account_metas,
     )
+}
+
+/// Derives the ACL permission PDA guarding the given group receipt.
+fn derive_group_receipt_permission(group_receipt: Pubkey) -> Pubkey {
+    Pubkey::find_program_address(
+        &[b"permission:", group_receipt.as_ref()],
+        &utils::permission_program_id(),
+    )
+    .0
+}
+
+/// Extends a 13-account callback instruction to the 15-account shape that also
+/// closes the group receipt's ACL permission.
+fn append_permission_accounts(mut ix: Instruction, permission: Pubkey) -> Instruction {
+    ix.accounts.push(AccountMeta::new(permission, false)); // 13: group_receipt_permission
+    ix.accounts
+        .push(AccountMeta::new_readonly(utils::permission_program_id(), false)); // 14: permission_program
+    ix
 }
 
 fn callback_ix(
@@ -367,6 +393,136 @@ async fn execute_callback_closes_receipt_when_last_transfer_with_pre_initialized
     assert!(creates.is_empty(), "expected no CreateEphemeralAccount CPI");
 
     // CloseEphemeralAccount must have been called once — this was the last transfer.
+    let closes = take_captured_ephemeral_closes(MAGIC_PROGRAM_ID);
+    assert_eq!(closes.len(), 1, "expected exactly one CloseEphemeralAccount CPI");
+}
+
+// ── group receipt permission ──────────────────────────────────────────────────
+
+/// Injects a non-empty ACL-owned permission account for the receipt, as
+/// created by the 14-account deposit shape.
+fn pre_create_receipt_permission(ctx: &mut solana_program_test::ProgramTestContext, permission: Pubkey) {
+    let data = vec![1u8; 71];
+    ctx.set_account(
+        &permission,
+        &SolanaAccount {
+            lamports: Rent::default().minimum_balance(data.len()),
+            data,
+            owner: utils::permission_program_id(),
+            executable: false,
+            rent_epoch: 0,
+        }
+        .into(),
+    );
+}
+
+/// 15-account shape, last transfer: the receipt's ACL permission is closed
+/// (rent refunded to the queue) alongside the receipt itself.
+#[tokio::test]
+#[serial]
+async fn execute_callback_closes_receipt_permission_when_last_transfer() {
+    let group_id: u32 = 1;
+    let splits: u32 = 1;
+
+    let receipt_data = receipt_account_data(group_id, splits, 0);
+    let (mut ctx, validator, mint, queue, receipt, vault, vault_token, source) =
+        setup_context(receipt_data, group_id).await;
+
+    // The permission close signs with the receipt PDA seeds, so the header
+    // must carry the real bump (the shared fixture stores 0).
+    let (_, receipt_bump) = utils::derive_group_receipt(queue, source, group_id);
+    ctx.set_account(
+        &receipt,
+        &SolanaAccount {
+            lamports: Rent::default().minimum_balance(GroupReceipt::required_size(splits as usize)),
+            data: receipt_account_data(group_id, splits, receipt_bump),
+            owner: PROGRAM,
+            executable: false,
+            rent_epoch: 0,
+        }
+        .into(),
+    );
+
+    let permission = derive_group_receipt_permission(receipt);
+    pre_create_receipt_permission(&mut ctx, permission);
+
+    let inner = append_permission_accounts(
+        callback_ix(
+            receipt,
+            queue,
+            vault,
+            mint,
+            vault_token,
+            source,
+            magic_fee_vault_pubkey(validator.pubkey()),
+            MAGIC_CONTEXT_ID,
+            true,
+            200,
+            group_id,
+        ),
+        permission,
+    );
+    let ix = callback_executor_ix_from(validator.pubkey(), inner);
+
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&validator.pubkey()), &[&validator], ctx.last_blockhash);
+    let res = ctx.banks_client.process_transaction_with_metadata(tx).await.unwrap();
+    res.result.unwrap();
+
+    let permission_closes = acl_mock::take_captured_ephemeral_permission_closes();
+    assert_eq!(
+        permission_closes.len(),
+        1,
+        "expected exactly one CloseEphemeralPermission CPI"
+    );
+    let close = &permission_closes[0];
+    assert_eq!(close.payer, queue, "rent must refund to the queue");
+    assert_eq!(close.permissioned_account, receipt);
+    assert_eq!(close.permission, permission);
+
+    // The receipt itself must still be closed.
+    let closes = take_captured_ephemeral_closes(MAGIC_PROGRAM_ID);
+    assert_eq!(closes.len(), 1, "expected exactly one CloseEphemeralAccount CPI");
+}
+
+/// 15-account shape, legacy receipt (created without a permission): the close
+/// is skipped and the callback still completes.
+#[tokio::test]
+#[serial]
+async fn execute_callback_skips_permission_close_for_legacy_receipt() {
+    let group_id: u32 = 1;
+    let splits: u32 = 1;
+
+    let receipt_data = receipt_account_data(group_id, splits, 0);
+    let (ctx, validator, mint, queue, receipt, vault, vault_token, source) =
+        setup_context(receipt_data, group_id).await;
+    // Permission account intentionally not created (data_len == 0).
+    let permission = derive_group_receipt_permission(receipt);
+
+    let inner = append_permission_accounts(
+        callback_ix(
+            receipt,
+            queue,
+            vault,
+            mint,
+            vault_token,
+            source,
+            magic_fee_vault_pubkey(validator.pubkey()),
+            MAGIC_CONTEXT_ID,
+            true,
+            200,
+            group_id,
+        ),
+        permission,
+    );
+    let ix = callback_executor_ix_from(validator.pubkey(), inner);
+
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&validator.pubkey()), &[&validator], ctx.last_blockhash);
+    let res = ctx.banks_client.process_transaction_with_metadata(tx).await.unwrap();
+    res.result.unwrap();
+
+    let permission_closes = acl_mock::take_captured_ephemeral_permission_closes();
+    assert!(permission_closes.is_empty(), "expected no CloseEphemeralPermission CPI");
+
     let closes = take_captured_ephemeral_closes(MAGIC_PROGRAM_ID);
     assert_eq!(closes.len(), 1, "expected exactly one CloseEphemeralAccount CPI");
 }

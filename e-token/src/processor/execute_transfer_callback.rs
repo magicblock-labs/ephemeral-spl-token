@@ -15,7 +15,7 @@ use crate::processor::internal::{
     group_receipt::{derive_group_receipt_id, TransferCallbackArgs, TransferCallbackArgsView},
     group_receipt_close,
     refund::{schedule_refund_on_failure, RefundOnFailureAccounts, MAX_REFUND_RETRIES},
-    GroupReceiptAccounts, CALLBACK_SIGNER,
+    GroupReceiptAccounts, GroupReceiptPermissionAccounts, CALLBACK_SIGNER,
 };
 
 ///
@@ -37,6 +37,12 @@ use crate::processor::internal::{
 /// 11: []                   - Program : Magic program.
 /// 12: [writable]           - PDA     : Magic context account.
 ///
+/// Accounts (15-account shape — adds close of the group receipt's ACL permission):
+///
+///  0-12: same as above.
+/// 13: [writable]           - PDA     : Group receipt permission (derived from ["permission:", group_receipt]).
+/// 14: []                   - Program : Permission program (ACL).
+///
 /// Accounts (11-account shape, legacy — no refund on failure):
 ///
 ///  0-9: same as above.
@@ -46,15 +52,41 @@ use crate::processor::internal::{
 ///
 pub fn process_execute_transfer_callback(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     // TODO(edwin/snawaz): remove 11-account compat path after next deployment
-    let (callback_signer, group_receipt, queue_info, mint, source, magic_vault, magic_program, maybe_refund) =
-        if accounts.len() >= 13 {
-            let [cb, gr, qi, _vault, mint, _vault_ta, src, _src_ta, _tp, mv, mfv, mp, mc] =
-                require_n_accounts!(accounts, 13);
-            (cb, gr, qi, mint, src, mv, mp, Some((mfv, mc)))
-        } else {
-            let [cb, gr, qi, _vault, mint, _vault_ta, src, _src_ta, _tp, mv, mp] = require_n_accounts!(accounts, 11);
-            (cb, gr, qi, mint, src, mv, mp, None)
-        };
+    let (
+        callback_signer,
+        group_receipt,
+        queue_info,
+        mint,
+        source,
+        magic_vault,
+        magic_program,
+        maybe_refund,
+        permission,
+    ) = if accounts.len() >= 15 {
+        let [cb, gr, qi, _vault, mint, _vault_ta, src, _src_ta, _tp, mv, mfv, mp, mc, perm, perm_prog] =
+            require_n_accounts!(accounts, 15);
+        (
+            cb,
+            gr,
+            qi,
+            mint,
+            src,
+            mv,
+            mp,
+            Some((mfv, mc)),
+            Some(GroupReceiptPermissionAccounts {
+                permission_info: perm,
+                permission_program: perm_prog,
+            }),
+        )
+    } else if accounts.len() >= 13 {
+        let [cb, gr, qi, _vault, mint, _vault_ta, src, _src_ta, _tp, mv, mfv, mp, mc] =
+            require_n_accounts!(accounts, 13);
+        (cb, gr, qi, mint, src, mv, mp, Some((mfv, mc)), None)
+    } else {
+        let [cb, gr, qi, _vault, mint, _vault_ta, src, _src_ta, _tp, mv, mp] = require_n_accounts!(accounts, 11);
+        (cb, gr, qi, mint, src, mv, mp, None, None)
+    };
 
     // Verify validator & queue info
     let (header, _) = queue_views_checked(unsafe { queue_info.borrow_unchecked() })?;
@@ -70,6 +102,7 @@ pub fn process_execute_transfer_callback(accounts: &[AccountView], instruction_d
         source,
         magic_vault,
         magic_program,
+        permission,
         &args,
         &response,
     )?;
@@ -135,12 +168,13 @@ fn validate_common(
 /// 1. Receipt doesn't exist - create
 /// 2. Update receipt
 /// 3. Closes if this is the last transfer
-fn handle_group_receipt(
-    queue_info: &AccountView,
-    group_receipt_info: &AccountView,
-    source: &AccountView,
-    magic_vault: &AccountView,
-    magic_program: &AccountView,
+fn handle_group_receipt<'a>(
+    queue_info: &'a AccountView,
+    group_receipt_info: &'a AccountView,
+    source: &'a AccountView,
+    magic_vault: &'a AccountView,
+    magic_program: &'a AccountView,
+    permission: Option<GroupReceiptPermissionAccounts<'a>>,
     args: &TransferCallbackArgsView<'_>,
     response: &MagicResponseView,
 ) -> ProgramResult {
@@ -192,7 +226,8 @@ fn handle_group_receipt(
                 queue_info,
                 source,
                 magic_vault,
-                _magic_program: magic_program,
+                magic_program,
+                permission,
             },
             group_receipt,
         )

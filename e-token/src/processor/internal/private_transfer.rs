@@ -8,7 +8,10 @@ use dlp_api::{
     },
     compact::{self, ClearTextWithInsertable},
 };
-use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
+use ephemeral_rollups_pinocchio::{
+    acl::{consts::PERMISSION_PROGRAM_ID, pda::permission_pda_from_permissioned_account},
+    consts::MAGIC_PROGRAM_ID,
+};
 use ephemeral_spl_api::{
     consts, debug_log,
     instruction::ESplInstruction,
@@ -213,6 +216,9 @@ fn private_transfer_action_encrypted(
     let group_id = u32::from(group_id_raw[0]) | (u32::from(group_id_raw[1]) << 8) | (u32::from(group_id_raw[2]) << 16);
     let group_receipt_info =
         derive_group_receipt_id(queue_info.address(), common_accounts.owner_info.address(), group_id).0;
+    // Cleartext is fine: the permission PDA derives from the receipt address,
+    // which is already cleartext below, and reveals nothing further.
+    let group_receipt_permission = permission_pda_from_permissioned_account(&group_receipt_info);
     Ok(PostDelegationActions {
         inserted_signers: 0,
         inserted_non_signers: 0,
@@ -230,6 +236,8 @@ fn private_transfer_action_encrypted(
             MaybeEncryptedPubkey::ClearText(group_receipt_info.to_bytes()),
             MaybeEncryptedPubkey::ClearText(MAGIC_VAULT_ID.to_bytes()),
             MaybeEncryptedPubkey::ClearText(MAGIC_PROGRAM_ID.to_bytes()),
+            MaybeEncryptedPubkey::ClearText(group_receipt_permission.to_bytes()),
+            MaybeEncryptedPubkey::ClearText(PERMISSION_PROGRAM_ID.to_bytes()),
         ],
         instructions: alloc::vec![MaybeEncryptedInstruction {
             program_id: 1,
@@ -246,6 +254,8 @@ fn private_transfer_action_encrypted(
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(10, false)),
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(11, false)),
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(12, false)),
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(13, false)),
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(14, false)),
             ],
             data: MaybeEncryptedIxData {
                 prefix: ESplInstruction::DepositAndQueueTransfer

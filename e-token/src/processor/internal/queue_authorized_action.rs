@@ -23,7 +23,7 @@ use crate::processor::{
     },
 };
 
-const MAGIC_INTENT_BUNDLE_DATA_LEN: usize = 512;
+const MAGIC_INTENT_BUNDLE_DATA_LEN: usize = 640;
 pub(crate) const EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX: u8 = 0;
 
 pub(crate) struct IntentBundleAccounts<'a> {
