@@ -30,7 +30,7 @@ tag-message = "Publish {{crate_name}} v{{version}}"
 consolidate-commits = false
 
 [workspace.dependencies]
-ephemeral-rollups-pinocchio = "0.10.9"
+ephemeral-rollups-pinocchio = "0.16.2"
 wheels = { git = "https://github.com/magicblock-labs/magicblock-wheels.git" }
 
 pinocchio = { version = "0.10.1", features = ["cpi"] }

@@ -1821,16 +1821,15 @@ dependencies = [
 
 [[package]]
 name = "ephemeral-rollups-pinocchio"
-version = "0.10.9"
+version = "0.16.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4eabedb2d5ca6f4f465436d45c882bcbe23a4ff8d7db2148f0410abbf1972f5b"
+checksum = "69d0781a607dfc2fce40e90b8ef875b17efa8b2b7906317c5ab6a8ee426edeb1"
 dependencies = [
  "bincode 2.0.1",
  "pinocchio 0.10.2",
  "pinocchio-pubkey",
  "pinocchio-system",
  "solana-address 2.6.0",
- "solana-program 2.3.0",
 ]
 
 [[package]]
@@ -3147,7 +3146,7 @@ dependencies = [
  "solana-sha256-hasher 3.1.0",
  "static_assertions",
  "strum 0.28.0",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
