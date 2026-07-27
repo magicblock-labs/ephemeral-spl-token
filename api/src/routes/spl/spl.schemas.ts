@@ -338,7 +338,7 @@ export const transferRequestSchema = z.object({
   }).optional(),
   platformFeeAccount: publicKeySchema.openapi({
     example: "6QxLzE2KfM1NAB7sTzUPk4cNsA6V9fB3eYq9s6d9r9hP",
-    description: "Required when platformFeeBps is greater than 0. Initialized token account that collects the platform fee.",
+    description: "Required when platformFeeBps is greater than 0. Token account (not a wallet address) that collects the platform fee, for the transferred mint — e.g. the fee collector's USDC ATA for a USDC transfer, or their WSOL ATA for native SOL transfers. Expected to already exist on-chain; the API does not verify it, so a wallet address, uninitialized ATA, or wrong-mint token account still returns 200 and the built transaction fails at simulation with an SPL Token error.",
   }).optional(),
   gasless: z.boolean().openapi({
     example: true,

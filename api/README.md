@@ -688,7 +688,8 @@ Platform fee validation:
 - `platformFeeBps` is optional and defaults to `0`
 - `platformFeeBps` must be an integer between `0` and `10000`
 - when `platformFeeBps` is greater than `0`, `platformFeeAccount` is required
-- `platformFeeAccount` must be an initialized token account for the transferred mint
+- `platformFeeAccount` must be a **token account** for the transferred mint — not the fee collector's wallet address. For a USDC transfer this is the collector's USDC ATA (e.g. `getAssociatedTokenAddressSync(usdcMint, feeCollectorWallet)`); for native SOL transfers the fee is paid in wrapped SOL, so it must be the collector's WSOL ATA
+- the token account is **expected to already exist on-chain** (initialized). The API does **not** check this: it only validates that the value is a well-formed public key, so a wallet address, an uninitialized ATA, or a token account for a different mint still returns `200`, and the built transaction then fails at simulation with an SPL Token error (`InvalidAccountData` or `MintMismatch`)
 - platform fees are supported only when `fromBalance` is `"base"`
 - with `exactOut: true`, the recipient receives `amount` and the sender pays `amount + platformFee`
 - with `exactOut: false`, the sender pays `amount` and the recipient receives `amount - platformFee`
