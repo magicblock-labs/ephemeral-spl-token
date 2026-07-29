@@ -218,6 +218,13 @@ fn close_group_receipt_permission(
         ProgramError::IncorrectProgramId
     );
 
+    let expected_permission = permission_pda_from_permissioned_account(accounts.group_receipt_info.address());
+    require_eq_keys!(
+        &expected_permission,
+        permission.permission_info.address(),
+        ProgramError::InvalidSeeds
+    );
+
     // Ephemeral accounts hold zero lamports on the ER; existence is data_len.
     if permission.permission_info.data_len() == 0 {
         return Ok(());
