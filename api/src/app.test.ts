@@ -3504,6 +3504,88 @@ describe("app", () => {
     });
   });
 
+  it("adds group receipt permission accounts to private queue transfers", async () => {
+    const mint = new PublicKey("So11111111111111111111111111111111111111112");
+    const validator = new PublicKey(resolvedValidator);
+    const [transferQueue] = deriveTransferQueue(mint, validator);
+
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockImplementation(
+      async function getLatestBlockhash(
+        this: Connection & { _rpcEndpoint: string },
+      ) {
+        expect((this as Connection & { _rpcEndpoint: string })._rpcEndpoint).toBe(
+          env.EPHEMERAL_RPC_URL,
+        );
+        return {
+          blockhash: "11111111111111111111111111111111",
+          lastValidBlockHeight: 456,
+        };
+      },
+    );
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(
+      async address =>
+        address.equals(mint)
+          ? createMintAccountInfo(TOKEN_PROGRAM_ID)
+          : null,
+    );
+
+    const response = await app.request(
+      "/v1/spl/transfer",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          from: owner,
+          to: destination,
+          mint: mint.toBase58(),
+          amount: 1,
+          visibility: "private",
+          fromBalance: "ephemeral",
+          toBalance: "base",
+          validator: resolvedValidator,
+          minDelayMs: "0",
+          maxDelayMs: "0",
+          split: 1,
+        }),
+      },
+      env,
+    );
+
+    expect(response.status, await response.clone().text()).toBe(200);
+
+    const json = (await response.json()) as {
+      sendTo: string;
+      transactionBase64: string;
+    };
+    expect(json.sendTo).toBe("ephemeral");
+
+    const transaction = Transaction.from(
+      Buffer.from(json.transactionBase64, "base64"),
+    );
+    const queueTransferIx = transaction.instructions.find(
+      ix => ix.programId.equals(EPHEMERAL_SPL_TOKEN_PROGRAM_ID) && ix.data[0] === 16,
+    )!;
+    const groupReceipt = queueTransferIx.keys[9]!.pubkey;
+
+    expect(queueTransferIx.keys).toHaveLength(14);
+    expect(queueTransferIx.keys[0]!.pubkey.toBase58()).toBe(transferQueue.toBase58());
+    expect(queueTransferIx.keys[6]!.pubkey.toBase58()).toBe(owner);
+    expect(queueTransferIx.keys[12]).toMatchObject({
+      isSigner: false,
+      isWritable: true,
+    });
+    expect(queueTransferIx.keys[12]!.pubkey.toBase58()).toBe(
+      permissionPdaFromAccount(groupReceipt).toBase58(),
+    );
+    expect(queueTransferIx.keys[13]).toMatchObject({
+      pubkey: PERMISSION_PROGRAM_ID,
+      isSigner: false,
+      isWritable: false,
+    });
+  });
+
   it("builds a private transfer with top-level split and delay options", async () => {
     const transferEnv = {
       ...env,

@@ -106,6 +106,9 @@ const TRANSFER_QUEUE_AUTH_ERROR_FORCE_INTERVAL = 100;
 const SOLANA_WIRE_TRANSACTION_SIZE_LIMIT = 1232;
 const UPDATE_STEALTH_POOL_DISCRIMINATOR = 21;
 const ENSURE_STEALTH_POOL_DELEGATED_DISCRIMINATOR = 22;
+const DEPOSIT_AND_QUEUE_TRANSFER_DISCRIMINATOR = 16;
+const DEPOSIT_AND_QUEUE_TRANSFER_LEGACY_ACCOUNT_COUNT = 12;
+const DEPOSIT_AND_QUEUE_TRANSFER_GROUP_RECEIPT_INDEX = 9;
 const STEALTH_POOL_SEED = Buffer.from("stealth_pool");
 const STEALTH_POOL_LONG_HANDLE_HASH_DOMAIN = Buffer.from("stealth_pool_handle");
 const STEALTH_POOL_SPLIT_ACROSS_KEYS_FLAG = 1 << 0;
@@ -1141,6 +1144,39 @@ function withPrivateTransferExactOut(
   });
 }
 
+function withGroupReceiptPermissionAccounts(instruction: TransactionInstruction) {
+  if (
+    !instruction.programId.equals(EPHEMERAL_SPL_TOKEN_PROGRAM_ID)
+    || instruction.data[0] !== DEPOSIT_AND_QUEUE_TRANSFER_DISCRIMINATOR
+    || instruction.keys.length !== DEPOSIT_AND_QUEUE_TRANSFER_LEGACY_ACCOUNT_COUNT
+  ) {
+    return instruction;
+  }
+
+  const groupReceipt = instruction.keys[DEPOSIT_AND_QUEUE_TRANSFER_GROUP_RECEIPT_INDEX]?.pubkey;
+  if (!groupReceipt) {
+    return instruction;
+  }
+
+  return new TransactionInstruction({
+    programId: instruction.programId,
+    keys: [
+      ...instruction.keys,
+      {
+        pubkey: permissionPdaFromAccount(groupReceipt),
+        isSigner: false,
+        isWritable: true,
+      },
+      {
+        pubkey: PERMISSION_PROGRAM_ID,
+        isSigner: false,
+        isWritable: false,
+      },
+    ],
+    data: Buffer.from(instruction.data),
+  });
+}
+
 function createRandomShuttleId() {
   return crypto.getRandomValues(new Uint32Array(1))[0] & 0x7fffffff;
 }
@@ -2142,7 +2178,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
         : undefined,
     });
     const normalizedTransferInstructions = transferInstructions.map(instruction =>
-      withPrivateTransferExactOut(instruction, exactOut));
+      withGroupReceiptPermissionAccounts(withPrivateTransferExactOut(instruction, exactOut)));
     // Gasless private base->base already adds a relay-fee token transfer. Dropping
     // the opportunistic queue-refill ix keeps the full transaction under Solana's
     // packet limit while preserving the actual private transfer instruction.
