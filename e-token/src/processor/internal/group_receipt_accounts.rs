@@ -1,7 +1,8 @@
 use ephemeral_rollups_pinocchio::acl::{
     consts::PERMISSION_PROGRAM_ID,
+    instruction::{CloseEphemeralPermission, CreateEphemeralPermission},
     pda::permission_pda_from_permissioned_account,
-    types::{Member, MemberFlags},
+    types::{EphemeralMembersArgs, Member, MemberFlags},
 };
 use ephemeral_spl_api::{
     require_eq_keys, require_ok,
@@ -12,9 +13,8 @@ use ephemeral_spl_api::{
     },
 };
 use pinocchio::{
-    cpi::{invoke_signed_with_bounds, Seed, Signer},
+    cpi::{Seed, Signer},
     error::ProgramError,
-    instruction::{InstructionAccount, InstructionView},
     AccountView, ProgramResult,
 };
 use solana_address::Address;
@@ -24,11 +24,7 @@ use super::{
     group_receipt::GROUP_RECEIPT_SEED,
 };
 
-/// ACL discriminator for `CreateEphemeralPermission` (not in ephemeral-rollups-pinocchio 0.10.x).
-const CREATE_EPHEMERAL_PERMISSION_DISCRIMINATOR: u64 = 6;
-
-/// ACL discriminator for `CloseEphemeralPermission` (not in ephemeral-rollups-pinocchio 0.10.x).
-const CLOSE_EPHEMERAL_PERMISSION_DISCRIMINATOR: u64 = 8;
+const CREATE_GROUP_RECEIPT_PERMISSION_IX_DATA_LEN: usize = 8 + 1 + 33;
 
 /// Accounts for the ephemeral ACL permission that keeps a `GroupReceipt` readable
 /// only by its source while settlement signatures accumulate in it.
@@ -189,35 +185,22 @@ fn create_group_receipt_permission(
         return Ok(());
     }
 
-    // [disc u64][is_private u8][member: flags u8 + pubkey 32]
-    let mut data = [0u8; 42];
-    data[..8].copy_from_slice(&CREATE_EPHEMERAL_PERMISSION_DISCRIMINATOR.to_le_bytes());
-    data[8] = 1; // is_private
     let member = source_member(accounts.source.address());
-    data[9] = member.flags.as_u8();
-    data[10..42].copy_from_slice(member.pubkey.as_ref());
+    let members = [member];
 
-    invoke_signed_with_bounds::<5>(
-        &InstructionView {
-            program_id: &PERMISSION_PROGRAM_ID,
-            accounts: &[
-                InstructionAccount::writable_signer(accounts.queue_info.address()),
-                InstructionAccount::readonly_signer(accounts.group_receipt_info.address()),
-                InstructionAccount::writable(permission.permission_info.address()),
-                InstructionAccount::writable(accounts.magic_vault.address()),
-                InstructionAccount::readonly(accounts.magic_program.address()),
-            ],
-            data: &data,
+    CreateEphemeralPermission {
+        permissioned_account: accounts.group_receipt_info,
+        permission: permission.permission_info,
+        payer: accounts.queue_info,
+        vault: accounts.magic_vault,
+        magic_program: accounts.magic_program,
+        permission_program: permission.permission_program,
+        args: EphemeralMembersArgs {
+            is_private: true,
+            members: &members,
         },
-        &[
-            accounts.queue_info,
-            accounts.group_receipt_info,
-            permission.permission_info,
-            accounts.magic_vault,
-            accounts.magic_program,
-        ],
-        signers,
-    )
+    }
+    .invoke_signed::<CREATE_GROUP_RECEIPT_PERMISSION_IX_DATA_LEN>(signers)
 }
 
 /// Closes the group receipt's ephemeral ACL permission, refunding rent to the
@@ -240,29 +223,17 @@ fn close_group_receipt_permission(
         return Ok(());
     }
 
-    invoke_signed_with_bounds::<6>(
-        &InstructionView {
-            program_id: &PERMISSION_PROGRAM_ID,
-            accounts: &[
-                InstructionAccount::writable_signer(accounts.queue_info.address()),
-                InstructionAccount::readonly(accounts.queue_info.address()),
-                InstructionAccount::readonly_signer(accounts.group_receipt_info.address()),
-                InstructionAccount::writable(permission.permission_info.address()),
-                InstructionAccount::writable(accounts.magic_vault.address()),
-                InstructionAccount::readonly(accounts.magic_program.address()),
-            ],
-            data: &CLOSE_EPHEMERAL_PERMISSION_DISCRIMINATOR.to_le_bytes(),
-        },
-        &[
-            accounts.queue_info,
-            accounts.queue_info,
-            accounts.group_receipt_info,
-            permission.permission_info,
-            accounts.magic_vault,
-            accounts.magic_program,
-        ],
-        signers,
-    )
+    CloseEphemeralPermission {
+        permissioned_account: accounts.group_receipt_info,
+        permission: permission.permission_info,
+        payer: accounts.queue_info,
+        authority: accounts.queue_info,
+        vault: accounts.magic_vault,
+        magic_program: accounts.magic_program,
+        permission_program: permission.permission_program,
+        authority_is_signer: false,
+    }
+    .invoke_signed(signers)
 }
 
 /// Read-only membership for the source: transaction logs, balances, message,
