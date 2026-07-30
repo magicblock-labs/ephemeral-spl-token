@@ -87,9 +87,9 @@ fn queue_account_data(mint: Pubkey, validator: Pubkey, bump: u8) -> Vec<u8> {
 }
 
 /// Build a pre-initialised group receipt buffer.
-fn receipt_account_data(group_id: u32, splits: u32, bump: u8) -> Vec<u8> {
+fn receipt_account_data(group_id: u32, splits: u32, receipt_bump: u8) -> Vec<u8> {
     let mut data = vec![0u8; GroupReceipt::required_size(splits as usize)];
-    let header = GroupReceiptHeader::new(group_id, bump, splits);
+    let header = GroupReceiptHeader::new(group_id, receipt_bump, splits);
     data[..GroupReceiptHeader::SIZE].copy_from_slice(bytemuck::bytes_of(&header));
     data
 }
@@ -97,8 +97,8 @@ fn receipt_account_data(group_id: u32, splits: u32, bump: u8) -> Vec<u8> {
 /// Common fixture: a ProgramTest context with queue and receipt accounts
 /// pre-populated. Returns (context, validator keypair, mint, queue, receipt, vault, vault_token, source).
 async fn setup_context(
-    receipt_data: Vec<u8>,
     group_id: u32,
+    splits: u32,
 ) -> (
     solana_program_test::ProgramTestContext,
     Keypair,
@@ -113,7 +113,8 @@ async fn setup_context(
     let mint = Keypair::new().pubkey();
     let source = Keypair::new().pubkey();
     let (queue, queue_bump) = derive_queue(mint, validator.pubkey());
-    let (receipt, _) = utils::derive_group_receipt(queue, source, group_id);
+    let (receipt, receipt_bump) = utils::derive_group_receipt(queue, source, group_id);
+    let receipt_data = receipt_account_data(group_id, splits, receipt_bump);
     let vault = Keypair::new().pubkey();
     let vault_token = utils::derive_associated_token_address(vault, mint);
 
@@ -296,9 +297,7 @@ async fn execute_callback_with_pre_initialized_receipt_no_magic_cpi() {
 
     // Pre-create receipt as if magic program already created it and
     // process_initialize_group_receipt ran.
-    let receipt_data = receipt_account_data(group_id, splits, 0);
-    let (ctx, validator, mint, queue, receipt, vault, vault_token, source) =
-        setup_context(receipt_data, group_id).await;
+    let (ctx, validator, mint, queue, receipt, vault, vault_token, source) = setup_context(group_id, splits).await;
 
     // Simulate deposit_and_queue_transfer having already run (receipt is owned
     // by PROGRAM with splits set). Now shoot the callback directly.
@@ -353,9 +352,7 @@ async fn execute_callback_closes_receipt_when_last_transfer_with_pre_initialized
     let group_id: u32 = 1;
     let splits: u32 = 1;
 
-    let receipt_data = receipt_account_data(group_id, splits, 0);
-    let (ctx, validator, mint, queue, receipt, vault, vault_token, source) =
-        setup_context(receipt_data, group_id).await;
+    let (ctx, validator, mint, queue, receipt, vault, vault_token, source) = setup_context(group_id, splits).await;
 
     let ix = callback_executor_ix(
         validator.pubkey(),
@@ -397,25 +394,8 @@ async fn execute_callback_closes_receipt_permission_when_last_transfer() {
     let group_id: u32 = 1;
     let splits: u32 = 1;
 
-    let receipt_data = receipt_account_data(group_id, splits, 0);
-    let (mut ctx, validator, mint, queue, receipt, vault, vault_token, source) =
-        setup_context(receipt_data, group_id).await;
+    let (mut ctx, validator, mint, queue, receipt, vault, vault_token, source) = setup_context(group_id, splits).await;
     acl_mock::clear_all_captured();
-
-    // The permission close signs with the receipt PDA seeds, so the header
-    // must carry the real bump (the shared fixture stores 0).
-    let (_, receipt_bump) = utils::derive_group_receipt(queue, source, group_id);
-    ctx.set_account(
-        &receipt,
-        &SolanaAccount {
-            lamports: Rent::default().minimum_balance(GroupReceipt::required_size(splits as usize)),
-            data: receipt_account_data(group_id, splits, receipt_bump),
-            owner: PROGRAM,
-            executable: false,
-            rent_epoch: 0,
-        }
-        .into(),
-    );
 
     let permission = utils::derive_group_receipt_permission(receipt);
     utils::pre_create_receipt_permission(&mut ctx, permission);
@@ -466,9 +446,7 @@ async fn execute_callback_skips_permission_close_for_legacy_receipt() {
     let group_id: u32 = 1;
     let splits: u32 = 1;
 
-    let receipt_data = receipt_account_data(group_id, splits, 0);
-    let (ctx, validator, mint, queue, receipt, vault, vault_token, source) =
-        setup_context(receipt_data, group_id).await;
+    let (ctx, validator, mint, queue, receipt, vault, vault_token, source) = setup_context(group_id, splits).await;
     acl_mock::clear_all_captured();
     // Permission account intentionally not created (data_len == 0).
     let permission = utils::derive_group_receipt_permission(receipt);
