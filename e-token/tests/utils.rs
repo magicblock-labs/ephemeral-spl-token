@@ -3,7 +3,7 @@
 #![allow(dead_code)]
 
 use ephemeral_rollups_pinocchio::{
-    acl::permission_pda_from_permissioned_account,
+    acl::{permission_pda_from_permissioned_account, EphemeralPermission},
     pda::{
         delegate_buffer_pda_from_delegated_account_and_owner_program, delegation_metadata_pda_from_delegated_account,
         delegation_record_pda_from_delegated_account,
@@ -136,6 +136,28 @@ pub fn permission_program_id() -> Pubkey {
         .try_into()
         .expect("PERMISSION_PROGRAM_ID must be 32 bytes");
     Pubkey::new_from_array(bytes)
+}
+
+/// Derives the ACL permission PDA guarding the given group receipt.
+pub fn derive_group_receipt_permission(group_receipt: Pubkey) -> Pubkey {
+    permission_pda_from_permissioned_account(&group_receipt)
+}
+
+/// Injects a non-empty ACL-owned receipt permission account into the test context.
+pub fn pre_create_receipt_permission(context: &mut ProgramTestContext, permission: Pubkey) {
+    let data = vec![1u8; EphemeralPermission::size_of(0)];
+    let rent = Rent::default();
+    context.set_account(
+        &permission,
+        &Account {
+            lamports: rent.minimum_balance(data.len()),
+            data,
+            owner: permission_program_id(),
+            executable: false,
+            rent_epoch: 0,
+        }
+        .into(),
+    );
 }
 
 /// Load a BPF `.so` from `tests/fixtures` (or `BPF_OUT_DIR`) as an executable account.

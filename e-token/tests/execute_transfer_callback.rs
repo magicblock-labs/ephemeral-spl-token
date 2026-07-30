@@ -240,15 +240,6 @@ fn callback_executor_ix_from(validator: Pubkey, callback_ix: Instruction) -> Ins
     )
 }
 
-/// Derives the ACL permission PDA guarding the given group receipt.
-fn derive_group_receipt_permission(group_receipt: Pubkey) -> Pubkey {
-    Pubkey::find_program_address(
-        &[b"permission:", group_receipt.as_ref()],
-        &utils::permission_program_id(),
-    )
-    .0
-}
-
 /// Extends a 13-account callback instruction to the 15-account shape that also
 /// closes the group receipt's ACL permission.
 fn append_permission_accounts(mut ix: Instruction, permission: Pubkey) -> Instruction {
@@ -398,23 +389,6 @@ async fn execute_callback_closes_receipt_when_last_transfer_with_pre_initialized
 
 // ── group receipt permission ──────────────────────────────────────────────────
 
-/// Injects a non-empty ACL-owned permission account for the receipt, as
-/// created by the 14-account deposit shape.
-fn pre_create_receipt_permission(ctx: &mut solana_program_test::ProgramTestContext, permission: Pubkey) {
-    let data = vec![1u8; 71];
-    ctx.set_account(
-        &permission,
-        &SolanaAccount {
-            lamports: Rent::default().minimum_balance(data.len()),
-            data,
-            owner: utils::permission_program_id(),
-            executable: false,
-            rent_epoch: 0,
-        }
-        .into(),
-    );
-}
-
 /// 15-account shape, last transfer: the receipt's ACL permission is closed
 /// (rent refunded to the queue) alongside the receipt itself.
 #[tokio::test]
@@ -443,8 +417,8 @@ async fn execute_callback_closes_receipt_permission_when_last_transfer() {
         .into(),
     );
 
-    let permission = derive_group_receipt_permission(receipt);
-    pre_create_receipt_permission(&mut ctx, permission);
+    let permission = utils::derive_group_receipt_permission(receipt);
+    utils::pre_create_receipt_permission(&mut ctx, permission);
 
     let inner = append_permission_accounts(
         callback_ix(
@@ -497,7 +471,7 @@ async fn execute_callback_skips_permission_close_for_legacy_receipt() {
         setup_context(receipt_data, group_id).await;
     acl_mock::clear_all_captured();
     // Permission account intentionally not created (data_len == 0).
-    let permission = derive_group_receipt_permission(receipt);
+    let permission = utils::derive_group_receipt_permission(receipt);
 
     let inner = append_permission_accounts(
         callback_ix(

@@ -233,15 +233,6 @@ fn build_deposit_and_queue_ix_for_destination(
     }
 }
 
-/// Derives the ACL permission PDA guarding the given group receipt.
-fn derive_group_receipt_permission(group_receipt: Pubkey) -> Pubkey {
-    Pubkey::find_program_address(
-        &[b"permission:", group_receipt.as_ref()],
-        &utils::permission_program_id(),
-    )
-    .0
-}
-
 /// Extends a 12-account deposit instruction to the 14-account shape that also
 /// creates the group receipt's ACL permission.
 fn with_receipt_permission(mut ix: Instruction, permission: Pubkey) -> Instruction {
@@ -1140,23 +1131,6 @@ async fn deposit_and_queue_transfer_can_split_stealth_pool_across_keys() {
 
 // ── group receipt permission ──────────────────────────────────────────────────
 
-/// Injects a non-empty ACL-owned permission account, as left behind by a
-/// missed close (ephemeral accounts are existence-checked by data length).
-fn pre_create_receipt_permission(context: &mut ProgramTestContext, permission: Pubkey) {
-    let data = vec![1u8; 71];
-    context.set_account(
-        &permission,
-        &solana_account::Account {
-            lamports: solana_program::rent::Rent::default().minimum_balance(data.len()),
-            data,
-            owner: utils::permission_program_id(),
-            executable: false,
-            rent_epoch: 0,
-        }
-        .into(),
-    );
-}
-
 /// 14-account shape: the deposit creates a private ephemeral ACL permission on
 /// the group receipt, sponsored by the queue, with the source as sole member.
 #[tokio::test]
@@ -1166,7 +1140,7 @@ async fn deposit_and_queue_transfer_creates_receipt_permission() {
     let group_id: u32 = 1;
     let split: u32 = 2;
     let group_receipt = pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, group_id, split);
-    let permission = derive_group_receipt_permission(group_receipt);
+    let permission = utils::derive_group_receipt_permission(group_receipt);
 
     let ix = with_receipt_permission(
         build_deposit_and_queue_ix(&fixture, 10, 0, 0, split, group_id, group_receipt),
@@ -1204,8 +1178,8 @@ async fn deposit_and_queue_transfer_skips_existing_receipt_permission() {
     let group_id: u32 = 1;
     let split: u32 = 2;
     let group_receipt = pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, group_id, split);
-    let permission = derive_group_receipt_permission(group_receipt);
-    pre_create_receipt_permission(&mut fixture.context, permission);
+    let permission = utils::derive_group_receipt_permission(group_receipt);
+    utils::pre_create_receipt_permission(&mut fixture.context, permission);
 
     let ix = with_receipt_permission(
         build_deposit_and_queue_ix(&fixture, 10, 0, 0, split, group_id, group_receipt),
@@ -1229,7 +1203,7 @@ async fn deposit_and_queue_transfer_rejects_wrong_receipt_permission() {
     let split: u32 = 2;
     let group_receipt = pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, group_id, split);
     // Valid ACL PDA, but for the wrong permissioned account.
-    let wrong_permission = derive_group_receipt_permission(fixture.queue);
+    let wrong_permission = utils::derive_group_receipt_permission(fixture.queue);
 
     let ix = with_receipt_permission(
         build_deposit_and_queue_ix(&fixture, 10, 0, 0, split, group_id, group_receipt),
@@ -1257,7 +1231,7 @@ async fn deposit_and_queue_transfer_rejects_partial_permission_pair() {
     let group_id: u32 = 1;
     let split: u32 = 2;
     let group_receipt = pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, group_id, split);
-    let permission = derive_group_receipt_permission(group_receipt);
+    let permission = utils::derive_group_receipt_permission(group_receipt);
 
     let mut ix = build_deposit_and_queue_ix(&fixture, 10, 0, 0, split, group_id, group_receipt);
     ix.accounts.push(AccountMeta::new(permission, false)); // 12: permission PDA without the program
