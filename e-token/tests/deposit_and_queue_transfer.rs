@@ -72,7 +72,9 @@ async fn setup_fixture_with_acl_mock(items: Option<u32>) -> Fixture {
 
 async fn setup_fixture_inner(items: Option<u32>, acl_mock: bool) -> Fixture {
     common::magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
-    common::acl_mock::clear_all_captured();
+    if acl_mock {
+        common::acl_mock::clear_all_captured();
+    }
 
     let mut context = utils::start_program_test_with_acl_and(PROGRAM, !acl_mock, |pt| {
         pt.prefer_bpf(false);

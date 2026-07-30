@@ -176,7 +176,6 @@ async fn setup_context(
     let ctx = pt.start_with_context().await;
 
     magic_mock::clear_all_captured(MAGIC_PROGRAM_ID);
-    acl_mock::clear_all_captured();
     let _ = take_execute_callbacks();
 
     (ctx, validator, mint, queue, receipt, vault, vault_token, source)
@@ -427,6 +426,7 @@ async fn execute_callback_closes_receipt_permission_when_last_transfer() {
     let receipt_data = receipt_account_data(group_id, splits, 0);
     let (mut ctx, validator, mint, queue, receipt, vault, vault_token, source) =
         setup_context(receipt_data, group_id).await;
+    acl_mock::clear_all_captured();
 
     // The permission close signs with the receipt PDA seeds, so the header
     // must carry the real bump (the shared fixture stores 0).
@@ -495,6 +495,7 @@ async fn execute_callback_skips_permission_close_for_legacy_receipt() {
     let receipt_data = receipt_account_data(group_id, splits, 0);
     let (ctx, validator, mint, queue, receipt, vault, vault_token, source) =
         setup_context(receipt_data, group_id).await;
+    acl_mock::clear_all_captured();
     // Permission account intentionally not created (data_len == 0).
     let permission = derive_group_receipt_permission(receipt);
 
