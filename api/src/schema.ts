@@ -102,7 +102,7 @@ export const clusterSchema = z
   .openapi({
     example: "mainnet",
     description:
-      "Optional. Use `mainnet` for BASE_RPC_URL and EPHEMERAL_RPC_URL, `devnet` for BASE_DEVNET_RPC_URL and EPHEMERAL_DEVNET_RPC_URL, `mainnet-private` for BASE_RPC_URL and EPHEMERAL_TEE_RPC_URL, `devnet-private` for BASE_DEVNET_RPC_URL and EPHEMERAL_DEVNET_TEE_RPC_URL, or provide a custom http(s) RPC URL to override the base RPC while keeping the configured ephemeral RPC.",
+      "Optional, defaults to `mainnet`. `mainnet` and `devnet` route to the public ephemeral RPC for that network; `mainnet-private` and `devnet-private` route to the TEE-backed Private Ephemeral Rollup and are required for auth and bearer-token-gated reads. A custom http(s) RPC URL overrides only the base RPC while keeping the configured ephemeral RPC.",
   });
 
 export const visibilitySchema = z

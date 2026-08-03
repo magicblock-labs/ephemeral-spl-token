@@ -318,7 +318,7 @@ export const challengeRoute = createRoute({
   path: "/v1/spl/challenge",
   method: "get",
   tags,
-  description: "Generate a challenge string for the wallet to sign.",
+  description: "Generate a challenge string for the wallet to sign. Requires `cluster=mainnet-private` or `cluster=devnet-private`; the auth service runs on the TEE validators only.",
   request: {
     query: challengeRequestSchema,
   },
@@ -333,7 +333,7 @@ export const loginRoute = createRoute({
   path: "/v1/spl/login",
   method: "post",
   tags,
-  description: "Login the wallet to the Private Ephemeral Rollup.",
+  description: "Login the wallet to the Private Ephemeral Rollup. Exchanges the signed challenge from `/v1/spl/challenge` for a bearer token. Use the same `-private` cluster as the challenge request.",
   request: {
     body: jsonContentRequired(loginRequestSchema, "Login request"),
   },

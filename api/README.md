@@ -24,6 +24,8 @@ The API exposes:
 - `GET /v1/spl/stealth-pool`
 - `GET /v1/spl/balance`
 - `GET /v1/spl/private-balance`
+- `GET /v1/spl/challenge`
+- `POST /v1/spl/login`
 - `GET /v1/swap/quote`
 - `POST /v1/swap/swap`
 - `POST /v1/transaction/send`
@@ -480,6 +482,7 @@ http://127.0.0.1:6274
   - use `mainnet-private` to use `BASE_RPC_URL` and `EPHEMERAL_TEE_RPC_URL`
   - use `devnet-private` to use `BASE_DEVNET_RPC_URL` and `EPHEMERAL_DEVNET_TEE_RPC_URL`
   - use any other valid http(s) URL to override only the base RPC and keep the configured ephemeral RPC
+- auth (`/v1/spl/challenge`, `/v1/spl/login`) and bearer-token-gated reads require a `-private` cluster; keep the whole flow on the same cluster because tokens are scoped per validator
 - amount encoding depends on the route:
   - deposit, withdraw, and transfer: integer JSON values with minimum `1`, for example `1` or `1000000`
 - do not send UI-decimal token strings like `"1.5"`
@@ -797,6 +800,51 @@ Note:
 
 - returns `0` when the eATA delegation record is missing or delegated to another validator
 - the response still reports the projected owner ATA address, not the delegation PDA
+
+### `GET /v1/spl/challenge`
+
+Returns a challenge string for the wallet to sign as the first step of the Private Ephemeral Rollup login flow. Requires `cluster=mainnet-private` or `cluster=devnet-private`; the auth service runs on the TEE validators only.
+
+Example:
+
+```bash
+curl "http://127.0.0.1:8787/v1/spl/challenge?pubkey=3rXKwQ1kpjBd5tdcco32qsvqUh1BnZjcYnS5kYrP7AYE&cluster=mainnet-private"
+```
+
+Response:
+
+```json
+{
+  "challenge": "Login to Query Filtering Service\nTimestamp: 1783914173\nUser: 3rXKwQ1kpjBd5tdcco32qsvqUh1BnZjcYnS5kYrP7AYE"
+}
+```
+
+### `POST /v1/spl/login`
+
+Verifies the wallet's signature over the challenge and returns a bearer token for auth-gated routes such as `/v1/spl/private-balance` and ephemeral-side transfers. Use the same `-private` cluster as the challenge request; tokens are scoped to the validator that issued them.
+
+Example:
+
+```bash
+curl -X POST http://127.0.0.1:8787/v1/spl/login \
+  -H 'content-type: application/json' \
+  -d '{
+    "cluster": "mainnet-private",
+    "pubkey": "3rXKwQ1kpjBd5tdcco32qsvqUh1BnZjcYnS5kYrP7AYE",
+    "challenge": "Login to Query Filtering Service\nTimestamp: 1783914173\nUser: 3rXKwQ1kpjBd5tdcco32qsvqUh1BnZjcYnS5kYrP7AYE",
+    "signature": "<base58 signature of the challenge>"
+  }'
+```
+
+Response:
+
+```json
+{
+  "token": "<bearer token>"
+}
+```
+
+Pass the token as `Authorization: Bearer <token>` on subsequent requests, keeping `cluster` set to the same `-private` value.
 
 ## Error Handling
 
