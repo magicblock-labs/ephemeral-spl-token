@@ -60,12 +60,29 @@ fn read_item_unaligned(data: &[u8], index: usize) -> QueuedTransfer {
 }
 
 async fn setup_fixture(items: Option<u32>) -> Fixture {
-    common::magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
+    setup_fixture_inner(items, false).await
+}
 
-    let mut context = utils::start_program_test_with(PROGRAM, |pt| {
+/// Variant that replaces the `acl.so` fixture with the capture-style ACL mock,
+/// needed by tests exercising the group receipt permission (the fixture binary
+/// predates ephemeral permissions).
+async fn setup_fixture_with_acl_mock(items: Option<u32>) -> Fixture {
+    setup_fixture_inner(items, true).await
+}
+
+async fn setup_fixture_inner(items: Option<u32>, acl_mock: bool) -> Fixture {
+    common::magic_mock::take_captured_ephemeral_creates(MAGIC_PROGRAM);
+    if acl_mock {
+        common::acl_mock::clear_all_captured();
+    }
+
+    let mut context = utils::start_program_test_with_acl_and(PROGRAM, !acl_mock, |pt| {
         pt.prefer_bpf(false);
         pt.add_program("magic_mock", MAGIC_PROGRAM, processor!(common::magic_mock::process));
         pt.prefer_bpf(true);
+        if acl_mock {
+            common::acl_mock::add_mock(pt);
+        }
     })
     .await;
 
@@ -214,6 +231,15 @@ fn build_deposit_and_queue_ix_for_destination(
         ],
         data,
     }
+}
+
+/// Extends a 12-account deposit instruction to the 14-account shape that also
+/// creates the group receipt's ACL permission.
+fn with_receipt_permission(mut ix: Instruction, permission: Pubkey) -> Instruction {
+    ix.accounts.push(AccountMeta::new(permission, false)); // 12: group_receipt_permission
+    ix.accounts
+        .push(AccountMeta::new_readonly(utils::permission_program_id(), false)); // 13: permission_program
+    ix
 }
 
 fn build_update_stealth_pool_ix(
@@ -1101,4 +1127,121 @@ async fn deposit_and_queue_transfer_can_split_stealth_pool_across_keys() {
     actual.sort_unstable();
     expected.sort_unstable();
     assert_eq!(actual, expected);
+}
+
+// ── group receipt permission ──────────────────────────────────────────────────
+
+/// 14-account shape: the deposit creates a private ephemeral ACL permission on
+/// the group receipt, sponsored by the queue, with the source as sole member.
+#[tokio::test]
+#[serial]
+async fn deposit_and_queue_transfer_creates_receipt_permission() {
+    let mut fixture = setup_fixture_with_acl_mock(None).await;
+    let group_id: u32 = 1;
+    let split: u32 = 2;
+    let group_receipt = pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, group_id, split);
+    let permission = utils::derive_group_receipt_permission(group_receipt);
+
+    let ix = with_receipt_permission(
+        build_deposit_and_queue_ix(&fixture, 10, 0, 0, split, group_id, group_receipt),
+        permission,
+    );
+    let blockhash = fixture.context.banks_client.get_latest_blockhash().await.unwrap();
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&fixture.payer), &[&fixture.payer_kp], blockhash);
+    fixture.context.banks_client.process_transaction(tx).await.unwrap();
+
+    let creates = common::acl_mock::take_captured_ephemeral_permission_creates();
+    assert_eq!(creates.len(), 1, "expected exactly one CreateEphemeralPermission CPI");
+    let create = &creates[0];
+    assert_eq!(create.payer, fixture.queue, "queue must sponsor the permission");
+    assert_eq!(create.permissioned_account, group_receipt);
+    assert_eq!(create.permission, permission);
+    assert!(create.is_private);
+    assert_eq!(
+        create.members,
+        vec![common::acl_mock::CapturedMember {
+            // TX_LOGS | TX_BALANCES | TX_MESSAGE | ACCOUNT_SIGNATURES, no AUTHORITY
+            flags: 0b1_1110,
+            pubkey: fixture.payer,
+        }],
+        "source must be the sole read-only member"
+    );
+}
+
+/// A pre-existing permission (stale from a missed close) is reused, not
+/// recreated: its PDA derives from the receipt address, which bakes in the
+/// same source.
+#[tokio::test]
+#[serial]
+async fn deposit_and_queue_transfer_skips_existing_receipt_permission() {
+    let mut fixture = setup_fixture_with_acl_mock(None).await;
+    let group_id: u32 = 1;
+    let split: u32 = 2;
+    let group_receipt = pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, group_id, split);
+    let permission = utils::derive_group_receipt_permission(group_receipt);
+    utils::pre_create_receipt_permission(&mut fixture.context, permission);
+
+    let ix = with_receipt_permission(
+        build_deposit_and_queue_ix(&fixture, 10, 0, 0, split, group_id, group_receipt),
+        permission,
+    );
+    let blockhash = fixture.context.banks_client.get_latest_blockhash().await.unwrap();
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&fixture.payer), &[&fixture.payer_kp], blockhash);
+    fixture.context.banks_client.process_transaction(tx).await.unwrap();
+
+    let creates = common::acl_mock::take_captured_ephemeral_permission_creates();
+    assert!(creates.is_empty(), "expected no CreateEphemeralPermission CPI");
+}
+
+/// A permission account that does not match ["permission:", group_receipt] is
+/// rejected before any CPI.
+#[tokio::test]
+#[serial]
+async fn deposit_and_queue_transfer_rejects_wrong_receipt_permission() {
+    let mut fixture = setup_fixture_with_acl_mock(None).await;
+    let group_id: u32 = 1;
+    let split: u32 = 2;
+    let group_receipt = pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, group_id, split);
+    // Valid ACL PDA, but for the wrong permissioned account.
+    let wrong_permission = utils::derive_group_receipt_permission(fixture.queue);
+
+    let ix = with_receipt_permission(
+        build_deposit_and_queue_ix(&fixture, 10, 0, 0, split, group_id, group_receipt),
+        wrong_permission,
+    );
+    let blockhash = fixture.context.banks_client.get_latest_blockhash().await.unwrap();
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&fixture.payer), &[&fixture.payer_kp], blockhash);
+    let err = fixture.context.banks_client.process_transaction(tx).await.unwrap_err();
+
+    assert_eq!(
+        err.unwrap(),
+        TransactionError::InstructionError(0, InstructionError::InvalidSeeds)
+    );
+
+    let creates = common::acl_mock::take_captured_ephemeral_permission_creates();
+    assert!(creates.is_empty(), "expected no CreateEphemeralPermission CPI");
+}
+
+/// A partial permission pair (13 accounts) must fail loudly instead of
+/// silently creating an unprotected receipt.
+#[tokio::test]
+#[serial]
+async fn deposit_and_queue_transfer_rejects_partial_permission_pair() {
+    let mut fixture = setup_fixture_with_acl_mock(None).await;
+    let group_id: u32 = 1;
+    let split: u32 = 2;
+    let group_receipt = pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, group_id, split);
+    let permission = utils::derive_group_receipt_permission(group_receipt);
+
+    let mut ix = build_deposit_and_queue_ix(&fixture, 10, 0, 0, split, group_id, group_receipt);
+    ix.accounts.push(AccountMeta::new(permission, false)); // 12: permission PDA without the program
+
+    let blockhash = fixture.context.banks_client.get_latest_blockhash().await.unwrap();
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&fixture.payer), &[&fixture.payer_kp], blockhash);
+    let err = fixture.context.banks_client.process_transaction(tx).await.unwrap_err();
+
+    assert_eq!(
+        err.unwrap(),
+        TransactionError::InstructionError(0, InstructionError::NotEnoughAccountKeys)
+    );
 }

@@ -3,7 +3,7 @@
 #![allow(dead_code)]
 
 use ephemeral_rollups_pinocchio::{
-    acl::permission_pda_from_permissioned_account,
+    acl::{permission_pda_from_permissioned_account, EphemeralPermission},
     pda::{
         delegate_buffer_pda_from_delegated_account_and_owner_program, delegation_metadata_pda_from_delegated_account,
         delegation_record_pda_from_delegated_account,
@@ -138,6 +138,28 @@ pub fn permission_program_id() -> Pubkey {
     Pubkey::new_from_array(bytes)
 }
 
+/// Derives the ACL permission PDA guarding the given group receipt.
+pub fn derive_group_receipt_permission(group_receipt: Pubkey) -> Pubkey {
+    permission_pda_from_permissioned_account(&group_receipt)
+}
+
+/// Injects a non-empty ACL-owned receipt permission account into the test context.
+pub fn pre_create_receipt_permission(context: &mut ProgramTestContext, permission: Pubkey) {
+    let data = vec![1u8; EphemeralPermission::size_of(0)];
+    let rent = Rent::default();
+    context.set_account(
+        &permission,
+        &Account {
+            lamports: rent.minimum_balance(data.len()),
+            data,
+            owner: permission_program_id(),
+            executable: false,
+            rent_epoch: 0,
+        }
+        .into(),
+    );
+}
+
 /// Load a BPF `.so` from `tests/fixtures` (or `BPF_OUT_DIR`) as an executable account.
 pub fn add_executable_bpf_fixture(pt: &mut ProgramTest, program_address: Pubkey, fixture_path: &str) {
     let data = read_file(fixture_path);
@@ -156,10 +178,19 @@ pub fn add_executable_bpf_fixture(pt: &mut ProgramTest, program_address: Pubkey,
 
 /// Prefer BPF, fund [`fixed_payer_keypair`] at genesis, add the SPL ATA mock, and load `acl.so` / `dlp.so`.
 pub fn configure_standard_program_test(pt: &mut ProgramTest) {
+    configure_standard_program_test_with_acl(pt, true);
+}
+
+/// Same as [`configure_standard_program_test`] with `acl.so` optional, for test
+/// binaries that register a native ACL mock at the same address instead (the
+/// fixture binary predates ephemeral permissions).
+pub fn configure_standard_program_test_with_acl(pt: &mut ProgramTest, include_acl_fixture: bool) {
     pt.prefer_bpf(true);
     fund_fixed_payer_genesis(pt);
     add_associated_token_program(pt);
-    add_executable_bpf_fixture(pt, permission_program_id(), "tests/fixtures/acl.so");
+    if include_acl_fixture {
+        add_executable_bpf_fixture(pt, permission_program_id(), "tests/fixtures/acl.so");
+    }
     add_executable_bpf_fixture(pt, ephemeral_rollups_pinocchio::ID, "tests/fixtures/dlp.so");
 }
 
@@ -176,12 +207,22 @@ pub async fn start_program_test_with<F: FnOnce(&mut ProgramTest)>(
     program_id: Pubkey,
     configure: F,
 ) -> ProgramTestContext {
+    start_program_test_with_acl_and(program_id, true, configure).await
+}
+
+/// Same as [`start_program_test_with`] with `acl.so` optional; pass `false` and
+/// register a native ACL mock in `configure` to test ephemeral permissions.
+pub async fn start_program_test_with_acl_and<F: FnOnce(&mut ProgramTest)>(
+    program_id: Pubkey,
+    include_acl_fixture: bool,
+    configure: F,
+) -> ProgramTestContext {
     // `ProgramTest::new` calls `add_program` before any `prefer_bpf` override; default `prefer_bpf`
     // is false unless BPF_OUT_DIR is set, so the main program would hit "processor not available".
     let mut pt = ProgramTest::default();
     pt.prefer_bpf(true);
     pt.add_program("ephemeral_token_program", program_id, None);
-    configure_standard_program_test(&mut pt);
+    configure_standard_program_test_with_acl(&mut pt, include_acl_fixture);
     configure(&mut pt);
     pt.start_with_context().await
 }
