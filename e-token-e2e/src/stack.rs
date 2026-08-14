@@ -292,20 +292,31 @@ fn terminate(name: &str, child: &mut Child) {
     let pid = child.id();
     let group = format!("-{pid}");
     let signal = |sig: &str| {
-        let _ = Command::new("kill").arg(sig).arg(&group).stderr(Stdio::null()).status();
+        let _ = Command::new("kill")
+            .arg(sig)
+            .arg("--")
+            .arg(&group)
+            .stderr(Stdio::null())
+            .status();
     };
     signal("-INT");
     let deadline = Instant::now() + Duration::from_secs(8);
+    let mut exited = false;
     loop {
         match child.try_wait() {
-            Ok(Some(_)) => break,
+            Ok(Some(_)) => {
+                exited = true;
+                break;
+            }
             Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(100)),
             _ => break,
         }
     }
-    signal("-KILL");
-    let _ = child.kill();
-    let _ = child.wait();
+    if !exited {
+        signal("-KILL");
+        let _ = child.kill();
+        let _ = child.wait();
+    }
 }
 
 /// Spawn a child process into its own process group, logging to `log`.
