@@ -99,6 +99,7 @@ jobs:
   e2e:
     name: "e2e (live validators)"
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     env:
       CARGO_TERM_COLOR: always
       SOLANA_VERSION: 3.1.5
@@ -151,7 +152,17 @@ jobs:
           mb-test-validator --version
 
       - name: Run e2e tests
+        env:
+          KEEP_E2E_LOGS: "1"
         run: make test-e2e
+
+      - name: Upload validator logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-validator-logs
+          path: /tmp/e-token-e2e-*
+          if-no-files-found: ignore
 
       - name: Stop any orphaned validators
         if: always()
