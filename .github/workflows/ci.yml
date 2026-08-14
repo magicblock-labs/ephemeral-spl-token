@@ -98,10 +98,11 @@ jobs:
 
   e2e:
     name: "e2e (live validators)"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       CARGO_TERM_COLOR: always
       SOLANA_VERSION: 3.1.5
+      VALIDATOR_VERSION: 0.13.20
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -142,7 +143,12 @@ jobs:
           node-version: 20
 
       - name: Install the MagicBlock validators
-        run: npm i -g @magicblock-labs/ephemeral-validator
+        run: npm i -g @magicblock-labs/ephemeral-validator@${{ env.VALIDATOR_VERSION }}
+
+      - name: Check the validators run
+        run: |
+          ephemeral-validator --version
+          mb-test-validator --version
 
       - name: Run e2e tests
         run: make test-e2e

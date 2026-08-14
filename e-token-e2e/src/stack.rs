@@ -15,13 +15,19 @@ use std::{
 };
 
 use anyhow::{anyhow, bail, Context, Result};
-use solana_client::rpc_client::RpcClient;
+use solana_client::{pubsub_client::PubsubClient, rpc_client::RpcClient};
 use solana_commitment_config::CommitmentConfig;
 
 /// Default base-layer JSON-RPC port. The validator serves PubSub on `PORT + 1`.
 pub const DEFAULT_BASE_RPC_PORT: u16 = 7101;
 /// Default ephemeral-rollup JSON-RPC port. WS is served on `PORT + 1`.
 pub const DEFAULT_ER_RPC_PORT: u16 = 7799;
+
+/// How long a validator gets to come up. Generous on purpose: a base validator
+/// takes ~15s on an idle laptop, and CI runners are neither idle nor laptops.
+/// A validator that fails outright does not spend this — it exits, and
+/// [`wait_for_rpc`] reports that as soon as it happens.
+const BOOT_TIMEOUT: Duration = Duration::from_secs(90);
 
 /// Which parts of the stack this run owns versus attaches to.
 #[derive(Clone, Copy, Debug)]
@@ -100,11 +106,20 @@ pub fn port_in_use(port: u16) -> bool {
     .is_ok()
 }
 
+/// A validator this run spawned: the process, and the file its output went to.
+/// Both are needed to report a startup failure — a validator that dies during
+/// boot says why in its log and nowhere else.
+struct Spawned {
+    name: &'static str,
+    child: Child,
+    log: PathBuf,
+}
+
 /// Owns spawned child processes and tears them down on drop — including on
 /// panic, so a failing assertion never leaks a validator. Attached validators
 /// are not owned and are therefore left running.
 pub struct Stack {
-    children: Vec<(String, Child)>,
+    children: Vec<Spawned>,
     tmp: TempDir,
     pub config: StackConfig,
 }
@@ -173,13 +188,29 @@ impl Stack {
                 args.push(program_id.clone());
                 args.push(so.to_string_lossy().into_owned());
             }
-            let log = fs::File::create(self.tmp.path().join("base.log"))?;
+            let path = self.tmp.path().join("base.log");
+            let log = fs::File::create(&path)?;
             let child = spawn("mb-test-validator", &args, log, &[])?;
-            self.children.push(("mb-test-validator".into(), child));
+            self.children.push(Spawned {
+                name: "mb-test-validator",
+                child,
+                log: path,
+            });
         }
 
         let rpc = self.base_rpc();
-        wait_for_rpc(&rpc, "base", Duration::from_secs(30))
+        let owned = if self.config.spawn_base {
+            self.children.last_mut()
+        } else {
+            None
+        };
+        wait_for_rpc(&rpc, "base", BOOT_TIMEOUT, owned)?;
+
+        // The rollup opens a slot subscription on the base as part of its own
+        // boot and *exits* when it cannot ("All pubsub clients failed to
+        // connect"), so JSON-RPC answering is not on its own enough to start
+        // one against. Subscribe first, exactly as it will.
+        wait_for_pubsub(&self.config.base_ws_url(), BOOT_TIMEOUT)
     }
 
     fn start_er(&mut self) -> Result<()> {
@@ -215,17 +246,27 @@ impl Stack {
                 "--storage".into(),
                 storage.to_string_lossy().into_owned(),
             ];
-            let log = fs::File::create(self.tmp.path().join("er.log"))?;
+            let path = self.tmp.path().join("er.log");
+            let log = fs::File::create(&path)?;
             // `warn` keeps a passing run quiet; set E2E_ER_LOG=info (with
             // KEEP_E2E_LOGS=1) when a post-action or intent bundle misbehaves
             // and you need to see what the rollup did with it.
             let er_log = std::env::var("E2E_ER_LOG").unwrap_or_else(|_| "warn".to_string());
             let child = spawn("ephemeral-validator", &args, log, &[("RUST_LOG", &er_log)])?;
-            self.children.push(("ephemeral-validator".into(), child));
+            self.children.push(Spawned {
+                name: "ephemeral-validator",
+                child,
+                log: path,
+            });
         }
 
         let rpc = self.er_rpc();
-        wait_for_rpc(&rpc, "rollup", Duration::from_secs(30))?;
+        let owned = if self.config.spawn_er {
+            self.children.last_mut()
+        } else {
+            None
+        };
+        wait_for_rpc(&rpc, "rollup", BOOT_TIMEOUT, owned)?;
         // Give the rollup's remote-account-provider WS pool a moment to warm up
         // before we make it clone accounts from the base.
         std::thread::sleep(Duration::from_secs(3));
@@ -236,8 +277,8 @@ impl Stack {
 impl Drop for Stack {
     fn drop(&mut self) {
         // Reverse order: rollup first, then base.
-        for (name, child) in self.children.iter_mut().rev() {
-            terminate(name, child);
+        for spawned in self.children.iter_mut().rev() {
+            terminate(spawned.name, &mut spawned.child);
         }
     }
 }
@@ -293,7 +334,12 @@ fn spawn(program: &str, args: &[String], log: fs::File, envs: &[(&str, &str)]) -
 }
 
 /// Block until `rpc` reports a slot, or `timeout` elapses.
-pub fn wait_for_rpc(rpc: &RpcClient, label: &str, timeout: Duration) -> Result<()> {
+///
+/// When the validator is one we spawned, pass it as `owned`: a validator that
+/// fails to boot exits within a second or two, and waiting out the full timeout
+/// on a dead process only to report "connection refused" hides the reason. Its
+/// own log holds that, so a dead child fails immediately, with the log's tail.
+fn wait_for_rpc(rpc: &RpcClient, label: &str, timeout: Duration, mut owned: Option<&mut Spawned>) -> Result<()> {
     let deadline = Instant::now() + timeout;
     let mut last_err = String::new();
     while Instant::now() < deadline {
@@ -305,9 +351,59 @@ pub fn wait_for_rpc(rpc: &RpcClient, label: &str, timeout: Duration) -> Result<(
             Ok(_) => {}
             Err(e) => last_err = e.to_string(),
         }
+        if let Some(spawned) = owned.as_deref_mut() {
+            if let Ok(Some(status)) = spawned.child.try_wait() {
+                bail!(
+                    "{label} exited during startup with {status}\n{}",
+                    log_tail(&spawned.log)
+                );
+            }
+        }
         std::thread::sleep(Duration::from_millis(300));
     }
-    bail!("{label} did not become healthy within {timeout:?}: {last_err}");
+    let log = owned.map(|s| format!("\n{}", log_tail(&s.log))).unwrap_or_default();
+    bail!("{label} did not become healthy within {timeout:?}: {last_err}{log}");
+}
+
+/// Block until `ws_url` accepts a real slot subscription, or `timeout` elapses.
+///
+/// Subscribing rather than probing the port: a bound port only proves the
+/// listener exists, and what the rollup needs is a completed websocket
+/// handshake. This asks for exactly what it will ask for.
+fn wait_for_pubsub(ws_url: &str, timeout: Duration) -> Result<()> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match PubsubClient::slot_subscribe(ws_url) {
+            Ok((mut subscription, _receiver)) => {
+                let _ = subscription.shutdown();
+                return Ok(());
+            }
+            Err(e) if Instant::now() >= deadline => {
+                bail!("base pubsub at {ws_url} refused a subscription for {timeout:?}: {e}")
+            }
+            Err(_) => std::thread::sleep(Duration::from_millis(300)),
+        }
+    }
+}
+
+/// The tail of a validator log, for a startup-failure message.
+fn log_tail(path: &Path) -> String {
+    const LINES: usize = 40;
+    let contents = match fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(e) => return format!("--- {} is unreadable: {e} ---", path.display()),
+    };
+    let mut tail: Vec<&str> = contents.lines().rev().take(LINES).collect();
+    if tail.is_empty() {
+        return format!("--- {} is empty ---", path.display());
+    }
+    tail.reverse();
+    format!(
+        "--- last {} lines of {} ---\n{}",
+        tail.len(),
+        path.display(),
+        tail.join("\n")
+    )
 }
 
 /// A self-deleting temp directory for validator ledgers, storage and logs.
