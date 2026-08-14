@@ -30,9 +30,9 @@
 //! and the program built (`cargo build-sbf`). `make test-e2e` does both and
 //! runs the suite.
 //!
-//! `make test-e2e-full` additionally needs a Hydra cranker already running
-//! against the rollup — nothing here starts one — since it settles a queued
-//! transfer rather than only watching ticks.
+//! Nothing else has to be running: `ephemeral-validator` fires the scheduled
+//! task itself, so the queued transfer settles without an external cranker. See
+//! [`fixture::fund_queue_crank`] for the rollup that does need one.
 //!
 //! # Reusing a running validator
 //!

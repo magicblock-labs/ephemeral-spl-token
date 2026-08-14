@@ -120,24 +120,17 @@ cleans up anything an interrupted run orphaned, and `KEEP_E2E_LOGS=1` (with
 `E2E_ER_LOG=info`) retains the temporary ledgers and validator logs for
 post-mortem.
 
-`make test-e2e-full` runs the full private-transfer flow — one base-layer
+What the suite runs is the full private-transfer flow — one base-layer
 instruction that deposits, delegates a shuttle whose post-action queues the
-transfer on the rollup, and lets the crank settle it back. It is **not** part of
-`make test-e2e` because it needs more of the stack than a validator pair.
+transfer on the rollup, and lets the crank settle it back — asserting on the
+recipient's base-layer balance at the end.
 
-Scheduling a crank does not execute it: Hydra's `hydra-cranker` does, and it
-lives in another repository. Without one, every crank sits due at `executed = 0`
-and the flow stops. Point the suite at a cranker:
-
-```bash
-make test-e2e-full CRANKER_BIN=/path/to/hydra-cranker
-make test-e2e-full HYDRA_REPO=/path/to/hydra    # builds it for you
-make test-e2e-full SKIP_CRANKER=1               # one is already running
-```
-
-When it fails, the output is a stage-by-stage report of the whole flow that
-marks the first thing that genuinely went wrong and distinguishes it from the
-stages merely blocked downstream — see `e-token-e2e/src/flow.rs`.
+The validator pair is all it needs. `ephemeral-validator` executes the scheduled
+task itself, so no external cranker has to be running. A `magicblock-validator`
+rollup instead routes tasks through Hydra, which debits each execution's reward
+from a crank account; the suite tops that account up itself, and is a no-op on a
+rollup that has no crank to top up (see `fund_queue_crank` in
+`e-token-e2e/src/fixture.rs`).
 
 ## Notes
 - The workspace depends on `ephemeral-rollups-pinocchio` and several Solana crates; ensure your local environment matches the versions declared in the workspace `Cargo.toml`.

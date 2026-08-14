@@ -75,7 +75,7 @@ fn with_stack<T>(body: impl FnOnce(&RpcClient, &RpcClient) -> Result<T>) -> T {
 }
 
 #[test]
-#[ignore = "spawns live validators and needs a cranker; run with `make test-e2e-full`"]
+#[ignore = "spawns live validators; run with `make test-e2e`"]
 fn private_transfer_is_queued_cranked_and_settled_end_to_end() {
     with_stack(|base, er| {
         let fx = setup_queue(base, er, DECIMALS)?;
