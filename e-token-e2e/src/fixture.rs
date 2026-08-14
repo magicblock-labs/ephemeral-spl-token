@@ -318,16 +318,15 @@ pub fn ensure_rent_pda_funded(base: &RpcClient, payer: &Keypair) -> Result<u64> 
     Ok(after)
 }
 
-/// An ix-25 instruction plus the receipt it will reuse.
+/// An ix-25 instruction plus the group it will be queued under.
 ///
 /// The group id is not a parameter — the program reads it out of the encrypted
-/// destination — so the only way a caller can pre-create the matching receipt is
-/// to be handed it back from here.
+/// destination — so the only way a caller can see it is to be handed it back
+/// from here. The receipt itself needs no setup: `DepositAndQueueTransfer`
+/// derives its address on the rollup and creates the account there.
 pub struct PrivateTransfer {
     pub ix: Instruction,
     pub group_id: u32,
-    /// Must already exist on the rollup before `ix` is sent.
-    pub group_receipt: Pubkey,
 }
 
 /// Build `DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer`
@@ -384,12 +383,11 @@ pub fn private_queued_transfer_ix(
             .try_into()
             .map_err(|got: Vec<u8>| anyhow!("encrypted destination must be 80 bytes, got {}", got.len()))?;
     // The program takes the group id from the first three bytes of the encrypted
-    // destination, so the caller can only pre-create the right receipt if it
-    // sees the very ciphertext this instruction will carry.
+    // destination, so it is only knowable from the very ciphertext this
+    // instruction will carry.
     let group_id = u32::from(encrypted_destination[0])
         | (u32::from(encrypted_destination[1]) << 8)
         | (u32::from(encrypted_destination[2]) << 16);
-    let group_receipt = derive_group_receipt(&queue, owner, group_id);
 
     // The queue parameters ride along in a second sealed box. Layout matches
     // `pack_private_transfer_suffix` in the SDK; a single split and no client
@@ -435,11 +433,7 @@ pub fn private_queued_transfer_ix(
             .encode()?,
         ),
     };
-    Ok(PrivateTransfer {
-        ix,
-        group_id,
-        group_receipt,
-    })
+    Ok(PrivateTransfer { ix, group_id })
 }
 
 /// A mint plus its transfer queue, set up on the base and delegated to the
