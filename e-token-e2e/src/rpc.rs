@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use anyhow::{anyhow, bail, Context, Result};
 use solana_client::rpc_client::RpcClient;
 use solana_instruction::Instruction;
-use solana_keypair::Keypair;
+use solana_keypair::{Keypair, Signature};
 use solana_message::Message;
 use solana_pubkey::Pubkey;
 use solana_rpc_client_api::config::RpcSendTransactionConfig;
@@ -19,46 +19,39 @@ use solana_transaction::Transaction;
 /// a simulation would wrongly reject accounts it has not cloned yet. The real
 /// outcome is read back by polling the signature.
 pub fn send(rpc: &RpcClient, ixs: &[Instruction], fee_payer: &Pubkey, signers: &[&Keypair]) -> Result<()> {
-    // The rollup clones referenced accounts from the base on first use; right
-    // after startup that can transiently fail before its WS client pool is
-    // warm. Those failures happen at submission, before execution, so retrying
-    // is safe and idempotent.
     let mut last_err = None;
     for attempt in 0..8 {
         if attempt > 0 {
             std::thread::sleep(Duration::from_millis(1500));
         }
-        match try_send(rpc, ixs, fee_payer, signers) {
-            Ok(()) => return Ok(()),
-            Err(e) => {
-                // A genuine on-chain revert will not get better with retries.
-                if format!("{e:#}").contains("reverted") {
-                    return Err(e);
-                }
-                last_err = Some(e);
-            }
+        match submit(rpc, ixs, fee_payer, signers) {
+            // Submission succeeded, so the transaction may execute. Never
+            // re-sign it; only poll this signature.
+            Ok(sig) => return confirm(rpc, &sig),
+            Err(e) => last_err = Some(e),
         }
     }
     Err(last_err.unwrap_or_else(|| anyhow!("send failed")))
 }
 
-fn try_send(rpc: &RpcClient, ixs: &[Instruction], fee_payer: &Pubkey, signers: &[&Keypair]) -> Result<()> {
+fn submit(rpc: &RpcClient, ixs: &[Instruction], fee_payer: &Pubkey, signers: &[&Keypair]) -> Result<Signature> {
     let bh = rpc.get_latest_blockhash().context("latest_blockhash")?;
     let msg = Message::new(ixs, Some(fee_payer));
     let tx = Transaction::new(signers, msg, bh);
-    let sig = rpc
-        .send_transaction_with_config(
-            &tx,
-            RpcSendTransactionConfig {
-                skip_preflight: true,
-                ..Default::default()
-            },
-        )
-        .context("send_transaction")?;
+    rpc.send_transaction_with_config(
+        &tx,
+        RpcSendTransactionConfig {
+            skip_preflight: true,
+            ..Default::default()
+        },
+    )
+    .context("send_transaction")
+}
 
+fn confirm(rpc: &RpcClient, sig: &Signature) -> Result<()> {
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
-        match rpc.get_signature_status(&sig)? {
+        match rpc.get_signature_status(sig)? {
             Some(Ok(())) => return Ok(()),
             // The instruction index and error code are the whole diagnosis;
             // the validator's own log has the program output.
