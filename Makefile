@@ -129,7 +129,7 @@ e2e-er-validator:
 # (`ephemeral-validator` -> `magicblock-validator`, `mb-test-validator` ->
 # `solana-test-validator`), so matching only the wrappers leaves the actual
 # validator holding the port.
-E2E_PROCESS_PATTERN := [m]b-test-validator|[e]phemeral-validator|[m]agicblock-validator|[s]olana-test-validator
+E2E_PROCESS_PATTERN := ([m]b-test-validator|[e]phemeral-validator|[m]agicblock-validator|[s]olana-test-validator).*($(E2E_BASE_RPC_PORT)|$(E2E_ER_RPC_PORT))
 
 e2e-stop:
 	-@pkill -INT -f '$(E2E_PROCESS_PATTERN)' 2>/dev/null || true
