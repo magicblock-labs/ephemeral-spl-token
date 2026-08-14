@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["e-token", "e-token-api", "compare-metrics"]
+members = ["e-token", "e-token-api", "e-token-e2e", "compare-metrics"]
 
 [workspace.package]
 authors = ["MagicBlock Labs <dev@magicblocklabs.xyz>"]
@@ -31,6 +31,7 @@ consolidate-commits = false
 
 [workspace.dependencies]
 ephemeral-rollups-pinocchio = "0.16.2"
+ephemeral-rollups-sdk = { version = "0.16.2", features = ["spl"] }
 wheels = { git = "https://github.com/magicblock-labs/magicblock-wheels.git" }
 
 pinocchio = { version = "0.10.1", features = ["cpi"] }

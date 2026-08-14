@@ -83,6 +83,62 @@ cargo test-sbf --features logging delegate_ephemeral_ata
 
 Tests live under `e-token/tests/` and cover balance accounting, delegation/undelegation, shuttle flows, permissions, the rent PDA and lamports-PDA flows, and transfer-queue automation.
 
+### End-to-end tests (live validators)
+
+`e-token-e2e` runs against the real two-validator stack instead of an in-process
+bank. This is the only place the transfer-queue crank is genuinely exercised.
+The program asks for the crank through the magic program's `ScheduleTask`, and
+the in-process suite can only check that *request* — its magic mock captures the
+call and never executes it. Whether a scheduled task is then actually fired, on
+cadence, forever, is the rollup's half of the contract, and that is the half now
+running on Hydra. Only a live rollup tests it.
+
+Install the validators once, then run the suite:
+
+```bash
+npm i -g @magicblock-labs/ephemeral-validator   # mb-test-validator + ephemeral-validator
+make test-e2e
+```
+
+`make test-e2e` builds the program (with `logging`, so a failing transaction
+reports which check rejected it), starts both validators, runs the tests, and
+stops the validators again.
+
+Starting a base validator dominates the runtime, so for a tight edit/test loop
+leave one running and reuse it:
+
+```bash
+make e2e-base-validator                # terminal 1: base validator, stays up
+make test-e2e SKIP_BASE_VALIDATOR=1    # terminal 2: attaches to it, repeatedly
+```
+
+`SKIP_ER_VALIDATOR=1` (with `make e2e-er-validator`) does the same for the
+rollup, and the two combine. A skipped validator is attached to and left running
+afterwards; a validator that is *not* skipped refuses to start if its port is
+already busy, rather than silently reusing a stale instance. `make e2e-stop`
+cleans up anything an interrupted run orphaned, and `KEEP_E2E_LOGS=1` (with
+`E2E_ER_LOG=info`) retains the temporary ledgers and validator logs for
+post-mortem.
+
+`make test-e2e-full` runs the full private-transfer flow — one base-layer
+instruction that deposits, delegates a shuttle whose post-action queues the
+transfer on the rollup, and lets the crank settle it back. It is **not** part of
+`make test-e2e` because it needs more of the stack than a validator pair.
+
+Scheduling a crank does not execute it: Hydra's `hydra-cranker` does, and it
+lives in another repository. Without one, every crank sits due at `executed = 0`
+and the flow stops. Point the suite at a cranker:
+
+```bash
+make test-e2e-full CRANKER_BIN=/path/to/hydra-cranker
+make test-e2e-full HYDRA_REPO=/path/to/hydra    # builds it for you
+make test-e2e-full SKIP_CRANKER=1               # one is already running
+```
+
+When it fails, the output is a stage-by-stage report of the whole flow that
+marks the first thing that genuinely went wrong and distinguishes it from the
+stages merely blocked downstream — see `e-token-e2e/src/flow.rs`.
+
 ## Notes
 - The workspace depends on `ephemeral-rollups-pinocchio` and several Solana crates; ensure your local environment matches the versions declared in the workspace `Cargo.toml`.
 - The program enables additional logs when compiled with the `logging` feature, which is useful for debugging unit and integration tests.
