@@ -1,5 +1,5 @@
 use ephemeral_spl_api::{
-    require, require_eq_keys, require_n_accounts,
+    require, require_eq_keys, require_n_accounts_with_optionals,
     state::{ephemeral_ata::EphemeralAta, load_initialized},
 };
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
@@ -11,13 +11,14 @@ fn commit_and_undelegate_accounts(
     accounts: &[AccountView],
     magic_context: &AccountView,
     magic_program: &AccountView,
+    magic_fee_vault: Option<&AccountView>,
 ) -> ProgramResult {
     ephemeral_rollups_pinocchio::instruction::commit_and_undelegate_accounts(
         payer,
         accounts,
         magic_context,
         magic_program,
-        None,
+        magic_fee_vault,
         None,
     )
 }
@@ -32,17 +33,22 @@ fn commit_and_undelegate_accounts(
 ///  2: []                  - PDA     : Ephemeral ATA account (PDA derived from [payer, mint]).
 ///  3: [writable]          - Any     : Magic context account.
 ///  4: []                  - Program : Delegation program ID.
+///  5: [writable, optional] - PDA     : Magic fee vault. Required when the
+///                                      eATA owner is itself delegated.
 ///
 /// Instruction Data: None
 ///
 pub fn process_undelegate_ephemeral_ata(accounts: &[AccountView], _instruction_data: &[u8]) -> ProgramResult {
+    let (required, optional) = require_n_accounts_with_optionals!(accounts, 5);
+    require!(optional.len() <= 1, ProgramError::InvalidArgument);
     let [
         payer, // force multi-line
         ata_info,
         ephemeral_ata_info,
         magic_context,
         magic_program,
-    ] = require_n_accounts!(accounts, 5);
+    ] = required;
+    let magic_fee_vault = optional.first();
 
     // Ensure the payer signed the transaction
     require!(payer.is_signer(), ProgramError::MissingRequiredSignature);
@@ -63,5 +69,11 @@ pub fn process_undelegate_ephemeral_ata(accounts: &[AccountView], _instruction_d
     validate_token_account(ata_info, &mint, Some(payer.address()), None)?;
 
     // Commit and undelegate with the user's ATA and the ephemeral ATA as the account set
-    commit_and_undelegate_accounts(payer, core::slice::from_ref(ata_info), magic_context, magic_program)
+    commit_and_undelegate_accounts(
+        payer,
+        core::slice::from_ref(ata_info),
+        magic_context,
+        magic_program,
+        magic_fee_vault,
+    )
 }
