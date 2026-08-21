@@ -1714,6 +1714,29 @@ export async function buildDepositTransaction(env: AppEnv, input: DepositRequest
 }
 
 /**
+ * The ER account of an ATA when it is rent-pending and ER-local. A clone keeps
+ * the base close authority, so a marked base account is indistinguishable from
+ * a real rent-pending one and is excluded.
+ */
+async function getEphemeralRentPendingAta(
+  config: RpcConfig,
+  ata: PublicKey,
+  authToken?: string,
+): Promise<Awaited<ReturnType<Connection["getAccountInfo"]>>> {
+  const accountInfo = await getEphemeralConnection(config, authToken).getAccountInfo(ata, "confirmed");
+  if (!accountInfo || !isRentPendingTokenAccount(accountInfo.data)) {
+    return null;
+  }
+
+  const baseAccountInfo = await getBaseConnection(config).getAccountInfo(ata, "confirmed");
+  if (baseAccountInfo && isRentPendingTokenAccount(baseAccountInfo.data)) {
+    return null;
+  }
+
+  return accountInfo;
+}
+
+/**
  * True when the owner's ephemeral balance lives in a rent-pending ATA (no
  * delegated eATA backs it), so withdrawal must skip the eATA instructions
  * and drain the rent-pending ATA directly.
@@ -1727,8 +1750,7 @@ async function isRentPendingEphemeralSource(
 ): Promise<boolean> {
   try {
     const ata = getAssociatedTokenAddressSync(mint, owner, true, tokenProgram);
-    const accountInfo = await getEphemeralConnection(config, authToken).getAccountInfo(ata, "confirmed");
-    return accountInfo !== null && isRentPendingTokenAccount(accountInfo.data);
+    return (await getEphemeralRentPendingAta(config, ata, authToken)) !== null;
   } catch {
     // The ER may be unreachable or gate the read; fall back to the eATA flow.
     return false;
@@ -2346,16 +2368,12 @@ export async function getPrivateBalance(env: AppEnv, input: BalanceRequest, auth
   try {
     const delegationRecord = await getDelegationRecord(getBaseConnection(config), eata);
     if (delegationRecord.status !== DelegationStatus.Delegated) {
-      // Rent-pending ATAs exist only inside the ER: require the marker on the
-      // ER account and absence on base, so cloned base ATAs never count.
+      // The owner may hold a rent-pending ATA that exists only inside the ER.
       try {
-        const accountInfo = await getEphemeralConnection(config, authToken).getAccountInfo(ata, "confirmed");
-        if (accountInfo && isRentPendingTokenAccount(accountInfo.data)) {
-          const baseAccountInfo = await getBaseConnection(config).getAccountInfo(ata, "confirmed");
-          if (baseAccountInfo === null) {
-            const balance = parseTokenAmount(accountInfo) ?? 0n;
-            return { ...zeroBalanceResponse, balance: balance.toString() };
-          }
+        const accountInfo = await getEphemeralRentPendingAta(config, ata, authToken);
+        if (accountInfo) {
+          const balance = parseTokenAmount(accountInfo) ?? 0n;
+          return { ...zeroBalanceResponse, balance: balance.toString() };
         }
       } catch {
         // The ER may be unreachable or gate the read; keep the zero response.

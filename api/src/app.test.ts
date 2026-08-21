@@ -3029,16 +3029,25 @@ describe("app", () => {
       lastValidBlockHeight: 123,
     });
     vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(
-      async address =>
-        address.equals(ownerAta)
-          ? {
-              data: rentPendingData,
-              executable: false,
-              lamports: 0,
-              owner: TOKEN_PROGRAM_ID,
-              rentEpoch: 0,
-            }
-          : createMintAccountInfo(TOKEN_PROGRAM_ID),
+      async function getAccountInfo(
+        this: Connection & { _rpcEndpoint: string },
+        address,
+      ) {
+        if (!address.equals(ownerAta)) {
+          return createMintAccountInfo(TOKEN_PROGRAM_ID);
+        }
+        // The rent-pending ATA lives only inside the ER.
+        if (!(this as Connection & { _rpcEndpoint: string })._rpcEndpoint.includes("ephemeral")) {
+          return null;
+        }
+        return {
+          data: rentPendingData,
+          executable: false,
+          lamports: 0,
+          owner: TOKEN_PROGRAM_ID,
+          rentEpoch: 0,
+        };
+      },
     );
     vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
       createIdentityResponse(resolvedValidator),
@@ -6063,6 +6072,55 @@ describe("app", () => {
 
     expect(json.location).toBe("ephemeral");
     expect(json.balance).toBe("0");
+  });
+
+  it("keeps reporting a rent-pending balance after a plain base ATA appears", async () => {
+    const mint = DEVNET_USDC_MINT;
+    const balanceEnv = {
+      ...env,
+      EPHEMERAL_RPC_URL: "https://ephemeral.rent-pending-with-base.rpc.test",
+    };
+    const delegationRecord = deriveEataDelegationRecord(owner, mint);
+    const ata = deriveAssociatedTokenAddress(mint, owner);
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(
+      async function getAccountInfo(
+        this: Connection & { _rpcEndpoint: string },
+        address,
+      ) {
+        const endpoint = (this as Connection & { _rpcEndpoint: string })
+          ._rpcEndpoint;
+        if (endpoint.includes("ephemeral")) {
+          expect(address.toBase58()).toBe(ata);
+          return createRentPendingAccountInfo(7n);
+        }
+        expect(endpoint).toBe(balanceEnv.BASE_RPC_URL);
+        if (address.toBase58() === mint) {
+          return createMintAccountInfo(TOKEN_PROGRAM_ID);
+        }
+        // A plain base ATA created later must not hide the ER balance.
+        if (address.toBase58() === ata) {
+          return createAccountInfo(3n);
+        }
+        expect(address.toBase58()).toBe(delegationRecord.toBase58());
+        return null;
+      },
+    );
+
+    const response = await app.request(
+      `/v1/spl/private-balance?address=${owner}&mint=${mint}`,
+      { headers: { authorization: `Bearer ${owner}.1234567890` } },
+      balanceEnv,
+    );
+
+    expect(response.status).toBe(200);
+
+    const json = (await response.json()) as {
+      location: string;
+      balance: string;
+    };
+
+    expect(json.location).toBe("ephemeral");
+    expect(json.balance).toBe("7");
   });
 
   it("returns an error when the eATA is delegated to another validator", async () => {
