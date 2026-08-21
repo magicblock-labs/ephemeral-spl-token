@@ -2,7 +2,7 @@ use ephemeral_rollups_pinocchio::{consts::MAGIC_PROGRAM_ID, instruction::CreateR
 use ephemeral_spl_api::{require, require_eq_keys};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
-use crate::processor::internal::{get_associated_token_address, is_supported_token_program};
+use crate::processor::internal::is_supported_token_program;
 
 pub(crate) struct RentPendingDestinationAccounts<'a> {
     pub(crate) payer_info: &'a AccountView,
@@ -16,9 +16,9 @@ pub(crate) struct RentPendingDestinationAccounts<'a> {
 /// Executes on: ER only.
 ///
 /// Idempotently creates the destination's ATA as a rent-pending ATA through
-/// the Magic program. The ATA is derive-checked against the destination owner,
-/// so mismatched accounts fail closed. Read access is owner-gated by the
-/// private RPC's token-account default; no permission account is created.
+/// the Magic program, which derive-checks the ATA against the destination
+/// owner so mismatched accounts fail closed. Read access is owner-gated by
+/// the private RPC's token-account default; no permission account is created.
 pub(crate) fn ensure_rent_pending_destination(accounts: &RentPendingDestinationAccounts<'_>) -> ProgramResult {
     require!(
         is_supported_token_program(accounts.token_program_info.address()),
@@ -31,16 +31,6 @@ pub(crate) fn ensure_rent_pending_destination(accounts: &RentPendingDestinationA
     );
 
     let destination_owner = accounts.destination_owner_info.address();
-    let expected_ata = get_associated_token_address(
-        destination_owner,
-        accounts.mint_info.address(),
-        accounts.token_program_info.address(),
-    );
-    require_eq_keys!(
-        &expected_ata,
-        accounts.destination_ata_info.address(),
-        ProgramError::InvalidSeeds
-    );
 
     CreateRentPendingAta {
         payer: accounts.payer_info,

@@ -1,3 +1,4 @@
+use borsh::BorshDeserialize;
 use dlp_api::state::DelegationRecord;
 use ephemeral_rollups_pinocchio::pda::{
     delegate_buffer_pda_from_delegated_account_and_owner_program, delegation_metadata_pda_from_delegated_account,
@@ -292,7 +293,7 @@ async fn deposit_and_delegate_shuttle_with_merge_to_encrypted_destination_stores
         );
     }
 
-    // Cleartext accounts required by the ER-side instruction 33.
+    // Cleartext accounts required by the ER-side instruction 34.
     for (key, label) in [
         (shuttle_wallet_ata.to_bytes(), "shuttle wallet ata"),
         (MAGIC_PROGRAM.to_bytes(), "magic program"),
@@ -303,10 +304,19 @@ async fn deposit_and_delegate_shuttle_with_merge_to_encrypted_destination_stores
         );
     }
 
-    let merge_prefix = instruction::ESplInstruction::MergeShuttleIntoRentPendingAta.to_vec();
-    assert!(
-        contains_window(action_payload, &merge_prefix),
-        "expected stored post-delegation payload to carry the instruction 33 discriminator"
+    let actions = dlp_api::args::PostDelegationActions::deserialize(
+        &mut &action_payload[..],
+    )
+    .expect("stored post-delegation payload must decode as PostDelegationActions");
+    assert_eq!(
+        actions.instructions.len(),
+        2,
+        "expected the merge and undelegate-and-close actions"
+    );
+    assert_eq!(
+        actions.instructions[0].data.prefix,
+        instruction::ESplInstruction::MergeShuttleIntoRentPendingAta.to_vec(),
+        "the first stored action must be the rent-pending merge instruction"
     );
 
     let rent_pda_after = context

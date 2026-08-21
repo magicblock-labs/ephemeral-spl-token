@@ -1250,11 +1250,11 @@
     {
       "name": "depositAndDelegateShuttleWithMergeToEncryptedDestination",
       "discriminator": [
-        32
+        33
       ],
       "docs": [
-        "Private base->ephemeral transfer with an encrypted destination. Same sponsored shuttle setup/deposit/delegate flow as discriminator 24, but the destination is carried only inside encrypted post-delegation actions: on the ER the first action runs discriminator 33 (rent-pending ATA + merge), the second undelegates and closes the shuttle.",
-        "Instruction data: [0..4] shuttle_id (u32 LE), [4..12] amount (u64 LE), then two 80-byte encrypted buffers (destination owner, destination ATA), with an optional trailing 32-byte validator pubkey."
+        "Private base->ephemeral transfer with an encrypted destination. Same sponsored shuttle setup/deposit/delegate flow as discriminator 24, but the destination is carried only inside encrypted post-delegation actions: on the ER the first action runs discriminator 34 (rent-pending ATA + merge), the second undelegates and closes the shuttle.",
+        "Instruction data: [0..4] shuttle_id (u32 LE), [4..12] amount (u64 LE), then two 80-byte encrypted buffers (destination owner, destination ATA), followed by an option tag byte and, when set, the 32-byte validator pubkey."
       ],
       "accounts": [
         {
@@ -1359,10 +1359,10 @@
     {
       "name": "mergeShuttleIntoRentPendingAta",
       "discriminator": [
-        33
+        34
       ],
       "docs": [
-        "Executes on the ER only, as the decrypted post-delegation action of discriminator 32. Creates the destination ATA as an idempotent rent-pending ATA (Magic program CPI), then transfers the whole shuttle wallet ATA balance into it. Read access is owner-gated by the private RPC's token-account default."
+        "Executes on the ER only, as the decrypted post-delegation action of discriminator 33. Creates the destination ATA as an idempotent rent-pending ATA (Magic program CPI), then transfers the whole shuttle wallet ATA balance into it. Read access is owner-gated by the private RPC's token-account default."
       ],
       "accounts": [
         {
@@ -1399,7 +1399,7 @@
     {
       "name": "ensureRentPendingDestination",
       "discriminator": [
-        34
+        35
       ],
       "docs": [
         "Executes on the ER only. Idempotently creates the destination's ATA as a rent-pending ATA (Magic program CPI) so a plain SPL transfer in the same transaction can fund a destination that does not exist yet."

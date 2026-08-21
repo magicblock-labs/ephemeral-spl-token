@@ -7,12 +7,12 @@ use crate::processor::{
 };
 
 ///
-/// Executes on: ER only (decrypted post-delegation action of instruction 32).
+/// Executes on: ER only (decrypted post-delegation action of instruction 33).
 ///
 /// Creates the destination ATA as an idempotent rent-pending ATA through the
 /// Magic program, then merges the whole shuttle wallet ATA balance into it.
 /// The rent-pending ATA must end the transaction with a positive amount, which
-/// the merge guarantees since instruction 32 rejects zero amounts. Read access
+/// the merge guarantees since instruction 33 rejects zero amounts. Read access
 /// is owner-gated by the private RPC's token-account default.
 ///
 /// Accounts:

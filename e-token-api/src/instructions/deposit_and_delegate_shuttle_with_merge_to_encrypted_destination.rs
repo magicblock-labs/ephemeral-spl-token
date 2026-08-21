@@ -1,7 +1,7 @@
 use solana_address::Address;
 use wheels::variable_offset_layout;
 
-#[variable_offset_layout(buffer_offset = 1, option = implicit)]
+#[variable_offset_layout(buffer_offset = 1)]
 pub struct DepositAndDelegateShuttleWithMergeToEncryptedDestinationArgs {
     pub shuttle_id: u32,
     pub amount: u64,
@@ -12,5 +12,5 @@ pub struct DepositAndDelegateShuttleWithMergeToEncryptedDestinationArgs {
 
 static_assertions::const_assert!(matches!(
     DepositAndDelegateShuttleWithMergeToEncryptedDestinationArgs::DATA_LENS,
-    [172, 204]
+    [173, 205]
 ));

@@ -338,6 +338,15 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: 
                 return Err(ProgramError::MissingRequiredSignature);
             }
             let ata = accounts.get(1).ok_or(ProgramError::NotEnoughAccountKeys)?;
+            // Mirror the real Magic processor's ATA derive check.
+            let expected_ata = Pubkey::find_program_address(
+                &[wallet_owner.as_ref(), token_program.as_ref(), mint.as_ref()],
+                &solana_pubkey::pubkey!("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"),
+            )
+            .0;
+            if *ata.key != expected_ata {
+                return Err(ProgramError::InvalidSeeds);
+            }
             // A mock cannot assign foreign ownership: tests exercise the
             // idempotent path by pre-creating the ATA.
             if !ata.data_is_empty() && *ata.owner != token_program {
