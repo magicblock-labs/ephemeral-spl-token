@@ -123,6 +123,11 @@ const PRIVATE_BASE_TO_BASE_TRANSFER_LOOKUP_TABLES = {
   devnet: new PublicKey("E26JGdRsdKkGe6oRU4Un24agZjBF2Bg9z1ctfZByETRo"),
 } as const;
 const PRIVATE_TRANSFER_SETUP_LAMPORTS = 2_039_280n;
+// Mirrors SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS and
+// SPONSORED_SHUTTLE_MERGE_TO_ENCRYPTED_DESTINATION_EXTRA_LAMPORTS in
+// e-token-api/src/consts.rs.
+const SPONSORED_SHUTTLE_SETUP_LAMPORTS = 500_000n;
+const SPONSORED_SHUTTLE_MERGE_TO_ENCRYPTED_DESTINATION_EXTRA_LAMPORTS = 1_539_280n;
 const PRIVATE_TRANSFER_FEE_BASIS_POINTS = 10n;
 const BASIS_POINTS_FACTOR = 10_000n;
 const GASLESS_RELAY_FEE_MICRO_USDC = 200_000n; // 0.2 USDC/USDT
@@ -1468,10 +1473,6 @@ function isPrivateBaseToBaseTransfer(input: TransferRequest) {
     && input.toBalance === "base";
 }
 
-function privateTransferSetupLamports(input: TransferRequest) {
-  return isPrivateBaseToBaseTransfer(input) ? PRIVATE_TRANSFER_SETUP_LAMPORTS : 0n;
-}
-
 function createTransferFees(lamports: bigint, tokens: bigint): TransferFees {
   return {
     lamports: lamports.toString(),
@@ -1722,10 +1723,11 @@ async function isRentPendingEphemeralSource(
   owner: PublicKey,
   mint: PublicKey,
   tokenProgram: PublicKey,
+  authToken?: string,
 ): Promise<boolean> {
   try {
     const ata = getAssociatedTokenAddressSync(mint, owner, true, tokenProgram);
-    const accountInfo = await getEphemeralConnection(config).getAccountInfo(ata, "confirmed");
+    const accountInfo = await getEphemeralConnection(config, authToken).getAccountInfo(ata, "confirmed");
     return accountInfo !== null && isRentPendingTokenAccount(accountInfo.data);
   } catch {
     // The ER may be unreachable or gate the read; fall back to the eATA flow.
@@ -1733,7 +1735,7 @@ async function isRentPendingEphemeralSource(
   }
 }
 
-export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawRequest) {
+export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawRequest, authToken?: string) {
   try {
     const config = resolveRpcConfig(env, input.cluster);
     const owner = parsePublicKey(input.owner, "owner");
@@ -1750,6 +1752,7 @@ export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawReque
       owner,
       mint,
       tokenProgram,
+      authToken,
     );
 
     const instructions = await withdrawSpl(owner, mint, amount, {
@@ -2106,8 +2109,26 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
     const payer = sponsor?.publicKey ?? from;
     const feePayer = sponsor?.publicKey ?? from;
     const privateTransferFee = isPrivateBaseToBaseTransfer(input) ? privateTransferFeeAmount(transferAmount) : 0n;
+
+    const isPrivateBaseToEphemeral = input.visibility === "private"
+      && input.fromBalance === "base"
+      && input.toBalance === "ephemeral";
+    // Zero-amount setup and native SOL requests must use the legacy route: the
+    // encrypted-destination route requires a positively funded, non-native
+    // rent-pending ATA.
+    const useLegacyCleartextDestination = isPrivateBaseToEphemeral
+      && (transferAmount === 0n || mint.equals(NATIVE_MINT));
+
+    const setupLamports = isPrivateBaseToBaseTransfer(input)
+      ? PRIVATE_TRANSFER_SETUP_LAMPORTS
+      : isPrivateBaseToEphemeral
+        ? SPONSORED_SHUTTLE_SETUP_LAMPORTS
+          + (useLegacyCleartextDestination
+            ? 0n
+            : SPONSORED_SHUTTLE_MERGE_TO_ENCRYPTED_DESTINATION_EXTRA_LAMPORTS)
+        : 0n;
     const fees = createTransferFees(
-      privateTransferSetupLamports(input),
+      setupLamports,
       privateTransferFee + platformFee + (sponsor ? GASLESS_RELAY_FEE_MICRO_USDC : 0n),
     );
 
@@ -2185,14 +2206,6 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
           ),
         ]
       : [];
-
-    // Zero-amount setup and native SOL requests must use the legacy route: the
-    // encrypted-destination route requires a positively funded, non-native
-    // rent-pending ATA.
-    const useLegacyCleartextDestination = input.visibility === "private"
-      && input.fromBalance === "base"
-      && input.toBalance === "ephemeral"
-      && (transferAmount === 0n || mint.equals(NATIVE_MINT));
 
     const transferInstructions = await transferSpl(from, to, mint, transferAmount, {
       visibility: input.visibility,
@@ -2332,14 +2345,16 @@ export async function getPrivateBalance(env: AppEnv, input: BalanceRequest, auth
   try {
     const delegationRecord = await getDelegationRecord(getBaseConnection(config), eata);
     if (delegationRecord.status !== DelegationStatus.Delegated) {
-      // The owner may hold a rent-pending ATA that exists only inside the ER.
-      // Only a rent-pending account counts: the ER clones undelegated base
-      // accounts on demand, so a plain token account is just the base balance.
+      // Rent-pending ATAs exist only inside the ER: require the marker on the
+      // ER account and absence on base, so cloned base ATAs never count.
       try {
         const accountInfo = await getEphemeralConnection(config, authToken).getAccountInfo(ata, "confirmed");
         if (accountInfo && isRentPendingTokenAccount(accountInfo.data)) {
-          const balance = parseTokenAmount(accountInfo) ?? 0n;
-          return { ...zeroBalanceResponse, balance: balance.toString() };
+          const baseAccountInfo = await getBaseConnection(config).getAccountInfo(ata, "confirmed");
+          if (baseAccountInfo === null) {
+            const balance = parseTokenAmount(accountInfo) ?? 0n;
+            return { ...zeroBalanceResponse, balance: balance.toString() };
+          }
         }
       } catch {
         // The ER may be unreachable or gate the read; keep the zero response.

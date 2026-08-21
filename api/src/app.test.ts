@@ -2338,7 +2338,7 @@ describe("app", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "authorization": `Bearer ${MOCK_AUTH_TOKEN}`,
+          "authorization": `Bearer ${owner}.${MOCK_AUTH_TOKEN}`,
         },
         body: JSON.stringify({
           payer: owner,
@@ -2450,7 +2450,7 @@ describe("app", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "authorization": `Bearer ${MOCK_AUTH_TOKEN}`,
+          "authorization": `Bearer ${owner}.${MOCK_AUTH_TOKEN}`,
         },
         body: JSON.stringify({
           payer: owner,
@@ -2512,7 +2512,7 @@ describe("app", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "authorization": `Bearer ${MOCK_AUTH_TOKEN}`,
+          "authorization": `Bearer ${owner}.${MOCK_AUTH_TOKEN}`,
         },
         body: JSON.stringify({
           payer: owner,
@@ -4109,7 +4109,7 @@ describe("app", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "authorization": `Bearer ${MOCK_AUTH_TOKEN}`,
+          "authorization": `Bearer ${owner}.${MOCK_AUTH_TOKEN}`,
         },
         body: JSON.stringify({
           payer,
@@ -4279,7 +4279,7 @@ describe("app", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "authorization": "Bearer abc",
+          "authorization": `Bearer ${owner}.abc`,
         },
         body: JSON.stringify({
           from: owner,
@@ -5731,7 +5731,7 @@ describe("app", () => {
     ).toBe(true);
     expect(
       transaction.instructions.some(
-        ix => ix.programId.equals(EPHEMERAL_SPL_TOKEN_PROGRAM_ID) && ix.data[0] === 32,
+        ix => ix.programId.equals(EPHEMERAL_SPL_TOKEN_PROGRAM_ID) && ix.data[0] === 33,
       ),
     ).toBe(false);
   });
@@ -5785,7 +5785,7 @@ describe("app", () => {
       Buffer.from(json.transactionBase64, "base64"),
     );
     const privateTransferInstruction = transaction.instructions.find(
-      ix => ix.programId.equals(EPHEMERAL_SPL_TOKEN_PROGRAM_ID) && ix.data[0] === 32,
+      ix => ix.programId.equals(EPHEMERAL_SPL_TOKEN_PROGRAM_ID) && ix.data[0] === 33,
     );
 
     expect(privateTransferInstruction).toBeDefined();
@@ -5839,7 +5839,7 @@ describe("app", () => {
     );
     const privateResponse = await app.request(
       `/v1/spl/private-balance?address=${owner}&mint=${mint}`,
-      { headers: { authorization: "Bearer 1234567890" } },
+      { headers: { authorization: `Bearer ${owner}.1234567890` } },
       balanceEnv,
     );
 
@@ -5906,7 +5906,7 @@ describe("app", () => {
 
     const privateResponse = await app.request(
       `/v1/spl/private-balance?address=${owner}&mint=${mint}`,
-      { headers: { authorization: "Bearer 1234567890" } },
+      { headers: { authorization: `Bearer ${owner}.1234567890` } },
       balanceEnv,
     );
 
@@ -5954,7 +5954,7 @@ describe("app", () => {
 
     const response = await app.request(
       `/v1/spl/private-balance?address=${owner}&mint=${mint}`,
-      { headers: { authorization: "Bearer 1234567890" } },
+      { headers: { authorization: `Bearer ${owner}.1234567890` } },
       balanceEnv,
     );
 
@@ -5995,6 +5995,9 @@ describe("app", () => {
         if (address.toBase58() === mint) {
           return createMintAccountInfo(TOKEN_PROGRAM_ID);
         }
+        if (address.toBase58() === ata) {
+          return null;
+        }
         expect(address.toBase58()).toBe(delegationRecord.toBase58());
         return null;
       },
@@ -6002,7 +6005,7 @@ describe("app", () => {
 
     const response = await app.request(
       `/v1/spl/private-balance?address=${owner}&mint=${mint}`,
-      { headers: { authorization: "Bearer 1234567890" } },
+      { headers: { authorization: `Bearer ${owner}.1234567890` } },
       balanceEnv,
     );
 
@@ -6049,7 +6052,7 @@ describe("app", () => {
 
     const response = await app.request(
       `/v1/spl/private-balance?address=${owner}&mint=${mint}`,
-      { headers: { authorization: "Bearer 1234567890" } },
+      { headers: { authorization: `Bearer ${owner}.1234567890` } },
       balanceEnv,
     );
 
@@ -6095,7 +6098,7 @@ describe("app", () => {
 
     const response = await app.request(
       `/v1/spl/private-balance?address=${owner}&mint=${mint}`,
-      { headers: { authorization: "Bearer 1234567890" } },
+      { headers: { authorization: `Bearer ${owner}.1234567890` } },
       balanceEnv,
     );
 
@@ -6160,7 +6163,7 @@ describe("app", () => {
     );
     const privateResponse = await app.request(
       `/v1/spl/private-balance?address=${owner}&mint=${mint}`,
-      { headers: { authorization: "Bearer mock-auth-token" } },
+      { headers: { authorization: `Bearer ${owner}.mock-auth-token` } },
       balanceEnv,
     );
 
@@ -6294,7 +6297,7 @@ describe("app", () => {
     expect(response.status).toBe(200);
 
     const json = (await response.json()) as { token: string };
-    expect(json.token).toBe("token-xyz");
+    expect(json.token).toBe(`${owner}.token-xyz`);
   });
 
   it("returns the mock token", async () => {
@@ -6337,7 +6340,7 @@ describe("app", () => {
     expect(response.status).toBe(200);
 
     const json = (await response.json()) as { token: string };
-    expect(json.token).toBe(MOCK_AUTH_TOKEN);
+    expect(json.token).toBe(`${owner}.${MOCK_AUTH_TOKEN}`);
   });
 
   it("maps upstream login rate limits to 429", async () => {
@@ -7299,7 +7302,7 @@ describe("app", () => {
     );
     const privateResponse = await app.request(
       `/v1/spl/private-balance?address=${owner}&mint=${mint}&cluster=${encodeURIComponent("https://custom.rpc.test")}`,
-      { headers: { authorization: "Bearer 1234567890" } },
+      { headers: { authorization: `Bearer ${owner}.1234567890` } },
       customRpcEnv,
     );
 

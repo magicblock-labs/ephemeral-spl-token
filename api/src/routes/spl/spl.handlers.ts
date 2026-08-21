@@ -68,7 +68,11 @@ export const depositHandler: RouteHandler<typeof depositRoute, RouteEnv> = async
 export const withdrawHandler: RouteHandler<typeof withdrawRoute, RouteEnv> = async (c) => {
   const env = getEnv(c.env);
   const body = c.req.valid("json") as WithdrawRequest;
-  const response = await buildWithdrawTransaction(env, body);
+  const rawAuthToken = parseAuthToken(c.req.header());
+  const authToken = rawAuthToken === undefined
+    ? undefined
+    : requireAuthTokenFor(body.owner, rawAuthToken);
+  const response = await buildWithdrawTransaction(env, body, authToken);
   return c.json(response, 200);
 };
 
