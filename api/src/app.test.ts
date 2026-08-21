@@ -35,6 +35,7 @@ import {
   TransactionInstruction,
   TransactionMessage,
   VersionedTransaction,
+  SYSVAR_RENT_PUBKEY,
 } from "@solana/web3.js";
 
 import app from "./app";
@@ -3009,6 +3010,68 @@ describe("app", () => {
     expect(closeIx.programId.equals(TOKEN_PROGRAM_ID)).toBe(true);
     expect([...closeIx.data]).toEqual([9]);
     expect(closeIx.keys[1]?.pubkey.toBase58()).toBe(owner);
+  });
+
+  it("skips the eATA instructions when the ephemeral source is a rent-pending ATA", async () => {
+    const withdrawEnv = {
+      ...env,
+      EPHEMERAL_RPC_URL: "https://ephemeral.withdraw.rpc.test",
+    };
+    const mint = new PublicKey("So11111111111111111111111111111111111111112");
+    const [ownerAta] = PublicKey.findProgramAddressSync(
+      [new PublicKey(owner).toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), mint.toBuffer()],
+      new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"),
+    );
+    const rentPendingData = Buffer.alloc(165);
+    rentPendingData.writeUInt32LE(1, 129);
+    SYSVAR_RENT_PUBKEY.toBuffer().copy(rentPendingData, 133);
+
+    vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+      blockhash: "11111111111111111111111111111111",
+      lastValidBlockHeight: 123,
+    });
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(
+      async (address) =>
+        address.equals(ownerAta)
+          ? {
+              data: rentPendingData,
+              executable: false,
+              lamports: 0,
+              owner: TOKEN_PROGRAM_ID,
+              rentEpoch: 0,
+            }
+          : createMintAccountInfo(TOKEN_PROGRAM_ID),
+    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+      createIdentityResponse(resolvedValidator),
+    );
+
+    const response = await app.request(
+      "/v1/spl/withdraw",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          owner,
+          mint: mint.toBase58(),
+          amount: 1,
+          idempotent: true,
+        }),
+      },
+      withdrawEnv,
+    );
+
+    expect(response.status).toBe(200);
+
+    const json = (await response.json()) as { transactionBase64: string };
+    const transaction = Transaction.from(
+      Buffer.from(json.transactionBase64, "base64"),
+    );
+    // Only the ix-26 shuttle withdrawal: no eATA init/delegate instructions.
+    expect(transaction.instructions).toHaveLength(1);
+    expect(transaction.instructions[0]!.data[0]).toBe(26);
   });
 
   it("uses the mint token program when building a withdraw", async () => {

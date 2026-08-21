@@ -1712,6 +1712,27 @@ export async function buildDepositTransaction(env: AppEnv, input: DepositRequest
   }
 }
 
+/**
+ * True when the owner's ephemeral balance lives in a rent-pending ATA (no
+ * delegated eATA backs it), so withdrawal must skip the eATA instructions
+ * and drain the rent-pending ATA directly.
+ */
+async function isRentPendingEphemeralSource(
+  config: RpcConfig,
+  owner: PublicKey,
+  mint: PublicKey,
+  tokenProgram: PublicKey,
+): Promise<boolean> {
+  try {
+    const ata = getAssociatedTokenAddressSync(mint, owner, true, tokenProgram);
+    const accountInfo = await getEphemeralConnection(config).getAccountInfo(ata, "confirmed");
+    return accountInfo !== null && isRentPendingTokenAccount(accountInfo.data);
+  } catch {
+    // The ER may be unreachable or gate the read; fall back to the eATA flow.
+    return false;
+  }
+}
+
 export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawRequest) {
   try {
     const config = resolveRpcConfig(env, input.cluster);
@@ -1724,6 +1745,13 @@ export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawReque
     const tokenProgram = await resolveMintTokenProgram(config, mint);
     const blockhash = await getBlockhash(config, "base");
 
+    const rentPendingSource = await isRentPendingEphemeralSource(
+      config,
+      owner,
+      mint,
+      tokenProgram,
+    );
+
     const instructions = await withdrawSpl(owner, mint, amount, {
       payer,
       validator,
@@ -1733,6 +1761,7 @@ export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawReque
       shuttleId: createRandomShuttleId(),
       escrowIndex: input.escrowIndex,
       idempotent: input.idempotent,
+      rentPendingSource,
     });
 
     if (
