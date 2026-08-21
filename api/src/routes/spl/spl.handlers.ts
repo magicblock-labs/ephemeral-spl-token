@@ -43,7 +43,7 @@ import {
   UndelegateEphemeralAtaRequest,
   WithdrawRequest,
 } from "./spl.schemas";
-import { getChallenge, login, parseAuthToken } from "../../lib/auth";
+import { getChallenge, login, parseAuthToken, requireAuthTokenFor, splitAuthToken } from "../../lib/auth";
 
 type RouteEnv = { Bindings: AppBindings };
 type BackgroundScheduler = {
@@ -82,7 +82,13 @@ export const initializeMintHandler: RouteHandler<typeof initializeMintRoute, Rou
 export const transferHandler: RouteHandler<typeof transferRoute, RouteEnv> = async (c) => {
   const env = getEnv(c.env);
   const body = c.req.valid("json") as TransferRequest;
-  const authToken = parseAuthToken(c.req.header());
+  const rawAuthToken = parseAuthToken(c.req.header());
+  // Spending a shielded balance is scoped to `from`; other routes only unwrap.
+  const authToken = rawAuthToken === undefined
+    ? undefined
+    : body.fromBalance === "ephemeral"
+      ? requireAuthTokenFor(body.from, rawAuthToken)
+      : splitAuthToken(rawAuthToken).token;
   const response = await buildTransferTransaction(env, body, authToken);
   return c.json(response, 200);
 };
@@ -90,7 +96,10 @@ export const transferHandler: RouteHandler<typeof transferRoute, RouteEnv> = asy
 export const undelegateEphemeralAtaHandler: RouteHandler<typeof undelegateEphemeralAtaRoute, RouteEnv> = async (c) => {
   const env = getEnv(c.env);
   const body = c.req.valid("json") as UndelegateEphemeralAtaRequest;
-  const authToken = parseAuthToken(c.req.header());
+  const rawAuthToken = parseAuthToken(c.req.header());
+  const authToken = rawAuthToken === undefined
+    ? undefined
+    : requireAuthTokenFor(body.payer, rawAuthToken);
   const response = await buildUndelegateEphemeralAtaTransaction(env, body, authToken);
   return c.json(response, 200);
 };
@@ -98,7 +107,8 @@ export const undelegateEphemeralAtaHandler: RouteHandler<typeof undelegateEpheme
 export const stealthPoolHandler: RouteHandler<typeof stealthPoolRoute, RouteEnv> = async (c) => {
   const env = getEnv(c.env);
   const body = c.req.valid("json") as StealthPoolRequest;
-  const authToken = parseAuthToken(c.req.header());
+  const rawAuthToken = parseAuthToken(c.req.header());
+  const authToken = rawAuthToken === undefined ? undefined : splitAuthToken(rawAuthToken).token;
 
   const response = await buildUpdateStealthPoolTransaction(env, body, authToken);
   return c.json(response, 200);
@@ -122,11 +132,12 @@ export const balanceHandler: RouteHandler<typeof balanceRoute, RouteEnv> = async
 export const privateBalanceHandler: RouteHandler<typeof privateBalanceRoute, RouteEnv> = async (c) => {
   const env = getEnv(c.env);
   const query = c.req.valid("query") as BalanceRequest;
-  const authToken = parseAuthToken(c.req.header());
+  const rawAuthToken = parseAuthToken(c.req.header());
 
-  if (!authToken) {
+  if (!rawAuthToken) {
     return c.json({ error: { code: "MISSING_AUTH_TOKEN", message: "authToken is required for private balance" } }, 400);
   }
+  const authToken = requireAuthTokenFor(query.address, rawAuthToken);
   const response = await getPrivateBalance(env, query, authToken);
   return c.json(response, 200);
 };
