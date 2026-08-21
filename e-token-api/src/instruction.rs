@@ -232,6 +232,28 @@ pub enum ESplInstruction {
     ///      remaining shuttle wallet ATA balance to a token account owned by the
     ///      shuttle owner, then closes shuttle accounts.
     RecoverAndCloseShuttleToOwner = 32,
+
+    /// 33 - DepositAndDelegateShuttleWithMergeToEncryptedDestination: private base->ephemeral
+    ///      transfer where the destination never appears in cleartext on base. Same
+    ///      setup/deposit/delegate shuttle flow as instruction 24, but the destination is
+    ///      carried only inside encrypted post-delegation actions: on the ER the first action
+    ///      runs instruction 34 (rent-pending ATA creation + merge), then the second
+    ///      undelegates and closes the shuttle.
+    ///      Instruction data: DepositAndDelegateShuttleWithMergeToEncryptedDestinationArgs
+    DepositAndDelegateShuttleWithMergeToEncryptedDestination = 33,
+
+    /// 34 - MergeShuttleIntoRentPendingAta: executes on the ER only, as the decrypted
+    ///      post-delegation action of instruction 33. Creates the destination ATA as an
+    ///      idempotent rent-pending ATA (Magic program CPI), then transfers the whole
+    ///      shuttle wallet ATA balance into the destination ATA.
+    ///      Instruction data: none
+    MergeShuttleIntoRentPendingAta = 34,
+
+    /// 35 - EnsureRentPendingDestination: executes on the ER only. Idempotently creates the
+    ///      destination's ATA as a rent-pending ATA (Magic program CPI) so a plain SPL
+    ///      transfer in the same transaction can fund a destination that does not exist yet.
+    ///      Instruction data: none
+    EnsureRentPendingDestination = 35,
 }
 
 impl ESplInstruction {
@@ -297,6 +319,9 @@ impl TryFrom<u8> for ESplInstruction {
             30 => Ok(Self::ExecuteScheduledPrivateTransfer),
             31 => Ok(Self::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransferAndStashClose),
             32 => Ok(Self::RecoverAndCloseShuttleToOwner),
+            33 => Ok(Self::DepositAndDelegateShuttleWithMergeToEncryptedDestination),
+            34 => Ok(Self::MergeShuttleIntoRentPendingAta),
+            35 => Ok(Self::EnsureRentPendingDestination),
             _ => Err(()),
         }
     }

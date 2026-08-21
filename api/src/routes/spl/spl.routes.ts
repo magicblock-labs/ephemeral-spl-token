@@ -167,6 +167,7 @@ export const withdrawRoute = createRoute({
   description: "Withdraw SPL tokens from an ephemeral rollup back to Solana.",
   request: {
     body: jsonContentRequired(withdrawRequestSchema, "Withdraw request"),
+    headers: optionalAuthTokenSchema,
   },
   responses: {
     200: jsonContent(transactionResponseSchema, "Unsigned serialized transaction", withdrawResponseExample),

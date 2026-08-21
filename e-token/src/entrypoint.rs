@@ -225,6 +225,21 @@ fn process_public_instruction(accounts: &[AccountView], instruction_data: &[u8])
 
             process_recover_and_close_shuttle_to_owner(accounts, data)
         }
+        ESplInstruction::DepositAndDelegateShuttleWithMergeToEncryptedDestination => {
+            debug_log!("Instruction: DepositAndDelegateShuttleWithMergeToEncryptedDestination");
+
+            process_deposit_and_delegate_shuttle_with_merge_to_encrypted_destination(accounts, data)
+        }
+        ESplInstruction::MergeShuttleIntoRentPendingAta => {
+            debug_log!("Instruction: MergeShuttleIntoRentPendingAta");
+
+            process_merge_shuttle_into_rent_pending_ata(accounts, data)
+        }
+        ESplInstruction::EnsureRentPendingDestination => {
+            debug_log!("Instruction: EnsureRentPendingDestination");
+
+            process_ensure_rent_pending_destination(accounts, data)
+        }
     }
 }
 

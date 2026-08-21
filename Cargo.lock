@@ -1821,9 +1821,8 @@ dependencies = [
 
 [[package]]
 name = "ephemeral-rollups-pinocchio"
-version = "0.16.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "69d0781a607dfc2fce40e90b8ef875b17efa8b2b7906317c5ab6a8ee426edeb1"
+version = "0.15.5"
+source = "git+https://github.com/magicblock-labs/ephemeral-rollups-sdk.git?rev=efde77d72f811cba5a1220eba164395d3df1a3e5#efde77d72f811cba5a1220eba164395d3df1a3e5"
 dependencies = [
  "bincode 2.0.1",
  "pinocchio 0.10.2",
@@ -1853,6 +1852,7 @@ name = "ephemeral-token-program"
 version = "0.0.0"
 dependencies = [
  "bincode 1.3.3",
+ "borsh 1.6.0",
  "bytemuck",
  "const-crypto",
  "ephemeral-rollups-pinocchio",
@@ -3146,13 +3146,13 @@ dependencies = [
  "solana-sha256-hasher 3.1.0",
  "static_assertions",
  "strum 0.28.0",
- "thiserror 2.0.18",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
 name = "magicblock-magic-program-api"
-version = "0.9.0"
-source = "git+https://github.com/magicblock-labs/magicblock-validator.git?rev=69d3381e#69d3381edd0d84415d2ebd7e56bb221c380077aa"
+version = "0.13.6"
+source = "git+https://github.com/magicblock-labs/magicblock-validator.git?rev=81840b66189f50ab321259cc8e3c19e187126010#81840b66189f50ab321259cc8e3c19e187126010"
 dependencies = [
  "bincode 1.3.3",
  "const-crypto",
