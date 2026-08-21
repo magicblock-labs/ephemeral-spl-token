@@ -1353,6 +1353,12 @@
               80
             ]
           }
+        },
+        {
+          "name": "validator",
+          "type": {
+            "option": "pubkey"
+          }
         }
       ]
     },

@@ -2119,14 +2119,15 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
     const useLegacyCleartextDestination = isPrivateBaseToEphemeral
       && (transferAmount === 0n || mint.equals(NATIVE_MINT));
 
-    const setupLamports = isPrivateBaseToBaseTransfer(input)
-      ? PRIVATE_TRANSFER_SETUP_LAMPORTS
-      : isPrivateBaseToEphemeral
-        ? SPONSORED_SHUTTLE_SETUP_LAMPORTS
-          + (useLegacyCleartextDestination
-            ? 0n
-            : SPONSORED_SHUTTLE_MERGE_TO_ENCRYPTED_DESTINATION_EXTRA_LAMPORTS)
-        : 0n;
+    let setupLamports = 0n;
+    if (isPrivateBaseToBaseTransfer(input)) {
+      setupLamports = PRIVATE_TRANSFER_SETUP_LAMPORTS;
+    } else if (isPrivateBaseToEphemeral) {
+      setupLamports = SPONSORED_SHUTTLE_SETUP_LAMPORTS;
+      if (!useLegacyCleartextDestination) {
+        setupLamports += SPONSORED_SHUTTLE_MERGE_TO_ENCRYPTED_DESTINATION_EXTRA_LAMPORTS;
+      }
+    }
     const fees = createTransferFees(
       setupLamports,
       privateTransferFee + platformFee + (sponsor ? GASLESS_RELAY_FEE_MICRO_USDC : 0n),

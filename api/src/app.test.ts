@@ -123,9 +123,7 @@ function createAccountInfo(
 function createRentPendingAccountInfo(amount: bigint): AccountInfo<Buffer> {
   const accountInfo = createAccountInfo(amount);
   accountInfo.data.writeUInt32LE(1, 129);
-  new PublicKey("SysvarRent111111111111111111111111111111111")
-    .toBuffer()
-    .copy(accountInfo.data, 133);
+  SYSVAR_RENT_PUBKEY.toBuffer().copy(accountInfo.data, 133);
   return accountInfo;
 }
 
@@ -3031,7 +3029,7 @@ describe("app", () => {
       lastValidBlockHeight: 123,
     });
     vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(
-      async (address) =>
+      async address =>
         address.equals(ownerAta)
           ? {
               data: rentPendingData,
