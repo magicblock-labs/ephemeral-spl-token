@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["e-token", "e-token-api", "compare-metrics"]
+members = ["e-token", "e-token-api", "e-token-e2e", "compare-metrics"]
 
 [workspace.package]
 authors = ["MagicBlock Labs <dev@magicblocklabs.xyz>"]
@@ -31,6 +31,7 @@ consolidate-commits = false
 
 [workspace.dependencies]
 ephemeral-rollups-pinocchio = "0.16.2"
+ephemeral-rollups-sdk = { version = "0.16.2", features = ["spl"] }
 wheels = { git = "https://github.com/magicblock-labs/magicblock-wheels.git" }
 
 pinocchio = { version = "0.10.1", features = ["cpi"] }
@@ -42,8 +43,12 @@ pinocchio-system = "0.5"
 pinocchio-token-2022 = "0.2.0"
 pinocchio-associated-token-account = "0.3"
 
+solana-client = "3.0"
+solana-commitment-config = "3.0"
 solana-instruction = "3.0.0"
+solana-message = "3.0"
 solana-pubkey = "4.0.0"
+solana-rpc-client-api = "3.0"
 solana-program-pack = "3.0.0"
 solana-program = "3.0.0"
 solana-program-error = "3.0.0"
