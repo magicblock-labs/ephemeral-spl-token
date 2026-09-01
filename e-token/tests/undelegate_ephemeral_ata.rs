@@ -230,7 +230,7 @@ async fn undelegate_ephemeral_ata_rejects_readonly_fee_vault() {
     let err = send(&mut fixture, ix).await.unwrap_err();
     assert_eq!(
         err,
-        TransactionError::InstructionError(0, InstructionError::InvalidArgument)
+        TransactionError::InstructionError(0, InstructionError::PrivilegeEscalation)
     );
     assert!(take_captured_commits(magic_program()).is_empty());
 }

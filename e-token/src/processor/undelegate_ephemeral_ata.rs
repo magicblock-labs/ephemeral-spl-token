@@ -1,4 +1,6 @@
+use ephemeral_rollups_pinocchio::consts::{MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID};
 use ephemeral_spl_api::{
+    error::EphemeralSplError,
     require, require_eq_keys, require_n_accounts_with_optionals,
     state::{ephemeral_ata::EphemeralAta, load_initialized},
 };
@@ -32,15 +34,15 @@ fn commit_and_undelegate_accounts(
 ///  1: [writable]          - SPL     : User ATA account.
 ///  2: []                  - PDA     : Ephemeral ATA account (PDA derived from [payer, mint]).
 ///  3: [writable]          - Any     : Magic context account.
-///  4: []                  - Program : Delegation program ID.
+///  4: []                  - Program : Magic program ID.
 ///  5: [writable, optional] - PDA     : Magic fee vault. Required when the
 ///                                      eATA owner is itself delegated.
 ///
 /// Instruction Data: None
 ///
-pub fn process_undelegate_ephemeral_ata(accounts: &[AccountView], _instruction_data: &[u8]) -> ProgramResult {
+pub fn process_undelegate_ephemeral_ata(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let (required, optional) = require_n_accounts_with_optionals!(accounts, 5);
-    require!(optional.len() <= 1, ProgramError::InvalidArgument);
+    require!(optional.len() <= 1, EphemeralSplError::TooManyAccountKeys);
     let [
         payer, // force multi-line
         ata_info,
@@ -50,8 +52,20 @@ pub fn process_undelegate_ephemeral_ata(accounts: &[AccountView], _instruction_d
     ] = required;
     let magic_fee_vault = optional.first();
 
+    require!(instruction_data.is_empty(), ProgramError::InvalidInstructionData);
+
     // Ensure the payer signed the transaction
     require!(payer.is_signer(), ProgramError::MissingRequiredSignature);
+    require_eq_keys!(
+        magic_context.address(),
+        &MAGIC_CONTEXT_ID,
+        ProgramError::InvalidArgument
+    );
+    require_eq_keys!(
+        magic_program.address(),
+        &MAGIC_PROGRAM_ID,
+        ProgramError::IncorrectProgramId
+    );
 
     // Read the Ephemeral ATA to get the mint and verify the PDA derivation for this payer.
     // Scope the borrow so it's released before any CPI.
