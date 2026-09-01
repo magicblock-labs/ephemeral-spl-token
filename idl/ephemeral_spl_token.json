@@ -252,7 +252,8 @@
         5
       ],
       "docs": [
-        "Commits and undelegates a user's delegated ATA flow."
+        "Commits and undelegates a user's delegated ATA flow.",
+        "Pass the selected validator's writable Magic fee vault when the payer is itself delegated."
       ],
       "accounts": [
         {
@@ -273,6 +274,11 @@
         {
           "name": "magicProgram",
           "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magicFeeVault",
+          "writable": true,
+          "optional": true
         }
       ],
       "args": []
