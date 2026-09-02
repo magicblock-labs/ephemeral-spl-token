@@ -38,6 +38,7 @@ import nacl from "tweetnacl";
 import type { AppEnv } from "../env";
 import { ApiError } from "./errors";
 import {
+  BalanceDelegation,
   BalanceRequest,
   BalanceResponse,
   DepositRequest,
@@ -2237,42 +2238,47 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
   }
 }
 
-async function getBalanceInternal(
-  env: AppEnv,
-  input: BalanceRequest,
-  location: SendTarget,
-  authToken?: string,
-): Promise<BalanceResponse> {
+function toBalanceDelegation(config: RpcConfig, validator: PublicKey | undefined): BalanceDelegation {
+  if (!validator) {
+    return { status: "undelegated" };
+  }
+
+  return {
+    status: "delegated",
+    validator: validator.toBase58(),
+    endpoint: getHardcodedTeeRpcEndpoint(config, validator),
+  };
+}
+
+export async function getBaseBalance(env: AppEnv, input: BalanceRequest): Promise<BalanceResponse> {
   const config = resolveRpcConfig(env, input.cluster);
   const owner = parsePublicKey(input.address, "address");
   const mint = parsePublicKey(input.mint, "mint");
   const tokenProgram = await resolveMintTokenProgram(config, mint);
   const ata = getAssociatedTokenAddressSync(mint, owner, true, tokenProgram);
-  const connection = location === "base"
-    ? getBaseConnection(config)
-    : getEphemeralConnection(config, authToken);
+  const [eata] = deriveEphemeralAta(owner, mint);
 
   try {
-    const accountInfo = await connection.getAccountInfo(ata, "confirmed");
+    const [accountInfo, delegationRecordInfo] = await getBaseConnection(config).getMultipleAccountsInfo(
+      [ata, delegationRecordPdaFromDelegatedAccount(eata)],
+      "confirmed",
+    );
     const balance = accountInfo ? (parseTokenAmount(accountInfo) ?? 0n) : 0n;
 
     return {
       address: owner.toBase58(),
       mint: mint.toBase58(),
       ata: ata.toBase58(),
-      location,
+      location: "base",
       balance: balance.toString(),
+      delegation: toBalanceDelegation(config, readDelegatedValidator(delegationRecordInfo)),
     };
   } catch (error) {
     throw new ApiError(502, "RPC_ERROR", "Failed to fetch token balance", {
-      location,
+      location: "base",
       message: getSanitizedErrorMessage(error),
     });
   }
-}
-
-export function getBaseBalance(env: AppEnv, input: BalanceRequest) {
-  return getBalanceInternal(env, input, "base");
 }
 
 export async function getPrivateBalance(env: AppEnv, input: BalanceRequest, authToken?: string) {
@@ -2293,7 +2299,7 @@ export async function getPrivateBalance(env: AppEnv, input: BalanceRequest, auth
   try {
     const delegationRecord = await getDelegationRecord(getBaseConnection(config), eata);
     if (delegationRecord.status !== DelegationStatus.Delegated) {
-      return zeroBalanceResponse;
+      return { ...zeroBalanceResponse, delegation: { status: "undelegated" } };
     }
 
     const validator = await resolveRequiredValidator(config);
@@ -2314,6 +2320,7 @@ export async function getPrivateBalance(env: AppEnv, input: BalanceRequest, auth
       ata: ata.toBase58(),
       location: "ephemeral",
       balance: balance.toString(),
+      delegation: toBalanceDelegation(config, delegationRecord.validator),
     };
   } catch (error) {
     if (error instanceof ApiError) {

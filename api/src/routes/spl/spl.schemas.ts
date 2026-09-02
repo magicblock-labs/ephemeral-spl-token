@@ -41,12 +41,31 @@ export const transactionResponseSchema = z.object({
 }).openapi("UnsignedTransactionResponse");
 export type TransactionResponse = z.infer<typeof transactionResponseSchema>;
 
+export const balanceDelegationSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("delegated"),
+    validator: publicKeySchema.openapi({
+      description: "Identity of the validator the eATA is currently delegated to.",
+    }),
+    endpoint: z.string().url().optional().openapi({
+      description: "Ephemeral RPC endpoint serving the delegated eATA, when it can be resolved without extra lookups.",
+    }),
+  }),
+  z.object({
+    status: z.literal("undelegated"),
+  }),
+]).openapi("BalanceDelegation");
+export type BalanceDelegation = z.infer<typeof balanceDelegationSchema>;
+
 export const balanceResponseSchema = z.object({
   address: publicKeySchema,
   mint: publicKeySchema,
   ata: publicKeySchema,
   location: balanceLocationSchema,
   balance: z.string(),
+  delegation: balanceDelegationSchema.optional().openapi({
+    description: "Delegation state of the owner's eATA for this mint, read from the base-layer delegation record.",
+  }),
 }).openapi("BalanceResponse");
 export type BalanceResponse = z.infer<typeof balanceResponseSchema>;
 

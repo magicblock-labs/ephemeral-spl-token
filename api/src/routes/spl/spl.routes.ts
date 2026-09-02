@@ -72,6 +72,10 @@ const baseBalanceResponseExample: BalanceResponse = {
   ata: "3rXKwQ1kpjBd5tdcco32qsvqUh1BnZjcYnS5kYrP7AYE",
   location: "base" as const,
   balance: "1000000",
+  delegation: {
+    status: "delegated" as const,
+    validator: "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57",
+  },
 };
 const privateBalanceResponseExample: BalanceResponse = {
   address: "Bt9oNR5cCtnfuMmXgWELd6q5i974PdEMQDUE55nBC57L",
@@ -79,6 +83,10 @@ const privateBalanceResponseExample: BalanceResponse = {
   ata: "3rXKwQ1kpjBd5tdcco32qsvqUh1BnZjcYnS5kYrP7AYE",
   location: "ephemeral" as const,
   balance: "1000000",
+  delegation: {
+    status: "delegated" as const,
+    validator: "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57",
+  },
 };
 const mintInitializationResponseExample: MintInitializationResponse = {
   mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
@@ -257,7 +265,7 @@ export const balanceRoute = createRoute({
   path: "/v1/spl/balance",
   method: "get",
   tags,
-  description: "Get the balance for the owner's ATA on the base RPC.",
+  description: "Get the balance for the owner's ATA on the base RPC, along with the delegation state of the owner's eATA (delegated validator identity, and the ephemeral endpoint when statically known).",
   request: {
     query: balanceRequestSchema,
   },
