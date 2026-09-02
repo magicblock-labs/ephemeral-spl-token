@@ -2892,6 +2892,10 @@ describe("app", () => {
     vi.spyOn(Connection.prototype, "getAccountInfo").mockResolvedValue(
       createAccountInfo(3n),
     );
+    vi.spyOn(Connection.prototype, "getMultipleAccountsInfo").mockResolvedValue([
+      createAccountInfo(3n),
+      null,
+    ]);
 
     const response = await app.request(
       `/v1/spl/balance?address=${owner}&mint=So11111111111111111111111111111111111111112`,
@@ -2907,9 +2911,49 @@ describe("app", () => {
     const json = (await response.json()) as {
       location: string;
       balance: string;
+      delegation: { status: string };
     };
     expect(json.location).toBe("base");
     expect(json.balance).toBe("3");
+    expect(json.delegation).toEqual({ status: "undelegated" });
+  });
+
+  it("returns the eATA delegated validator from the balance endpoint", async () => {
+    const mint = "So11111111111111111111111111111111111111112";
+    const delegatedValidator = Keypair.generate().publicKey;
+    const ata = deriveAssociatedTokenAddress(mint, owner);
+    const delegationRecord = deriveEataDelegationRecord(owner, mint);
+
+    vi.spyOn(Connection.prototype, "getAccountInfo").mockResolvedValue(
+      createMintAccountInfo(TOKEN_PROGRAM_ID),
+    );
+    vi.spyOn(Connection.prototype, "getMultipleAccountsInfo").mockImplementation(
+      async (addresses) => {
+        expect(addresses.map(address => address.toBase58())).toEqual([
+          ata,
+          delegationRecord.toBase58(),
+        ]);
+        return [createAccountInfo(7n), createDelegationAccountInfo(delegatedValidator)];
+      },
+    );
+
+    const response = await app.request(
+      `/v1/spl/balance?address=${owner}&mint=${mint}`,
+      {},
+      env,
+    );
+
+    expect(response.status).toBe(200);
+
+    const json = (await response.json()) as {
+      balance: string;
+      delegation: { status: string; validator?: string };
+    };
+    expect(json.balance).toBe("7");
+    expect(json.delegation).toEqual({
+      status: "delegated",
+      validator: delegatedValidator.toBase58(),
+    });
   });
 
   it("builds an unsigned withdraw transaction with integer amount", async () => {
@@ -5626,6 +5670,11 @@ describe("app", () => {
       },
     );
 
+    vi.spyOn(Connection.prototype, "getMultipleAccountsInfo").mockResolvedValue([
+      createAccountInfo(3n),
+      createDelegationAccountInfo(validator),
+    ]);
+
     const baseResponse = await app.request(
       `/v1/spl/balance?address=${owner}&mint=${mint}`,
       {},
@@ -5846,6 +5895,11 @@ describe("app", () => {
           : createAccountInfo(3n);
       },
     );
+
+    vi.spyOn(Connection.prototype, "getMultipleAccountsInfo").mockResolvedValue([
+      createAccountInfo(3n),
+      createDelegationAccountInfo(validator),
+    ]);
 
     const baseResponse = await app.request(
       `/v1/spl/balance?address=${owner}&mint=${mint}`,
@@ -6983,6 +7037,14 @@ describe("app", () => {
           : endpoint.includes("ephemeral")
             ? createAccountInfo(9n)
             : createAccountInfo(0n);
+      },
+    );
+    vi.spyOn(Connection.prototype, "getMultipleAccountsInfo").mockImplementation(
+      async function getMultipleAccountsInfo(
+        this: Connection & { _rpcEndpoint: string },
+      ) {
+        expect(this._rpcEndpoint).toBe("https://custom.rpc.test/");
+        return [createAccountInfo(7n), createDelegationAccountInfo(validator)];
       },
     );
 
