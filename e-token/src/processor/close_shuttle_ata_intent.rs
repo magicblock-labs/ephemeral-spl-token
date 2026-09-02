@@ -129,6 +129,9 @@ pub(crate) fn settle_and_close_shuttle_accounts(
     let mut shuttle_id = 0u32;
     let mut shuttle_owner_opt = None;
     let mut shuttle_bump = None;
+    // Cached so the shuttle PDA is derived at most once per call, even when both the
+    // wallet and ephemeral branches below run and would otherwise re-derive it (#32).
+    let mut derived_shuttle_pda: Option<Address> = None;
     if shuttle_present {
         require!(shuttle_info.owned_by(&crate::ID), ProgramError::InvalidAccountOwner);
 
@@ -153,18 +156,22 @@ pub(crate) fn settle_and_close_shuttle_accounts(
         let shuttle_bump = require_some!(shuttle_bump, ProgramError::InvalidAccountData);
 
         let shuttle_owner = require_some!(shuttle_owner_opt.as_ref(), ProgramError::InvalidAccountData);
-        let mint = {
-            let token_account = validate_token_account(
-                shuttle_wallet_ata_info,
-                mint_info.address(),
-                Some(shuttle_info.address()),
-                Some(token_program_info.address()),
-            )?;
-            shuttle_wallet_amount = token_account.amount();
-            *token_account.mint()
-        };
+        let token_account = validate_token_account(
+            shuttle_wallet_ata_info,
+            mint_info.address(),
+            Some(shuttle_info.address()),
+            Some(token_program_info.address()),
+        )?;
+        shuttle_wallet_amount = token_account.amount();
 
-        let derived_shuttle = ShuttleMetadata::derive_pda(shuttle_owner, &mint, shuttle_id, shuttle_bump)?;
+        let derived_shuttle = match derived_shuttle_pda {
+            Some(pda) => pda,
+            None => {
+                let pda = ShuttleMetadata::derive_pda(shuttle_owner, mint_info.address(), shuttle_id, shuttle_bump)?;
+                derived_shuttle_pda = Some(pda);
+                pda
+            }
+        };
         require_eq_keys!(&derived_shuttle, shuttle_info.address(), ProgramError::InvalidSeeds);
     }
 
@@ -189,7 +196,10 @@ pub(crate) fn settle_and_close_shuttle_accounts(
         };
         require_eq_keys!(&mint, mint_info.address(), ProgramError::InvalidAccountData);
 
-        let derived_shuttle = ShuttleMetadata::derive_pda(shuttle_owner, &mint, shuttle_id, shuttle_bump)?;
+        let derived_shuttle = match derived_shuttle_pda {
+            Some(pda) => pda,
+            None => ShuttleMetadata::derive_pda(shuttle_owner, &mint, shuttle_id, shuttle_bump)?,
+        };
         require_eq_keys!(&derived_shuttle, shuttle_info.address(), ProgramError::InvalidSeeds);
 
         let derived_shuttle_ephemeral_ata = EphemeralAta::derive_pda(shuttle_info.address(), &mint, eata_bump)?;
