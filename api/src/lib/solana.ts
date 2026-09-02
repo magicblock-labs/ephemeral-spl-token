@@ -1848,54 +1848,9 @@ export async function buildUndelegateEphemeralAtaTransaction(
     const [ephemeralAta] = deriveEphemeralAta(payer, mint);
     const sendRpcEndpoint = await resolveUndelegateEphemeralRpcEndpoint(config, ephemeralAta);
     const blockhash = await getBlockhashFromRpcEndpoint(sendRpcEndpoint, "ephemeral", authToken);
-
-    // A delegated payer cannot cover commit fees itself: pass the delegating
-    // validator's Magic fee vault, with the validator identity appended as raw
-    // data so the program can verify the vault PDA.
-    let delegationAccounts: Awaited<ReturnType<Connection["getMultipleAccountsInfo"]>>;
-    try {
-      delegationAccounts = await getBaseConnection(config).getMultipleAccountsInfo(
-        [
-          delegationRecordPdaFromDelegatedAccount(payer),
-          delegationRecordPdaFromDelegatedAccount(ephemeralAta),
-        ],
-        "confirmed",
-      );
-    } catch (error) {
-      throw new ApiError(502, "RPC_ERROR", "Failed to fetch delegation records", {
-        payer: payer.toBase58(),
-        ephemeralAta: ephemeralAta.toBase58(),
-        message: getSanitizedErrorMessage(error),
-      });
-    }
-    const payerValidator = readDelegatedValidator(delegationAccounts[0]);
-
-    const undelegate = undelegateIx(payer, mint);
-    if (payerValidator) {
-      // The commit executes on the eATA's validator, so its fee vault is the
-      // one Magic charges; a payer delegated elsewhere cannot be sponsored.
-      const eataValidator = readDelegatedValidator(delegationAccounts[1]);
-      if (!eataValidator?.equals(payerValidator)) {
-        throw new ApiError(
-          400,
-          "VALIDATOR_MISMATCH",
-          "Payer and ephemeral ATA are delegated to different validators",
-          {
-            payer: payer.toBase58(),
-            payerValidator: payerValidator.toBase58(),
-            ephemeralAta: ephemeralAta.toBase58(),
-            ephemeralAtaValidator: eataValidator?.toBase58(),
-          },
-        );
-      }
-      undelegate.keys.push({
-        pubkey: magicFeeVaultPdaFromValidator(payerValidator),
-        isSigner: false,
-        isWritable: true,
-      });
-      undelegate.data = Buffer.concat([undelegate.data, payerValidator.toBuffer()]);
-    }
-    const instructions = [undelegate];
+    const instructions = [
+      undelegateIx(payer, mint),
+    ];
 
     const response = serializeTransaction(
       "undelegateEphemeralAta",
