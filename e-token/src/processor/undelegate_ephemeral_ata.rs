@@ -52,7 +52,10 @@ pub fn process_undelegate_ephemeral_ata(accounts: &[AccountView], instruction_da
     // the delegation program's fee-vault PDA for the provided validator: for a
     // non-delegated payer the magic program treats this CPI slot as an extra
     // account to commit, so an unchecked account here would let anyone force
-    // commit-and-undelegate an arbitrary delegated account.
+    // commit-and-undelegate an arbitrary delegated account. Authenticating the
+    // validator itself is the magic program's job — it only ever charges the
+    // vault of the validator executing the commit and rejects any other
+    // account in this slot, so a wrong validator argument fails cleanly.
     match (magic_fee_vault, args.validator()) {
         (None, None) => {}
         (Some(vault), Some(validator)) => {
