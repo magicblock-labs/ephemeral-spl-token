@@ -409,7 +409,8 @@
         },
         {
           "name": "magicContext",
-          "writable": true
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
         }
       ],
       "args": []
