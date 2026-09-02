@@ -1848,9 +1848,32 @@ export async function buildUndelegateEphemeralAtaTransaction(
     const [ephemeralAta] = deriveEphemeralAta(payer, mint);
     const sendRpcEndpoint = await resolveUndelegateEphemeralRpcEndpoint(config, ephemeralAta);
     const blockhash = await getBlockhashFromRpcEndpoint(sendRpcEndpoint, "ephemeral", authToken);
-    const instructions = [
-      undelegateIx(payer, mint),
-    ];
+
+    // A delegated payer cannot cover commit fees itself: pass the delegating
+    // validator's Magic fee vault, with the validator identity appended as raw
+    // data so the program can verify the vault PDA.
+    let payerDelegationAccount: Awaited<ReturnType<Connection["getAccountInfo"]>>;
+    try {
+      payerDelegationAccount = await getBaseConnection(config)
+        .getAccountInfo(delegationRecordPdaFromDelegatedAccount(payer), "confirmed");
+    } catch (error) {
+      throw new ApiError(502, "RPC_ERROR", "Failed to fetch payer delegation record", {
+        payer: payer.toBase58(),
+        message: getSanitizedErrorMessage(error),
+      });
+    }
+    const payerValidator = readDelegatedValidator(payerDelegationAccount);
+
+    const undelegate = undelegateIx(payer, mint);
+    if (payerValidator) {
+      undelegate.keys.push({
+        pubkey: magicFeeVaultPdaFromValidator(payerValidator),
+        isSigner: false,
+        isWritable: true,
+      });
+      undelegate.data = Buffer.concat([undelegate.data, payerValidator.toBuffer()]);
+    }
+    const instructions = [undelegate];
 
     const response = serializeTransaction(
       "undelegateEphemeralAta",
