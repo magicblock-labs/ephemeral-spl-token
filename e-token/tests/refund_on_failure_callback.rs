@@ -1,4 +1,3 @@
-use dlp_api::pda::magic_fee_vault_pda_from_validator;
 use ephemeral_rollups_pinocchio::consts::{MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID};
 use ephemeral_spl_api::{
     state::transfer_queue::{HEADER_LEN, QUEUE_SEED, TRANSFER_QUEUE_VERSION},
@@ -66,14 +65,6 @@ fn queue_account_data(mint: Pubkey, validator: Pubkey, bump: u8) -> Vec<u8> {
     data
 }
 
-fn magic_fee_vault_pubkey(validator: Pubkey) -> Pubkey {
-    Pubkey::new_from_array(magic_fee_vault_pda_from_validator(&validator.to_bytes().into()).to_bytes())
-}
-
-fn delegation_program() -> Pubkey {
-    Pubkey::new_from_array(ephemeral_rollups_pinocchio::consts::DELEGATION_PROGRAM_ID.to_bytes())
-}
-
 /// Common fixture: ProgramTest context with queue, magic_fee_vault, and magic_context accounts.
 /// Returns (context, validator, mint, queue, magic_fee_vault, refund_destination_owner).
 async fn setup_context() -> (
@@ -88,7 +79,7 @@ async fn setup_context() -> (
     let mint = Keypair::new().pubkey();
     let refund_destination_owner = Keypair::new().pubkey();
     let (queue, queue_bump) = derive_queue(mint, validator.pubkey());
-    let magic_fee_vault = magic_fee_vault_pubkey(validator.pubkey());
+    let magic_fee_vault = utils::magic_fee_vault_pda(validator.pubkey());
     let magic_context = MAGIC_CONTEXT_ID;
 
     let rent = Rent::default();
@@ -116,7 +107,7 @@ async fn setup_context() -> (
         SolanaAccount {
             lamports: 1_000_000,
             data: vec![],
-            owner: delegation_program(),
+            owner: utils::delegation_program_id(),
             executable: false,
             rent_epoch: 0,
         },
