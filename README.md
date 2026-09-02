@@ -19,7 +19,7 @@ Core balance management
 
 Delegation and permissions
 - `4` `DelegateEphemeralAta` — delegate an Ephemeral ATA to the delegation program. Raw data is empty or an appended 32-byte validator pubkey.
-- `5` `UndelegateEphemeralAta` — commit and undelegate a user's delegated ATA flow. When the payer is itself delegated, append the selected validator's writable Magic fee-vault PDA as an optional sixth account.
+- `5` `UndelegateEphemeralAta` — commit and undelegate a user's delegated ATA flow. When the payer is itself delegated, append the delegating validator's writable Magic fee-vault PDA as an optional sixth account and the 32-byte validator pubkey as raw data; the program verifies the vault PDA against the validator.
 - `6` `CreateEphemeralAtaPermission` — create the ACL permission PDA for an Ephemeral ATA. Raw data is a single permission-flags byte.
 - `7` `DelegateEphemeralAtaPermission` — delegate the permission PDA associated with an Ephemeral ATA.
 - `8` `UndelegateEphemeralAtaPermission` — commit and undelegate the permission PDA.
