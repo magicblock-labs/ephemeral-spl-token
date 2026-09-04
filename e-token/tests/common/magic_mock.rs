@@ -63,6 +63,13 @@ pub struct CapturedCloseEphemeralAccount {
     pub accounts: Vec<Pubkey>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CapturedCommit {
+    pub accounts: Vec<Pubkey>,
+    /// True when the CPI used the explicit-fee-vault instruction variant.
+    pub explicit_fee_vault: bool,
+}
+
 // ── Global state ──────────────────────────────────────────────────────────────
 
 fn captured_schedules() -> &'static Mutex<HashMap<Pubkey, Vec<CapturedScheduleTask>>> {
@@ -100,6 +107,11 @@ fn captured_ephemeral_closes() -> &'static Mutex<HashMap<Pubkey, Vec<CapturedClo
     S.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+fn captured_commits() -> &'static Mutex<HashMap<Pubkey, Vec<CapturedCommit>>> {
+    static S: OnceLock<Mutex<HashMap<Pubkey, Vec<CapturedCommit>>>> = OnceLock::new();
+    S.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
 // ── clear / take / peek helpers ───────────────────────────────────────────────
 
 pub fn clear_captured_schedules(program: Pubkey) {
@@ -122,6 +134,7 @@ pub fn clear_all_captured(program: Pubkey) {
     captured_ephemeral_creates().lock().unwrap().remove(&program);
     captured_ephemeral_resizes().lock().unwrap().remove(&program);
     captured_ephemeral_closes().lock().unwrap().remove(&program);
+    captured_commits().lock().unwrap().remove(&program);
 }
 
 pub fn take_captured_schedules(program: Pubkey) -> Vec<CapturedScheduleTask> {
@@ -201,6 +214,10 @@ pub fn take_captured_ephemeral_closes(program: Pubkey) -> Vec<CapturedCloseEphem
         .unwrap()
         .remove(&program)
         .unwrap_or_default()
+}
+
+pub fn take_captured_commits(program: Pubkey) -> Vec<CapturedCommit> {
+    captured_commits().lock().unwrap().remove(&program).unwrap_or_default()
 }
 
 // ── Mock processor ─────────────────────────────────────────────────────────────
@@ -314,6 +331,18 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: 
                 .or_default()
                 .push(CapturedCloseEphemeralAccount {
                     accounts: accounts.iter().map(|a| *a.key).collect(),
+                });
+        }
+        MagicBlockInstruction::ScheduleCommitAndUndelegate
+        | MagicBlockInstruction::ScheduleCommitAndUndelegateWithFeeVault => {
+            captured_commits()
+                .lock()
+                .unwrap()
+                .entry(*program_id)
+                .or_default()
+                .push(CapturedCommit {
+                    accounts: accounts.iter().map(|a| *a.key).collect(),
+                    explicit_fee_vault: matches!(ix, MagicBlockInstruction::ScheduleCommitAndUndelegateWithFeeVault),
                 });
         }
         _ => return Err(ProgramError::InvalidInstructionData),
