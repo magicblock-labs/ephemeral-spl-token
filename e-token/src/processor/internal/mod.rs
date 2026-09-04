@@ -22,7 +22,7 @@ pub(crate) use group_receipt_accounts::group_receipt_log;
 pub(crate) use group_receipt_accounts::{
     group_receipt_close, group_receipt_create, GroupReceiptAccounts, GroupReceiptPermissionAccounts,
 };
-pub(crate) use magic::validate_magic_accounts;
+pub(crate) use magic::{commit_and_undelegate_with_fee_vault, validate_magic_accounts};
 pub(crate) use pda::CALLBACK_SIGNER;
 use pinocchio::error::ProgramError;
 use solana_address::Address;

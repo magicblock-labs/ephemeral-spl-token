@@ -1,14 +1,13 @@
-use ephemeral_rollups_pinocchio::pda::magic_fee_vault_pda_from_validator;
 use ephemeral_spl_api::{
     error::EphemeralSplError,
-    instructions::UndelegateArgs,
     require, require_eq_keys, require_n_accounts_with_optionals,
     state::{ephemeral_ata::EphemeralAta, load_initialized},
 };
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
-use wheels::layout::Decodable as _;
 
-use crate::processor::internal::{validate_magic_accounts, validate_token_account};
+use crate::processor::internal::{
+    commit_and_undelegate_with_fee_vault, validate_magic_accounts, validate_token_account,
+};
 
 ///
 /// Executes on:
@@ -20,14 +19,12 @@ use crate::processor::internal::{validate_magic_accounts, validate_token_account
 ///  2: []                  - PDA     : Ephemeral ATA account (PDA derived from [payer, mint]).
 ///  3: [writable]          - Any     : Magic context account.
 ///  4: []                  - Program : Magic program ID.
-///  5: [writable, optional] - PDA     : Magic fee vault for the delegating
-///                                      validator. Required when the eATA
-///                                      owner is itself delegated.
+///  5: [writable, optional] - PDA     : Magic fee vault of the executing
+///                                      validator. Required when the payer is
+///                                      itself delegated; validated by the
+///                                      magic program.
 ///
-/// Instruction Data: UndelegateArgs. The validator identity is required when
-/// the magic fee vault account is passed and must be omitted otherwise.
-///
-pub fn process_undelegate_ephemeral_ata(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
+pub fn process_undelegate_ephemeral_ata(accounts: &[AccountView], _instruction_data: &[u8]) -> ProgramResult {
     let (required, optional) = require_n_accounts_with_optionals!(accounts, 5);
     let [
         payer, // force multi-line
@@ -42,28 +39,9 @@ pub fn process_undelegate_ephemeral_ata(accounts: &[AccountView], instruction_da
         _ => return Err(EphemeralSplError::TooManyAccountKeys.into()),
     };
 
-    let args = UndelegateArgs::decode(instruction_data)?;
-
     // Ensure the payer signed the transaction
     require!(payer.is_signer(), ProgramError::MissingRequiredSignature);
     validate_magic_accounts(magic_context, magic_program)?;
-
-    // The fee vault covers commit fees when the payer is delegated. Pin it to
-    // the delegation program's fee-vault PDA for the provided validator: for a
-    // non-delegated payer the magic program treats this CPI slot as an extra
-    // account to commit, so an unchecked account here would let anyone force
-    // commit-and-undelegate an arbitrary delegated account. Authenticating the
-    // validator itself is the magic program's job — it only ever charges the
-    // vault of the validator executing the commit and rejects any other
-    // account in this slot, so a wrong validator argument fails cleanly.
-    match (magic_fee_vault, args.validator()) {
-        (None, None) => {}
-        (Some(vault), Some(validator)) => {
-            let derived_vault = magic_fee_vault_pda_from_validator(validator);
-            require_eq_keys!(&derived_vault, vault.address(), ProgramError::InvalidSeeds);
-        }
-        _ => return Err(ProgramError::InvalidInstructionData),
-    }
 
     // Read the Ephemeral ATA to get the mint and verify the PDA derivation for this payer.
     // Scope the borrow so it's released before any CPI.
@@ -80,13 +58,18 @@ pub fn process_undelegate_ephemeral_ata(accounts: &[AccountView], instruction_da
     // Validate that the provided ATA account is a valid SPL token account for [payer, mint].
     validate_token_account(ata_info, &mint, Some(payer.address()), None)?;
 
-    // Commit and undelegate with the user's ATA and the ephemeral ATA as the account set
-    ephemeral_rollups_pinocchio::instruction::commit_and_undelegate_accounts(
-        payer,
-        core::slice::from_ref(ata_info),
-        magic_context,
-        magic_program,
-        magic_fee_vault,
-        None,
-    )
+    // Commit and undelegate the user's ATA. With a fee vault the explicit
+    // magic instruction variant is used: the magic program validates the
+    // vault account itself, so it is forwarded unchecked here.
+    match magic_fee_vault {
+        Some(vault) => commit_and_undelegate_with_fee_vault(payer, ata_info, magic_context, magic_program, vault),
+        None => ephemeral_rollups_pinocchio::instruction::commit_and_undelegate_accounts(
+            payer,
+            core::slice::from_ref(ata_info),
+            magic_context,
+            magic_program,
+            None,
+            None,
+        ),
+    }
 }

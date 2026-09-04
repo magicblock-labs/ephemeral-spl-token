@@ -253,9 +253,7 @@
       ],
       "docs": [
         "Commits and undelegates a user's delegated ATA flow.",
-        "Pass the delegating validator's writable Magic fee vault when the payer is itself delegated.",
-        "Instruction data: empty, or exactly 32 raw validator bytes appended after the discriminator.",
-        "The validator bytes are required with the fee vault (the vault PDA is verified against them) and must be omitted without it."
+        "Pass the executing validator's writable Magic fee vault when the payer is itself delegated; the Magic program validates the vault account."
       ],
       "accounts": [
         {

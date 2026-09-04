@@ -22,7 +22,6 @@ struct Fixture {
     /// A real SPL token account for `[payer, mint]`. The program validates this by
     /// parsing it, not by deriving the ATA address, so any such account is accepted.
     user_ata: Pubkey,
-    validator: Pubkey,
     magic_fee_vault: Pubkey,
 }
 
@@ -90,16 +89,14 @@ async fn setup(label: &str) -> Fixture {
         payer,
         ephemeral_ata: pdas.ephemeral_ata,
         user_ata: setup.user_tokens[0],
-        validator,
         magic_fee_vault,
     }
 }
 
 /// Build instruction 5. `trailing` appends past the five required accounts, so the
 /// same builder produces the supported six-account form and the unsupported longer
-/// ones. `validator` is the optional instruction-data argument that must accompany
-/// the fee vault account.
-fn undelegate_ix(fixture: &Fixture, trailing: &[AccountMeta], validator: Option<Pubkey>) -> Instruction {
+/// ones.
+fn undelegate_ix(fixture: &Fixture, trailing: &[AccountMeta]) -> Instruction {
     let mut accounts = vec![
         AccountMeta::new_readonly(fixture.payer, true),
         AccountMeta::new(fixture.user_ata, false),
@@ -109,15 +106,10 @@ fn undelegate_ix(fixture: &Fixture, trailing: &[AccountMeta], validator: Option<
     ];
     accounts.extend_from_slice(trailing);
 
-    let data = match validator {
-        Some(validator) => instruction::ESplInstruction::UndelegateEphemeralAta.with_data(validator.as_ref()),
-        None => instruction::ESplInstruction::UndelegateEphemeralAta.to_vec(),
-    };
-
     Instruction {
         program_id: PROGRAM,
         accounts,
-        data,
+        data: instruction::ESplInstruction::UndelegateEphemeralAta.to_vec(),
     }
 }
 
@@ -144,11 +136,15 @@ async fn send(fixture: &mut Fixture, ix: Instruction) -> Result<(), TransactionE
 async fn undelegate_ephemeral_ata_without_fee_vault() {
     let mut fixture = setup("undelegate_ephemeral_ata_without_fee_vault").await;
 
-    let ix = undelegate_ix(&fixture, &[], None);
+    let ix = undelegate_ix(&fixture, &[]);
     send(&mut fixture, ix).await.unwrap();
 
     let commits = take_captured_commits(utils::magic_program_id());
     assert_eq!(commits.len(), 1, "expected exactly one commit CPI");
+    assert!(
+        !commits[0].explicit_fee_vault,
+        "no vault means the implicit instruction variant"
+    );
     assert_eq!(
         commits[0].accounts,
         vec![fixture.payer, utils::magic_context_id(), fixture.user_ata],
@@ -156,22 +152,22 @@ async fn undelegate_ephemeral_ata_without_fee_vault() {
     );
 }
 
-/// The sixth account is the whole point of the delegated-owner path: it must reach
-/// Magic, and it must land between the magic context and the committed account.
+/// With a sixth account the program must switch to the explicit-fee-vault magic
+/// instruction variant, whose vault slot the magic program validates itself.
 #[tokio::test]
 #[serial]
 async fn undelegate_ephemeral_ata_with_fee_vault() {
     let mut fixture = setup("undelegate_ephemeral_ata_with_fee_vault").await;
 
-    let ix = undelegate_ix(
-        &fixture,
-        &[AccountMeta::new(fixture.magic_fee_vault, false)],
-        Some(fixture.validator),
-    );
+    let ix = undelegate_ix(&fixture, &[AccountMeta::new(fixture.magic_fee_vault, false)]);
     send(&mut fixture, ix).await.unwrap();
 
     let commits = take_captured_commits(utils::magic_program_id());
     assert_eq!(commits.len(), 1, "expected exactly one commit CPI");
+    assert!(
+        commits[0].explicit_fee_vault,
+        "the vault must ride the explicit instruction variant"
+    );
     assert_eq!(
         commits[0].accounts,
         vec![
@@ -182,66 +178,6 @@ async fn undelegate_ephemeral_ata_with_fee_vault() {
         ],
         "the fee vault is positional: third, ahead of the committed account"
     );
-}
-
-/// For a non-delegated payer the magic program treats the sixth CPI account as one
-/// more account to commit, so forwarding an unchecked account here would let anyone
-/// force commit-and-undelegate an arbitrary delegated account. Any account that is
-/// not the fee-vault PDA for the given validator must be rejected.
-#[tokio::test]
-#[serial]
-async fn undelegate_ephemeral_ata_rejects_non_vault_account_in_fee_vault_slot() {
-    let mut fixture = setup("undelegate_ephemeral_ata_rejects_non_vault_account_in_fee_vault_slot").await;
-
-    let victim_ata = fixture.user_ata;
-    let ix = undelegate_ix(
-        &fixture,
-        &[AccountMeta::new(victim_ata, false)],
-        Some(fixture.validator),
-    );
-
-    let err = send(&mut fixture, ix).await.unwrap_err();
-    assert_eq!(
-        err,
-        TransactionError::InstructionError(0, InstructionError::InvalidSeeds)
-    );
-    assert!(
-        take_captured_commits(utils::magic_program_id()).is_empty(),
-        "a rejected instruction must not have reached Magic"
-    );
-}
-
-/// The fee vault account and the validator argument only make sense together: the
-/// account without the validator cannot be verified, and the validator without the
-/// account has nothing to verify.
-#[tokio::test]
-#[serial]
-async fn undelegate_ephemeral_ata_rejects_fee_vault_without_validator() {
-    let mut fixture = setup("undelegate_ephemeral_ata_rejects_fee_vault_without_validator").await;
-
-    let ix = undelegate_ix(&fixture, &[AccountMeta::new(fixture.magic_fee_vault, false)], None);
-
-    let err = send(&mut fixture, ix).await.unwrap_err();
-    assert_eq!(
-        err,
-        TransactionError::InstructionError(0, InstructionError::InvalidInstructionData)
-    );
-    assert!(take_captured_commits(utils::magic_program_id()).is_empty());
-}
-
-#[tokio::test]
-#[serial]
-async fn undelegate_ephemeral_ata_rejects_validator_without_fee_vault() {
-    let mut fixture = setup("undelegate_ephemeral_ata_rejects_validator_without_fee_vault").await;
-
-    let ix = undelegate_ix(&fixture, &[], Some(fixture.validator));
-
-    let err = send(&mut fixture, ix).await.unwrap_err();
-    assert_eq!(
-        err,
-        TransactionError::InstructionError(0, InstructionError::InvalidInstructionData)
-    );
-    assert!(take_captured_commits(utils::magic_program_id()).is_empty());
 }
 
 /// One optional account, not an open tail. A seventh account is a caller mistake and
@@ -258,7 +194,6 @@ async fn undelegate_ephemeral_ata_rejects_a_seventh_account() {
             AccountMeta::new(fixture.magic_fee_vault, false),
             AccountMeta::new_readonly(stray, false),
         ],
-        Some(fixture.validator),
     );
 
     let err = send(&mut fixture, ix).await.unwrap_err();
@@ -281,11 +216,7 @@ async fn undelegate_ephemeral_ata_rejects_a_seventh_account() {
 async fn undelegate_ephemeral_ata_rejects_readonly_fee_vault() {
     let mut fixture = setup("undelegate_ephemeral_ata_rejects_readonly_fee_vault").await;
 
-    let ix = undelegate_ix(
-        &fixture,
-        &[AccountMeta::new_readonly(fixture.magic_fee_vault, false)],
-        Some(fixture.validator),
-    );
+    let ix = undelegate_ix(&fixture, &[AccountMeta::new_readonly(fixture.magic_fee_vault, false)]);
 
     let err = send(&mut fixture, ix).await.unwrap_err();
     assert_eq!(

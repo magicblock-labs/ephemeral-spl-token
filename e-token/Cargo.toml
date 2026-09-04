@@ -50,7 +50,7 @@ solana-account = { workspace = true }
 spl-token-interface = { workspace = true }
 magicblock-delegation-program-api = { workspace = true, default-features = true }
 #magicblock-magic-program-api = "=0.8.7"
-magicblock-magic-program-api = { git = "https://github.com/magicblock-labs/magicblock-validator.git", rev = "69d3381e" }
+magicblock-magic-program-api = { git = "https://github.com/magicblock-labs/magicblock-validator.git", rev = "9aba06051e5686eac8a2624696a3dab635407156" }
 bincode = "1.3.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
