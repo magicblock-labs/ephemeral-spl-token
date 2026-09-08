@@ -182,19 +182,21 @@ async fn undelegate_ephemeral_ata_with_fee_vault() {
 async fn undelegate_ephemeral_ata_rejects_non_vault_owner_in_fee_vault_slot() {
     let mut fixture = setup("undelegate_ephemeral_ata_rejects_non_vault_owner_in_fee_vault_slot").await;
 
-    // A token-program-owned account in the vault slot: the attack shape.
-    let victim_ata = fixture.user_ata;
-    let ix = undelegate_ix(&fixture, &[AccountMeta::new(victim_ata, false)]);
+    // Both admissible committee classes: a token-program-owned account (the
+    // carve-out) and an account owned by this program (the parent match).
+    for victim in [fixture.user_ata, fixture.ephemeral_ata] {
+        let ix = undelegate_ix(&fixture, &[AccountMeta::new(victim, false)]);
 
-    let err = send(&mut fixture, ix).await.unwrap_err();
-    assert_eq!(
-        err,
-        TransactionError::InstructionError(0, InstructionError::InvalidAccountOwner)
-    );
-    assert!(
-        take_captured_commits(utils::magic_program_id()).is_empty(),
-        "a rejected instruction must not have reached Magic"
-    );
+        let err = send(&mut fixture, ix).await.unwrap_err();
+        assert_eq!(
+            err,
+            TransactionError::InstructionError(0, InstructionError::InvalidAccountOwner)
+        );
+        assert!(
+            take_captured_commits(utils::magic_program_id()).is_empty(),
+            "a rejected instruction must not have reached Magic"
+        );
+    }
 }
 
 /// One optional account, not an open tail. A seventh account is a caller mistake and
