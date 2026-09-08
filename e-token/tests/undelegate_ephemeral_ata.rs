@@ -141,10 +141,6 @@ async fn undelegate_ephemeral_ata_without_fee_vault() {
 
     let commits = take_captured_commits(utils::magic_program_id());
     assert_eq!(commits.len(), 1, "expected exactly one commit CPI");
-    assert!(
-        !commits[0].explicit_fee_vault,
-        "no vault means the implicit instruction variant"
-    );
     assert_eq!(
         commits[0].accounts,
         vec![fixture.payer, utils::magic_context_id(), fixture.user_ata],
@@ -152,8 +148,9 @@ async fn undelegate_ephemeral_ata_without_fee_vault() {
     );
 }
 
-/// With a sixth account the program must switch to the explicit-fee-vault magic
-/// instruction variant, whose vault slot the magic program validates itself.
+/// The sixth account rides the commit CPI positionally between the magic
+/// context and the committed account; the program only requires it to be
+/// owned by the delegation program.
 #[tokio::test]
 #[serial]
 async fn undelegate_ephemeral_ata_with_fee_vault() {
@@ -164,10 +161,6 @@ async fn undelegate_ephemeral_ata_with_fee_vault() {
 
     let commits = take_captured_commits(utils::magic_program_id());
     assert_eq!(commits.len(), 1, "expected exactly one commit CPI");
-    assert!(
-        commits[0].explicit_fee_vault,
-        "the vault must ride the explicit instruction variant"
-    );
     assert_eq!(
         commits[0].accounts,
         vec![
@@ -177,6 +170,30 @@ async fn undelegate_ephemeral_ata_with_fee_vault() {
             fixture.user_ata,
         ],
         "the fee vault is positional: third, ahead of the committed account"
+    );
+}
+
+/// For a non-delegated payer the magic program treats the sixth CPI account as
+/// one more account to commit, and it trusts this program for token accounts
+/// and its own accounts. Anything not owned by the delegation program must
+/// therefore be rejected before it reaches the CPI.
+#[tokio::test]
+#[serial]
+async fn undelegate_ephemeral_ata_rejects_non_vault_owner_in_fee_vault_slot() {
+    let mut fixture = setup("undelegate_ephemeral_ata_rejects_non_vault_owner_in_fee_vault_slot").await;
+
+    // A token-program-owned account in the vault slot: the attack shape.
+    let victim_ata = fixture.user_ata;
+    let ix = undelegate_ix(&fixture, &[AccountMeta::new(victim_ata, false)]);
+
+    let err = send(&mut fixture, ix).await.unwrap_err();
+    assert_eq!(
+        err,
+        TransactionError::InstructionError(0, InstructionError::InvalidAccountOwner)
+    );
+    assert!(
+        take_captured_commits(utils::magic_program_id()).is_empty(),
+        "a rejected instruction must not have reached Magic"
     );
 }
 

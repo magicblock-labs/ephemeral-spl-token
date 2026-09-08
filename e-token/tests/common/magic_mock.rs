@@ -66,8 +66,6 @@ pub struct CapturedCloseEphemeralAccount {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CapturedCommit {
     pub accounts: Vec<Pubkey>,
-    /// True when the CPI used the explicit-fee-vault instruction variant.
-    pub explicit_fee_vault: bool,
 }
 
 // ── Global state ──────────────────────────────────────────────────────────────
@@ -333,8 +331,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: 
                     accounts: accounts.iter().map(|a| *a.key).collect(),
                 });
         }
-        MagicBlockInstruction::ScheduleCommitAndUndelegate
-        | MagicBlockInstruction::ScheduleCommitAndUndelegateWithFeeVault => {
+        MagicBlockInstruction::ScheduleCommitAndUndelegate => {
             captured_commits()
                 .lock()
                 .unwrap()
@@ -342,7 +339,6 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: 
                 .or_default()
                 .push(CapturedCommit {
                     accounts: accounts.iter().map(|a| *a.key).collect(),
-                    explicit_fee_vault: matches!(ix, MagicBlockInstruction::ScheduleCommitAndUndelegateWithFeeVault),
                 });
         }
         _ => return Err(ProgramError::InvalidInstructionData),

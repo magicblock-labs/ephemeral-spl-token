@@ -253,7 +253,7 @@
       ],
       "docs": [
         "Commits and undelegates a user's delegated ATA flow.",
-        "Pass the executing validator's writable Magic fee vault when the payer is itself delegated; the Magic program validates the vault account."
+        "Pass the executing validator's writable Magic fee vault when the payer is itself delegated. The account must be owned by the delegation program; the Magic program validates it is the executing validator's vault."
       ],
       "accounts": [
         {
