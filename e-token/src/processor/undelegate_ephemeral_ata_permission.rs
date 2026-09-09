@@ -5,6 +5,8 @@ use ephemeral_spl_api::{
 };
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
+use crate::processor::internal::validate_magic_accounts;
+
 ///
 /// Executes on:
 ///
@@ -14,7 +16,7 @@ use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 ///  1: [writable]          - PDA     : Ephemeral ATA account (permissioned account).
 ///  2: [writable]          - PDA     : Permission PDA (derived from ["permission:", ephemeral_ata]).
 ///  3: []                  - Program : Permission program (ACL).
-///  4: []                  - Program : Delegation program.
+///  4: []                  - Program : Magic program ID.
 ///  5: [writable]          - Any     : Magic context account.
 ///
 /// Instruction Data: None
@@ -33,6 +35,7 @@ pub fn process_undelegate_ephemeral_ata_permission(
     ] = require_n_accounts!(accounts, 6);
 
     require!(payer_info.is_signer(), ProgramError::MissingRequiredSignature);
+    validate_magic_accounts(magic_context, magic_program)?;
 
     require_eq_keys!(
         &PERMISSION_PROGRAM_ID,
