@@ -225,6 +225,11 @@ fn process_public_instruction(accounts: &[AccountView], instruction_data: &[u8])
 
             process_recover_and_close_shuttle_to_owner(accounts, data)
         }
+        ESplInstruction::CloseLamportsPda => {
+            debug_log!("Instruction: CloseLamportsPda");
+
+            process_close_lamports_pda(accounts, data)
+        }
     }
 }
 
