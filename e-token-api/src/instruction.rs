@@ -232,6 +232,14 @@ pub enum ESplInstruction {
     ///      remaining shuttle wallet ATA balance to a token account owned by the
     ///      shuttle owner, then closes shuttle accounts.
     RecoverAndCloseShuttleToOwner = 32,
+
+    /// 33 - CloseLamportsPda: permissionless recovery for a sponsored lamports PDA
+    ///      that was undelegated without its post-delegation actions running.
+    ///      Refunds everything above the sponsored rent to the payer, returns the
+    ///      rent to the global rent PDA and closes the PDA.
+    ///      Instruction data:
+    ///      [0..32]  salt ([u8; 32])
+    CloseLamportsPda = 33,
 }
 
 impl ESplInstruction {
@@ -297,6 +305,7 @@ impl TryFrom<u8> for ESplInstruction {
             30 => Ok(Self::ExecuteScheduledPrivateTransfer),
             31 => Ok(Self::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransferAndStashClose),
             32 => Ok(Self::RecoverAndCloseShuttleToOwner),
+            33 => Ok(Self::CloseLamportsPda),
             _ => Err(()),
         }
     }

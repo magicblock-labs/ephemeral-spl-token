@@ -1,5 +1,6 @@
 pub(crate) mod allocate_transfer_queue;
 pub(crate) mod close_ephemeral_ata;
+pub(crate) mod close_lamports_pda;
 pub(crate) mod close_lamports_pda_intent;
 pub(crate) mod close_shuttle_ata_intent;
 pub(crate) mod create_ephemeral_ata_permission;
@@ -44,6 +45,7 @@ pub(crate) mod withdraw_through_delegated_shuttle_with_merge;
 
 pub(crate) use allocate_transfer_queue::process_allocate_transfer_queue;
 pub(crate) use close_ephemeral_ata::process_close_ephemeral_ata;
+pub(crate) use close_lamports_pda::process_close_lamports_pda;
 pub(crate) use close_lamports_pda_intent::process_close_lamports_pda_intent;
 pub(crate) use close_shuttle_ata_intent::process_close_shuttle_ata_intent;
 pub(crate) use create_ephemeral_ata_permission::process_create_ephemeral_ata_permission;
