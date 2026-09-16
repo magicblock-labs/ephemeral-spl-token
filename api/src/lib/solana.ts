@@ -123,6 +123,8 @@ const PRIVATE_BASE_TO_BASE_TRANSFER_LOOKUP_TABLES = {
   devnet: new PublicKey("E26JGdRsdKkGe6oRU4Un24agZjBF2Bg9z1ctfZByETRo"),
 } as const;
 const PRIVATE_TRANSFER_SETUP_LAMPORTS = 2_039_280n;
+// Keep aligned with SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS in e-token-api/src/consts.rs.
+const SPONSORED_SHUTTLE_SETUP_LAMPORTS = 500_000n;
 const PRIVATE_TRANSFER_FEE_BASIS_POINTS = 10n;
 const BASIS_POINTS_FACTOR = 10_000n;
 const GASLESS_RELAY_FEE_MICRO_USDC = 200_000n; // 0.2 USDC/USDT
@@ -1454,6 +1456,67 @@ function isSupportedGaslessMint(cluster: RpcConfig["cluster"], mint: PublicKey) 
   return mintAddress === DEFAULT_DEPOSIT_MINT || mintAddress === MAINNET_USDT_MINT;
 }
 
+function resolveGaslessSponsorship(
+  kind: "deposit" | "withdraw" | "transfer",
+  env: AppEnv,
+  config: RpcConfig,
+  owner: PublicKey,
+  mint: PublicKey,
+  amount: bigint,
+  requested?: boolean,
+) {
+  let sponsor: Keypair | undefined;
+  if (requested === true) {
+    const isWallet = PublicKey.isOnCurve(owner.toBuffer());
+    const errorPrefix = `INVALID_GASLESS_${kind.toUpperCase()}`;
+    // Preserve the existing transfer behavior for PDA senders and custom RPCs.
+    if (!isWallet && kind !== "transfer") {
+      throw new ApiError(400, `${errorPrefix}_OWNER`, "gasless requires an on-curve wallet owner");
+    }
+    if (isWallet) {
+      if (kind !== "transfer" && config.cluster === "custom") {
+        throw new ApiError(400, `${errorPrefix}_CLUSTER`, "gasless deposits and withdrawals require a mainnet or devnet cluster");
+      }
+      if (!isSupportedGaslessMint(config.cluster, mint)) {
+        throw new ApiError(400, `${errorPrefix}_MINT`, "gasless is supported only for approved stablecoin mints");
+      }
+      if (amount < GASLESS_STABLECOIN_MIN_AMOUNT) {
+        throw new ApiError(
+          400,
+          `${errorPrefix}_AMOUNT`,
+          `gasless amount must be at least ${Number(GASLESS_STABLECOIN_MIN_AMOUNT) / 1_000_000} USDC/USDT`,
+        );
+      }
+      sponsor = getGaslessSponsorKeypair(env);
+    }
+  }
+
+  return {
+    sponsor,
+    payer: sponsor?.publicKey ?? owner,
+    feePayer: sponsor?.publicKey ?? owner,
+    partialSigners: sponsor ? [sponsor] : [],
+    relayFee: sponsor ? GASLESS_RELAY_FEE_MICRO_USDC : 0n,
+  };
+}
+
+function createGaslessFeeInstructions(
+  owner: PublicKey,
+  mint: PublicKey,
+  tokenProgram: PublicKey,
+  sponsor?: Keypair,
+) {
+  return sponsor
+    ? [createTokenTransferInstruction(
+        getAssociatedTokenAddressSync(mint, owner, true, tokenProgram),
+        getAssociatedTokenAddressSync(mint, sponsor.publicKey, true, tokenProgram),
+        owner,
+        GASLESS_RELAY_FEE_MICRO_USDC,
+        tokenProgram,
+      )]
+    : [];
+}
+
 function privateTransferFeeAmount(amount: bigint) {
   return amount * PRIVATE_TRANSFER_FEE_BASIS_POINTS / BASIS_POINTS_FACTOR;
 }
@@ -1658,8 +1721,9 @@ export async function buildDepositTransaction(env: AppEnv, input: DepositRequest
       "mint",
     );
     const amount = parseAmount(input.amount, "amount");
-    const payer = owner;
-    const feePayer = owner;
+    const { sponsor, payer, feePayer, partialSigners, relayFee } = resolveGaslessSponsorship(
+      "deposit", env, config, owner, mint, amount, input.gasless,
+    );
     const validator = await resolveDepositValidator(config, input.validator);
     const tokenProgram = input.mint !== undefined
       ? await resolveMintTokenProgram(config, mint)
@@ -1694,6 +1758,7 @@ export async function buildDepositTransaction(env: AppEnv, input: DepositRequest
       private: input.private ?? true,
     });
     const instructions = [
+      ...createGaslessFeeInstructions(owner, mint, tokenProgram, sponsor),
       ...nativeSolWrapInstructions,
       ...nativeSolRentPdaTopUpInstructions,
       ...delegateInstructions,
@@ -1706,6 +1771,9 @@ export async function buildDepositTransaction(env: AppEnv, input: DepositRequest
       feePayer,
       blockhash,
       validator,
+      partialSigners,
+      undefined,
+      sponsor ? createTransferFees(input.idempotent === false ? 0n : SPONSORED_SHUTTLE_SETUP_LAMPORTS, relayFee) : undefined,
     );
   } catch (error) {
     throwTransactionBuildError(error);
@@ -1718,8 +1786,9 @@ export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawReque
     const owner = parsePublicKey(input.owner, "owner");
     const mint = parsePublicKey(input.mint, "mint");
     const amount = parseAmount(input.amount, "amount");
-    const payer = owner;
-    const feePayer = owner;
+    const { sponsor, payer, feePayer, partialSigners, relayFee } = resolveGaslessSponsorship(
+      "withdraw", env, config, owner, mint, amount, input.gasless,
+    );
     const validator = await resolveValidator(config, input.validator);
     const tokenProgram = await resolveMintTokenProgram(config, mint);
     const blockhash = await getBlockhash(config, "base");
@@ -1734,6 +1803,7 @@ export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawReque
       escrowIndex: input.escrowIndex,
       idempotent: input.idempotent,
     });
+    instructions.unshift(...createGaslessFeeInstructions(owner, mint, tokenProgram, sponsor));
 
     if (
       input.idempotent === false
@@ -1757,6 +1827,9 @@ export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawReque
       feePayer,
       blockhash,
       validator,
+      partialSigners,
+      undefined,
+      sponsor ? createTransferFees(input.idempotent === false ? 0n : SPONSORED_SHUTTLE_SETUP_LAMPORTS, relayFee) : undefined,
     );
   } catch (error) {
     throwTransactionBuildError(error);
@@ -2055,31 +2128,13 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "split cannot exceed transfer amount");
     }
 
-    const useGasless = input.gasless === true && PublicKey.isOnCurve(from.toBuffer());
-
-    if (useGasless && !isSupportedGaslessMint(config.cluster, mint)) {
-      throw new ApiError(
-        400,
-        "INVALID_GASLESS_TRANSFER_MINT",
-        "gasless is supported only for approved stablecoin mints",
-      );
-    }
-
-    if (useGasless && amount < GASLESS_STABLECOIN_MIN_AMOUNT) {
-      throw new ApiError(
-        400,
-        "INVALID_GASLESS_TRANSFER_AMOUNT",
-        `gasless amount must be at least ${Number(GASLESS_STABLECOIN_MIN_AMOUNT) / 1_000_000} USDC/USDT`,
-      );
-    }
-
-    const sponsor = useGasless ? getGaslessSponsorKeypair(env) : undefined;
-    const payer = sponsor?.publicKey ?? from;
-    const feePayer = sponsor?.publicKey ?? from;
+    const { sponsor, payer, feePayer, partialSigners, relayFee } = resolveGaslessSponsorship(
+      "transfer", env, config, from, mint, amount, input.gasless,
+    );
     const privateTransferFee = isPrivateBaseToBaseTransfer(input) ? privateTransferFeeAmount(transferAmount) : 0n;
     const fees = createTransferFees(
       privateTransferSetupLamports(input),
-      privateTransferFee + platformFee + (sponsor ? GASLESS_RELAY_FEE_MICRO_USDC : 0n),
+      privateTransferFee + platformFee + relayFee,
     );
 
     const shouldResolveValidator = input.validator
@@ -2109,17 +2164,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       );
     }
 
-    const gaslessFeeInstructions = sponsor
-      ? [
-          createTokenTransferInstruction(
-            getAssociatedTokenAddressSync(mint, from, true, tokenProgram),
-            getAssociatedTokenAddressSync(mint, sponsor.publicKey, true, tokenProgram),
-            from,
-            GASLESS_RELAY_FEE_MICRO_USDC,
-            tokenProgram,
-          ),
-        ]
-      : [];
+    const gaslessFeeInstructions = createGaslessFeeInstructions(from, mint, tokenProgram, sponsor);
 
     const sendTo: SendTarget = input.fromBalance === "ephemeral" ? "ephemeral" : "base";
     const blockhash = await getBlockhash(config, sendTo, authToken);
@@ -2213,7 +2258,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
         feePayer,
         blockhash,
         validator,
-        sponsor ? [sponsor] : [],
+        partialSigners,
         fees,
       );
 
@@ -2228,7 +2273,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       feePayer,
       blockhash,
       validator,
-      sponsor ? [sponsor] : [],
+      partialSigners,
       input.fromBalance,
       fees,
       sendTo === "ephemeral" ? config.ephemeralRpcUrl : undefined,
