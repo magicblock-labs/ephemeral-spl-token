@@ -19,7 +19,7 @@ Core balance management
 
 Delegation and permissions
 - `4` `DelegateEphemeralAta` — delegate an Ephemeral ATA to the delegation program. Raw data is empty or an appended 32-byte validator pubkey.
-- `5` `UndelegateEphemeralAta` — commit and undelegate a user's delegated ATA flow.
+- `5` `UndelegateEphemeralAta` — commit and undelegate a user's delegated ATA flow. When the payer is itself delegated, pass the executing validator's writable Magic fee-vault PDA as an optional sixth account; it must be owned by the delegation program, and the Magic program validates it is the executing validator's vault.
 - `6` `CreateEphemeralAtaPermission` — create the ACL permission PDA for an Ephemeral ATA. Raw data is a single permission-flags byte.
 - `7` `DelegateEphemeralAtaPermission` — delegate the permission PDA associated with an Ephemeral ATA.
 - `8` `UndelegateEphemeralAtaPermission` — commit and undelegate the permission PDA.
@@ -82,6 +82,55 @@ cargo test-sbf --features logging delegate_ephemeral_ata
 ```
 
 Tests live under `e-token/tests/` and cover balance accounting, delegation/undelegation, shuttle flows, permissions, the rent PDA and lamports-PDA flows, and transfer-queue automation.
+
+### End-to-end tests (live validators)
+
+`e-token-e2e` runs against the real two-validator stack instead of an in-process
+bank. This is the only place the transfer-queue crank is genuinely exercised.
+The program asks for the crank through the magic program's `ScheduleTask`, and
+the in-process suite can only check that *request* — its magic mock captures the
+call and never executes it. Whether a scheduled task is then actually fired, on
+cadence, forever, is the rollup's half of the contract, and that is the half now
+running on Hydra. Only a live rollup tests it.
+
+Install the validators once, then run the suite:
+
+```bash
+npm i -g @magicblock-labs/ephemeral-validator   # mb-test-validator + ephemeral-validator
+make test-e2e
+```
+
+`make test-e2e` builds the program (with `logging`, so a failing transaction
+reports which check rejected it), starts both validators, runs the tests, and
+stops the validators again.
+
+Starting a base validator dominates the runtime, so for a tight edit/test loop
+leave one running and reuse it:
+
+```bash
+make e2e-base-validator                # terminal 1: base validator, stays up
+make test-e2e SKIP_BASE_VALIDATOR=1    # terminal 2: attaches to it, repeatedly
+```
+
+`SKIP_ER_VALIDATOR=1` (with `make e2e-er-validator`) does the same for the
+rollup, and the two combine. A skipped validator is attached to and left running
+afterwards; a validator that is *not* skipped refuses to start if its port is
+already busy, rather than silently reusing a stale instance. `make e2e-stop`
+cleans up anything an interrupted run orphaned, and `KEEP_E2E_LOGS=1` (with
+`E2E_ER_LOG=info`) retains the temporary ledgers and validator logs for
+post-mortem.
+
+What the suite runs is the full private-transfer flow — one base-layer
+instruction that deposits, delegates a shuttle whose post-action queues the
+transfer on the rollup, and lets the crank settle it back — asserting on the
+recipient's base-layer balance at the end.
+
+The validator pair is all it needs. `ephemeral-validator` executes the scheduled
+task itself, so no external cranker has to be running. A `magicblock-validator`
+rollup instead routes tasks through Hydra, which debits each execution's reward
+from a crank account; the suite tops that account up itself, and is a no-op on a
+rollup that has no crank to top up (see `fund_queue_crank` in
+`e-token-e2e/src/fixture.rs`).
 
 ## Notes
 - The workspace depends on `ephemeral-rollups-pinocchio` and several Solana crates; ensure your local environment matches the versions declared in the workspace `Cargo.toml`.

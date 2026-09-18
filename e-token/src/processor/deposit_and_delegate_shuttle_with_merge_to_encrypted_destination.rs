@@ -23,7 +23,7 @@ use crate::processor::internal::shuttle_delegation::{
 ///
 /// Private base->ephemeral transfer with an encrypted destination: deposits the
 /// amount into a shuttle EATA and delegates it with post-delegation actions
-/// that, on the ER, create the destination's rent-pending ATA and merge the
+/// that, on the ER, create the destination's Magic ATA and merge the
 /// shuttle balance into it (instruction 34), then undelegate and close the
 /// shuttle. The destination owner and ATA are carried only as encrypted
 /// buffers and never appear in cleartext on base.
@@ -157,7 +157,7 @@ fn merge_to_encrypted_destination_action(
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(8, false)),
             ],
             data: MaybeEncryptedIxData {
-                prefix: ESplInstruction::MergeShuttleIntoRentPendingAta.to_vec(),
+                prefix: ESplInstruction::MergeShuttleIntoMagicAta.to_vec(),
                 suffix: EncryptedBuffer::default(),
             },
         }],

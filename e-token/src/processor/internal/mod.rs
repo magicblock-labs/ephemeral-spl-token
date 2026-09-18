@@ -4,12 +4,13 @@ pub(crate) mod ephemeral_ata;
 pub(crate) mod group_receipt;
 pub(crate) mod group_receipt_accounts;
 pub(crate) mod lamports_pda;
+pub(crate) mod magic;
+pub(crate) mod magic_ata_destination;
 pub(crate) mod pda;
 pub(crate) mod private_transfer;
 pub(crate) mod queue_authorized_action;
 pub(crate) mod refund;
 pub(crate) mod rent_pda;
-pub(crate) mod rent_pending_destination;
 pub(crate) mod shuttle_delegation;
 pub(crate) mod token;
 pub(crate) mod token_vault;
@@ -22,6 +23,7 @@ pub(crate) use group_receipt_accounts::group_receipt_log;
 pub(crate) use group_receipt_accounts::{
     group_receipt_close, group_receipt_create, GroupReceiptAccounts, GroupReceiptPermissionAccounts,
 };
+pub(crate) use magic::validate_magic_accounts;
 pub(crate) use pda::CALLBACK_SIGNER;
 use pinocchio::error::ProgramError;
 use solana_address::Address;

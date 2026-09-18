@@ -1,5 +1,6 @@
 pub(crate) mod allocate_transfer_queue;
 pub(crate) mod close_ephemeral_ata;
+pub(crate) mod close_lamports_pda;
 pub(crate) mod close_lamports_pda_intent;
 pub(crate) mod close_shuttle_ata_intent;
 pub(crate) mod create_ephemeral_ata_permission;
@@ -13,7 +14,7 @@ pub(crate) mod deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
 pub(crate) mod deposit_and_delegate_shuttle_with_merge_to_encrypted_destination;
 pub(crate) mod deposit_and_queue_transfer;
 pub(crate) mod deposit_spl_tokens;
-pub(crate) mod ensure_rent_pending_destination;
+pub(crate) mod ensure_magic_ata_destination;
 pub(crate) mod ensure_stealth_pool_delegated;
 pub(crate) mod ensure_transfer_queue_crank;
 pub(crate) mod execute_pending_transfer_queue_refill;
@@ -28,7 +29,7 @@ pub(crate) mod initialize_transfer_queue;
 pub(crate) mod internal;
 pub(crate) mod mark_transfer_queue_refill_pending;
 pub(crate) mod merge_shuttle_into_ephemeral_ata;
-pub(crate) mod merge_shuttle_into_rent_pending_ata;
+pub(crate) mod merge_shuttle_into_magic_ata;
 pub(crate) mod recover_and_close_shuttle_to_owner;
 pub(crate) mod refund_on_failure_callback;
 pub(crate) mod reset_ephemeral_ata_permission;
@@ -47,6 +48,7 @@ pub(crate) mod withdraw_through_delegated_shuttle_with_merge;
 
 pub(crate) use allocate_transfer_queue::process_allocate_transfer_queue;
 pub(crate) use close_ephemeral_ata::process_close_ephemeral_ata;
+pub(crate) use close_lamports_pda::process_close_lamports_pda;
 pub(crate) use close_lamports_pda_intent::process_close_lamports_pda_intent;
 pub(crate) use close_shuttle_ata_intent::process_close_shuttle_ata_intent;
 pub(crate) use create_ephemeral_ata_permission::process_create_ephemeral_ata_permission;
@@ -60,7 +62,7 @@ pub(crate) use deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
 pub(crate) use deposit_and_delegate_shuttle_with_merge_to_encrypted_destination::process_deposit_and_delegate_shuttle_with_merge_to_encrypted_destination;
 pub(crate) use deposit_and_queue_transfer::process_deposit_and_queue_transfer;
 pub(crate) use deposit_spl_tokens::process_deposit_spl_tokens;
-pub(crate) use ensure_rent_pending_destination::process_ensure_rent_pending_destination;
+pub(crate) use ensure_magic_ata_destination::process_ensure_magic_ata_destination;
 pub(crate) use ensure_stealth_pool_delegated::process_ensure_stealth_pool_delegated;
 pub(crate) use ensure_transfer_queue_crank::process_ensure_transfer_queue_crank;
 pub(crate) use execute_pending_transfer_queue_refill::process_execute_pending_transfer_queue_refill;
@@ -74,7 +76,7 @@ pub(crate) use initialize_shuttle_ephemeral_ata::process_initialize_shuttle_ephe
 pub(crate) use initialize_transfer_queue::process_initialize_transfer_queue;
 pub(crate) use mark_transfer_queue_refill_pending::process_mark_transfer_queue_refill_pending;
 pub(crate) use merge_shuttle_into_ephemeral_ata::process_merge_shuttle_into_ephemeral_ata;
-pub(crate) use merge_shuttle_into_rent_pending_ata::process_merge_shuttle_into_rent_pending_ata;
+pub(crate) use merge_shuttle_into_magic_ata::process_merge_shuttle_into_magic_ata;
 pub(crate) use recover_and_close_shuttle_to_owner::process_recover_and_close_shuttle_to_owner;
 pub(crate) use refund_on_failure_callback::process_refund_on_failure_callback;
 pub(crate) use reset_ephemeral_ata_permission::process_reset_ephemeral_ata_permission;

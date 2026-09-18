@@ -13,14 +13,14 @@ mod common;
 mod utils;
 
 const MAGIC_PROGRAM: Pubkey = pubkey!("Magic11111111111111111111111111111111111111");
-const RENT_PENDING_ATA_CLOSE_AUTHORITY: Pubkey = sysvar::rent::ID;
+const MAGIC_ATA_CLOSE_AUTHORITY: Pubkey = sysvar::rent::ID;
 const DECIMALS: u8 = 6;
 const STARTING_BALANCE: u64 = 10_000 * 10u64.pow(DECIMALS as u32);
 const TRANSFER_AMOUNT: u64 = 250 * 10u64.pow(DECIMALS as u32);
 
-/// Token account shaped like a validator-created rent-pending ATA:
+/// Token account shaped like a validator-created Magic ATA:
 /// zero amount, close authority set to the rent sysvar sentinel.
-fn rent_pending_ata_account(owner: Pubkey, mint: Pubkey) -> Account {
+fn magic_ata_account(owner: Pubkey, mint: Pubkey) -> Account {
     let state = SplAccount {
         mint,
         owner,
@@ -29,7 +29,7 @@ fn rent_pending_ata_account(owner: Pubkey, mint: Pubkey) -> Account {
         state: AccountState::Initialized,
         is_native: COption::None,
         delegated_amount: 0,
-        close_authority: COption::Some(RENT_PENDING_ATA_CLOSE_AUTHORITY),
+        close_authority: COption::Some(MAGIC_ATA_CLOSE_AUTHORITY),
     };
     let mut data = vec![0u8; SplAccount::LEN];
     SplAccount::pack(state, &mut data).unwrap();
@@ -64,7 +64,7 @@ async fn setup(label: &str) -> Fixture {
         pt.prefer_bpf(true);
         // Pre-created so the instruction exercises the idempotent path: the mock
         // magic program cannot create foreign-owned accounts.
-        pt.add_account(destination_ata, rent_pending_ata_account(destination_owner, mint));
+        pt.add_account(destination_ata, magic_ata_account(destination_owner, mint));
     })
     .await;
 
@@ -95,7 +95,7 @@ fn ensure_ix(fixture: &Fixture, destination_ata: Pubkey) -> Instruction {
             AccountMeta::new_readonly(spl_token_interface::ID, false),
             AccountMeta::new_readonly(MAGIC_PROGRAM, false),
         ],
-        data: instruction::ESplInstruction::EnsureRentPendingDestination.to_vec(),
+        data: instruction::ESplInstruction::EnsureMagicAtaDestination.to_vec(),
     }
 }
 
@@ -115,10 +115,10 @@ fn transfer_ix(fixture: &Fixture, amount: u64) -> Instruction {
 
 #[tokio::test]
 #[serial]
-async fn ensure_rent_pending_destination_then_plain_transfer() {
-    common::magic_mock::take_captured_rent_pending_ata_creates(MAGIC_PROGRAM);
+async fn ensure_magic_ata_destination_then_plain_transfer() {
+    common::magic_mock::take_captured_magic_ata_creates(MAGIC_PROGRAM);
 
-    let fixture = setup("ensure_rent_pending").await;
+    let fixture = setup("ensure_magic_ata").await;
     let payer = fixture.payer_kp.pubkey();
 
     let tx = Transaction::new_signed_with_payer(
@@ -130,7 +130,7 @@ async fn ensure_rent_pending_destination_then_plain_transfer() {
         &[&fixture.payer_kp],
         fixture.context.last_blockhash,
     );
-    common::metrics::process_transaction_record_cu(&fixture.context.banks_client, tx, "ensure_rent_pending::transfer")
+    common::metrics::process_transaction_record_cu(&fixture.context.banks_client, tx, "ensure_magic_ata::transfer")
         .await
         .unwrap();
 
@@ -155,7 +155,7 @@ async fn ensure_rent_pending_destination_then_plain_transfer() {
     let source_state = SplAccount::unpack(&source_account.data).unwrap();
     assert_eq!(source_state.amount, STARTING_BALANCE - TRANSFER_AMOUNT);
 
-    let creates = common::magic_mock::take_captured_rent_pending_ata_creates(MAGIC_PROGRAM);
+    let creates = common::magic_mock::take_captured_magic_ata_creates(MAGIC_PROGRAM);
     assert_eq!(creates.len(), 1);
     assert_eq!(creates[0].wallet_owner, fixture.destination_owner);
     assert_eq!(creates[0].mint, fixture.mint);
@@ -192,13 +192,13 @@ async fn ensure_rent_pending_destination_then_plain_transfer() {
 
 #[tokio::test]
 #[serial]
-async fn ensure_rent_pending_destination_rejects_mismatched_ata() {
-    common::magic_mock::take_captured_rent_pending_ata_creates(MAGIC_PROGRAM);
+async fn ensure_magic_ata_destination_rejects_mismatched_ata() {
+    common::magic_mock::take_captured_magic_ata_creates(MAGIC_PROGRAM);
 
-    let fixture = setup("ensure_rent_pending_mismatch").await;
+    let fixture = setup("ensure_magic_ata_mismatch").await;
     let payer = fixture.payer_kp.pubkey();
 
-    let wrong_ata = utils::test_pubkey("ensure_rent_pending_mismatch::wrong_ata");
+    let wrong_ata = utils::test_pubkey("ensure_magic_ata_mismatch::wrong_ata");
     let tx = Transaction::new_signed_with_payer(
         &[ensure_ix(&fixture, wrong_ata)],
         Some(&payer),
@@ -216,5 +216,5 @@ async fn ensure_rent_pending_destination_rejects_mismatched_ata() {
         TransactionError::InstructionError(0, InstructionError::InvalidSeeds)
     );
 
-    assert!(common::magic_mock::take_captured_rent_pending_ata_creates(MAGIC_PROGRAM).is_empty());
+    assert!(common::magic_mock::take_captured_magic_ata_creates(MAGIC_PROGRAM).is_empty());
 }

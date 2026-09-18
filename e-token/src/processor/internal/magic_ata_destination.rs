@@ -4,7 +4,7 @@ use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
 use crate::processor::internal::is_supported_token_program;
 
-pub(crate) struct RentPendingDestinationAccounts<'a> {
+pub(crate) struct MagicAtaDestinationAccounts<'a> {
     pub(crate) payer_info: &'a AccountView,
     pub(crate) destination_owner_info: &'a AccountView,
     pub(crate) destination_ata_info: &'a AccountView,
@@ -15,11 +15,11 @@ pub(crate) struct RentPendingDestinationAccounts<'a> {
 
 /// Executes on: ER only.
 ///
-/// Idempotently creates the destination's ATA as a rent-pending ATA through
+/// Idempotently creates the destination's ATA as a Magic ATA through
 /// the Magic program, which derive-checks the ATA against the destination
 /// owner so mismatched accounts fail closed. Read access is owner-gated by
 /// the private RPC's token-account default; no permission account is created.
-pub(crate) fn ensure_rent_pending_destination(accounts: &RentPendingDestinationAccounts<'_>) -> ProgramResult {
+pub(crate) fn ensure_magic_ata_destination(accounts: &MagicAtaDestinationAccounts<'_>) -> ProgramResult {
     require!(
         is_supported_token_program(accounts.token_program_info.address()),
         ProgramError::IncorrectProgramId

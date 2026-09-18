@@ -6,7 +6,7 @@ use ephemeral_rollups_pinocchio::{
     acl::{permission_pda_from_permissioned_account, EphemeralPermission},
     pda::{
         delegate_buffer_pda_from_delegated_account_and_owner_program, delegation_metadata_pda_from_delegated_account,
-        delegation_record_pda_from_delegated_account,
+        delegation_record_pda_from_delegated_account, magic_fee_vault_pda_from_validator,
     },
 };
 use ephemeral_spl_api::{
@@ -141,6 +141,26 @@ pub fn permission_program_id() -> Pubkey {
 /// Derives the ACL permission PDA guarding the given group receipt.
 pub fn derive_group_receipt_permission(group_receipt: Pubkey) -> Pubkey {
     permission_pda_from_permissioned_account(&group_receipt)
+}
+
+/// Magic program id.
+pub fn magic_program_id() -> Pubkey {
+    ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID
+}
+
+/// Magic context account id.
+pub fn magic_context_id() -> Pubkey {
+    ephemeral_rollups_pinocchio::consts::MAGIC_CONTEXT_ID
+}
+
+/// Delegation program id.
+pub fn delegation_program_id() -> Pubkey {
+    ephemeral_rollups_pinocchio::consts::DELEGATION_PROGRAM_ID
+}
+
+/// Magic fee vault PDA for a validator identity.
+pub fn magic_fee_vault_pda(validator: Pubkey) -> Pubkey {
+    magic_fee_vault_pda_from_validator(&validator)
 }
 
 /// Injects a non-empty ACL-owned receipt permission account into the test context.

@@ -14,11 +14,11 @@ const textEncoder = new TextEncoder();
 export const transferFeesSchema = z.object({
   lamports: z.string().openapi({
     example: "2039280",
-    description: "Total lamport fees charged by the transfer. Returns \"0\" when no lamport fee is charged.",
+    description: "Operation lamport fees, excluding network fees and account rent. Paid by the sponsor for gasless transactions. Returns \"0\" when no lamport fee is charged.",
   }),
   tokens: z.string().openapi({
     example: "205000",
-    description: "Total token fees charged by the transfer, in mint base units. Returns \"0\" when no token fee is charged.",
+    description: "Total token fees charged by the operation, in mint base units. Returns \"0\" when no token fee is charged.",
   }),
 }).openapi("TransferFees");
 export type TransferFees = z.infer<typeof transferFeesSchema>;
@@ -41,12 +41,31 @@ export const transactionResponseSchema = z.object({
 }).openapi("UnsignedTransactionResponse");
 export type TransactionResponse = z.infer<typeof transactionResponseSchema>;
 
+export const balanceDelegationSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("delegated"),
+    validator: publicKeySchema.openapi({
+      description: "Identity of the validator the eATA is currently delegated to.",
+    }),
+    endpoint: z.string().url().optional().openapi({
+      description: "Ephemeral RPC endpoint serving the delegated eATA, when it can be resolved without extra lookups.",
+    }),
+  }),
+  z.object({
+    status: z.literal("undelegated"),
+  }),
+]).openapi("BalanceDelegation");
+export type BalanceDelegation = z.infer<typeof balanceDelegationSchema>;
+
 export const balanceResponseSchema = z.object({
   address: publicKeySchema,
   mint: publicKeySchema,
   ata: publicKeySchema,
   location: balanceLocationSchema,
   balance: z.string(),
+  delegation: balanceDelegationSchema.optional().openapi({
+    description: "Delegation state of the owner's eATA for this mint, read from the base-layer delegation record.",
+  }),
 }).openapi("BalanceResponse");
 export type BalanceResponse = z.infer<typeof balanceResponseSchema>;
 
@@ -229,6 +248,11 @@ export const stealthPoolStatusResponseSchema = z.object({
 }).openapi("StealthPoolStatusResponse");
 export type StealthPoolStatusResponse = z.infer<typeof stealthPoolStatusResponseSchema>;
 
+const depositWithdrawGaslessSchema = z.boolean().openapi({
+  example: true,
+  description: "Optional. Defaults to false. Uses the configured sponsor as payer and charges 0.2 USDC/USDT from the owner's existing base-chain ATA, in addition to amount. Requires GASLESS_SPONSOR_SECRET_KEY, an existing sponsor ATA, an on-curve owner, mainnet USDC/USDT or devnet USDC (including private clusters), and amount of at least 0.5 tokens. Custom clusters are unsupported. The returned transaction includes the sponsor signature; the owner must still sign.",
+}).optional();
+
 export const depositRequestSchema = z.object({
   owner: publicKeySchema.openapi({
     example: DEPOSIT_EXAMPLE_OWNER,
@@ -239,6 +263,7 @@ export const depositRequestSchema = z.object({
     description: `Optional. Defaults to Solana USDC on mainnet: ${DEFAULT_DEPOSIT_MINT}. On devnet and devnet-private it defaults to devnet USDC: ${DEFAULT_DEPOSIT_DEVNET_MINT}.`,
   }).optional(),
   amount: depositAmountSchema,
+  gasless: depositWithdrawGaslessSchema,
   validator: publicKeySchema.openapi({
     example: DEFAULT_DEPOSIT_VALIDATOR,
     description: "Optional. Defaults to the selected ephemeral RPC identity resolved via `getIdentity`.",
@@ -274,6 +299,7 @@ export const withdrawRequestSchema = z.object({
     description: "SPL mint on Solana.",
   }),
   amount: withdrawAmountSchema,
+  gasless: depositWithdrawGaslessSchema,
   validator: publicKeySchema.openapi({
     example: DEFAULT_DEPOSIT_VALIDATOR,
     description: "Optional. Defaults to the selected ephemeral RPC identity resolved via `getIdentity`.",

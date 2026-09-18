@@ -1,0 +1,30 @@
+[package]
+name = "ephemeral-token-e2e"
+version = "0.0.0"
+description = "End-to-end tests for the ephemeral SPL token program against live validators"
+authors = { workspace = true }
+repository = { workspace = true }
+license = { workspace = true }
+edition = { workspace = true }
+publish = false
+
+[dependencies]
+anyhow = "1"
+ephemeral-rollups-sdk = { workspace = true }
+ephemeral-spl-api = { path = "../e-token-api" }
+solana-client = { workspace = true }
+solana-commitment-config = { workspace = true }
+solana-instruction = { workspace = true }
+solana-keypair = { workspace = true }
+solana-message = { workspace = true }
+solana-program-pack = { workspace = true }
+solana-pubkey = { workspace = true }
+solana-rpc-client-api = { workspace = true }
+solana-signer = { workspace = true }
+solana-system-interface = { workspace = true }
+solana-transaction = { workspace = true }
+spl-token-interface = { workspace = true }
+wheels = { workspace = true }
+
+[lints]
+workspace = true

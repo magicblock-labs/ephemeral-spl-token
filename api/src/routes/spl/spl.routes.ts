@@ -72,6 +72,10 @@ const baseBalanceResponseExample: BalanceResponse = {
   ata: "3rXKwQ1kpjBd5tdcco32qsvqUh1BnZjcYnS5kYrP7AYE",
   location: "base" as const,
   balance: "1000000",
+  delegation: {
+    status: "delegated" as const,
+    validator: "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57",
+  },
 };
 const privateBalanceResponseExample: BalanceResponse = {
   address: "Bt9oNR5cCtnfuMmXgWELd6q5i974PdEMQDUE55nBC57L",
@@ -79,6 +83,10 @@ const privateBalanceResponseExample: BalanceResponse = {
   ata: "3rXKwQ1kpjBd5tdcco32qsvqUh1BnZjcYnS5kYrP7AYE",
   location: "ephemeral" as const,
   balance: "1000000",
+  delegation: {
+    status: "delegated" as const,
+    validator: "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57",
+  },
 };
 const mintInitializationResponseExample: MintInitializationResponse = {
   mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
@@ -149,14 +157,15 @@ export const depositRoute = createRoute({
   path: "/v1/spl/deposit",
   method: "post",
   tags,
-  description: "Deposit SPL tokens from Solana into an ephemeral rollup.",
+  description: "Deposit SPL tokens from Solana into an ephemeral rollup. Optional gasless sponsorship charges the relay fee from the owner's existing base-chain token balance.",
   request: {
     body: jsonContentRequired(depositRequestSchema, "Deposit request"),
   },
   responses: {
-    200: jsonContent(transactionResponseSchema, "Unsigned serialized transaction", depositResponseExample),
+    200: jsonContent(transactionResponseSchema, "Unsigned or partially signed serialized transaction", depositResponseExample),
     400: jsonContent(errorResponseSchema, "Build error"),
     422: jsonContent(validationErrorResponseSchema, "Validation error"),
+    503: jsonContent(errorResponseSchema, "Sponsor unavailable"),
   },
 });
 
@@ -164,15 +173,16 @@ export const withdrawRoute = createRoute({
   path: "/v1/spl/withdraw",
   method: "post",
   tags,
-  description: "Withdraw SPL tokens from an ephemeral rollup back to Solana.",
+  description: "Withdraw SPL tokens from an ephemeral rollup back to Solana. Optional gasless sponsorship charges the relay fee from the owner's existing base-chain token balance before withdrawal.",
   request: {
     body: jsonContentRequired(withdrawRequestSchema, "Withdraw request"),
     headers: optionalAuthTokenSchema,
   },
   responses: {
-    200: jsonContent(transactionResponseSchema, "Unsigned serialized transaction", withdrawResponseExample),
+    200: jsonContent(transactionResponseSchema, "Unsigned or partially signed serialized transaction", withdrawResponseExample),
     400: jsonContent(errorResponseSchema, "Build error"),
     422: jsonContent(validationErrorResponseSchema, "Validation error"),
+    503: jsonContent(errorResponseSchema, "Sponsor unavailable"),
   },
 });
 
@@ -258,7 +268,7 @@ export const balanceRoute = createRoute({
   path: "/v1/spl/balance",
   method: "get",
   tags,
-  description: "Get the balance for the owner's ATA on the base RPC.",
+  description: "Get the balance for the owner's ATA on the base RPC, along with the delegation state of the owner's eATA (delegated validator identity, and the ephemeral endpoint when statically known).",
   request: {
     query: balanceRequestSchema,
   },

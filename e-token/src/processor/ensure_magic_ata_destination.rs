@@ -1,16 +1,14 @@
 use ephemeral_spl_api::{require, require_n_accounts};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
-use crate::processor::internal::rent_pending_destination::{
-    ensure_rent_pending_destination, RentPendingDestinationAccounts,
-};
+use crate::processor::internal::magic_ata_destination::{ensure_magic_ata_destination, MagicAtaDestinationAccounts};
 
 ///
 /// Executes on: ER only.
 ///
-/// Idempotently creates the destination's ATA as a rent-pending ATA through
+/// Idempotently creates the destination's ATA as a Magic ATA through
 /// the Magic program, so a plain SPL transfer in the same transaction can fund
-/// a destination that does not exist yet. The rent-pending ATA must end the
+/// a destination that does not exist yet. The Magic ATA must end the
 /// transaction with a positive amount, so this instruction must be paired with
 /// a funding transfer. Read access is owner-gated by the private RPC's
 /// token-account default.
@@ -27,7 +25,7 @@ use crate::processor::internal::rent_pending_destination::{
 /// Instruction Data: None
 ///
 #[inline(never)]
-pub fn process_ensure_rent_pending_destination(accounts: &[AccountView], _instruction_data: &[u8]) -> ProgramResult {
+pub fn process_ensure_magic_ata_destination(accounts: &[AccountView], _instruction_data: &[u8]) -> ProgramResult {
     let [
         payer_info, // force multi-line
         destination_owner_info,
@@ -39,7 +37,7 @@ pub fn process_ensure_rent_pending_destination(accounts: &[AccountView], _instru
 
     require!(payer_info.is_signer(), ProgramError::MissingRequiredSignature);
 
-    ensure_rent_pending_destination(&RentPendingDestinationAccounts {
+    ensure_magic_ata_destination(&MagicAtaDestinationAccounts {
         payer_info,
         destination_owner_info,
         destination_ata_info,

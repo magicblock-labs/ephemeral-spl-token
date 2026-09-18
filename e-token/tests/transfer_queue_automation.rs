@@ -4,7 +4,6 @@ use common::magic_mock::{
     clear_all_captured, clear_captured_cancels, clear_captured_intent_bundles, clear_captured_schedules,
     peek_captured_intent_bundles, take_captured_cancels, take_captured_schedules, CapturedScheduleAccount,
 };
-use dlp_api::pda::magic_fee_vault_pda_from_validator;
 use ephemeral_spl_api::{
     instruction,
     instructions::{DepositAndQueueTransferArgs, ExecuteQueuedTransferArgs},
@@ -78,20 +77,12 @@ fn read_item_unaligned(data: &[u8], index: usize) -> QueuedTransfer {
     unsafe { core::ptr::read_unaligned(data[offset..].as_ptr() as *const QueuedTransfer) }
 }
 
-fn magic_fee_vault(validator: &Pubkey) -> Pubkey {
-    Pubkey::new_from_array(magic_fee_vault_pda_from_validator(&validator.to_bytes().into()).to_bytes())
-}
-
 fn derive_associated_token_address_with_program(wallet: Pubkey, mint: Pubkey, token_program: Pubkey) -> Pubkey {
     Pubkey::find_program_address(
         &[wallet.as_ref(), token_program.as_ref(), mint.as_ref()],
         &utils::associated_token_program_id(),
     )
     .0
-}
-
-fn delegation_program() -> Pubkey {
-    Pubkey::new_from_array(ephemeral_rollups_pinocchio::consts::DELEGATION_PROGRAM_ID.to_bytes())
 }
 
 fn initialize_global_vault_ix(payer: Pubkey, vault: Pubkey, mint: Pubkey) -> Instruction {
@@ -165,13 +156,13 @@ async fn setup_fixture() -> Fixture {
         utils::setup_mint_and_token_accounts(&mut context, &payer_kp, &mint_kp, DECIMALS, STARTING_BALANCE, 2).await;
 
     let (queue, _) = TransferQueue::find_pda(&mint, &validator);
-    let magic_fee_vault = magic_fee_vault(&validator);
+    let magic_fee_vault = utils::magic_fee_vault_pda(validator);
     context.set_account(
         &magic_fee_vault,
         &SolanaAccount {
             lamports: 1_000_000,
             data: vec![],
-            owner: delegation_program(),
+            owner: utils::delegation_program_id(),
             executable: false,
             rent_epoch: 0,
         }
@@ -505,13 +496,13 @@ async fn ensure_transfer_queue_crank_rejects_non_magic_program() {
                 .await;
 
         let queue = Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref(), validator.as_ref()], &PROGRAM).0;
-        let magic_fee_vault = magic_fee_vault(&validator);
+        let magic_fee_vault = utils::magic_fee_vault_pda(validator);
         context.set_account(
             &magic_fee_vault,
             &SolanaAccount {
                 lamports: 1_000_000,
                 data: vec![],
-                owner: delegation_program(),
+                owner: utils::delegation_program_id(),
                 executable: false,
                 rent_epoch: 0,
             }
@@ -670,13 +661,13 @@ async fn process_transfer_queue_tick_rejects_non_magic_program() {
                 .await;
 
         let (queue, _) = TransferQueue::find_pda(&mint, &validator);
-        let magic_fee_vault = magic_fee_vault(&validator);
+        let magic_fee_vault = utils::magic_fee_vault_pda(validator);
         context.set_account(
             &magic_fee_vault,
             &SolanaAccount {
                 lamports: 1_000_000,
                 data: vec![],
-                owner: delegation_program(),
+                owner: utils::delegation_program_id(),
                 executable: false,
                 rent_epoch: 0,
             }

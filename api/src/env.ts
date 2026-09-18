@@ -68,7 +68,7 @@ export function getEnv(bindings: AppBindings): AppEnv {
             ),
             message: issue.message,
           })),
-          hint: "Create .dev.vars from .dev.vars.example and set BASE_RPC_URL and EPHEMERAL_RPC_URL before running wrangler dev. If you want cluster=devnet, also set BASE_DEVNET_RPC_URL and EPHEMERAL_DEVNET_RPC_URL. If you want cluster=mainnet-private or cluster=devnet-private, also set EPHEMERAL_TEE_RPC_URL or EPHEMERAL_DEVNET_TEE_RPC_URL. To enable gasless private transfers, also set GASLESS_SPONSOR_SECRET_KEY to a JSON-encoded secret key array.",
+          hint: "Create .dev.vars from .dev.vars.example and set BASE_RPC_URL and EPHEMERAL_RPC_URL before running wrangler dev. If you want cluster=devnet, also set BASE_DEVNET_RPC_URL and EPHEMERAL_DEVNET_RPC_URL. If you want cluster=mainnet-private or cluster=devnet-private, also set EPHEMERAL_TEE_RPC_URL or EPHEMERAL_DEVNET_TEE_RPC_URL. To enable gasless deposits, withdrawals, and transfers, also set GASLESS_SPONSOR_SECRET_KEY to a JSON-encoded secret key array.",
         },
       );
     }

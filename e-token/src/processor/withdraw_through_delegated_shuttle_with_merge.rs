@@ -14,8 +14,8 @@ use solana_instruction::{AccountMeta, Instruction};
 use wheels::layout::Decodable as _;
 
 const TRANSFER_CHECKED_DISCRIMINATOR: u8 = 12;
-/// Magic Program `CloseRentPendingAta` (bincode enum discriminant).
-const CLOSE_RENT_PENDING_ATA_DISCRIMINATOR: u32 = 26;
+/// Magic Program `CloseMagicAta` (bincode enum discriminant).
+const CLOSE_MAGIC_ATA_DISCRIMINATOR: u32 = 26;
 
 use crate::processor::internal::{
     read_mint_decimals,
@@ -164,7 +164,7 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
             accounts.token_program_info.address(),
             None,
         ),
-        close_rent_pending_source_action(&accounts),
+        close_magic_ata_source_action(&accounts),
     ];
 
     // Shuttle has been initialized above
@@ -193,18 +193,16 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
 }
 
 /// Closes the owner's ER-side source account when it is a fully drained
-/// rent-pending ATA; the Magic Program no-ops in every other case, so this
+/// Magic ATA; the Magic Program no-ops in every other case, so this
 /// action is safe on eATA-backed and partial withdrawals alike.
-fn close_rent_pending_source_action(
-    accounts: &WithdrawThroughDelegatedShuttleAccounts<'_>,
-) -> Instruction {
+fn close_magic_ata_source_action(accounts: &WithdrawThroughDelegatedShuttleAccounts<'_>) -> Instruction {
     Instruction {
         program_id: MAGIC_PROGRAM_ID,
         accounts: alloc::vec![
             AccountMeta::new_readonly(*accounts.owner_info.address(), true),
             AccountMeta::new(*accounts.owner_token_info.address(), false),
         ],
-        data: CLOSE_RENT_PENDING_ATA_DISCRIMINATOR.to_le_bytes().to_vec(),
+        data: CLOSE_MAGIC_ATA_DISCRIMINATOR.to_le_bytes().to_vec(),
     }
 }
 

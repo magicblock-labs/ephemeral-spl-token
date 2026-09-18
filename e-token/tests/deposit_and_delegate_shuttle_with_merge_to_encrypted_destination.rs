@@ -293,7 +293,7 @@ async fn deposit_and_delegate_shuttle_with_merge_to_encrypted_destination_stores
         );
     }
 
-    // Cleartext accounts required by the ER-side instruction 34.
+    // Cleartext accounts required by the ER-side instruction 35.
     for (key, label) in [
         (shuttle_wallet_ata.to_bytes(), "shuttle wallet ata"),
         (MAGIC_PROGRAM.to_bytes(), "magic program"),
@@ -304,10 +304,8 @@ async fn deposit_and_delegate_shuttle_with_merge_to_encrypted_destination_stores
         );
     }
 
-    let actions = dlp_api::args::PostDelegationActions::deserialize(
-        &mut &action_payload[..],
-    )
-    .expect("stored post-delegation payload must decode as PostDelegationActions");
+    let actions = dlp_api::args::PostDelegationActions::deserialize(&mut &action_payload[..])
+        .expect("stored post-delegation payload must decode as PostDelegationActions");
     assert_eq!(
         actions.instructions.len(),
         2,
@@ -315,8 +313,8 @@ async fn deposit_and_delegate_shuttle_with_merge_to_encrypted_destination_stores
     );
     assert_eq!(
         actions.instructions[0].data.prefix,
-        instruction::ESplInstruction::MergeShuttleIntoRentPendingAta.to_vec(),
-        "the first stored action must be the rent-pending merge instruction"
+        instruction::ESplInstruction::MergeShuttleIntoMagicAta.to_vec(),
+        "the first stored action must be the Magic ATA merge instruction"
     );
 
     let rent_pda_after = context
