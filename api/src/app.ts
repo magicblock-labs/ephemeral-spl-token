@@ -5,6 +5,7 @@ import mcp from "./routes/mcp.route";
 import spl from "./routes/spl/spl.index";
 import swap from "./routes/swap.route";
 import transaction from "./routes/transaction.route";
+import payments from "./routes/payments.route";
 
 const app = createApp();
 
@@ -15,6 +16,7 @@ app.route("/", spl);
 app.route("/", swap);
 app.route("/", transaction);
 app.route("/", mcp);
+app.route("/", payments);
 
 export type AppType = typeof app;
 

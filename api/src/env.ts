@@ -30,6 +30,9 @@ export const envSchema = z.object({
   PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE: optionalString,
   PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE: optionalString,
   GASLESS_SPONSOR_SECRET_KEY: optionalString,
+  PAYMENTS_PUBLIC_URL: optionalString,
+  PAYMENTS_SECRET: optionalString,
+  PAYMENTS_RPC_AUTH_SECRET_KEY: optionalString,
   CORS_ORIGIN: optionalString,
 });
 
@@ -47,6 +50,11 @@ export type AppBindings = {
   PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE?: string;
   PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE?: string;
   GASLESS_SPONSOR_SECRET_KEY?: string;
+  PAYMENTS_PUBLIC_URL?: string;
+  PAYMENTS_SECRET?: string;
+  PAYMENTS_RPC_AUTH_SECRET_KEY?: string;
+  PAYMENT_MERCHANTS?: DurableObjectNamespace;
+  PAYMENT_LEDGER?: DurableObjectNamespace;
   CORS_ORIGIN?: string;
 };
 

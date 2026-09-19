@@ -4,5 +4,14 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-03-22",
   "compatibility_flags": ["nodejs_compat"],
-  "minify": true
+  "minify": true,
+  "durable_objects": {
+    "bindings": [
+      { "name": "PAYMENT_MERCHANTS", "class_name": "PaymentMerchants" },
+      { "name": "PAYMENT_LEDGER", "class_name": "PaymentLedger" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1-payment-checkouts", "new_sqlite_classes": ["PaymentMerchants", "PaymentLedger"] }
+  ]
 }
