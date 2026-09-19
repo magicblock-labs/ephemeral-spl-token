@@ -181,6 +181,7 @@ export const withdrawRoute = createRoute({
   responses: {
     200: jsonContent(transactionResponseSchema, "Unsigned or partially signed serialized transaction", withdrawResponseExample),
     400: jsonContent(errorResponseSchema, "Build error"),
+    403: jsonContent(errorResponseSchema, "Token identity mismatch"),
     422: jsonContent(validationErrorResponseSchema, "Validation error"),
     503: jsonContent(errorResponseSchema, "Sponsor unavailable"),
   },
@@ -213,6 +214,7 @@ export const transferRoute = createRoute({
   responses: {
     200: jsonContent(transactionResponseSchema, "Unsigned serialized transaction"),
     400: jsonContent(errorResponseSchema, "Build error"),
+    403: jsonContent(errorResponseSchema, "Token identity mismatch"),
     422: jsonContent(validationErrorResponseSchema, "Validation error"),
   },
 });
@@ -229,6 +231,7 @@ export const undelegateEphemeralAtaRoute = createRoute({
   responses: {
     200: jsonContent(undelegateEphemeralAtaResponseSchema, "Unsigned serialized transaction", undelegateEphemeralAtaResponseExample),
     400: jsonContent(errorResponseSchema, "Build error"),
+    403: jsonContent(errorResponseSchema, "Token identity mismatch"),
     422: jsonContent(validationErrorResponseSchema, "Validation error"),
   },
 });
@@ -291,6 +294,7 @@ export const privateBalanceRoute = createRoute({
   responses: {
     200: jsonContent(balanceResponseSchema, "Ephemeral token balance", privateBalanceResponseExample),
     400: jsonContent(errorResponseSchema, "Query error"),
+    403: jsonContent(errorResponseSchema, "Token identity mismatch"),
     422: jsonContent(validationErrorResponseSchema, "Validation error"),
   },
 });
