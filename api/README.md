@@ -11,7 +11,7 @@ This project is designed to:
 
 The API uses the published SDK package:
 
-- `@magicblock-labs/ephemeral-rollups-sdk@0.10.9`
+- `@magicblock-labs/ephemeral-rollups-sdk@0.17.1`
 
 ## What The API Does
 
