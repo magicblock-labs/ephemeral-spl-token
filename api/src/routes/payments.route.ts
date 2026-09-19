@@ -1,6 +1,8 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import type { Context } from "hono";
+import { getEnv } from "../env";
 import { openApiDefaultHook } from "../lib/create-app";
+import { validatePaymentCluster } from "../payments/chain";
 import { callObject, checkoutToken, digest, paymentConfig } from "../payments/config";
 import { canonicalJson } from "../payments/protocols";
 import { authorization, body, ledger, merchant, paymentParams, responses } from "../payments/http";
@@ -60,6 +62,7 @@ for (const path of ["/v1/merchants/*", "/v1/merchants", "/v1/payment-links/*", "
 
 async function createCheckout(c: Context<Env>, merchantId: string, input: CheckoutInput) {
   const config = paymentConfig(c.env);
+  validatePaymentCluster(getEnv(c.env), input.cluster);
   const id = digest(`payment:${canonicalJson([merchantId, input.externalReference])}`);
   const accessToken = checkoutToken(c.env, id);
   const record: PaymentRecord = {
@@ -119,6 +122,7 @@ app.openapi(createRoute({ method: "post", path: "/v1/payment-links", tags, summa
   const identity = await merchant(c);
   const input = c.req.valid("json");
   const config = paymentConfig(c.env);
+  validatePaymentCluster(getEnv(c.env), input.cluster);
   const id = digest(`link:${canonicalJson([identity.merchantId, input.externalReference])}`);
   const link = await callObject<PaymentLink>(config.merchants, identity.merchantId, "/create-link", {
     link: { ...input, id, merchantId: identity.merchantId, recipient: identity.wallet, createdAt: new Date().toISOString() },

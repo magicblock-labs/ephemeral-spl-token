@@ -10,7 +10,7 @@ import nacl from "tweetnacl";
 import type { AppEnv } from "../env";
 import { ApiError } from "../lib/errors";
 import { ASSOCIATED_TOKEN_PROGRAM_ID, resolveRpcConfig, TOKEN_PROGRAM_ID } from "../lib/solana";
-import type { PaymentTerms, PreparedPayment } from "./types";
+import type { PaymentCluster, PaymentTerms, PreparedPayment } from "./types";
 
 const USDC_MINTS = {
   mainnet: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
@@ -55,6 +55,11 @@ function serviceKeypair(env: AppEnv) {
   } catch {
     throw new ApiError(503, "PAYMENT_RPC_AUTH_UNAVAILABLE", "Private payments require a valid PAYMENTS_RPC_AUTH_SECRET_KEY");
   }
+}
+
+export function validatePaymentCluster(env: AppEnv, cluster: PaymentCluster): void {
+  resolveRpcConfig(env, cluster);
+  if (cluster.endsWith("-private")) serviceKeypair(env);
 }
 
 async function serviceToken(env: AppEnv, endpoint: string) {
