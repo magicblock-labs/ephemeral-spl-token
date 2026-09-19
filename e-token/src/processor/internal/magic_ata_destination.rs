@@ -1,4 +1,4 @@
-use ephemeral_rollups_pinocchio::{consts::MAGIC_PROGRAM_ID, instruction::CreateRentPendingAta};
+use ephemeral_rollups_pinocchio::{consts::MAGIC_PROGRAM_ID, instruction::CreateMagicAta};
 use ephemeral_spl_api::{require, require_eq_keys};
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
@@ -32,7 +32,7 @@ pub(crate) fn ensure_magic_ata_destination(accounts: &MagicAtaDestinationAccount
 
     let destination_owner = accounts.destination_owner_info.address();
 
-    CreateRentPendingAta {
+    CreateMagicAta {
         payer: accounts.payer_info,
         ata: accounts.destination_ata_info,
         mint: accounts.mint_info,

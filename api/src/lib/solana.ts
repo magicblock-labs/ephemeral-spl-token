@@ -15,7 +15,7 @@ import {
   getAuthToken,
   initRentPdaIx,
   initTransferQueueIx,
-  isRentPendingTokenAccount,
+  isMagicAtaTokenAccount,
   magicFeeVaultPdaFromValidator,
   PERMISSION_PROGRAM_ID,
   permissionPdaFromAccount,
@@ -1791,12 +1791,12 @@ async function getEphemeralMagicAta(
   authToken?: string,
 ): Promise<Awaited<ReturnType<Connection["getAccountInfo"]>>> {
   const accountInfo = await getEphemeralConnection(config, authToken).getAccountInfo(ata, "confirmed");
-  if (!accountInfo || !isRentPendingTokenAccount(accountInfo.data)) {
+  if (!accountInfo || !isMagicAtaTokenAccount(accountInfo.data)) {
     return null;
   }
 
   const baseAccountInfo = await getBaseConnection(config).getAccountInfo(ata, "confirmed");
-  if (baseAccountInfo && isRentPendingTokenAccount(baseAccountInfo.data)) {
+  if (baseAccountInfo && isMagicAtaTokenAccount(baseAccountInfo.data)) {
     return null;
   }
 
@@ -1854,7 +1854,7 @@ export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawReque
       shuttleId: createRandomShuttleId(),
       escrowIndex: input.escrowIndex,
       idempotent: input.idempotent,
-      rentPendingSource: magicAtaSource,
+      magicAtaSource,
     });
     instructions.unshift(...createGaslessFeeInstructions(owner, mint, tokenProgram, sponsor));
 

@@ -6002,7 +6002,7 @@ describe("app", () => {
     ).toBe(true);
     expect(
       transaction.instructions.some(
-        ix => ix.programId.equals(EPHEMERAL_SPL_TOKEN_PROGRAM_ID) && ix.data[0] === 33,
+        ix => ix.programId.equals(EPHEMERAL_SPL_TOKEN_PROGRAM_ID) && ix.data[0] === 34,
       ),
     ).toBe(false);
   });
@@ -6056,7 +6056,7 @@ describe("app", () => {
       Buffer.from(json.transactionBase64, "base64"),
     );
     const privateTransferInstruction = transaction.instructions.find(
-      ix => ix.programId.equals(EPHEMERAL_SPL_TOKEN_PROGRAM_ID) && ix.data[0] === 33,
+      ix => ix.programId.equals(EPHEMERAL_SPL_TOKEN_PROGRAM_ID) && ix.data[0] === 34,
     );
 
     expect(privateTransferInstruction).toBeDefined();

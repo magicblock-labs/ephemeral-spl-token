@@ -1856,7 +1856,7 @@ dependencies = [
 [[package]]
 name = "ephemeral-rollups-pinocchio"
 version = "0.16.2"
-source = "git+https://github.com/magicblock-labs/ephemeral-rollups-sdk.git?rev=8a674d06ccffccebed37c4b98ba6d04e540f7b8a#8a674d06ccffccebed37c4b98ba6d04e540f7b8a"
+source = "git+https://github.com/magicblock-labs/ephemeral-rollups-sdk.git?rev=3d949dabc74e7b98c2ffd6f1c48f0277e8c83df8#3d949dabc74e7b98c2ffd6f1c48f0277e8c83df8"
 dependencies = [
  "bincode 2.0.1",
  "pinocchio 0.10.2",
