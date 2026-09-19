@@ -3126,9 +3126,12 @@ describe("app", () => {
     const transaction = Transaction.from(
       Buffer.from(json.transactionBase64, "base64"),
     );
-    // Only the ix-26 shuttle withdrawal: no eATA init/delegate instructions.
-    expect(transaction.instructions).toHaveLength(1);
-    expect(transaction.instructions[0]!.data[0]).toBe(26);
+    // The idempotent base ATA create and the ix-26 shuttle withdrawal: no
+    // eATA init/delegate instructions, but the base ATA the withdrawal
+    // settles into cannot be assumed to exist for an ER-only source.
+    expect(transaction.instructions).toHaveLength(2);
+    expect(transaction.instructions[0]!.programId.equals(ASSOCIATED_TOKEN_PROGRAM_ID)).toBe(true);
+    expect(transaction.instructions[1]!.data[0]).toBe(26);
   });
 
   it("uses the mint token program when building a withdraw", async () => {
