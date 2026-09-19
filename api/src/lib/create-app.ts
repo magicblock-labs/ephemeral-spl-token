@@ -22,7 +22,10 @@ export default function createApp() {
 
   app.use("*", async (c, next) => {
     const origin = c.env.CORS_ORIGIN?.trim() || "*";
-    return cors({ origin })(c, next);
+    return cors({
+      origin,
+      exposeHeaders: ["PAYMENT-REQUIRED", "PAYMENT-RESPONSE", "WWW-Authenticate", "Payment-Receipt"],
+    })(c, next);
   });
 
   app.notFound(c => c.json(errorBody("NOT_FOUND", "Route not found"), 404));

@@ -1,6 +1,8 @@
 # SPL Tokens API
 
-Minimal REST API for building unsigned or partially signed SPL token transactions for the local Ephemeral Rollups SDK.
+REST API for SPL token transactions and USDC checkouts on MagicBlock Ephemeral Rollups. It supports [x402 v2](https://x402.org/) and [MPP](https://mpp.dev/) through custom MagicBlock payment methods, so merchants can sell API access, credits and other products using already-delegated USDC.
+
+For API-only merchant registration, delegated-USDC checkout and reusable payment links, see [Payment checkouts](./PAYMENTS.md). The [x402](./PAYMENTS.md#x402) and [MPP](./PAYMENTS.md#mpp) integrations have separate routes and examples over shared payment state.
 
 This project is designed to:
 
