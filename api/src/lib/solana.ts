@@ -15,6 +15,7 @@ import {
   getAuthToken,
   initRentPdaIx,
   initTransferQueueIx,
+  isMagicAtaTokenAccount,
   magicFeeVaultPdaFromValidator,
   PERMISSION_PROGRAM_ID,
   permissionPdaFromAccount,
@@ -123,8 +124,11 @@ const PRIVATE_BASE_TO_BASE_TRANSFER_LOOKUP_TABLES = {
   devnet: new PublicKey("E26JGdRsdKkGe6oRU4Un24agZjBF2Bg9z1ctfZByETRo"),
 } as const;
 const PRIVATE_TRANSFER_SETUP_LAMPORTS = 2_039_280n;
-// Keep aligned with SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS in e-token-api/src/consts.rs.
+// Mirrors SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS and
+// SPONSORED_SHUTTLE_MERGE_TO_ENCRYPTED_DESTINATION_EXTRA_LAMPORTS in
+// e-token-api/src/consts.rs.
 const SPONSORED_SHUTTLE_SETUP_LAMPORTS = 500_000n;
+const SPONSORED_SHUTTLE_MERGE_TO_ENCRYPTED_DESTINATION_EXTRA_LAMPORTS = 1_539_280n;
 const PRIVATE_TRANSFER_FEE_BASIS_POINTS = 10n;
 const BASIS_POINTS_FACTOR = 10_000n;
 const GASLESS_RELAY_FEE_MICRO_USDC = 200_000n; // 0.2 USDC/USDT
@@ -1531,10 +1535,6 @@ function isPrivateBaseToBaseTransfer(input: TransferRequest) {
     && input.toBalance === "base";
 }
 
-function privateTransferSetupLamports(input: TransferRequest) {
-  return isPrivateBaseToBaseTransfer(input) ? PRIVATE_TRANSFER_SETUP_LAMPORTS : 0n;
-}
-
 function createTransferFees(lamports: bigint, tokens: bigint): TransferFees {
   return {
     lamports: lamports.toString(),
@@ -1780,7 +1780,51 @@ export async function buildDepositTransaction(env: AppEnv, input: DepositRequest
   }
 }
 
-export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawRequest) {
+/**
+ * The ER account of an ATA when it is Magic ATA and ER-local. A clone keeps
+ * the base close authority, so a marked base account is indistinguishable from
+ * a real Magic ATA one and is excluded.
+ */
+async function getEphemeralMagicAta(
+  config: RpcConfig,
+  ata: PublicKey,
+  authToken?: string,
+): Promise<Awaited<ReturnType<Connection["getAccountInfo"]>>> {
+  const accountInfo = await getEphemeralConnection(config, authToken).getAccountInfo(ata, "confirmed");
+  if (!accountInfo || !isMagicAtaTokenAccount(accountInfo.data)) {
+    return null;
+  }
+
+  const baseAccountInfo = await getBaseConnection(config).getAccountInfo(ata, "confirmed");
+  if (baseAccountInfo && isMagicAtaTokenAccount(baseAccountInfo.data)) {
+    return null;
+  }
+
+  return accountInfo;
+}
+
+/**
+ * True when the owner's ephemeral balance lives in a Magic ATA (no
+ * delegated eATA backs it), so withdrawal must skip the eATA instructions
+ * and drain the Magic ATA directly.
+ */
+async function isMagicAtaEphemeralSource(
+  config: RpcConfig,
+  owner: PublicKey,
+  mint: PublicKey,
+  tokenProgram: PublicKey,
+  authToken?: string,
+): Promise<boolean> {
+  try {
+    const ata = getAssociatedTokenAddressSync(mint, owner, true, tokenProgram);
+    return (await getEphemeralMagicAta(config, ata, authToken)) !== null;
+  } catch {
+    // The ER may be unreachable or gate the read; fall back to the eATA flow.
+    return false;
+  }
+}
+
+export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawRequest, authToken?: string) {
   try {
     const config = resolveRpcConfig(env, input.cluster);
     const owner = parsePublicKey(input.owner, "owner");
@@ -1793,6 +1837,14 @@ export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawReque
     const tokenProgram = await resolveMintTokenProgram(config, mint);
     const blockhash = await getBlockhash(config, "base");
 
+    const magicAtaSource = await isMagicAtaEphemeralSource(
+      config,
+      owner,
+      mint,
+      tokenProgram,
+      authToken,
+    );
+
     const instructions = await withdrawSpl(owner, mint, amount, {
       payer,
       validator,
@@ -1802,6 +1854,7 @@ export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawReque
       shuttleId: createRandomShuttleId(),
       escrowIndex: input.escrowIndex,
       idempotent: input.idempotent,
+      magicAtaSource,
     });
     instructions.unshift(...createGaslessFeeInstructions(owner, mint, tokenProgram, sponsor));
 
@@ -2132,8 +2185,27 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       "transfer", env, config, from, mint, amount, input.gasless,
     );
     const privateTransferFee = isPrivateBaseToBaseTransfer(input) ? privateTransferFeeAmount(transferAmount) : 0n;
+
+    const isPrivateBaseToEphemeral = input.visibility === "private"
+      && input.fromBalance === "base"
+      && input.toBalance === "ephemeral";
+    // Zero-amount setup and native SOL requests must use the legacy route: the
+    // encrypted-destination route requires a positively funded, non-native
+    // Magic ATA.
+    const useLegacyCleartextDestination = isPrivateBaseToEphemeral
+      && (transferAmount === 0n || mint.equals(NATIVE_MINT));
+
+    let setupLamports = 0n;
+    if (isPrivateBaseToBaseTransfer(input)) {
+      setupLamports = PRIVATE_TRANSFER_SETUP_LAMPORTS;
+    } else if (isPrivateBaseToEphemeral) {
+      setupLamports = SPONSORED_SHUTTLE_SETUP_LAMPORTS;
+      if (!useLegacyCleartextDestination) {
+        setupLamports += SPONSORED_SHUTTLE_MERGE_TO_ENCRYPTED_DESTINATION_EXTRA_LAMPORTS;
+      }
+    }
     const fees = createTransferFees(
-      privateTransferSetupLamports(input),
+      setupLamports,
       privateTransferFee + platformFee + relayFee,
     );
 
@@ -2212,6 +2284,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       initIfMissing: input.initIfMissing,
       initAtasIfMissing: input.initAtasIfMissing,
       initVaultIfMissing: input.initVaultIfMissing,
+      legacyCleartextDestination: useLegacyCleartextDestination || undefined,
       shuttleId,
       privateTransfer: input.visibility === "private"
         ? {
@@ -2344,6 +2417,16 @@ export async function getPrivateBalance(env: AppEnv, input: BalanceRequest, auth
   try {
     const delegationRecord = await getDelegationRecord(getBaseConnection(config), eata);
     if (delegationRecord.status !== DelegationStatus.Delegated) {
+      // The owner may hold a Magic ATA that exists only inside the ER.
+      try {
+        const accountInfo = await getEphemeralMagicAta(config, ata, authToken);
+        if (accountInfo) {
+          const balance = parseTokenAmount(accountInfo) ?? 0n;
+          return { ...zeroBalanceResponse, balance: balance.toString(), delegation: { status: "undelegated" } };
+        }
+      } catch {
+        // The ER may be unreachable or gate the read; keep the zero response.
+      }
       return { ...zeroBalanceResponse, delegation: { status: "undelegated" } };
     }
 

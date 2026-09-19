@@ -68,6 +68,13 @@ pub struct CapturedCommit {
     pub accounts: Vec<Pubkey>,
 }
 
+pub struct CapturedCreateMagicAta {
+    pub accounts: Vec<Pubkey>,
+    pub wallet_owner: Pubkey,
+    pub mint: Pubkey,
+    pub token_program: Pubkey,
+}
+
 // ── Global state ──────────────────────────────────────────────────────────────
 
 fn captured_schedules() -> &'static Mutex<HashMap<Pubkey, Vec<CapturedScheduleTask>>> {
@@ -110,6 +117,11 @@ fn captured_commits() -> &'static Mutex<HashMap<Pubkey, Vec<CapturedCommit>>> {
     S.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+fn captured_magic_ata_creates() -> &'static Mutex<HashMap<Pubkey, Vec<CapturedCreateMagicAta>>> {
+    static S: OnceLock<Mutex<HashMap<Pubkey, Vec<CapturedCreateMagicAta>>>> = OnceLock::new();
+    S.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
 // ── clear / take / peek helpers ───────────────────────────────────────────────
 
 pub fn clear_captured_schedules(program: Pubkey) {
@@ -133,6 +145,7 @@ pub fn clear_all_captured(program: Pubkey) {
     captured_ephemeral_resizes().lock().unwrap().remove(&program);
     captured_ephemeral_closes().lock().unwrap().remove(&program);
     captured_commits().lock().unwrap().remove(&program);
+    captured_magic_ata_creates().lock().unwrap().remove(&program);
 }
 
 pub fn take_captured_schedules(program: Pubkey) -> Vec<CapturedScheduleTask> {
@@ -216,6 +229,14 @@ pub fn take_captured_ephemeral_closes(program: Pubkey) -> Vec<CapturedCloseEphem
 
 pub fn take_captured_commits(program: Pubkey) -> Vec<CapturedCommit> {
     captured_commits().lock().unwrap().remove(&program).unwrap_or_default()
+}
+
+pub fn take_captured_magic_ata_creates(program: Pubkey) -> Vec<CapturedCreateMagicAta> {
+    captured_magic_ata_creates()
+        .lock()
+        .unwrap()
+        .remove(&program)
+        .unwrap_or_default()
 }
 
 // ── Mock processor ─────────────────────────────────────────────────────────────
@@ -319,6 +340,40 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: 
                 .push(CapturedResizeEphemeralAccount {
                     accounts: accounts.iter().map(|a| *a.key).collect(),
                     new_data_len,
+                });
+        }
+        MagicBlockInstruction::CreateMagicAta { wallet_owner } => {
+            let payer = accounts.first().ok_or(ProgramError::NotEnoughAccountKeys)?;
+            if !payer.is_signer {
+                return Err(ProgramError::MissingRequiredSignature);
+            }
+            let ata = accounts.get(1).ok_or(ProgramError::NotEnoughAccountKeys)?;
+            let mint = *accounts.get(2).ok_or(ProgramError::NotEnoughAccountKeys)?.key;
+            let token_program = *accounts.get(3).ok_or(ProgramError::NotEnoughAccountKeys)?.key;
+            // Mirror the real Magic processor's ATA derive check.
+            let expected_ata = Pubkey::find_program_address(
+                &[wallet_owner.as_ref(), token_program.as_ref(), mint.as_ref()],
+                &solana_pubkey::pubkey!("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"),
+            )
+            .0;
+            if *ata.key != expected_ata {
+                return Err(ProgramError::InvalidSeeds);
+            }
+            // A mock cannot assign foreign ownership: tests exercise the
+            // idempotent path by pre-creating the ATA.
+            if !ata.data_is_empty() && *ata.owner != token_program {
+                return Err(ProgramError::InvalidAccountData);
+            }
+            captured_magic_ata_creates()
+                .lock()
+                .unwrap()
+                .entry(*program_id)
+                .or_default()
+                .push(CapturedCreateMagicAta {
+                    accounts: accounts.iter().map(|a| *a.key).collect(),
+                    wallet_owner,
+                    mint,
+                    token_program,
                 });
         }
         MagicBlockInstruction::CloseEphemeralAccount => {

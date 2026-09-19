@@ -7,15 +7,15 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy --keep-vars --secrets-file .prod.vars",
     "create:private-transfer-lut": "node scripts/create-private-transfer-lut.js",
-    "recover:shuttles": "tsx scripts/recover-shuttle-closes.ts",
     "build": "tsc --noEmit",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "recover:shuttles": "tsx scripts/recover-shuttle-closes.ts"
   },
   "dependencies": {
     "@hono/zod-openapi": "^1.0.2",
-    "@magicblock-labs/ephemeral-rollups-sdk": "0.16.1",
+    "@magicblock-labs/ephemeral-rollups-sdk": "link:../../ephemeral-rollups-sdk/ts/web3js",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@noble/hashes": "1.8.0",
     "@scalar/hono-api-reference": "^0.9.13",

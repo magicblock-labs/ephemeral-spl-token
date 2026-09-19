@@ -31,6 +31,26 @@ pub fn process_merge_shuttle_into_ephemeral_ata(accounts: &[AccountView], _instr
         token_program_info,
     ] = require_n_accounts!(accounts, 6);
 
+    merge_shuttle_balance(
+        owner_info,
+        destination_token_info,
+        shuttle_info,
+        shuttle_wallet_ata_info,
+        mint_info,
+        token_program_info,
+    )
+}
+
+/// Transfer the whole shuttle wallet ATA balance into `destination_token_info`,
+/// signed with the shuttle metadata seeds. Shared by instructions 15 and 33.
+pub(crate) fn merge_shuttle_balance(
+    owner_info: &AccountView,
+    destination_token_info: &AccountView,
+    shuttle_info: &AccountView,
+    shuttle_wallet_ata_info: &AccountView,
+    mint_info: &AccountView,
+    token_program_info: &AccountView,
+) -> ProgramResult {
     require!(owner_info.is_signer(), ProgramError::MissingRequiredSignature);
 
     require!(shuttle_info.owned_by(&crate::ID), ProgramError::InvalidAccountOwner);

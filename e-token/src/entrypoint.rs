@@ -230,6 +230,21 @@ fn process_public_instruction(accounts: &[AccountView], instruction_data: &[u8])
 
             process_close_lamports_pda(accounts, data)
         }
+        ESplInstruction::DepositAndDelegateShuttleWithMergeToEncryptedDestination => {
+            debug_log!("Instruction: DepositAndDelegateShuttleWithMergeToEncryptedDestination");
+
+            process_deposit_and_delegate_shuttle_with_merge_to_encrypted_destination(accounts, data)
+        }
+        ESplInstruction::MergeShuttleIntoMagicAta => {
+            debug_log!("Instruction: MergeShuttleIntoMagicAta");
+
+            process_merge_shuttle_into_magic_ata(accounts, data)
+        }
+        ESplInstruction::EnsureMagicAtaDestination => {
+            debug_log!("Instruction: EnsureMagicAtaDestination");
+
+            process_ensure_magic_ata_destination(accounts, data)
+        }
     }
 }
 

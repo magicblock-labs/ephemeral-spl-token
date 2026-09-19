@@ -1856,8 +1856,7 @@ dependencies = [
 [[package]]
 name = "ephemeral-rollups-pinocchio"
 version = "0.16.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "69d0781a607dfc2fce40e90b8ef875b17efa8b2b7906317c5ab6a8ee426edeb1"
+source = "git+https://github.com/magicblock-labs/ephemeral-rollups-sdk.git?rev=3d949dabc74e7b98c2ffd6f1c48f0277e8c83df8#3d949dabc74e7b98c2ffd6f1c48f0277e8c83df8"
 dependencies = [
  "bincode 2.0.1",
  "pinocchio 0.10.2",
@@ -1992,6 +1991,7 @@ name = "ephemeral-token-program"
 version = "0.0.0"
 dependencies = [
  "bincode 1.3.3",
+ "borsh 1.6.0",
  "bytemuck",
  "const-crypto",
  "ephemeral-rollups-pinocchio",
@@ -1999,7 +1999,7 @@ dependencies = [
  "fslock",
  "hydra-api",
  "magicblock-delegation-program-api 0.3.0",
- "magicblock-magic-program-api 0.9.0",
+ "magicblock-magic-program-api 0.14.11",
  "pinocchio 0.10.2",
  "pinocchio-associated-token-account",
  "pinocchio-log",
@@ -3346,8 +3346,9 @@ dependencies = [
 
 [[package]]
 name = "magicblock-magic-program-api"
-version = "0.9.0"
-source = "git+https://github.com/magicblock-labs/magicblock-validator.git?rev=69d3381e#69d3381edd0d84415d2ebd7e56bb221c380077aa"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1dc8fba0307c90b91b70c9ed06d4242d6c4159f331b2f05bf8f875c2a94e0e98"
 dependencies = [
  "bincode 1.3.3",
  "const-crypto",
@@ -3358,9 +3359,8 @@ dependencies = [
 
 [[package]]
 name = "magicblock-magic-program-api"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1dc8fba0307c90b91b70c9ed06d4242d6c4159f331b2f05bf8f875c2a94e0e98"
+version = "0.14.11"
+source = "git+https://github.com/magicblock-labs/magicblock-validator.git?rev=92a5059bc5159a116747232305cbb83318bb1c18#92a5059bc5159a116747232305cbb83318bb1c18"
 dependencies = [
  "bincode 1.3.3",
  "const-crypto",
