@@ -9,6 +9,7 @@ use pinocchio::{
 
 use crate::processor::internal::is_supported_token_program;
 
+// TODO: Replace this encoding with `CreateMagicAta` when it is published for Pinocchio 0.10.
 const CREATE_MAGIC_ATA_VARIANT: [u8; 4] = [15, 0, 0, 0];
 
 pub(crate) struct MagicAtaDestinationAccounts<'a> {
