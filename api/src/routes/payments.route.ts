@@ -2,6 +2,7 @@ import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import type { Context } from "hono";
 import { getEnv } from "../env";
 import { openApiDefaultHook } from "../lib/create-app";
+import { ApiError } from "../lib/errors";
 import { validatePaymentCluster } from "../payments/chain";
 import { callObject, checkoutToken, digest, paymentConfig } from "../payments/config";
 import { canonicalJson } from "../payments/protocols";
@@ -63,6 +64,9 @@ for (const path of ["/v1/merchants/*", "/v1/merchants", "/v1/payment-links/*", "
 async function createCheckout(c: Context<Env>, merchantId: string, input: CheckoutInput) {
   const config = paymentConfig(c.env);
   validatePaymentCluster(getEnv(c.env), input.cluster);
+  if (input.payer === merchantId) {
+    throw new ApiError(400, "INVALID_PAYMENT_ACCOUNTS", "Payment requires a signer wallet and a distinct recipient");
+  }
   const id = digest(`payment:${canonicalJson([merchantId, input.externalReference])}`);
   const accessToken = checkoutToken(c.env, id);
   const record: PaymentRecord = {

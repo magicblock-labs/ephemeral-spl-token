@@ -1,6 +1,8 @@
 import { createRoute, OpenAPIHono } from "@hono/zod-openapi";
+import { getEnv } from "../env";
 import { openApiDefaultHook } from "../lib/create-app";
 import { ApiError } from "../lib/errors";
+import { validatePaymentCluster } from "../payments/chain";
 import { paymentConfig } from "../payments/config";
 import { authorization, body, jsonResponse, ledger, merchant, paymentParams, protocolCredential, protocolInput, responses } from "../payments/http";
 import type { Env } from "../payments/http";
@@ -40,12 +42,16 @@ app.openapi(createRoute({ method: "post", path: "/v1/x402/payments/{id}/pay", ta
 
 app.openapi(createRoute({ method: "get", path: "/v1/x402/supported", tags, summary: "Supported custom MagicBlock payment schemes", responses }), (c) => {
   paymentConfig(c.env);
-  const clusters = [
-    ...(c.env.BASE_RPC_URL && c.env.EPHEMERAL_RPC_URL ? ["mainnet" as const] : []),
-    ...(c.env.BASE_RPC_URL && c.env.EPHEMERAL_TEE_RPC_URL && c.env.PAYMENTS_RPC_AUTH_SECRET_KEY ? ["mainnet-private" as const] : []),
-    ...(c.env.BASE_DEVNET_RPC_URL && c.env.EPHEMERAL_DEVNET_RPC_URL ? ["devnet" as const] : []),
-    ...(c.env.BASE_DEVNET_RPC_URL && c.env.EPHEMERAL_DEVNET_TEE_RPC_URL && c.env.PAYMENTS_RPC_AUTH_SECRET_KEY ? ["devnet-private" as const] : []),
-  ];
+  const env = getEnv(c.env);
+  const clusters = (["mainnet", "mainnet-private", "devnet", "devnet-private"] as const).filter((cluster) => {
+    try {
+      validatePaymentCluster(env, cluster);
+      return true;
+    } catch (error) {
+      if (error instanceof ApiError && ["CONFIG_ERROR", "PAYMENT_RPC_AUTH_UNAVAILABLE"].includes(error.code)) return false;
+      throw error;
+    }
+  });
   return c.json({ kinds: clusters.map(cluster => ({ x402Version: 2, scheme: X402_SCHEME, network: paymentNetwork(cluster), extra: { cluster, settlement: "ephemeral-rollup", paymentFlow: "upfront" } })), extensions: ["magicblock"], signers: {} }, 200);
 });
 
