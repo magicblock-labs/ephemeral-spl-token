@@ -167,7 +167,7 @@ app.openapi(createRoute({ method: "post", path: "/v1/payments/{id}/prepare", tag
 
 app.openapi(createRoute({ method: "post", path: "/v1/payments/{id}/settle", tags, summary: "Submit an exact signed payment; pending responses are not proof of payment", request: { ...body(settleSchema), params: paymentParams }, responses }), async (c) => {
   const payment = await ledger<PaymentView>(c, c.req.valid("param").id, "/settle", { ...await authorization(c), ...c.req.valid("json") });
-  return c.json(payment, payment.status === "pending" ? 202 : 200);
+  return c.json(payment, payment.status === "paid" ? 200 : payment.status === "pending" ? 202 : 409);
 });
 
 app.route("/", x402);

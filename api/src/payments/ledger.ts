@@ -165,10 +165,15 @@ export class PaymentLedger {
   }
 
   private async broadcast(record: PaymentRecord) {
+    if (record.blockhashExpired) return;
     try {
       await submitPayment(getEnv(this.env), record, record.prepared!, record.signedTransactionBase64!);
-    } catch {
+    } catch (error) {
       // Submission errors are ambiguous: the exact bytes may already have landed.
+      if (error instanceof ApiError && error.code === "PAYMENT_BLOCKHASH_EXPIRED") {
+        record.blockhashExpired = true;
+        await this.state.storage.put("payment", record);
+      }
     }
   }
 

@@ -38,6 +38,7 @@ export type PaymentRecord = PaymentTerms & {
   slot?: number;
   failure?: string;
   reconcileAttempts?: number;
+  blockhashExpired?: boolean;
 };
 
 export type PaymentView = PaymentTerms & {
