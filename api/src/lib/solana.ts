@@ -1184,9 +1184,7 @@ function withGroupReceiptPermissionAccounts(instruction: TransactionInstruction)
   });
 }
 
-// Random shuttle ids stay below 2^31. A fixed id per (owner, mint) keeps at most one
-// withdrawal paid from the ER balance in flight, so one balance cannot back
-// several sponsor-signed shuttles.
+// Above the random range: one ER-funded withdrawal in flight per (owner, mint).
 const EPHEMERAL_FEE_WITHDRAW_SHUTTLE_ID = 0xffffffff;
 
 function createRandomShuttleId() {
@@ -1851,8 +1849,7 @@ export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawReque
     const blockhash = await getBlockhash(config, "base");
 
     if (ephemeralFee) {
-      // The sponsor pays on base before the ER debits the owner, so only sign
-      // for a delegated or Magic ATA balance known to cover amount.
+      // Only sponsor a real ER balance that covers amount.
       const { balance } = await getPrivateBalance(
         env,
         { address: input.owner, mint: input.mint, cluster: input.cluster },
@@ -1895,8 +1892,7 @@ export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawReque
       magicAtaSource,
     });
     if (ephemeralFee) {
-      // Instruction 37: instruction 26 plus the transfer queue, whose vault
-      // receives the fee deducted from amount inside the ER.
+      // Instruction 37 = instruction 26 + transfer queue account + trailing fee.
       const withdrawIx = instructions.at(-1)!;
       withdrawIx.keys.push({ pubkey: deriveTransferQueue(mint, validator)[0], isSigner: false, isWritable: false });
       const fee = Buffer.alloc(8);

@@ -71,10 +71,8 @@ struct WithdrawThroughDelegatedShuttleAccounts<'a> {
 /// 15: []                  - SPL     : Token program.
 /// 16: []                  - PDA     : Delegated transfer queue (`with_fee` only).
 ///
-/// Instruction Data: DepositAndDelegateShuttleArgs, followed by fee (u64 LE)
-/// when `with_fee`. The fee moves from the owner's ER balance into the queue
-/// vault ATA, like instruction 25's private-transfer fee, in the same ER
-/// transaction as the shuttle funding, so neither lands without the other.
+/// Instruction Data: DepositAndDelegateShuttleArgs, then fee (u64 LE) when
+/// `with_fee`; the fee goes to the queue vault ATA in the same ER transaction.
 ///
 #[inline(never)]
 pub fn process_withdraw_through_delegated_shuttle_with_merge(
@@ -171,8 +169,7 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
     debug_log!("Shuttle: {}", accounts.shuttle_info.address().to_string().as_str());
 
     if prepared.already_delegated {
-        // A duplicate fee-paying withdrawal reverts, so the sponsor's setup
-        // lamports are only spent on a shuttle that carries the fee.
+        // Revert duplicates so the sponsor pays setup only once.
         require!(fee.is_none(), ProgramError::AccountAlreadyInitialized);
         return Ok(());
     }

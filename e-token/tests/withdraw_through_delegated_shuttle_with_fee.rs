@@ -247,7 +247,6 @@ async fn withdraw_with_fee_pays_the_queue_vault_before_funding_the_shuttle() {
         .await
         .unwrap();
 
-    // A duplicate cannot charge the sponsor again for the in-flight shuttle.
     let payer = fx.payer.pubkey();
     assert_eq!(
         fx.send(
