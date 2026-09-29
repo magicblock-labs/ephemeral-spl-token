@@ -5067,6 +5067,7 @@ describe("app", () => {
     const mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
     const gaslessEnv = {
       ...env,
+      EPHEMERAL_RPC_URL: "https://ephemeral.sponsored-withdraw.rpc.test",
       GASLESS_SPONSOR_SECRET_KEY: JSON.stringify(Array.from(sponsor.secretKey)),
     };
     // The ER identity the API falls back to; the eATA, shuttle, and queue all use it.
