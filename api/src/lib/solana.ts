@@ -1848,7 +1848,12 @@ export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawReque
     if (ephemeralFee) {
       // The sponsor pays on base before the ER debits the owner, so only sign
       // for a delegated or Magic ATA balance known to cover amount.
-      const { balance } = await getPrivateBalance(env, { address: input.owner, mint: input.mint, cluster: input.cluster }, authToken);
+      const { balance } = await getPrivateBalance(
+        env,
+        { address: input.owner, mint: input.mint, cluster: input.cluster },
+        authToken,
+        validator,
+      );
       if (BigInt(balance) < amount) {
         throw new ApiError(400, "INSUFFICIENT_EPHEMERAL_BALANCE", "The ephemeral balance does not cover amount", {
           balance,
@@ -2430,7 +2435,12 @@ export async function getBaseBalance(env: AppEnv, input: BalanceRequest): Promis
   }
 }
 
-export async function getPrivateBalance(env: AppEnv, input: BalanceRequest, authToken?: string) {
+export async function getPrivateBalance(
+  env: AppEnv,
+  input: BalanceRequest,
+  authToken?: string,
+  expectedValidator?: PublicKey,
+) {
   const config = resolveRpcConfig(env, input.cluster);
   const owner = parsePublicKey(input.address, "address");
   const mint = parsePublicKey(input.mint, "mint");
@@ -2461,7 +2471,7 @@ export async function getPrivateBalance(env: AppEnv, input: BalanceRequest, auth
       return { ...zeroBalanceResponse, delegation: { status: "undelegated" } };
     }
 
-    const validator = await resolveRequiredValidator(config);
+    const validator = expectedValidator ?? await resolveRequiredValidator(config);
     if (!delegationRecord.validator.equals(validator)) {
       throw new ApiError(400, "EATA_DELEGATED_ELSEWHERE", "eATA is delegated to a different validator", {
         eata: eata.toBase58(),

@@ -5078,9 +5078,9 @@ describe("app", () => {
       { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, ...overrides }) },
       bindings,
     );
-    const mockEphemeralBalance = (amount: bigint) => vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(async (pubkey) => {
+    const mockEphemeralBalance = (amount: bigint, delegatedTo = validator) => vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(async (pubkey) => {
       if (pubkey.equals(deriveEataDelegationRecord(body.owner, mint))) {
-        return createDelegationAccountInfo(validator);
+        return createDelegationAccountInfo(delegatedTo);
       }
       return pubkey.toBase58() === deriveAssociatedTokenAddress(mint, body.owner) ? createAccountInfo(amount) : createMintAccountInfo(TOKEN_PROGRAM_ID);
     });
@@ -5117,6 +5117,15 @@ describe("app", () => {
       ]);
       transaction.partialSign(wallet);
       expect(transaction.verifySignatures()).toBe(true);
+    });
+
+    it("checks the balance on an explicitly requested validator", async () => {
+      const explicit = Keypair.generate().publicKey;
+      mockEphemeralBalance(1_000_000n, explicit);
+      const response = await request({ validator: explicit.toBase58() });
+      expect(response.status).toBe(200);
+      const transaction = Transaction.from(Buffer.from((await response.json() as TransactionResponse).transactionBase64, "base64"));
+      expect(transaction.instructions.at(-1)?.keys[16]?.pubkey.equals(deriveTransferQueue(new PublicKey(mint), explicit)[0])).toBe(true);
     });
 
     it("keeps the base-funded relay fee by default", async () => {
