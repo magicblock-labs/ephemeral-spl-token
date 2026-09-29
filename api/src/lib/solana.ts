@@ -1847,15 +1847,11 @@ export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawReque
 
     if (ephemeralFee) {
       // The sponsor pays on base before the ER debits the owner, so only sign
-      // for a balance known to cover amount.
-      const ata = getAssociatedTokenAddressSync(mint, owner, true, tokenProgram);
-      const accountInfo = await getEphemeralConnection(config, authToken).getAccountInfo(ata, "confirmed").catch(() => null);
-      const balance = accountInfo?.owner.equals(tokenProgram) && accountInfo.data.length >= 165
-        ? parseTokenAmount(accountInfo)
-        : null;
-      if (balance === null || balance < amount) {
+      // for a delegated or Magic ATA balance known to cover amount.
+      const { balance } = await getPrivateBalance(env, { address: input.owner, mint: input.mint, cluster: input.cluster }, authToken);
+      if (BigInt(balance) < amount) {
         throw new ApiError(400, "INSUFFICIENT_EPHEMERAL_BALANCE", "The ephemeral balance does not cover amount", {
-          balance: balance?.toString() ?? null,
+          balance,
           amount: amount.toString(),
         });
       }

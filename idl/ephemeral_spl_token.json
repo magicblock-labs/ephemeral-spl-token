@@ -1444,6 +1444,97 @@
       "args": []
     },
     {
+      "name": "withdrawThroughDelegatedShuttleWithFee",
+      "discriminator": [
+        37
+      ],
+      "docs": [
+        "Instruction 26 that first moves `fee` from the owner's ER balance into the delegated transfer queue's vault ATA, in the same ER transaction, and withdraws `amount - fee`.",
+        "Instruction data: instruction 26's data followed by fee (u64 LE), 0 < fee < amount."
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "rentPda",
+          "writable": true
+        },
+        {
+          "name": "shuttle",
+          "writable": true
+        },
+        {
+          "name": "shuttleEphemeralAta",
+          "writable": true
+        },
+        {
+          "name": "shuttleWalletAta",
+          "writable": true
+        },
+        {
+          "name": "owner",
+          "signer": true
+        },
+        {
+          "name": "ownerProgram"
+        },
+        {
+          "name": "buffer",
+          "writable": true
+        },
+        {
+          "name": "delegationRecord",
+          "writable": true
+        },
+        {
+          "name": "delegationMetadata",
+          "writable": true
+        },
+        {
+          "name": "delegationProgram",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "associatedTokenProgram",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "ownerToken",
+          "writable": true
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "tokenProgram"
+        },
+        {
+          "name": "transferQueue"
+        }
+      ],
+      "args": [
+        {
+          "name": "shuttleId",
+          "type": "u32"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "fee",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "undelegationCallback",
       "discriminator": [
         196
