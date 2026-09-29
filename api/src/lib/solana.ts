@@ -1833,9 +1833,33 @@ export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawReque
     const { sponsor, payer, feePayer, partialSigners, relayFee } = resolveGaslessSponsorship(
       "withdraw", env, config, owner, mint, amount, input.gasless,
     );
+    const ephemeralFee = input.feeBalance === "ephemeral";
+    if (ephemeralFee && (!sponsor || input.idempotent === false)) {
+      throw new ApiError(
+        400,
+        "INVALID_GASLESS_WITHDRAW_FEE_BALANCE",
+        "feeBalance=ephemeral requires gasless=true and the idempotent withdrawal flow",
+      );
+    }
     const validator = await resolveValidator(config, input.validator);
     const tokenProgram = await resolveMintTokenProgram(config, mint);
     const blockhash = await getBlockhash(config, "base");
+
+    if (ephemeralFee) {
+      // The sponsor pays on base before the ER debits the owner, so only sign
+      // for a balance known to cover amount.
+      const ata = getAssociatedTokenAddressSync(mint, owner, true, tokenProgram);
+      const accountInfo = await getEphemeralConnection(config, authToken).getAccountInfo(ata, "confirmed").catch(() => null);
+      const balance = accountInfo?.owner.equals(tokenProgram) && accountInfo.data.length >= 165
+        ? parseTokenAmount(accountInfo)
+        : null;
+      if (balance === null || balance < amount) {
+        throw new ApiError(400, "INSUFFICIENT_EPHEMERAL_BALANCE", "The ephemeral balance does not cover amount", {
+          balance: balance?.toString() ?? null,
+          amount: amount.toString(),
+        });
+      }
+    }
 
     const magicAtaSource = await isMagicAtaEphemeralSource(
       config,
@@ -1850,13 +1874,24 @@ export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawReque
       validator,
       tokenProgram,
       initIfMissing: input.initIfMissing,
-      initAtasIfMissing: input.initAtasIfMissing,
+      // The sponsor creates the owner's base ATA when the owner holds nothing on base.
+      initAtasIfMissing: ephemeralFee || input.initAtasIfMissing,
       shuttleId: createRandomShuttleId(),
       escrowIndex: input.escrowIndex,
       idempotent: input.idempotent,
       magicAtaSource,
     });
-    instructions.unshift(...createGaslessFeeInstructions(owner, mint, tokenProgram, sponsor));
+    if (ephemeralFee) {
+      // Instruction 37: instruction 26 plus the transfer queue, whose vault
+      // receives the fee deducted from amount inside the ER.
+      const withdrawIx = instructions.at(-1)!;
+      withdrawIx.keys.push({ pubkey: deriveTransferQueue(mint, validator)[0], isSigner: false, isWritable: false });
+      const fee = Buffer.alloc(8);
+      fee.writeBigUInt64LE(relayFee);
+      withdrawIx.data = Buffer.concat([Buffer.from([37]), withdrawIx.data.subarray(1), fee]);
+    } else {
+      instructions.unshift(...createGaslessFeeInstructions(owner, mint, tokenProgram, sponsor));
+    }
 
     if (
       input.idempotent === false

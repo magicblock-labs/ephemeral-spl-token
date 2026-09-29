@@ -5061,6 +5061,82 @@ describe("app", () => {
     });
   });
 
+  describe("gasless withdraw paid from the ephemeral balance", () => {
+    const wallet = Keypair.generate();
+    const sponsor = Keypair.generate();
+    const mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+    const gaslessEnv = {
+      ...env,
+      GASLESS_SPONSOR_SECRET_KEY: JSON.stringify(Array.from(sponsor.secretKey)),
+    };
+    const body = { owner: wallet.publicKey.toBase58(), mint, amount: 1_000_000, validator: resolvedValidator, gasless: true, feeBalance: "ephemeral" };
+    const request = (overrides: Record<string, unknown> = {}, bindings = gaslessEnv) => app.request(
+      "/v1/spl/withdraw",
+      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, ...overrides }) },
+      bindings,
+    );
+    const mockEphemeralBalance = (amount: bigint) => vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(async pubkey =>
+      pubkey.toBase58() === deriveAssociatedTokenAddress(mint, body.owner) ? createAccountInfo(amount) : createMintAccountInfo(TOKEN_PROGRAM_ID),
+    );
+
+    beforeEach(() => {
+      vi.spyOn(Connection.prototype, "getLatestBlockhash").mockResolvedValue({
+        blockhash: "11111111111111111111111111111111",
+        lastValidBlockHeight: 123,
+      });
+      mockEphemeralBalance(1_000_000n);
+    });
+
+    it("deducts the fee inside the ER with instruction 37", async () => {
+      const response = await request();
+      expect(response.status).toBe(200);
+      const json = await response.json() as TransactionResponse;
+      expect(json).toMatchObject({ kind: "withdraw", sendTo: "base", fees: { lamports: "500000", tokens: "200000" } });
+      expect(json.requiredSigners).toEqual([sponsor.publicKey.toBase58(), body.owner]);
+      const transaction = Transaction.from(Buffer.from(json.transactionBase64, "base64"));
+      expect(transaction.feePayer?.equals(sponsor.publicKey)).toBe(true);
+      // No base-chain relay fee: the owner may hold nothing on base.
+      expect(transaction.instructions.some(ix => ix.programId.equals(TOKEN_PROGRAM_ID))).toBe(false);
+      const createOwnerAta = transaction.instructions[0]!;
+      expect(createOwnerAta.keys[0]?.pubkey.equals(sponsor.publicKey)).toBe(true);
+      expect(createOwnerAta.keys[1]?.pubkey.toBase58()).toBe(deriveAssociatedTokenAddress(mint, body.owner));
+
+      const withdrawIx = transaction.instructions.at(-1)!;
+      expect(withdrawIx.data[0]).toBe(37);
+      expect(withdrawIx.data.readBigUInt64LE(5)).toBe(1_000_000n);
+      expect(withdrawIx.data.readBigUInt64LE(45)).toBe(200_000n);
+      expect(withdrawIx.data.length).toBe(53);
+      expect(withdrawIx.keys.slice(16)).toEqual([
+        { pubkey: deriveTransferQueue(new PublicKey(mint), new PublicKey(resolvedValidator))[0], isSigner: false, isWritable: false },
+      ]);
+      transaction.partialSign(wallet);
+      expect(transaction.verifySignatures()).toBe(true);
+    });
+
+    it("keeps the base-funded relay fee by default", async () => {
+      const response = await request({ feeBalance: undefined });
+      const transaction = Transaction.from(Buffer.from((await response.json() as TransactionResponse).transactionBase64, "base64"));
+      expect(transaction.instructions[0]?.programId.equals(TOKEN_PROGRAM_ID)).toBe(true);
+      expect(transaction.instructions.at(-1)?.data[0]).toBe(26);
+    });
+
+    it.each([
+      { overrides: {}, balance: 999_999n, code: "INSUFFICIENT_EPHEMERAL_BALANCE" },
+      { overrides: {}, balance: undefined, code: "INSUFFICIENT_EPHEMERAL_BALANCE" },
+      { overrides: { gasless: undefined }, balance: 1_000_000n, code: "INVALID_GASLESS_WITHDRAW_FEE_BALANCE" },
+      { overrides: { idempotent: false }, balance: 1_000_000n, code: "INVALID_GASLESS_WITHDRAW_FEE_BALANCE" },
+    ])("rejects with $code for $overrides and balance $balance", async ({ overrides, balance, code }) => {
+      if (balance === undefined) {
+        vi.spyOn(Connection.prototype, "getAccountInfo").mockResolvedValue(createMintAccountInfo(TOKEN_PROGRAM_ID));
+      } else {
+        mockEphemeralBalance(balance);
+      }
+      const response = await request(overrides);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ error: { code } });
+    });
+  });
+
   it.each([
     { cluster: "mainnet", mint: DEVNET_USDC_MINT, amount: 500_000, error: "INVALID_GASLESS_TRANSFER_MINT" },
     { cluster: "devnet", mint: DEVNET_USDC_MINT, amount: 499_999, error: "INVALID_GASLESS_TRANSFER_AMOUNT" },

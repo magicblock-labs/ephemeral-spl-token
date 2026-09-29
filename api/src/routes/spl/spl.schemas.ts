@@ -300,6 +300,10 @@ export const withdrawRequestSchema = z.object({
   }),
   amount: withdrawAmountSchema,
   gasless: depositWithdrawGaslessSchema,
+  feeBalance: balanceLocationSchema.openapi({
+    example: "ephemeral",
+    description: "Optional. Defaults to base. With gasless=true and ephemeral, the 0.2 USDC/USDT relay fee is deducted from amount inside the ephemeral rollup instead of the base-chain ATA, so the owner needs no base-chain funds and receives amount minus the fee. The fee goes to the transfer-queue vault. Requires the idempotent flow.",
+  }).optional(),
   validator: publicKeySchema.openapi({
     example: DEFAULT_DEPOSIT_VALIDATOR,
     description: "Optional. Defaults to the selected ephemeral RPC identity resolved via `getIdentity`.",
