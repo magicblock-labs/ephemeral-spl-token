@@ -247,6 +247,18 @@ async fn withdraw_with_fee_pays_the_queue_vault_before_funding_the_shuttle() {
         .await
         .unwrap();
 
+    // A duplicate cannot charge the sponsor again for the in-flight shuttle.
+    let payer = fx.payer.pubkey();
+    assert_eq!(
+        fx.send(
+            &[transfer(&payer, &payer, 0), fx.withdraw_ix(Some(FEE))],
+            "wd_shuttle_fee::duplicate"
+        )
+        .await
+        .unwrap_err(),
+        TransactionError::InstructionError(1, InstructionError::AccountAlreadyInitialized)
+    );
+
     let actions = fx.stored_actions().await;
     assert_eq!(actions.len(), 4, "fee, shuttle funding, undelegate, close");
     assert_eq!(actions[0], fx.transfer_action(fx.ata(fx.queue), FEE));

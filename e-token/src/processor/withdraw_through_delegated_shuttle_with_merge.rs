@@ -171,6 +171,9 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
     debug_log!("Shuttle: {}", accounts.shuttle_info.address().to_string().as_str());
 
     if prepared.already_delegated {
+        // A duplicate fee-paying withdrawal reverts, so the sponsor's setup
+        // lamports are only spent on a shuttle that carries the fee.
+        require!(fee.is_none(), ProgramError::AccountAlreadyInitialized);
         return Ok(());
     }
 
