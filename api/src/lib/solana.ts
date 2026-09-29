@@ -21,7 +21,7 @@ import {
   permissionPdaFromAccount,
   transferSpl,
   undelegateIx,
-  withdrawSpl, initVaultIx, initVaultAtaIx, delegateEphemeralAtaIx, deriveVault, deriveEphemeralAta, deriveVaultAta,
+  withdrawSpl, deriveShuttleEphemeralAta, deriveShuttleAta, initVaultIx, initVaultAtaIx, delegateEphemeralAtaIx, deriveVault, deriveEphemeralAta, deriveVaultAta,
 } from "@magicblock-labs/ephemeral-rollups-sdk";
 import { sha256 } from "@noble/hashes/sha256";
 import {
@@ -1184,6 +1184,11 @@ function withGroupReceiptPermissionAccounts(instruction: TransactionInstruction)
   });
 }
 
+// Random shuttle ids stay below 2^31. A fixed id per (owner, mint) keeps at most one
+// withdrawal paid from the ER balance in flight, so one balance cannot back
+// several sponsor-signed shuttles.
+const EPHEMERAL_FEE_WITHDRAW_SHUTTLE_ID = 0xffffffff;
+
 function createRandomShuttleId() {
   return crypto.getRandomValues(new Uint32Array(1))[0] & 0x7fffffff;
 }
@@ -1860,6 +1865,13 @@ export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawReque
           amount: amount.toString(),
         });
       }
+      const [shuttle] = deriveShuttleEphemeralAta(owner, mint, EPHEMERAL_FEE_WITHDRAW_SHUTTLE_ID);
+      const [shuttleAta] = deriveShuttleAta(shuttle, mint);
+      if (await getBaseConnection(config).getAccountInfo(shuttleAta, "confirmed")) {
+        throw new ApiError(409, "WITHDRAWAL_IN_PROGRESS", "A withdrawal paid from the ephemeral balance is already in flight", {
+          shuttle: shuttleAta.toBase58(),
+        });
+      }
     }
 
     const magicAtaSource = await isMagicAtaEphemeralSource(
@@ -1877,7 +1889,7 @@ export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawReque
       initIfMissing: input.initIfMissing,
       // The sponsor creates the owner's base ATA when the owner holds nothing on base.
       initAtasIfMissing: ephemeralFee || input.initAtasIfMissing,
-      shuttleId: createRandomShuttleId(),
+      shuttleId: ephemeralFee ? EPHEMERAL_FEE_WITHDRAW_SHUTTLE_ID : createRandomShuttleId(),
       escrowIndex: input.escrowIndex,
       idempotent: input.idempotent,
       magicAtaSource,

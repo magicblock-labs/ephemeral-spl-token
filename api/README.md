@@ -629,7 +629,7 @@ For shuttle flows (`idempotent` omitted or `true`), the relay fee is collected w
 
 #### Withdrawals paid from the ephemeral balance
 
-With `"gasless": true, "feeBalance": "ephemeral"`, a withdrawal needs no SOL, tokens, or ATA on the base chain: the sponsor also creates the owner's base ATA, and the relay fee is deducted from `amount` inside the ephemeral rollup (instruction 37), in the same ER transaction that funds the shuttle. The owner receives `amount - 200000`; the fee lands in the mint's transfer-queue vault, like private-transfer fees. Requires the shuttle flow (`idempotent` omitted or `true`) and a readable ephemeral balance of at least `amount`, otherwise it fails with `INSUFFICIENT_EPHEMERAL_BALANCE`.
+With `"gasless": true, "feeBalance": "ephemeral"`, a withdrawal needs no SOL, tokens, or ATA on the base chain: the sponsor also creates the owner's base ATA, and the relay fee is deducted from `amount` inside the ephemeral rollup (instruction 37), in the same ER transaction that funds the shuttle. The owner receives `amount - 200000`; the fee lands in the mint's transfer-queue vault, like private-transfer fees. Requires the shuttle flow (`idempotent` omitted or `true`) and a readable ephemeral balance of at least `amount`, otherwise it fails with `INSUFFICIENT_EPHEMERAL_BALANCE`. Only one such withdrawal per owner and mint can be in flight; another request fails with `409 WITHDRAWAL_IN_PROGRESS` until it settles.
 
 ### `POST /v1/spl/transfer`
 

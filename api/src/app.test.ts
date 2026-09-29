@@ -11,6 +11,8 @@ import {
   deriveRentPda,
   deriveStashAta,
   deriveStashPda,
+  deriveShuttleAta,
+  deriveShuttleEphemeralAta,
   deriveTransferQueue,
   deriveVault,
   deriveVaultAta,
@@ -5078,9 +5080,13 @@ describe("app", () => {
       { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, ...overrides }) },
       bindings,
     );
-    const mockEphemeralBalance = (amount: bigint, delegatedTo = validator) => vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(async (pubkey) => {
+    const shuttleAta = deriveShuttleAta(deriveShuttleEphemeralAta(wallet.publicKey, new PublicKey(mint), 0xffffffff)[0], new PublicKey(mint))[0];
+    const mockEphemeralBalance = (amount: bigint, delegatedTo = validator, inFlight = false) => vi.spyOn(Connection.prototype, "getAccountInfo").mockImplementation(async (pubkey) => {
       if (pubkey.equals(deriveEataDelegationRecord(body.owner, mint))) {
         return createDelegationAccountInfo(delegatedTo);
+      }
+      if (pubkey.equals(shuttleAta)) {
+        return inFlight ? createAccountInfo(0n) : null;
       }
       return pubkey.toBase58() === deriveAssociatedTokenAddress(mint, body.owner) ? createAccountInfo(amount) : createMintAccountInfo(TOKEN_PROGRAM_ID);
     });
@@ -5109,6 +5115,7 @@ describe("app", () => {
 
       const withdrawIx = transaction.instructions.at(-1)!;
       expect(withdrawIx.data[0]).toBe(37);
+      expect(withdrawIx.data.readUInt32LE(1)).toBe(0xffffffff);
       expect(withdrawIx.data.readBigUInt64LE(5)).toBe(1_000_000n);
       expect(withdrawIx.data.readBigUInt64LE(45)).toBe(200_000n);
       expect(withdrawIx.data.length).toBe(53);
@@ -5126,6 +5133,13 @@ describe("app", () => {
       expect(response.status).toBe(200);
       const transaction = Transaction.from(Buffer.from((await response.json() as TransactionResponse).transactionBase64, "base64"));
       expect(transaction.instructions.at(-1)?.keys[16]?.pubkey.equals(deriveTransferQueue(new PublicKey(mint), explicit)[0])).toBe(true);
+    });
+
+    it("rejects a second withdrawal while one is in flight", async () => {
+      mockEphemeralBalance(1_000_000n, validator, true);
+      const response = await request();
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({ error: { code: "WITHDRAWAL_IN_PROGRESS" } });
     });
 
     it("keeps the base-funded relay fee by default", async () => {
