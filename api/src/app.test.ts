@@ -1619,7 +1619,7 @@ describe("app", () => {
     expect(json.error.message).toMatch(/destination, minDelayMs/);
   });
 
-  it("visibility=private rejects maxDelayMs above 10 minutes", async () => {
+  it("visibility=private rejects maxDelayMs above 31 days", async () => {
     const metisEnv = {
       ...env,
       METIS_SWAP_API_URL: "https://triton.rpc.test/private-token/metis",
@@ -1647,7 +1647,7 @@ describe("app", () => {
           visibility: "private",
           destination,
           minDelayMs: "0",
-          maxDelayMs: "600001",
+          maxDelayMs: "2678400001",
           split: 1,
         }),
       },
@@ -1660,7 +1660,7 @@ describe("app", () => {
     };
     expect(json.error.code).toBe("INVALID_REQUEST");
     expect(json.error.message).toBe(
-      "maxDelayMs must be less than or equal to 600000",
+      "maxDelayMs must be less than or equal to 2678400000",
     );
   });
 
@@ -5744,7 +5744,7 @@ describe("app", () => {
     );
   });
 
-  it("rejects private transfers with maxDelayMs above 10 minutes", async () => {
+  it("rejects private transfers with maxDelayMs above 31 days", async () => {
     const response = await app.request(
       "/v1/spl/transfer",
       {
@@ -5760,7 +5760,7 @@ describe("app", () => {
           visibility: "private",
           fromBalance: "base",
           toBalance: "base",
-          maxDelayMs: "600001",
+          maxDelayMs: "2678400001",
         }),
       },
       env,
@@ -5777,7 +5777,7 @@ describe("app", () => {
 
     expect(json.error.code).toBe("INVALID_PRIVATE_TRANSFER");
     expect(json.error.message).toBe(
-      "maxDelayMs must be less than or equal to 600000",
+      "maxDelayMs must be less than or equal to 2678400000",
     );
   });
 

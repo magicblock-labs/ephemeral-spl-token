@@ -101,7 +101,7 @@ const DELEGATION_ROUTER_RPC_URLS = {
   devnet: "https://devnet-router.magicblock.app/",
 } as const;
 const TRANSFER_QUEUE_RENT_LAMPORTS = LAMPORTS_PER_SOL / 50;
-const PRIVATE_TRANSFER_MAX_DELAY_MS_LIMIT = 10n * 60n * 1000n;
+const PRIVATE_TRANSFER_MAX_DELAY_MS_LIMIT = 31n * 24n * 60n * 60n * 1000n;
 const TRANSFER_QUEUE_RECENT_SIGNATURE_LIMIT = 5;
 const TRANSFER_QUEUE_STALE_MS = 60_000;
 const TRANSFER_QUEUE_AUTH_ERROR_FORCE_INTERVAL = 100;
@@ -2167,7 +2167,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       && maxDelayMsForValidation !== undefined
       && maxDelayMsForValidation > PRIVATE_TRANSFER_MAX_DELAY_MS_LIMIT
     ) {
-      throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "maxDelayMs must be less than or equal to 600000");
+      throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "maxDelayMs must be less than or equal to 2678400000");
     }
 
     if (
