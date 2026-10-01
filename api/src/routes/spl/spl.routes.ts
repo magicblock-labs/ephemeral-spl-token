@@ -182,6 +182,7 @@ export const withdrawRoute = createRoute({
     200: jsonContent(transactionResponseSchema, "Unsigned or partially signed serialized transaction", withdrawResponseExample),
     400: jsonContent(errorResponseSchema, "Build error"),
     403: jsonContent(errorResponseSchema, "Token identity mismatch"),
+    409: jsonContent(errorResponseSchema, "Sponsored withdrawal already in flight"),
     422: jsonContent(validationErrorResponseSchema, "Validation error"),
     503: jsonContent(errorResponseSchema, "Sponsor unavailable"),
   },

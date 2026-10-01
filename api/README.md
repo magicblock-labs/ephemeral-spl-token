@@ -612,6 +612,7 @@ Relevant fields:
 - `escrowIndex`
 - `idempotent`
 - `gasless`
+- `feeBalance`
 
 #### Gasless deposits and withdrawals
 
@@ -625,6 +626,10 @@ Add `"gasless": true` to either request to use the configured sponsor for transa
 - Sponsored responses include `fees.tokens: "200000"` for the owner-paid relay fee and `fees.lamports: "500000"` for the sponsor-paid shuttle delegation fee, or `"0"` when `idempotent: false` skips the shuttle flow. These values exclude network transaction fees and account rent.
 
 For shuttle flows (`idempotent` omitted or `true`), the relay fee is collected when the base-chain transaction succeeds, before asynchronous settlement completes; a later settlement failure does not automatically refund it.
+
+#### Withdrawals paid from the ephemeral balance
+
+With `"gasless": true, "feeBalance": "ephemeral"`, a withdrawal needs no SOL, tokens, or ATA on the base chain: the sponsor also creates the owner's base ATA, and the relay fee is deducted from `amount` inside the ephemeral rollup (instruction 37), in the same ER transaction that funds the shuttle. The owner receives `amount - 200000`; the fee lands in the mint's transfer-queue vault, like private-transfer fees. Requires the shuttle flow (`idempotent` omitted or `true`) and a readable ephemeral balance of at least `amount`, otherwise it fails with `INSUFFICIENT_EPHEMERAL_BALANCE`. Only one such withdrawal per owner and mint can be in flight; another request fails with `409 WITHDRAWAL_IN_PROGRESS` until it settles.
 
 ### `POST /v1/spl/transfer`
 

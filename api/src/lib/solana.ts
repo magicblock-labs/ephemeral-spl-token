@@ -21,7 +21,7 @@ import {
   permissionPdaFromAccount,
   transferSpl,
   undelegateIx,
-  withdrawSpl, initVaultIx, initVaultAtaIx, delegateEphemeralAtaIx, deriveVault, deriveEphemeralAta, deriveVaultAta,
+  withdrawSpl, deriveShuttleEphemeralAta, deriveShuttleAta, initVaultIx, initVaultAtaIx, delegateEphemeralAtaIx, deriveVault, deriveEphemeralAta, deriveVaultAta,
 } from "@magicblock-labs/ephemeral-rollups-sdk";
 import { sha256 } from "@noble/hashes/sha256";
 import {
@@ -1184,6 +1184,9 @@ function withGroupReceiptPermissionAccounts(instruction: TransactionInstruction)
   });
 }
 
+// Above the random range: one ER-funded withdrawal in flight per (owner, mint).
+const EPHEMERAL_FEE_WITHDRAW_SHUTTLE_ID = 0xffffffff;
+
 function createRandomShuttleId() {
   return crypto.getRandomValues(new Uint32Array(1))[0] & 0x7fffffff;
 }
@@ -1833,9 +1836,40 @@ export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawReque
     const { sponsor, payer, feePayer, partialSigners, relayFee } = resolveGaslessSponsorship(
       "withdraw", env, config, owner, mint, amount, input.gasless,
     );
+    const ephemeralFee = input.feeBalance === "ephemeral";
+    if (ephemeralFee && (!sponsor || input.idempotent === false)) {
+      throw new ApiError(
+        400,
+        "INVALID_GASLESS_WITHDRAW_FEE_BALANCE",
+        "feeBalance=ephemeral requires gasless=true and the idempotent withdrawal flow",
+      );
+    }
     const validator = await resolveValidator(config, input.validator);
     const tokenProgram = await resolveMintTokenProgram(config, mint);
     const blockhash = await getBlockhash(config, "base");
+
+    if (ephemeralFee) {
+      // Only sponsor a real ER balance that covers amount.
+      const { balance } = await getPrivateBalance(
+        env,
+        { address: input.owner, mint: input.mint, cluster: input.cluster },
+        authToken,
+        validator,
+      );
+      if (BigInt(balance) < amount) {
+        throw new ApiError(400, "INSUFFICIENT_EPHEMERAL_BALANCE", "The ephemeral balance does not cover amount", {
+          balance,
+          amount: amount.toString(),
+        });
+      }
+      const [shuttle] = deriveShuttleEphemeralAta(owner, mint, EPHEMERAL_FEE_WITHDRAW_SHUTTLE_ID);
+      const [shuttleAta] = deriveShuttleAta(shuttle, mint);
+      if (await getBaseConnection(config).getAccountInfo(shuttleAta, "confirmed")) {
+        throw new ApiError(409, "WITHDRAWAL_IN_PROGRESS", "A withdrawal paid from the ephemeral balance is already in flight", {
+          shuttle: shuttleAta.toBase58(),
+        });
+      }
+    }
 
     const magicAtaSource = await isMagicAtaEphemeralSource(
       config,
@@ -1850,13 +1884,23 @@ export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawReque
       validator,
       tokenProgram,
       initIfMissing: input.initIfMissing,
-      initAtasIfMissing: input.initAtasIfMissing,
-      shuttleId: createRandomShuttleId(),
+      // The sponsor creates the owner's base ATA when the owner holds nothing on base.
+      initAtasIfMissing: ephemeralFee || input.initAtasIfMissing,
+      shuttleId: ephemeralFee ? EPHEMERAL_FEE_WITHDRAW_SHUTTLE_ID : createRandomShuttleId(),
       escrowIndex: input.escrowIndex,
       idempotent: input.idempotent,
       magicAtaSource,
     });
-    instructions.unshift(...createGaslessFeeInstructions(owner, mint, tokenProgram, sponsor));
+    if (ephemeralFee) {
+      // Instruction 37 = instruction 26 + transfer queue account + trailing fee.
+      const withdrawIx = instructions.at(-1)!;
+      withdrawIx.keys.push({ pubkey: deriveTransferQueue(mint, validator)[0], isSigner: false, isWritable: false });
+      const fee = Buffer.alloc(8);
+      fee.writeBigUInt64LE(relayFee);
+      withdrawIx.data = Buffer.concat([Buffer.from([37]), withdrawIx.data.subarray(1), fee]);
+    } else {
+      instructions.unshift(...createGaslessFeeInstructions(owner, mint, tokenProgram, sponsor));
+    }
 
     if (
       input.idempotent === false
@@ -2399,7 +2443,12 @@ export async function getBaseBalance(env: AppEnv, input: BalanceRequest): Promis
   }
 }
 
-export async function getPrivateBalance(env: AppEnv, input: BalanceRequest, authToken?: string) {
+export async function getPrivateBalance(
+  env: AppEnv,
+  input: BalanceRequest,
+  authToken?: string,
+  expectedValidator?: PublicKey,
+) {
   const config = resolveRpcConfig(env, input.cluster);
   const owner = parsePublicKey(input.address, "address");
   const mint = parsePublicKey(input.mint, "mint");
@@ -2430,7 +2479,7 @@ export async function getPrivateBalance(env: AppEnv, input: BalanceRequest, auth
       return { ...zeroBalanceResponse, delegation: { status: "undelegated" } };
     }
 
-    const validator = await resolveRequiredValidator(config);
+    const validator = expectedValidator ?? await resolveRequiredValidator(config);
     if (!delegationRecord.validator.equals(validator)) {
       throw new ApiError(400, "EATA_DELEGATED_ELSEWHERE", "eATA is delegated to a different validator", {
         eata: eata.toBase58(),

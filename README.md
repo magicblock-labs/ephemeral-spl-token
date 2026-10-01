@@ -33,6 +33,7 @@ Shuttle flows
 - `24` `SetupAndDelegateShuttleEphemeralAtaWithMerge` — initialize shuttle accounts if needed, deposit into the vault, sponsor delegation from the rent PDA, then schedule merge plus cleanup. Raw data is `shuttle_id:u32`, `amount:u64`, and an optional trailing 32-byte validator pubkey.
 - `25` `DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer` — same sponsored shuttle setup/deposit/delegate flow as `24`, but schedules a private queued transfer after merging back into the owner's source token account. Raw data starts with `shuttle_id:u32` and `amount:u64`, then carries three single-byte-length-prefixed buffers: validator bytes, encrypted destination bytes, and encrypted queue-suffix bytes.
 - `26` `WithdrawThroughDelegatedShuttleWithMerge` — sponsor shuttle delegation, then schedule an owner-to-shuttle transfer followed by shuttle undelegation and cleanup. Raw data is `shuttle_id:u32`, `amount:u64`, and an optional trailing 32-byte validator pubkey.
+- `37` `WithdrawThroughDelegatedShuttleWithFee` — `26` that first moves `fee` from the owner's ER balance into the delegated transfer queue's vault ATA, in the same ER transaction, and withdraws `amount - fee`. Accounts are `26`'s plus the queue; raw data is `26`'s plus a trailing `fee:u64`.
 
 Transfer queue and automation
 - `12` `InitializeTransferQueue` — create the per-mint transfer queue PDA derived from `["queue", mint]`. Raw data may be omitted, or may contain `size_bytes:u32`; `0` selects the default queue size.

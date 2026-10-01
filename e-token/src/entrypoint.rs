@@ -153,7 +153,12 @@ fn process_public_instruction(accounts: &[AccountView], instruction_data: &[u8])
         ESplInstruction::WithdrawThroughDelegatedShuttleWithMerge => {
             debug_log!("Instruction: WithdrawThroughDelegatedShuttleWithMerge");
 
-            process_withdraw_through_delegated_shuttle_with_merge(accounts, data)
+            process_withdraw_through_delegated_shuttle_with_merge(accounts, data, false)
+        }
+        ESplInstruction::WithdrawThroughDelegatedShuttleWithFee => {
+            debug_log!("Instruction: WithdrawThroughDelegatedShuttleWithFee");
+
+            process_withdraw_through_delegated_shuttle_with_merge(accounts, data, true)
         }
         ESplInstruction::UndelegateAndCloseShuttleToOwner => {
             debug_log!("Instruction: UndelegateAndCloseShuttleToOwner");
