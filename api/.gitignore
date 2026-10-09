@@ -1,2 +1,4 @@
 .prod.vars
+.dev.vars
+.local.vars
 .wrangler/
