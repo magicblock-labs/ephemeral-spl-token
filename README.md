@@ -132,6 +132,14 @@ from a crank account; the suite tops that account up itself, and is a no-op on a
 rollup that has no crank to top up (see `fund_queue_crank` in
 `e-token-e2e/src/fixture.rs`).
 
+## Upgrading the program
+
+Upgrades go through a Squads multisig whose vault holds the upgrade authority. CI only proposes them.
+
+1. Run **Actions → Propose Program Upgrade** with the target `cluster` (start with `dry_run`). It builds the program verifiably, uploads a buffer and opens a Squads proposal that upgrades it and records its verified build.
+2. Members approve and execute it: on mainnet in the [Squads app](https://app.squads.so), on devnet with the [shared command-line tools](https://github.com/magicblock-labs/.github/tree/main/actions/squads-program-upgrade#approving-and-managing-the-multisig-devnet).
+3. **mainnet:** run **Actions → Verify Program (Remote)** so explorers show the program as verified. Every upgrade needs this step again.
+
 ## Notes
 - The workspace depends on `ephemeral-rollups-pinocchio` and several Solana crates; ensure your local environment matches the versions declared in the workspace `Cargo.toml`.
 - The program enables additional logs when compiled with the `logging` feature, which is useful for debugging unit and integration tests.
