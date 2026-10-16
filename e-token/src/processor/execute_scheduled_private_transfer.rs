@@ -9,6 +9,7 @@ use ephemeral_spl_api::{
     require, require_eq_keys, require_n_accounts,
     state::stash::StashPda,
 };
+use hydra_api::consts::{CRANK_HEADER_SIZE, SERIALIZED_META_SIZE};
 use pinocchio::{
     cpi::{invoke_signed_with_bounds, Signer},
     error::ProgramError,
@@ -124,6 +125,13 @@ pub fn process_execute_scheduled_private_transfer(accounts: &[AccountView], inst
     let crank_authority = Address::new_from_array(crank.authority);
     require_eq_keys!(&crank_authority, &RENT_PDA, ProgramError::InvalidSeeds);
     require!(crank.authority_signer == 1, ProgramError::InvalidAccountData);
+    let region = crank_data
+        .get(CRANK_HEADER_SIZE..CRANK_HEADER_SIZE + crank.region_len() as usize)
+        .ok_or(ProgramError::InvalidAccountData)?;
+    require!(
+        is_scheduled_ix(region, accounts, instruction_data),
+        ProgramError::InvalidInstructionData
+    );
     let scheduled_slot = if crank.executed() == 0 {
         crank.next_exec_slot()
     } else {
@@ -300,6 +308,24 @@ pub fn process_execute_scheduled_private_transfer(accounts: &[AccountView], inst
         &account_refs,
         core::slice::from_ref(&stash_signer),
     )
+}
+
+/// Whether `accounts` and `data` are the ix 29 scheduled, which the crank
+/// stores in sysvar wire format: `[n: u16][[flag, key]; n][program_id][len: u16][data]`.
+/// Meta flags are skipped: writability is the runtime's to enforce.
+#[inline(always)]
+fn is_scheduled_ix(region: &[u8], accounts: &[AccountView], data: &[u8]) -> bool {
+    let metas_end = 2 + SERIALIZED_META_SIZE * accounts.len();
+    let data_start = metas_end + 32 + 2;
+    region.len() == data_start + 1 + data.len()
+        && region[..2] == (accounts.len() as u16).to_le_bytes()
+        && region[2..metas_end]
+            .chunks_exact(SERIALIZED_META_SIZE)
+            .zip(accounts)
+            .all(|(meta, account)| meta[1..] == *account.address().as_array())
+        && region[metas_end..metas_end + 32] == *crate::ID.as_array()
+        && region[data_start] == ESplInstruction::ExecuteScheduledPrivateTransfer as u8
+        && region[data_start + 1..] == *data
 }
 
 #[inline(always)]
