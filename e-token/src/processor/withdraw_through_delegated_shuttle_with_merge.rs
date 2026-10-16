@@ -6,10 +6,15 @@ use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
 use ephemeral_spl_api::{
     debug_log,
     instructions::DepositAndDelegateShuttleArgs,
-    require_n_accounts,
-    state::{ephemeral_ata::EphemeralAta, load},
+    require, require_eq_keys, require_n_accounts,
+    state::{
+        ephemeral_ata::EphemeralAta,
+        load,
+        transfer_queue::{queue_views, TransferQueue},
+    },
 };
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use solana_address::Address;
 use solana_instruction::{AccountMeta, Instruction};
 use wheels::layout::Decodable as _;
 
@@ -18,7 +23,7 @@ const TRANSFER_CHECKED_DISCRIMINATOR: u8 = 12;
 const CLOSE_MAGIC_ATA_DISCRIMINATOR: u32 = 26;
 
 use crate::processor::internal::{
-    read_mint_decimals,
+    get_associated_token_address, read_mint_decimals,
     shuttle_delegation::{
         build_undelegate_and_close_shuttle_instruction, delegate_sponsored_shuttle_with_post_actions,
         prepare_sponsored_shuttle_delegation, DepositAndDelegateShuttleCommonArgs,
@@ -64,14 +69,28 @@ struct WithdrawThroughDelegatedShuttleAccounts<'a> {
 /// 13: [writable]          - SPL     : Owner token account.
 /// 14: []                  - SPL     : Mint account.
 /// 15: []                  - SPL     : Token program.
+/// 16: []                  - PDA     : Delegated transfer queue (`with_fee` only).
 ///
-/// Instruction Data: DepositAndDelegateShuttleArgs
+/// Instruction Data: DepositAndDelegateShuttleArgs, then fee (u64 LE) when
+/// `with_fee`; the fee goes to the queue vault ATA in the same ER transaction.
 ///
 #[inline(never)]
 pub fn process_withdraw_through_delegated_shuttle_with_merge(
     accounts: &[AccountView],
     instruction_data: &[u8],
+    with_fee: bool,
 ) -> ProgramResult {
+    let (accounts, fee_accounts) = accounts.split_at(accounts.len().min(16));
+    let (instruction_data, fee) = match (with_fee, fee_accounts) {
+        (false, []) => (instruction_data, None),
+        (true, [queue_info]) => {
+            let (data, fee) = instruction_data
+                .split_last_chunk::<8>()
+                .ok_or(ProgramError::InvalidInstructionData)?;
+            (data, Some((u64::from_le_bytes(*fee), queue_info)))
+        }
+        _ => return Err(ProgramError::NotEnoughAccountKeys),
+    };
     let [
         payer_info, // force multi-line
         rent_pda_info,
@@ -92,6 +111,24 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
     ] = require_n_accounts!(accounts, 16);
 
     let args = DepositAndDelegateShuttleArgs::decode(instruction_data)?;
+    let fee = match fee {
+        Some((fee, queue_info)) => {
+            require!(fee > 0 && fee < args.amount(), ProgramError::InvalidArgument);
+            require!(
+                queue_info.owned_by(&ephemeral_spl_api::program::DELEGATION_PROGRAM_ID),
+                ProgramError::InvalidAccountOwner
+            );
+            let (header, _) = queue_views(unsafe { queue_info.borrow_unchecked() })?;
+            let queue = TransferQueue::derive_pda(mint_info.address(), &header.validator, header.bump)?;
+            require_eq_keys!(&queue, queue_info.address(), ProgramError::InvalidSeeds);
+            Some((
+                fee,
+                get_associated_token_address(&queue, mint_info.address(), token_program_info.address()),
+            ))
+        }
+        None => None,
+    };
+    let shuttled_amount = args.amount() - fee.map_or(0, |(fee, _)| fee);
 
     let accounts = WithdrawThroughDelegatedShuttleAccounts {
         payer_info,
@@ -132,6 +169,8 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
     debug_log!("Shuttle: {}", accounts.shuttle_info.address().to_string().as_str());
 
     if prepared.already_delegated {
+        // Revert duplicates so the sponsor pays setup only once.
+        require!(fee.is_none(), ProgramError::AccountAlreadyInitialized);
         return Ok(());
     }
 
@@ -152,8 +191,22 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
     // The close must come after the shuttle undelegation instruction: the
     // actions run as one ER transaction and the undelegation still validates
     // the owner token account, which the close removes once drained.
-    let post_actions = alloc::vec![
-        transfer_owner_tokens_into_shuttle_action(&accounts, args.amount(), decimals)?,
+    let mut post_actions = alloc::vec![];
+    if let Some((fee, queue_vault_token)) = fee {
+        post_actions.push(transfer_owner_tokens_action(
+            &accounts,
+            &queue_vault_token,
+            fee,
+            decimals,
+        ));
+    }
+    post_actions.extend([
+        transfer_owner_tokens_action(
+            &accounts,
+            accounts.shuttle_wallet_ata_info.address(),
+            shuttled_amount,
+            decimals,
+        ),
         build_undelegate_and_close_shuttle_instruction(
             accounts.payer_info.address(),
             accounts.rent_pda_info.address(),
@@ -165,7 +218,7 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
             None,
         ),
         close_magic_ata_source_action(&accounts),
-    ];
+    ]);
 
     // Shuttle has been initialized above
     let shuttle_eata = load::<EphemeralAta>(unsafe { accounts.shuttle_eata_info.borrow_unchecked() })?;
@@ -183,7 +236,7 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
         accounts.system_program,
         DepositAndDelegateShuttleCommonArgs {
             shuttle_id: args.shuttle_id(),
-            total_amount: args.amount(),
+            total_amount: shuttled_amount,
             validator: args.validator(),
         },
         &prepared.mint,
@@ -206,23 +259,24 @@ fn close_magic_ata_source_action(accounts: &WithdrawThroughDelegatedShuttleAccou
     }
 }
 
-fn transfer_owner_tokens_into_shuttle_action(
+fn transfer_owner_tokens_action(
     accounts: &WithdrawThroughDelegatedShuttleAccounts<'_>,
+    destination: &Address,
     amount: u64,
     decimals: u8,
-) -> Result<Instruction, ProgramError> {
+) -> Instruction {
     let mut data = alloc::vec![TRANSFER_CHECKED_DISCRIMINATOR];
     data.extend_from_slice(&amount.to_le_bytes());
     data.push(decimals);
 
-    Ok(Instruction {
+    Instruction {
         program_id: *accounts.token_program_info.address(),
         accounts: alloc::vec![
             AccountMeta::new(*accounts.owner_token_info.address(), false),
             AccountMeta::new_readonly(*accounts.mint_info.address(), false),
-            AccountMeta::new(*accounts.shuttle_wallet_ata_info.address(), false),
+            AccountMeta::new(*destination, false),
             AccountMeta::new_readonly(*accounts.owner_info.address(), true),
         ],
         data,
-    })
+    }
 }
