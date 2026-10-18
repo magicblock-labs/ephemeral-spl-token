@@ -5,6 +5,7 @@ use dlp_api::{
     state::DelegationRecord,
 };
 use ephemeral_spl_api::{
+    error::EphemeralSplError,
     instruction::ESplInstruction,
     instructions::DepositAndDelegateShuttleArgs,
     state::transfer_queue::{TransferQueue, TransferQueueHeader, HEADER_LEN},
@@ -288,8 +289,20 @@ async fn withdraw_with_fee_rejects_invalid_requests() {
     missing_fee.data.truncate(missing_fee.data.len() - 8);
     let mut undelegated_queue = fx.withdraw_ix(Some(FEE));
     undelegated_queue.accounts[16].pubkey = fx.mint;
+    let mut missing_queue = fx.withdraw_ix(Some(FEE));
+    missing_queue.accounts.pop();
+    let mut extra_account = fx.withdraw_ix(Some(FEE));
+    extra_account.accounts.push(AccountMeta::new_readonly(fx.queue, false));
+    let mut extra_account_without_fee = fx.withdraw_ix(None);
+    extra_account_without_fee
+        .accounts
+        .push(AccountMeta::new_readonly(fx.queue, false));
+    let too_many_accounts = InstructionError::Custom(EphemeralSplError::TooManyAccountKeys as u32);
 
     let cases = [
+        (missing_queue, InstructionError::NotEnoughAccountKeys),
+        (extra_account, too_many_accounts.clone()),
+        (extra_account_without_fee, too_many_accounts),
         (fx.withdraw_ix(Some(0)), InstructionError::InvalidArgument),
         (fx.withdraw_ix(Some(AMOUNT)), InstructionError::InvalidArgument),
         (undelegated_queue, InstructionError::InvalidAccountOwner),

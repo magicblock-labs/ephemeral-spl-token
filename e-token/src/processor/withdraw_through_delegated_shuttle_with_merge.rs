@@ -5,6 +5,7 @@ use dlp_api::compact::ClearText;
 use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
 use ephemeral_spl_api::{
     debug_log,
+    error::EphemeralSplError,
     instructions::DepositAndDelegateShuttleArgs,
     require, require_eq_keys, require_n_accounts,
     state::{
@@ -89,7 +90,8 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
                 .ok_or(ProgramError::InvalidInstructionData)?;
             (data, Some((u64::from_le_bytes(*fee), queue_info)))
         }
-        _ => return Err(ProgramError::NotEnoughAccountKeys),
+        (true, []) => return Err(ProgramError::NotEnoughAccountKeys),
+        _ => return Err(EphemeralSplError::TooManyAccountKeys.into()),
     };
     let [
         payer_info, // force multi-line
