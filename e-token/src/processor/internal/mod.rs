@@ -28,8 +28,8 @@ pub(crate) use pda::CALLBACK_SIGNER;
 use pinocchio::error::ProgramError;
 use solana_address::Address;
 pub(crate) use token::{
-    get_associated_token_address, is_supported_token_program, read_mint_decimals, token_program_for_kind,
-    token_program_kind, validate_token_account,
+    get_associated_token_address, is_supported_token_program, read_mint_decimals, read_token_account,
+    token_program_for_kind, token_program_kind, validate_token_account,
 };
 /// seed is created by overwriting the first 4-bytes of stash_pda with shuttle_id bytes
 #[inline(always)]

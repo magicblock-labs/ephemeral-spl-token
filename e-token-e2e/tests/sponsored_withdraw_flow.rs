@@ -41,6 +41,8 @@ const DECIMALS: u8 = 6;
 const DEPOSIT: u64 = 10_000_000;
 const WITHDRAW_AMOUNT: u64 = 2_000_000;
 const FEE: u64 = 200_000;
+/// The API's fixed shuttle id: every round reuses the same shuttle addresses.
+const SHUTTLE_ID: u32 = u32::MAX;
 const SETTLE_TIMEOUT: Duration = Duration::from_secs(90);
 
 fn with_stack<T>(body: impl FnOnce(&RpcClient, &RpcClient) -> Result<T>) -> T {
@@ -115,14 +117,14 @@ fn sponsored_withdraw_pays_the_fee_from_the_rollup_balance() {
         assert!(account_data(base, &owner_ata).is_none(), "the owner holds no base ATA");
         let vault_before = token_balance(er, &queue_vault_ata)?;
 
-        for (round, shuttle_id) in [(1, 1_u32), (2, 2)] {
+        for round in 1..=2 {
             // The published SDK has no instruction 37 builder yet: extend its instruction 26.
             let mut withdraw = WithdrawThroughDelegatedShuttleWithMergeBuilder {
                 payer: sponsor.pubkey(),
                 owner: owner.pubkey(),
                 owner_ata,
                 mint: fx.mint,
-                shuttle_id,
+                shuttle_id: SHUTTLE_ID,
                 amount: WITHDRAW_AMOUNT,
                 validator: Some(fx.validator),
             }
