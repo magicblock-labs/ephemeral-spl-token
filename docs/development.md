@@ -12,11 +12,8 @@ Run the commands below from the repository root.
 ## Requirements and build
 
 Use the Rust toolchain pinned in [`rust-toolchain.toml`](../rust-toolchain.toml).
-Install Solana CLI and SBF build/test tooling; [CI](../.github/workflows/ci.yml)
-uses Solana `3.1.5`. The CLI metadata in [`Cargo.toml`](../Cargo.toml) still lists
-`2.3.4`. Use CI as the reference for the tested version. Compute-unit collection
-also requires `jq`; the [upgrade workflow](upgrades.md) pins its build toolchain
-separately.
+Install Solana CLI `3.1.5` with SBF build/test tooling. Compute-unit collection
+also requires `jq`.
 
 ```bash
 make build
