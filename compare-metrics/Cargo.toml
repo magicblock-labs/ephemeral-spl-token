@@ -5,9 +5,6 @@ edition = "2021"
 description = "Compare two CU metrics JSON files and print a terminal table"
 publish = false
 
-[package.metadata.release]
-release = false
-
 [[bin]]
 name = "compare-metrics"
 path = "src/main.rs"
