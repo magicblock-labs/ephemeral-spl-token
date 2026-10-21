@@ -261,6 +261,12 @@ pub enum ESplInstruction {
     ///      transfer in the same transaction can fund a destination that does not exist yet.
     ///      Instruction data: none
     EnsureMagicAtaDestination = 36,
+
+    /// 37 - WithdrawThroughDelegatedShuttleWithFee: instruction 26 that first moves `fee` from the
+    ///      owner's ER balance into the delegated transfer queue's vault ATA, in the same ER
+    ///      transaction, and withdraws `amount - fee`. Accounts: instruction 26's, then the queue.
+    ///      Instruction data: instruction 26's, then fee (u64 LE), 0 < fee < amount.
+    WithdrawThroughDelegatedShuttleWithFee = 37,
 }
 
 impl ESplInstruction {
@@ -330,6 +336,7 @@ impl TryFrom<u8> for ESplInstruction {
             34 => Ok(Self::DepositAndDelegateShuttleWithMergeToEncryptedDestination),
             35 => Ok(Self::MergeShuttleIntoMagicAta),
             36 => Ok(Self::EnsureMagicAtaDestination),
+            37 => Ok(Self::WithdrawThroughDelegatedShuttleWithFee),
             _ => Err(()),
         }
     }
