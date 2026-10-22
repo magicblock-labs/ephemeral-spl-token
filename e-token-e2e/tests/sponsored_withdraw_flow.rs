@@ -41,7 +41,7 @@ const DECIMALS: u8 = 6;
 const DEPOSIT: u64 = 10_000_000;
 const WITHDRAW_AMOUNT: u64 = 2_000_000;
 const FEE: u64 = 200_000;
-/// The API's fixed shuttle id: every round reuses the same shuttle addresses.
+/// Every round reuses the same shuttle addresses.
 const SHUTTLE_ID: u32 = u32::MAX;
 const SETTLE_TIMEOUT: Duration = Duration::from_secs(90);
 
