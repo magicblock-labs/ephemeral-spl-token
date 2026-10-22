@@ -47,6 +47,40 @@ export function parseAuthToken(
   return parts[1];
 }
 
+// Tokens issued by `login` are "{pubkey}.{upstreamToken}": the prefix binds
+// the token to the authenticated wallet so address-scoped endpoints reject
+// cross-identity reuse. Only the inner token is forwarded to the ER, which
+// remains the cryptographic enforcement layer on real TEE nodes.
+const BASE58_PUBKEY_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+
+export function bindAuthTokenIdentity(pubkey: string, token: string): string {
+  return `${pubkey}.${token}`;
+}
+
+export function splitAuthToken(raw: string): { identity?: string; token: string } {
+  const dot = raw.indexOf(".");
+  if (dot === -1) {
+    return { token: raw };
+  }
+  const identity = raw.slice(0, dot);
+  if (!BASE58_PUBKEY_RE.test(identity)) {
+    return { token: raw };
+  }
+  return { identity, token: raw.slice(dot + 1) };
+}
+
+export function requireAuthTokenFor(pubkey: string, raw: string): string {
+  const { identity, token } = splitAuthToken(raw);
+  if (identity !== pubkey) {
+    throw new ApiError(
+      403,
+      "TOKEN_IDENTITY_MISMATCH",
+      "auth token is not bound to the requested address; login again with that wallet",
+    );
+  }
+  return token;
+}
+
 export async function getChallenge(
   env: AppEnv,
   input: ChallengeRequest,
@@ -122,7 +156,7 @@ export async function login(
   if ("jsonrpc" in response) {
     // Received a regular RPC error, return a mock token
     return {
-      token: MOCK_AUTH_TOKEN,
+      token: bindAuthTokenIdentity(pubkey, MOCK_AUTH_TOKEN),
     };
   }
 
@@ -135,5 +169,5 @@ export async function login(
     throw new ApiError(502, "RPC_ERROR", "No token received");
   }
 
-  return { token };
+  return { token: bindAuthTokenIdentity(pubkey, token) };
 }

@@ -7,7 +7,7 @@ import { errorResponseSchema, validationErrorResponseSchema } from "../lib/error
 import { jsonContent, jsonContentRequired } from "../lib/openapi";
 import { sendSignedTransaction } from "../lib/solana";
 import { optionalAuthTokenSchema } from "../schema";
-import { parseAuthToken } from "../lib/auth";
+import { parseAuthToken, splitAuthToken } from "../lib/auth";
 import {
   SendTransactionRequest,
   sendTransactionRequestSchema,
@@ -50,7 +50,8 @@ type RouteEnv = { Bindings: AppBindings };
 const sendTransactionHandler: RouteHandler<typeof sendTransactionRoute, RouteEnv> = async (c) => {
   const env = getEnv(c.env);
   const body = c.req.valid("json") as SendTransactionRequest;
-  const authToken = parseAuthToken(c.req.header());
+  const rawAuthToken = parseAuthToken(c.req.header());
+  const authToken = rawAuthToken === undefined ? undefined : splitAuthToken(rawAuthToken).token;
   const response = await sendSignedTransaction(env, body, authToken);
   return c.json(response, 200);
 };

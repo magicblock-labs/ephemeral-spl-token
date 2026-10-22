@@ -12,6 +12,13 @@ pub const SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS: u64 = if cfg!(feature = "
 pub const SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS: u64 =
     if cfg!(feature = "no-fees") { 0 } else { 1_539_280 };
 
+/// Additional flat lamport fee charged by sponsored shuttle delegation setup
+/// flows that merge into an encrypted destination on the ER (instruction 34).
+///
+/// Covers the ER-side Magic ATA creation and shuttle merge CPIs.
+pub const SPONSORED_SHUTTLE_MERGE_TO_ENCRYPTED_DESTINATION_EXTRA_LAMPORTS: u64 =
+    if cfg!(feature = "no-fees") { 0 } else { 1_539_280 };
+
 /// Private transfer fee charged on instruction 25 (`DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer`).
 ///
 /// 10 basis points = 0.1%.

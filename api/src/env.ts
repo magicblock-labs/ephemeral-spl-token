@@ -30,6 +30,9 @@ export const envSchema = z.object({
   PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE: optionalString,
   PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE: optionalString,
   GASLESS_SPONSOR_SECRET_KEY: optionalString,
+  PAYMENTS_PUBLIC_URL: optionalString,
+  PAYMENTS_SECRET: optionalString,
+  PAYMENTS_RPC_AUTH_SECRET_KEY: optionalString,
   CORS_ORIGIN: optionalString,
 });
 
@@ -47,6 +50,11 @@ export type AppBindings = {
   PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE?: string;
   PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE?: string;
   GASLESS_SPONSOR_SECRET_KEY?: string;
+  PAYMENTS_PUBLIC_URL?: string;
+  PAYMENTS_SECRET?: string;
+  PAYMENTS_RPC_AUTH_SECRET_KEY?: string;
+  PAYMENT_MERCHANTS?: DurableObjectNamespace;
+  PAYMENT_LEDGER?: DurableObjectNamespace;
   CORS_ORIGIN?: string;
 };
 
@@ -68,7 +76,7 @@ export function getEnv(bindings: AppBindings): AppEnv {
             ),
             message: issue.message,
           })),
-          hint: "Create .dev.vars from .dev.vars.example and set BASE_RPC_URL and EPHEMERAL_RPC_URL before running wrangler dev. If you want cluster=devnet, also set BASE_DEVNET_RPC_URL and EPHEMERAL_DEVNET_RPC_URL. If you want cluster=mainnet-private or cluster=devnet-private, also set EPHEMERAL_TEE_RPC_URL or EPHEMERAL_DEVNET_TEE_RPC_URL. To enable gasless private transfers, also set GASLESS_SPONSOR_SECRET_KEY to a JSON-encoded secret key array.",
+          hint: "Create .dev.vars from .dev.vars.example and set BASE_RPC_URL and EPHEMERAL_RPC_URL before running wrangler dev. If you want cluster=devnet, also set BASE_DEVNET_RPC_URL and EPHEMERAL_DEVNET_RPC_URL. If you want cluster=mainnet-private or cluster=devnet-private, also set EPHEMERAL_TEE_RPC_URL or EPHEMERAL_DEVNET_TEE_RPC_URL. To enable gasless deposits, withdrawals, and transfers, also set GASLESS_SPONSOR_SECRET_KEY to a JSON-encoded secret key array.",
         },
       );
     }

@@ -83,7 +83,7 @@ jobs:
 
       - name: Run SBF tests with logging feature
         run: |
-          cargo test-sbf --features logging
+          cargo test-sbf --manifest-path e-token/Cargo.toml --features logging
 
       - name: Upload test logs on failure
         if: failure()
@@ -95,3 +95,79 @@ jobs:
             target/**/*.log
             **/test-*.log
           if-no-files-found: ignore
+
+  e2e:
+    name: "e2e (live validators)"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CARGO_TERM_COLOR: always
+      SOLANA_VERSION: 3.1.5
+      VALIDATOR_VERSION: 0.13.20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust from rust-toolchain.toml
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Cache target directory
+        uses: actions/cache@v4
+        with:
+          path: |
+            target
+          key: ${{ runner.os }}-target-e2e-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-target-e2e-
+
+      - name: Install Solana CLI ${{ env.SOLANA_VERSION }}
+        shell: bash
+        run: |
+          curl -sSfL https://release.anza.xyz/v${SOLANA_VERSION}/install | sh -s - v${SOLANA_VERSION}
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install the MagicBlock validators
+        run: npm i -g @magicblock-labs/ephemeral-validator@${{ env.VALIDATOR_VERSION }}
+
+      - name: Check the validators run
+        run: |
+          ephemeral-validator --version
+          mb-test-validator --version
+
+      - name: Run e2e tests
+        env:
+          KEEP_E2E_LOGS: "1"
+        run: |
+          sudo prlimit --pid $$ --nofile=1048576:1048576
+          sudo sysctl fs.inotify.max_user_instances=1280
+          sudo sysctl fs.inotify.max_user_watches=655360 
+          make test-e2e
+
+      - name: Upload validator logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-validator-logs
+          path: /tmp/e-token-e2e-*
+          if-no-files-found: ignore
+
+      - name: Stop any orphaned validators
+        if: always()
+        run: make e2e-stop

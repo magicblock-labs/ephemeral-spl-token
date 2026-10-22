@@ -10,3 +10,4 @@ test-ledger
 dist
 metrics/*.lock
 metrics/current.json
+.e2e

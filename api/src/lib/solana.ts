@@ -15,6 +15,7 @@ import {
   getAuthToken,
   initRentPdaIx,
   initTransferQueueIx,
+  isMagicAtaTokenAccount,
   magicFeeVaultPdaFromValidator,
   PERMISSION_PROGRAM_ID,
   permissionPdaFromAccount,
@@ -38,6 +39,7 @@ import nacl from "tweetnacl";
 import type { AppEnv } from "../env";
 import { ApiError } from "./errors";
 import {
+  BalanceDelegation,
   BalanceRequest,
   BalanceResponse,
   DepositRequest,
@@ -99,7 +101,7 @@ const DELEGATION_ROUTER_RPC_URLS = {
   devnet: "https://devnet-router.magicblock.app/",
 } as const;
 const TRANSFER_QUEUE_RENT_LAMPORTS = LAMPORTS_PER_SOL / 50;
-const PRIVATE_TRANSFER_MAX_DELAY_MS_LIMIT = 10n * 60n * 1000n;
+const PRIVATE_TRANSFER_MAX_DELAY_MS_LIMIT = 31n * 24n * 60n * 60n * 1000n;
 const TRANSFER_QUEUE_RECENT_SIGNATURE_LIMIT = 5;
 const TRANSFER_QUEUE_STALE_MS = 60_000;
 const TRANSFER_QUEUE_AUTH_ERROR_FORCE_INTERVAL = 100;
@@ -122,6 +124,11 @@ const PRIVATE_BASE_TO_BASE_TRANSFER_LOOKUP_TABLES = {
   devnet: new PublicKey("E26JGdRsdKkGe6oRU4Un24agZjBF2Bg9z1ctfZByETRo"),
 } as const;
 const PRIVATE_TRANSFER_SETUP_LAMPORTS = 2_039_280n;
+// Mirrors SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS and
+// SPONSORED_SHUTTLE_MERGE_TO_ENCRYPTED_DESTINATION_EXTRA_LAMPORTS in
+// e-token-api/src/consts.rs.
+const SPONSORED_SHUTTLE_SETUP_LAMPORTS = 500_000n;
+const SPONSORED_SHUTTLE_MERGE_TO_ENCRYPTED_DESTINATION_EXTRA_LAMPORTS = 1_539_280n;
 const PRIVATE_TRANSFER_FEE_BASIS_POINTS = 10n;
 const BASIS_POINTS_FACTOR = 10_000n;
 const GASLESS_RELAY_FEE_MICRO_USDC = 200_000n; // 0.2 USDC/USDT
@@ -1453,6 +1460,67 @@ function isSupportedGaslessMint(cluster: RpcConfig["cluster"], mint: PublicKey) 
   return mintAddress === DEFAULT_DEPOSIT_MINT || mintAddress === MAINNET_USDT_MINT;
 }
 
+function resolveGaslessSponsorship(
+  kind: "deposit" | "withdraw" | "transfer",
+  env: AppEnv,
+  config: RpcConfig,
+  owner: PublicKey,
+  mint: PublicKey,
+  amount: bigint,
+  requested?: boolean,
+) {
+  let sponsor: Keypair | undefined;
+  if (requested === true) {
+    const isWallet = PublicKey.isOnCurve(owner.toBuffer());
+    const errorPrefix = `INVALID_GASLESS_${kind.toUpperCase()}`;
+    // Preserve the existing transfer behavior for PDA senders and custom RPCs.
+    if (!isWallet && kind !== "transfer") {
+      throw new ApiError(400, `${errorPrefix}_OWNER`, "gasless requires an on-curve wallet owner");
+    }
+    if (isWallet) {
+      if (kind !== "transfer" && config.cluster === "custom") {
+        throw new ApiError(400, `${errorPrefix}_CLUSTER`, "gasless deposits and withdrawals require a mainnet or devnet cluster");
+      }
+      if (!isSupportedGaslessMint(config.cluster, mint)) {
+        throw new ApiError(400, `${errorPrefix}_MINT`, "gasless is supported only for approved stablecoin mints");
+      }
+      if (amount < GASLESS_STABLECOIN_MIN_AMOUNT) {
+        throw new ApiError(
+          400,
+          `${errorPrefix}_AMOUNT`,
+          `gasless amount must be at least ${Number(GASLESS_STABLECOIN_MIN_AMOUNT) / 1_000_000} USDC/USDT`,
+        );
+      }
+      sponsor = getGaslessSponsorKeypair(env);
+    }
+  }
+
+  return {
+    sponsor,
+    payer: sponsor?.publicKey ?? owner,
+    feePayer: sponsor?.publicKey ?? owner,
+    partialSigners: sponsor ? [sponsor] : [],
+    relayFee: sponsor ? GASLESS_RELAY_FEE_MICRO_USDC : 0n,
+  };
+}
+
+function createGaslessFeeInstructions(
+  owner: PublicKey,
+  mint: PublicKey,
+  tokenProgram: PublicKey,
+  sponsor?: Keypair,
+) {
+  return sponsor
+    ? [createTokenTransferInstruction(
+        getAssociatedTokenAddressSync(mint, owner, true, tokenProgram),
+        getAssociatedTokenAddressSync(mint, sponsor.publicKey, true, tokenProgram),
+        owner,
+        GASLESS_RELAY_FEE_MICRO_USDC,
+        tokenProgram,
+      )]
+    : [];
+}
+
 function privateTransferFeeAmount(amount: bigint) {
   return amount * PRIVATE_TRANSFER_FEE_BASIS_POINTS / BASIS_POINTS_FACTOR;
 }
@@ -1465,10 +1533,6 @@ function isPrivateBaseToBaseTransfer(input: TransferRequest) {
   return input.visibility === "private"
     && input.fromBalance === "base"
     && input.toBalance === "base";
-}
-
-function privateTransferSetupLamports(input: TransferRequest) {
-  return isPrivateBaseToBaseTransfer(input) ? PRIVATE_TRANSFER_SETUP_LAMPORTS : 0n;
 }
 
 function createTransferFees(lamports: bigint, tokens: bigint): TransferFees {
@@ -1657,8 +1721,9 @@ export async function buildDepositTransaction(env: AppEnv, input: DepositRequest
       "mint",
     );
     const amount = parseAmount(input.amount, "amount");
-    const payer = owner;
-    const feePayer = owner;
+    const { sponsor, payer, feePayer, partialSigners, relayFee } = resolveGaslessSponsorship(
+      "deposit", env, config, owner, mint, amount, input.gasless,
+    );
     const validator = await resolveDepositValidator(config, input.validator);
     const tokenProgram = input.mint !== undefined
       ? await resolveMintTokenProgram(config, mint)
@@ -1693,6 +1758,7 @@ export async function buildDepositTransaction(env: AppEnv, input: DepositRequest
       private: input.private ?? true,
     });
     const instructions = [
+      ...createGaslessFeeInstructions(owner, mint, tokenProgram, sponsor),
       ...nativeSolWrapInstructions,
       ...nativeSolRentPdaTopUpInstructions,
       ...delegateInstructions,
@@ -1705,34 +1771,126 @@ export async function buildDepositTransaction(env: AppEnv, input: DepositRequest
       feePayer,
       blockhash,
       validator,
+      partialSigners,
+      undefined,
+      sponsor ? createTransferFees(input.idempotent === false ? 0n : SPONSORED_SHUTTLE_SETUP_LAMPORTS, relayFee) : undefined,
     );
   } catch (error) {
     throwTransactionBuildError(error);
   }
 }
 
-export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawRequest) {
+/**
+ * The ER account of an ATA when it is Magic ATA and ER-local. A clone keeps
+ * the base close authority, so a marked base account is indistinguishable from
+ * a real Magic ATA one and is excluded.
+ */
+async function getEphemeralMagicAta(
+  config: RpcConfig,
+  ata: PublicKey,
+  authToken?: string,
+): Promise<Awaited<ReturnType<Connection["getAccountInfo"]>>> {
+  const accountInfo = await getEphemeralConnection(config, authToken).getAccountInfo(ata, "confirmed");
+  if (!accountInfo || !isMagicAtaTokenAccount(accountInfo.data)) {
+    return null;
+  }
+
+  const baseAccountInfo = await getBaseConnection(config).getAccountInfo(ata, "confirmed");
+  if (baseAccountInfo && isMagicAtaTokenAccount(baseAccountInfo.data)) {
+    return null;
+  }
+
+  return accountInfo;
+}
+
+/**
+ * True when the owner's ephemeral balance lives in a Magic ATA (no
+ * delegated eATA backs it), so withdrawal must skip the eATA instructions
+ * and drain the Magic ATA directly.
+ */
+async function isMagicAtaEphemeralSource(
+  config: RpcConfig,
+  owner: PublicKey,
+  mint: PublicKey,
+  tokenProgram: PublicKey,
+  authToken?: string,
+): Promise<boolean> {
+  try {
+    const ata = getAssociatedTokenAddressSync(mint, owner, true, tokenProgram);
+    return (await getEphemeralMagicAta(config, ata, authToken)) !== null;
+  } catch {
+    // The ER may be unreachable or gate the read; fall back to the eATA flow.
+    return false;
+  }
+}
+
+export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawRequest, authToken?: string) {
   try {
     const config = resolveRpcConfig(env, input.cluster);
     const owner = parsePublicKey(input.owner, "owner");
     const mint = parsePublicKey(input.mint, "mint");
     const amount = parseAmount(input.amount, "amount");
-    const payer = owner;
-    const feePayer = owner;
+    const { sponsor, payer, feePayer, partialSigners, relayFee } = resolveGaslessSponsorship(
+      "withdraw", env, config, owner, mint, amount, input.gasless,
+    );
+    const ephemeralFee = input.feeBalance === "ephemeral";
+    if (ephemeralFee && (!sponsor || input.idempotent === false)) {
+      throw new ApiError(
+        400,
+        "INVALID_GASLESS_WITHDRAW_FEE_BALANCE",
+        "feeBalance=ephemeral requires gasless=true and the idempotent withdrawal flow",
+      );
+    }
     const validator = await resolveValidator(config, input.validator);
     const tokenProgram = await resolveMintTokenProgram(config, mint);
     const blockhash = await getBlockhash(config, "base");
+
+    if (ephemeralFee) {
+      // Only sponsor a real ER balance that covers amount.
+      const { balance } = await getPrivateBalance(
+        env,
+        { address: input.owner, mint: input.mint, cluster: input.cluster },
+        authToken,
+        validator,
+      );
+      if (BigInt(balance) < amount) {
+        throw new ApiError(400, "INSUFFICIENT_EPHEMERAL_BALANCE", "The ephemeral balance does not cover amount", {
+          balance,
+          amount: amount.toString(),
+        });
+      }
+    }
+
+    const magicAtaSource = await isMagicAtaEphemeralSource(
+      config,
+      owner,
+      mint,
+      tokenProgram,
+      authToken,
+    );
 
     const instructions = await withdrawSpl(owner, mint, amount, {
       payer,
       validator,
       tokenProgram,
       initIfMissing: input.initIfMissing,
-      initAtasIfMissing: input.initAtasIfMissing,
+      // The sponsor creates the owner's base ATA when the owner holds nothing on base.
+      initAtasIfMissing: ephemeralFee || input.initAtasIfMissing,
       shuttleId: createRandomShuttleId(),
       escrowIndex: input.escrowIndex,
       idempotent: input.idempotent,
+      magicAtaSource,
     });
+    if (ephemeralFee) {
+      // Instruction 37 = instruction 26 + transfer queue account + trailing fee.
+      const withdrawIx = instructions.at(-1)!;
+      withdrawIx.keys.push({ pubkey: deriveTransferQueue(mint, validator)[0], isSigner: false, isWritable: false });
+      const fee = Buffer.alloc(8);
+      fee.writeBigUInt64LE(relayFee);
+      withdrawIx.data = Buffer.concat([Buffer.from([37]), withdrawIx.data.subarray(1), fee]);
+    } else {
+      instructions.unshift(...createGaslessFeeInstructions(owner, mint, tokenProgram, sponsor));
+    }
 
     if (
       input.idempotent === false
@@ -1756,6 +1914,9 @@ export async function buildWithdrawTransaction(env: AppEnv, input: WithdrawReque
       feePayer,
       blockhash,
       validator,
+      partialSigners,
+      undefined,
+      sponsor ? createTransferFees(input.idempotent === false ? 0n : SPONSORED_SHUTTLE_SETUP_LAMPORTS, relayFee) : undefined,
     );
   } catch (error) {
     throwTransactionBuildError(error);
@@ -2040,7 +2201,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       && maxDelayMsForValidation !== undefined
       && maxDelayMsForValidation > PRIVATE_TRANSFER_MAX_DELAY_MS_LIMIT
     ) {
-      throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "maxDelayMs must be less than or equal to 600000");
+      throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "maxDelayMs must be less than or equal to 2678400000");
     }
 
     if (
@@ -2054,31 +2215,32 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       throw new ApiError(400, "INVALID_PRIVATE_TRANSFER", "split cannot exceed transfer amount");
     }
 
-    const useGasless = input.gasless === true && PublicKey.isOnCurve(from.toBuffer());
-
-    if (useGasless && !isSupportedGaslessMint(config.cluster, mint)) {
-      throw new ApiError(
-        400,
-        "INVALID_GASLESS_TRANSFER_MINT",
-        "gasless is supported only for approved stablecoin mints",
-      );
-    }
-
-    if (useGasless && amount < GASLESS_STABLECOIN_MIN_AMOUNT) {
-      throw new ApiError(
-        400,
-        "INVALID_GASLESS_TRANSFER_AMOUNT",
-        `gasless amount must be at least ${Number(GASLESS_STABLECOIN_MIN_AMOUNT) / 1_000_000} USDC/USDT`,
-      );
-    }
-
-    const sponsor = useGasless ? getGaslessSponsorKeypair(env) : undefined;
-    const payer = sponsor?.publicKey ?? from;
-    const feePayer = sponsor?.publicKey ?? from;
+    const { sponsor, payer, feePayer, partialSigners, relayFee } = resolveGaslessSponsorship(
+      "transfer", env, config, from, mint, amount, input.gasless,
+    );
     const privateTransferFee = isPrivateBaseToBaseTransfer(input) ? privateTransferFeeAmount(transferAmount) : 0n;
+
+    const isPrivateBaseToEphemeral = input.visibility === "private"
+      && input.fromBalance === "base"
+      && input.toBalance === "ephemeral";
+    // Zero-amount setup and native SOL requests must use the legacy route: the
+    // encrypted-destination route requires a positively funded, non-native
+    // Magic ATA.
+    const useLegacyCleartextDestination = isPrivateBaseToEphemeral
+      && (transferAmount === 0n || mint.equals(NATIVE_MINT));
+
+    let setupLamports = 0n;
+    if (isPrivateBaseToBaseTransfer(input)) {
+      setupLamports = PRIVATE_TRANSFER_SETUP_LAMPORTS;
+    } else if (isPrivateBaseToEphemeral) {
+      setupLamports = SPONSORED_SHUTTLE_SETUP_LAMPORTS;
+      if (!useLegacyCleartextDestination) {
+        setupLamports += SPONSORED_SHUTTLE_MERGE_TO_ENCRYPTED_DESTINATION_EXTRA_LAMPORTS;
+      }
+    }
     const fees = createTransferFees(
-      privateTransferSetupLamports(input),
-      privateTransferFee + platformFee + (sponsor ? GASLESS_RELAY_FEE_MICRO_USDC : 0n),
+      setupLamports,
+      privateTransferFee + platformFee + relayFee,
     );
 
     const shouldResolveValidator = input.validator
@@ -2108,17 +2270,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       );
     }
 
-    const gaslessFeeInstructions = sponsor
-      ? [
-          createTokenTransferInstruction(
-            getAssociatedTokenAddressSync(mint, from, true, tokenProgram),
-            getAssociatedTokenAddressSync(mint, sponsor.publicKey, true, tokenProgram),
-            from,
-            GASLESS_RELAY_FEE_MICRO_USDC,
-            tokenProgram,
-          ),
-        ]
-      : [];
+    const gaslessFeeInstructions = createGaslessFeeInstructions(from, mint, tokenProgram, sponsor);
 
     const sendTo: SendTarget = input.fromBalance === "ephemeral" ? "ephemeral" : "base";
     const blockhash = await getBlockhash(config, sendTo, authToken);
@@ -2166,6 +2318,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       initIfMissing: input.initIfMissing,
       initAtasIfMissing: input.initAtasIfMissing,
       initVaultIfMissing: input.initVaultIfMissing,
+      legacyCleartextDestination: useLegacyCleartextDestination || undefined,
       shuttleId,
       privateTransfer: input.visibility === "private"
         ? {
@@ -2212,7 +2365,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
         feePayer,
         blockhash,
         validator,
-        sponsor ? [sponsor] : [],
+        partialSigners,
         fees,
       );
 
@@ -2227,7 +2380,7 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
       feePayer,
       blockhash,
       validator,
-      sponsor ? [sponsor] : [],
+      partialSigners,
       input.fromBalance,
       fees,
       sendTo === "ephemeral" ? config.ephemeralRpcUrl : undefined,
@@ -2237,45 +2390,55 @@ export async function buildTransferTransaction(env: AppEnv, input: TransferReque
   }
 }
 
-async function getBalanceInternal(
-  env: AppEnv,
-  input: BalanceRequest,
-  location: SendTarget,
-  authToken?: string,
-): Promise<BalanceResponse> {
+function toBalanceDelegation(config: RpcConfig, validator: PublicKey | undefined): BalanceDelegation {
+  if (!validator) {
+    return { status: "undelegated" };
+  }
+
+  return {
+    status: "delegated",
+    validator: validator.toBase58(),
+    endpoint: getHardcodedTeeRpcEndpoint(config, validator),
+  };
+}
+
+export async function getBaseBalance(env: AppEnv, input: BalanceRequest): Promise<BalanceResponse> {
   const config = resolveRpcConfig(env, input.cluster);
   const owner = parsePublicKey(input.address, "address");
   const mint = parsePublicKey(input.mint, "mint");
   const tokenProgram = await resolveMintTokenProgram(config, mint);
   const ata = getAssociatedTokenAddressSync(mint, owner, true, tokenProgram);
-  const connection = location === "base"
-    ? getBaseConnection(config)
-    : getEphemeralConnection(config, authToken);
+  const [eata] = deriveEphemeralAta(owner, mint);
 
   try {
-    const accountInfo = await connection.getAccountInfo(ata, "confirmed");
+    const [accountInfo, delegationRecordInfo] = await getBaseConnection(config).getMultipleAccountsInfo(
+      [ata, delegationRecordPdaFromDelegatedAccount(eata)],
+      "confirmed",
+    );
     const balance = accountInfo ? (parseTokenAmount(accountInfo) ?? 0n) : 0n;
 
     return {
       address: owner.toBase58(),
       mint: mint.toBase58(),
       ata: ata.toBase58(),
-      location,
+      location: "base",
       balance: balance.toString(),
+      delegation: toBalanceDelegation(config, readDelegatedValidator(delegationRecordInfo)),
     };
   } catch (error) {
     throw new ApiError(502, "RPC_ERROR", "Failed to fetch token balance", {
-      location,
+      location: "base",
       message: getSanitizedErrorMessage(error),
     });
   }
 }
 
-export function getBaseBalance(env: AppEnv, input: BalanceRequest) {
-  return getBalanceInternal(env, input, "base");
-}
-
-export async function getPrivateBalance(env: AppEnv, input: BalanceRequest, authToken?: string) {
+export async function getPrivateBalance(
+  env: AppEnv,
+  input: BalanceRequest,
+  authToken?: string,
+  expectedValidator?: PublicKey,
+) {
   const config = resolveRpcConfig(env, input.cluster);
   const owner = parsePublicKey(input.address, "address");
   const mint = parsePublicKey(input.mint, "mint");
@@ -2293,10 +2456,20 @@ export async function getPrivateBalance(env: AppEnv, input: BalanceRequest, auth
   try {
     const delegationRecord = await getDelegationRecord(getBaseConnection(config), eata);
     if (delegationRecord.status !== DelegationStatus.Delegated) {
-      return zeroBalanceResponse;
+      // The owner may hold a Magic ATA that exists only inside the ER.
+      try {
+        const accountInfo = await getEphemeralMagicAta(config, ata, authToken);
+        if (accountInfo) {
+          const balance = parseTokenAmount(accountInfo) ?? 0n;
+          return { ...zeroBalanceResponse, balance: balance.toString(), delegation: { status: "undelegated" } };
+        }
+      } catch {
+        // The ER may be unreachable or gate the read; keep the zero response.
+      }
+      return { ...zeroBalanceResponse, delegation: { status: "undelegated" } };
     }
 
-    const validator = await resolveRequiredValidator(config);
+    const validator = expectedValidator ?? await resolveRequiredValidator(config);
     if (!delegationRecord.validator.equals(validator)) {
       throw new ApiError(400, "EATA_DELEGATED_ELSEWHERE", "eATA is delegated to a different validator", {
         eata: eata.toBase58(),
@@ -2314,6 +2487,7 @@ export async function getPrivateBalance(env: AppEnv, input: BalanceRequest, auth
       ata: ata.toBase58(),
       location: "ephemeral",
       balance: balance.toString(),
+      delegation: toBalanceDelegation(config, delegationRecord.validator),
     };
   } catch (error) {
     if (error instanceof ApiError) {

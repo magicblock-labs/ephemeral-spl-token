@@ -56,18 +56,42 @@ const MAGICBLOCK_CUSTOM_CSS = `
 
 export default function configureOpenAPI(app: OpenAPIHono<{ Bindings: AppBindings }>) {
   const openApiConfig = {
-    openapi: "3.1.0" as const,
-    info: {
+    "openapi": "3.1.0" as const,
+    "info": {
       title: "SPL Private Payments API",
       version: "0.1.0",
       description: "REST API for building private SPL token transactions on Solana and MagicBlock ephemeral rollups.\n\n"
-        + "Documentation: https://docs.magicblock.gg/pages/private-ephemeral-rollups-pers/how-to-guide/quickstart",
+        + "[MagicBlock private payments guide](https://docs.magicblock.gg/pages/private-ephemeral-rollups-pers/how-to-guide/quickstart)\n\n"
+        + "**Merchant checkout:** also supports [x402 v2](https://x402.org/) and [MPP](https://mpp.dev/) through custom MagicBlock payment methods for selling API access and products with delegated USDC. See the merchant checkout group below.",
     },
-    tags: [
+    "tags": [
       {
         name: "Swap",
         description: "Provide quoting and execution for public and private swaps.",
       },
+      // Preserve the existing reference order before appending merchant integrations.
+      { name: "Meta" },
+      { name: "SPL" },
+      { name: "Transaction" },
+      { name: "MCP" },
+      {
+        "name": "Payments",
+        "x-displayName": "Merchants & checkouts",
+        "description": "For merchants selling API access or products through x402 or MPP: wallet registration, reusable offers, checkout preparation and shared payment status. Products and fulfillment remain in the merchant's service.",
+      },
+      {
+        name: "x402",
+        description: "Merchant checkout using x402 v2 with the custom exact-magicblock scheme: challenges, payment credentials and facilitator endpoints for delegated USDC.",
+      },
+      {
+        name: "MPP",
+        description: "Merchant checkout using MPP with the custom magicblock method and charge intent: Payment challenges and receipts for delegated USDC.",
+      },
+    ],
+    // Scalar only includes grouped tags, so list every existing API section too.
+    "x-tagGroups": [
+      { name: "Core API", tags: ["Swap", "Meta", "SPL", "Transaction", "MCP"] },
+      { name: "Merchant checkout · x402 / MPP", tags: ["Payments", "x402", "MPP"] },
     ],
   };
 
@@ -116,7 +140,8 @@ export default function configureOpenAPI(app: OpenAPIHono<{ Bindings: AppBinding
     url: "/doc",
     pageTitle: "MagicBlock | SPL Private Payments API",
     favicon: MAGICBLOCK_DOCS_FAVICON_URL,
-    defaultOpenAllTags: true,
+    defaultOpenAllTags: false,
+    defaultOpenFirstTag: false,
     customCss: MAGICBLOCK_CUSTOM_CSS,
   }));
 }

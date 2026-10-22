@@ -1,17 +1,19 @@
 # SPL Tokens API
 
-Minimal REST API for building unsigned SPL token transactions for the local Ephemeral Rollups SDK.
+REST API for SPL token transactions and USDC checkouts on MagicBlock Ephemeral Rollups. It supports [x402 v2](https://x402.org/) and [MPP](https://mpp.dev/) through custom MagicBlock payment methods, so merchants can sell API access, credits and other products using already-delegated USDC.
+
+For API-only merchant registration, delegated-USDC checkout and reusable payment links, see [Payment checkouts](./PAYMENTS.md). The [x402](./PAYMENTS.md#x402) and [MPP](./PAYMENTS.md#mpp) integrations have separate routes and examples over shared payment state.
 
 This project is designed to:
 
 - run on a Cloudflare Worker
 - be easy to test locally with `wrangler dev`
 - expose a small, documented REST surface
-- return serialized unsigned transactions that a client can complete, sign, and send
+- return serialized transactions that a client can complete, sign, and send
 
 The API uses the published SDK package:
 
-- `@magicblock-labs/ephemeral-rollups-sdk@0.10.9`
+- `@magicblock-labs/ephemeral-rollups-sdk@0.17.1`
 
 ## What The API Does
 
@@ -33,13 +35,15 @@ The API exposes:
 - `POST /mcp`
 - `GET /.well-known/mcp.json`
 
-Transaction endpoints return an unsigned serialized Solana transaction (legacy or v0) as base64 plus metadata such as:
+Transaction endpoints return a serialized Solana transaction (legacy or v0) as base64, unsigned or partially signed by the gasless sponsor, plus metadata such as:
 
 - `sendTo`: where the client should submit the signed transaction, `"base"` or `"ephemeral"`
 - `from`: transfer-only balance source, matching the request `fromBalance`
 - `recentBlockhash`
 - `lastValidBlockHeight`
-- `requiredSigners`
+- `requiredSigners`: all required signer public keys, including the sponsor when its signature is already present
+
+For sponsored transactions, the owner adds their signature while preserving the sponsor signature and the transaction message, including its blockhash.
 
 Important behavior:
 
@@ -108,7 +112,7 @@ Variables:
 - `METIS_SWAP_API_URL`: optional Triton Metis Swap API base URL, including your private token and the `/metis` suffix
 - `PRIVATE_BASE_TO_BASE_TRANSFER_MAINNET_LOOKUP_TABLE`: optional mainnet LUT override for private `base -> base` transfers
 - `PRIVATE_BASE_TO_BASE_TRANSFER_DEVNET_LOOKUP_TABLE`: optional devnet LUT override for private `base -> base` transfers
-- `GASLESS_SPONSOR_SECRET_KEY`: optional JSON-encoded sponsor secret key array for gasless transfers
+- `GASLESS_SPONSOR_SECRET_KEY`: optional JSON-encoded sponsor secret key array for gasless deposits, withdrawals, and transfers
 - `CORS_ORIGIN`: CORS origin, `*` by default
 
 Example:
@@ -279,11 +283,11 @@ curl http://127.0.0.1:8787/mcp
   "tools": [
     {
       "name": "spl.deposit",
-      "description": "Build an unsigned base-chain deposit transaction using delegateSpl(...)."
+      "description": "Build a base-chain deposit transaction using delegateSpl(...), unsigned or partially signed by the gasless sponsor."
     },
     {
       "name": "spl.withdraw",
-      "description": "Withdraw SPL tokens from an ephemeral rollup back to Solana."
+      "description": "Build a base-chain withdrawal transaction, unsigned or partially signed by the gasless sponsor."
     },
     {
       "name": "spl.transfer",
@@ -537,7 +541,7 @@ curl -X POST http://127.0.0.1:8787/v1/transaction/send \
 
 ### `POST /v1/spl/deposit`
 
-Builds an unsigned base-chain deposit transaction.
+Builds a base-chain deposit transaction, unsigned or partially signed by the sponsor when `gasless: true`.
 
 This wraps the SDK `delegateSpl(...)` flow.
 
@@ -564,6 +568,7 @@ Notes:
 - if `validator` is omitted, the API resolves it from the selected ephemeral RPC via `getIdentity`
 - `shuttleId` is generated internally
 - `escrowIndex` is fixed to `0` and is not part of the public request body
+- `gasless` is optional; see [Gasless deposits and withdrawals](#gasless-deposits-and-withdrawals)
 
 Relevant fields:
 
@@ -576,10 +581,11 @@ Relevant fields:
 - `initVaultIfMissing`
 - `initAtasIfMissing`
 - `idempotent`
+- `gasless`
 
 ### `POST /v1/spl/withdraw`
 
-Withdraws SPL tokens from an ephemeral rollup back to Solana. `amount` is an integer JSON value with minimum `1`. If `cluster` is omitted, the API uses `mainnet`.
+Withdraws SPL tokens from an ephemeral rollup back to Solana. The base-chain transaction is unsigned or partially signed by the sponsor when `gasless: true`. `amount` is an integer JSON value with minimum `1`. If `cluster` is omitted, the API uses `mainnet`.
 
 Example:
 
@@ -605,6 +611,25 @@ Relevant fields:
 - `initAtasIfMissing`
 - `escrowIndex`
 - `idempotent`
+- `gasless`
+- `feeBalance`
+
+#### Gasless deposits and withdrawals
+
+Add `"gasless": true` to either request to use the configured sponsor for transaction fees and instruction payer costs. Omitting it or setting it to `false` preserves the existing flow. Both endpoints still return `sendTo: "base"`, with the sponsor signature already present; the owner must also sign.
+
+- Mainnet and `mainnet-private` support USDC (`EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`) and USDT (`Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB`). Devnet and `devnet-private` support devnet USDC (`4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`).
+- The requested `amount` must be at least `500000` (0.5 USDC/USDT). It remains the deposit or withdrawal amount.
+- A relay fee of `200000` (0.2 USDC/USDT) in the same mint is charged upfront from the owner's existing base-chain ATA to the sponsor ATA. For a deposit of 1 USDC, the wallet needs 1.2 USDC. For a withdrawal of 1 USDC, the wallet needs 0.2 USDC on the base chain and 1 USDC in the ephemeral balance; the relay fee cannot come from the pending withdrawal proceeds.
+- `GASLESS_SPONSOR_SECRET_KEY` must be configured, and the sponsor ATA for the selected mint must already exist. The sponsor must have SOL for transaction fees and instruction payer costs.
+- Sponsored deposits and withdrawals reject custom clusters and off-curve owners. These restrictions do not change requests where `gasless` is omitted or `false`.
+- Sponsored responses include `fees.tokens: "200000"` for the owner-paid relay fee and `fees.lamports: "500000"` for the sponsor-paid shuttle delegation fee, or `"0"` when `idempotent: false` skips the shuttle flow. These values exclude network transaction fees and account rent.
+
+For shuttle flows (`idempotent` omitted or `true`), the relay fee is collected when the base-chain transaction succeeds, before asynchronous settlement completes; a later settlement failure does not automatically refund it.
+
+#### Withdrawals paid from the ephemeral balance
+
+With `"gasless": true, "feeBalance": "ephemeral"`, a withdrawal needs no SOL, tokens, or ATA on the base chain: the sponsor also creates the owner's base ATA, and the relay fee is deducted from `amount` inside the ephemeral rollup (instruction 37), in the same ER transaction that funds the shuttle. The owner receives `amount - 200000`; the fee lands in the mint's transfer-queue vault, like private-transfer fees. Requires the shuttle flow (`idempotent` omitted or `true`) and a readable ephemeral balance of at least `amount`, otherwise it fails with `INSUFFICIENT_EPHEMERAL_BALANCE`. Each request uses its own shuttle; one whose amount the ephemeral balance no longer covers when it runs fails in the rollup and leaves that balance untouched.
 
 ### `POST /v1/spl/transfer`
 
@@ -893,7 +918,7 @@ The included test suite verifies:
 
 ## Notes
 
-- Transaction-builder endpoints return unsigned transactions
-- The client is responsible for signing transactions before submission
+- Transaction-builder endpoints return unsigned transactions or transactions partially signed by the gasless sponsor
+- The client is responsible for adding the owner's signature before submission while preserving any sponsor signature
 - The API serializes legacy `Transaction` by default; private `base -> base` transfers may return a v0 transaction when a useful lookup table is configured
 - `transfer` prepends a noop instruction to preserve the same behavior as the current app flow

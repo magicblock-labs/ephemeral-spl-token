@@ -1,4 +1,3 @@
-use dlp_api::pda::magic_fee_vault_pda_from_validator;
 use ephemeral_rollups_pinocchio::consts::{MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID};
 use ephemeral_spl_api::{
     state::{
@@ -182,10 +181,6 @@ async fn setup_context(
     (ctx, validator, mint, queue, receipt, vault, vault_token, source)
 }
 
-fn magic_fee_vault_pubkey(validator: Pubkey) -> Pubkey {
-    Pubkey::new_from_array(magic_fee_vault_pda_from_validator(&validator.to_bytes().into()).to_bytes())
-}
-
 fn callback_executor_ix(
     validator: Pubkey,
     receipt: Pubkey,
@@ -198,7 +193,7 @@ fn callback_executor_ix(
     amount: u64,
     group_id: u32,
 ) -> Instruction {
-    let magic_fee_vault = magic_fee_vault_pubkey(validator);
+    let magic_fee_vault = utils::magic_fee_vault_pda(validator);
     let magic_context = MAGIC_CONTEXT_ID;
     let callback_ix = callback_ix(
         receipt,
@@ -408,7 +403,7 @@ async fn execute_callback_closes_receipt_permission_when_last_transfer() {
             mint,
             vault_token,
             source,
-            magic_fee_vault_pubkey(validator.pubkey()),
+            utils::magic_fee_vault_pda(validator.pubkey()),
             MAGIC_CONTEXT_ID,
             true,
             200,
@@ -459,7 +454,7 @@ async fn execute_callback_skips_permission_close_for_legacy_receipt() {
             mint,
             vault_token,
             source,
-            magic_fee_vault_pubkey(validator.pubkey()),
+            utils::magic_fee_vault_pda(validator.pubkey()),
             MAGIC_CONTEXT_ID,
             true,
             200,

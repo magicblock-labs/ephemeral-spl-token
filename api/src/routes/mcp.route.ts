@@ -27,11 +27,11 @@ const tags = ["MCP"];
 const mcpTools = [
   {
     name: "spl.deposit",
-    description: "Build an unsigned base-chain deposit transaction using delegateSpl(...).",
+    description: "Build a base-chain deposit transaction using delegateSpl(...), unsigned or partially signed by the gasless sponsor.",
   },
   {
     name: "spl.withdraw",
-    description: "Withdraw SPL tokens from an ephemeral rollup back to Solana.",
+    description: "Build a base-chain withdrawal transaction, unsigned or partially signed by the gasless sponsor.",
   },
   {
     name: "spl.transfer",
@@ -304,22 +304,22 @@ function createMcpServer(env: AppEnv) {
 
   server.registerTool("spl.deposit", {
     title: "Deposit SPL",
-    description: "Build an unsigned base-chain deposit transaction using delegateSpl(...).",
+    description: "Build a base-chain deposit transaction using delegateSpl(...), unsigned or partially signed by the gasless sponsor.",
     inputSchema: depositRequestSchema,
     outputSchema: transactionResponseSchema,
   }, async (input) => {
     const response = await buildDepositTransaction(env, input);
-    return createTextResult("Built an unsigned SPL deposit transaction.", response);
+    return createTextResult(input.gasless ? "Built a partially signed SPL deposit transaction." : "Built an unsigned SPL deposit transaction.", response);
   });
 
   server.registerTool("spl.withdraw", {
     title: "Withdraw SPL",
-    description: "Withdraw SPL tokens from an ephemeral rollup back to Solana.",
+    description: "Build a base-chain withdrawal transaction, unsigned or partially signed by the gasless sponsor.",
     inputSchema: withdrawRequestSchema,
     outputSchema: transactionResponseSchema,
   }, async (input) => {
     const response = await buildWithdrawTransaction(env, input);
-    return createTextResult("Built an unsigned SPL withdraw transaction.", response);
+    return createTextResult(input.gasless ? "Built a partially signed SPL withdraw transaction." : "Built an unsigned SPL withdraw transaction.", response);
   });
 
   server.registerTool("spl.transfer", {

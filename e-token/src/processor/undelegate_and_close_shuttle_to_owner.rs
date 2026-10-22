@@ -1,7 +1,7 @@
 use ephemeral_rollups_pinocchio::intent_bundle::{ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta};
 use ephemeral_spl_api::{
     require, require_eq_keys, require_n_accounts,
-    state::{ephemeral_ata::EphemeralAta, load_initialized, shuttle_ephemeral_ata::ShuttleMetadata},
+    state::{load_initialized, shuttle_ephemeral_ata::ShuttleMetadata},
 };
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
@@ -11,8 +11,8 @@ use spl_token_interface::ID as SPL_TOKEN_PROGRAM_ID;
 use crate::{
     instruction::ESplInternalInstruction,
     processor::internal::{
-        get_associated_token_address, shuttle_delegation::DEFAULT_ESCROW_INDEX, unwrap_pda::NATIVE_MINT,
-        validate_token_account,
+        get_associated_token_address, read_token_account, shuttle_delegation::DEFAULT_ESCROW_INDEX,
+        unwrap_pda::NATIVE_MINT, validate_token_account,
     },
 };
 
@@ -93,16 +93,11 @@ pub fn process_undelegate_and_close_shuttle_to_owner(
         ProgramError::IncorrectAuthority
     );
 
-    let mint = {
-        let shuttle_ephemeral_ata =
-            load_initialized::<EphemeralAta>(unsafe { shuttle_ephemeral_ata_info.borrow_unchecked() })?;
-        require_eq_keys!(
-            &shuttle_ephemeral_ata.owner,
-            shuttle_info.address(),
-            ProgramError::InvalidAccountData
-        );
-        shuttle_ephemeral_ata.mint
-    };
+    // The mint comes from the shuttle wallet ATA, the account this instruction
+    // commits; the shuttle EATA is bound by address only. A reused shuttle address
+    // can reach the ER while it still holds the previous round's closed EATA, and
+    // the base-side settle re-validates the EATA itself.
+    let mint = *read_token_account(shuttle_wallet_ata_info)?.mint();
     let deliver_native =
         address_eq(&mint, &NATIVE_MINT) && address_eq(token_program_info.address(), &SPL_TOKEN_PROGRAM_ID);
 

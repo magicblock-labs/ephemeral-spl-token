@@ -153,7 +153,12 @@ fn process_public_instruction(accounts: &[AccountView], instruction_data: &[u8])
         ESplInstruction::WithdrawThroughDelegatedShuttleWithMerge => {
             debug_log!("Instruction: WithdrawThroughDelegatedShuttleWithMerge");
 
-            process_withdraw_through_delegated_shuttle_with_merge(accounts, data)
+            process_withdraw_through_delegated_shuttle_with_merge(accounts, data, false)
+        }
+        ESplInstruction::WithdrawThroughDelegatedShuttleWithFee => {
+            debug_log!("Instruction: WithdrawThroughDelegatedShuttleWithFee");
+
+            process_withdraw_through_delegated_shuttle_with_merge(accounts, data, true)
         }
         ESplInstruction::UndelegateAndCloseShuttleToOwner => {
             debug_log!("Instruction: UndelegateAndCloseShuttleToOwner");
@@ -224,6 +229,26 @@ fn process_public_instruction(accounts: &[AccountView], instruction_data: &[u8])
             debug_log!("Instruction: RecoverAndCloseShuttleToOwner");
 
             process_recover_and_close_shuttle_to_owner(accounts, data)
+        }
+        ESplInstruction::CloseLamportsPda => {
+            debug_log!("Instruction: CloseLamportsPda");
+
+            process_close_lamports_pda(accounts, data)
+        }
+        ESplInstruction::DepositAndDelegateShuttleWithMergeToEncryptedDestination => {
+            debug_log!("Instruction: DepositAndDelegateShuttleWithMergeToEncryptedDestination");
+
+            process_deposit_and_delegate_shuttle_with_merge_to_encrypted_destination(accounts, data)
+        }
+        ESplInstruction::MergeShuttleIntoMagicAta => {
+            debug_log!("Instruction: MergeShuttleIntoMagicAta");
+
+            process_merge_shuttle_into_magic_ata(accounts, data)
+        }
+        ESplInstruction::EnsureMagicAtaDestination => {
+            debug_log!("Instruction: EnsureMagicAtaDestination");
+
+            process_ensure_magic_ata_destination(accounts, data)
         }
     }
 }

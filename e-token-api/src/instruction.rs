@@ -232,6 +232,41 @@ pub enum ESplInstruction {
     ///      remaining shuttle wallet ATA balance to a token account owned by the
     ///      shuttle owner, then closes shuttle accounts.
     RecoverAndCloseShuttleToOwner = 32,
+
+    /// 33 - CloseLamportsPda: permissionless recovery for a sponsored lamports PDA
+    ///      that was undelegated without its post-delegation actions running.
+    ///      Refunds everything above the sponsored rent to the payer, returns the
+    ///      rent to the global rent PDA and closes the PDA.
+    ///      Instruction data:
+    ///      [0..32]  salt ([u8; 32])
+    CloseLamportsPda = 33,
+    /// 34 - DepositAndDelegateShuttleWithMergeToEncryptedDestination: private base->ephemeral
+    ///      transfer where the destination never appears in cleartext on base. Same
+    ///      setup/deposit/delegate shuttle flow as instruction 24, but the destination is
+    ///      carried only inside encrypted post-delegation actions: on the ER the first action
+    ///      runs instruction 35 (Magic ATA creation + merge), then the second
+    ///      undelegates and closes the shuttle.
+    ///      Instruction data: DepositAndDelegateShuttleWithMergeToEncryptedDestinationArgs
+    DepositAndDelegateShuttleWithMergeToEncryptedDestination = 34,
+
+    /// 35 - MergeShuttleIntoMagicAta: executes on the ER only, as the decrypted
+    ///      post-delegation action of instruction 34. Creates the destination ATA as an
+    ///      idempotent Magic ATA (Magic program CPI), then transfers the whole
+    ///      shuttle wallet ATA balance into the destination ATA.
+    ///      Instruction data: none
+    MergeShuttleIntoMagicAta = 35,
+
+    /// 36 - EnsureMagicAtaDestination: executes on the ER only. Idempotently creates the
+    ///      destination's ATA as a Magic ATA (Magic program CPI) so a plain SPL
+    ///      transfer in the same transaction can fund a destination that does not exist yet.
+    ///      Instruction data: none
+    EnsureMagicAtaDestination = 36,
+
+    /// 37 - WithdrawThroughDelegatedShuttleWithFee: instruction 26 that first moves `fee` from the
+    ///      owner's ER balance into the delegated transfer queue's vault ATA, in the same ER
+    ///      transaction, and withdraws `amount - fee`. Accounts: instruction 26's, then the queue.
+    ///      Instruction data: instruction 26's, then fee (u64 LE), 0 < fee < amount.
+    WithdrawThroughDelegatedShuttleWithFee = 37,
 }
 
 impl ESplInstruction {
@@ -297,6 +332,11 @@ impl TryFrom<u8> for ESplInstruction {
             30 => Ok(Self::ExecuteScheduledPrivateTransfer),
             31 => Ok(Self::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransferAndStashClose),
             32 => Ok(Self::RecoverAndCloseShuttleToOwner),
+            33 => Ok(Self::CloseLamportsPda),
+            34 => Ok(Self::DepositAndDelegateShuttleWithMergeToEncryptedDestination),
+            35 => Ok(Self::MergeShuttleIntoMagicAta),
+            36 => Ok(Self::EnsureMagicAtaDestination),
+            37 => Ok(Self::WithdrawThroughDelegatedShuttleWithFee),
             _ => Err(()),
         }
     }
