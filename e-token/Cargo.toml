@@ -12,6 +12,7 @@ readme = "./README.md"
 crate-type = ["cdylib", "rlib"]
 
 [features]
+default = ["solana-security-txt"]
 logging = ["ephemeral-spl-api/logging"]
 no-fees = ["ephemeral-spl-api/no-fees"]
 
@@ -33,6 +34,7 @@ solana-instruction = { workspace = true }
 solana-address = { workspace = true }
 solana-pubkey = { workspace = true }
 solana-signature = { workspace = true }
+solana-security-txt = { version = ">=1.1", optional = true }
 spl-token-interface = { workspace = true }
 static_assertions = { workspace = true }
 wheels = { workspace = true }

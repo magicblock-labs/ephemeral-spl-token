@@ -2017,6 +2017,7 @@ dependencies = [
  "solana-program-pack 3.0.0",
  "solana-program-test",
  "solana-pubkey 4.3.0",
+ "solana-security-txt",
  "solana-signature 3.1.0",
  "solana-signer 3.0.0",
  "solana-system-interface 2.0.0",
@@ -8193,6 +8194,12 @@ dependencies = [
  "solana-instruction 3.5.0",
  "solana-sdk-ids 3.1.0",
 ]
+
+[[package]]
+name = "solana-security-txt"
+version = "1.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c94a02d486b28f219a4f8f5d7dd93cbfbb93c9f466cb7871c22e50cd5ae9a7a2"
 
 [[package]]
 name = "solana-seed-derivable"
