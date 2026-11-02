@@ -8,7 +8,7 @@ use ephemeral_spl_api::{
         stealth_pool::{StealthPool, StealthPoolFlags},
         transfer_queue::{
             queue_views_checked, QueuedTransfer, TransferQueue, TransferQueueHeader, HEADER_LEN, ITEM_LEN,
-            QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
+            QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA, QUEUED_TRANSFER_FLAG_NO_RECEIPT_PERMISSION,
         },
     },
     ID as PROGRAM,
@@ -461,8 +461,9 @@ async fn deposit_and_queue_transfer_transfers_once_and_enqueues_split_items() {
             shared_client_ref_id = Some(client_ref_id);
         }
         // A direct call carries no sponsorship credit, so no split may ask the
-        // rent PDA to create the recipient ATA.
-        assert_eq!(queued.flags, 0);
+        // rent PDA to create the recipient ATA. Without permission accounts the
+        // receipt has no permission for the delivery callback to close.
+        assert_eq!(queued.flags, QUEUED_TRANSFER_FLAG_NO_RECEIPT_PERMISSION);
         assert!(implied_now_ms >= (clock_before.unix_timestamp * 1_000) as u64);
         assert!(implied_now_ms <= (clock_after.unix_timestamp * 1_000) as u64);
     }

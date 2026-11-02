@@ -13,7 +13,7 @@ use ephemeral_spl_api::{
         transfer_queue::{
             queue_len_and_bump_for_mint_with_capacity, queue_peek_next_task_id_from_data, queue_push_from_data,
             queue_set_token_program_kind_from_data, queue_sponsor_first_delivered_from_data, QueuedTransfer,
-            TransferQueue, QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
+            TransferQueue, QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA, QUEUED_TRANSFER_FLAG_NO_RECEIPT_PERMISSION,
         },
         RawType,
     },
@@ -224,7 +224,13 @@ pub fn process_deposit_and_queue_transfer(accounts: &[AccountView], instruction_
     let source = *user_authority.address();
     let client_ref_id = args.client_ref_id().unwrap_or(0);
     let split_plan = build_split_plan(amount, split, decimals)?;
-    let caller_flags = args.flags().unwrap_or(0) & !QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA;
+    // Both bits are the program's to set: the create-ATA flag (see the
+    // sponsorship below) and whether the receipt has a permission to close.
+    let mut flags = args.flags().unwrap_or(0)
+        & !(QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA | QUEUED_TRANSFER_FLAG_NO_RECEIPT_PERMISSION);
+    if receipt_permission.is_none() {
+        flags |= QUEUED_TRANSFER_FLAG_NO_RECEIPT_PERMISSION;
+    }
 
     let data = unsafe { queue_info.borrow_unchecked_mut() };
     queue_set_token_program_kind_from_data(data, queue_token_program_kind)?;
@@ -261,7 +267,7 @@ pub fn process_deposit_and_queue_transfer(accounts: &[AccountView], instruction_
             ready_at,
             client_ref_id,
             task_id: 0,
-            flags: caller_flags,
+            flags,
             group_id: [0; 3],
         };
         queued_transfer.set_group_id(group_id)?;

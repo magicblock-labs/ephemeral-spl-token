@@ -11,7 +11,8 @@ use ephemeral_spl_api::{
     instructions::ExecuteQueuedTransferArgs,
     require, require_eq_keys, require_n_accounts,
     state::transfer_queue::{
-        queue_peek_from_data, queue_pop_from_data, queue_views_checked, QueuedTransfer, QUEUE_SEED,
+        queue_peek_from_data, queue_pop_from_data, queue_views_checked, QueuedTransfer,
+        QUEUED_TRANSFER_FLAG_NO_RECEIPT_PERMISSION, QUEUE_SEED,
     },
 };
 use pinocchio::{
@@ -251,7 +252,14 @@ fn schedule_execute_ready_transfer(
         &queue_state.mint,
         &queue_state.token_program,
     );
-    let standalone_action_callback = create_action_callback(&standalone_action_callback_accounts, &callback_data);
+    // A receipt without a permission gets the 13-account callback, which still
+    // refunds a failed delivery; the ER would reject the 15-account one.
+    let standalone_action_callback_accounts = if queued_transfer.has_receipt_permission() {
+        &standalone_action_callback_accounts[..]
+    } else {
+        &standalone_action_callback_accounts[..CALLBACK_ACCOUNTS_WITHOUT_RECEIPT_PERMISSION]
+    };
+    let standalone_action_callback = create_action_callback(standalone_action_callback_accounts, &callback_data);
 
     let action_builder = QueuedTransferActionBuilder::new(
         tick_accounts.queue_info,
@@ -267,7 +275,8 @@ fn schedule_execute_ready_transfer(
                 None
             },
             escrow_index: EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
-            flags: queued_transfer.flags,
+            // The receipt bit only shapes the ER callback above.
+            flags: queued_transfer.flags & !QUEUED_TRANSFER_FLAG_NO_RECEIPT_PERMISSION,
         },
     );
     let mut standalone_action = action_builder.build();
@@ -312,6 +321,10 @@ fn pop_executed_transfer(queue_info: &AccountView, queued_transfer: QueuedTransf
 
     Ok(())
 }
+
+/// The callback accounts up to the Magic context; the receipt permission and
+/// the permission program follow.
+const CALLBACK_ACCOUNTS_WITHOUT_RECEIPT_PERMISSION: usize = 13;
 
 #[inline(never)]
 fn create_action_callback_accounts(

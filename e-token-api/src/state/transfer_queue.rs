@@ -12,6 +12,15 @@ pub const TRANSFER_QUEUE_VERSION: u8 = 1;
 pub const QUEUE_SEED: &[u8] = b"queue";
 
 pub const QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA: u8 = 1 << 0;
+
+/// Marks a transfer queued without an ACL permission on its group receipt.
+///
+/// Its delivery callback must then leave the permission accounts out: the ER
+/// rejects a transaction that marks a nonexistent account writable, and a
+/// rejected callback never refunds a failed delivery. The bit is inverted so
+/// that transfers queued before it existed keep the callback they had.
+pub const QUEUED_TRANSFER_FLAG_NO_RECEIPT_PERMISSION: u8 = 1 << 1;
+
 #[repr(u8)]
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum SplTokenProgram {
@@ -150,6 +159,11 @@ impl QueuedTransfer {
     #[inline(always)]
     pub fn should_create_destination_ata_idempotent(&self) -> bool {
         self.flags & QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA != 0
+    }
+
+    #[inline(always)]
+    pub fn has_receipt_permission(&self) -> bool {
+        self.flags & QUEUED_TRANSFER_FLAG_NO_RECEIPT_PERMISSION == 0
     }
 
     #[inline(always)]
