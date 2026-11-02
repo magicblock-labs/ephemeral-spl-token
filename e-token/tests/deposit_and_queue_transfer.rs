@@ -17,7 +17,7 @@ use serial_test::serial;
 use solana_address::Address;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
-use solana_program::{account_info::AccountInfo, clock::Clock, program::invoke, program_error::ProgramError};
+use solana_program::clock::Clock;
 use solana_program_pack::Pack;
 use solana_program_test::{processor, tokio, ProgramTestContext};
 use solana_pubkey::{pubkey, Pubkey};
@@ -80,11 +80,6 @@ async fn setup_fixture_inner(items: Option<u32>, acl_mock: bool) -> Fixture {
     let mut context = utils::start_program_test_with_acl_and(PROGRAM, !acl_mock, |pt| {
         pt.prefer_bpf(false);
         pt.add_program("magic_mock", MAGIC_PROGRAM, processor!(common::magic_mock::process));
-        pt.add_program(
-            "post_action_executor_mock",
-            POST_ACTION_EXECUTOR,
-            processor!(post_action_executor_mock),
-        );
         pt.prefer_bpf(true);
         if acl_mock {
             common::acl_mock::add_mock(pt);
@@ -1253,79 +1248,23 @@ async fn deposit_and_queue_transfer_rejects_partial_permission_pair() {
 
 // ── recipient ATA sponsorship ────────────────────────────────────────────────
 
-/// The rollup's post-delegation action executor.
-const POST_ACTION_EXECUTOR: Pubkey = pubkey!("PostAct111111111111111111111111111111111111");
+const RENT_PDA_SEED: &[u8] = b"rent";
 
-/// Stand-in for the rollup's post-delegation action executor. It forwards the
-/// embedded instruction as a CPI, so the callee finds it at the top level of
-/// the instructions sysvar with `Execute { cloned_account_pubkey, .. }` data.
-///
-/// Data: `[0u32][cloned_account_pubkey][inner instruction data]`.
-/// Accounts: the inner instruction's accounts, then the callee program.
-fn post_action_executor_mock(
-    _program_id: &Pubkey,
-    accounts: &[AccountInfo],
-    data: &[u8],
-) -> solana_program::entrypoint::ProgramResult {
-    let (callee, inner_accounts) = accounts.split_last().ok_or(ProgramError::NotEnoughAccountKeys)?;
-    let inner = Instruction {
-        program_id: *callee.key,
-        accounts: inner_accounts
-            .iter()
-            .map(|account| AccountMeta {
-                pubkey: *account.key,
-                is_signer: account.is_signer,
-                is_writable: account.is_writable,
-            })
-            .collect(),
-        data: data[36..].to_vec(),
-    };
-    invoke(&inner, accounts)
+fn rent_pda() -> Pubkey {
+    Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM).0
 }
 
-/// Wraps `ix` the way the rollup runs a post-delegation action of the bundle
-/// attached to `clone_target`.
-fn under_post_action_executor(ix: Instruction, clone_target: Pubkey) -> Instruction {
-    let mut data = vec![0, 0, 0, 0]; // bincode variant: Execute
-    data.extend_from_slice(clone_target.as_ref());
-    data.extend_from_slice(&ix.data);
-    let mut accounts = ix.accounts;
-    accounts.push(AccountMeta::new_readonly(ix.program_id, false));
-    Instruction {
-        program_id: POST_ACTION_EXECUTOR,
-        accounts,
-        data,
-    }
-}
-
-/// Uses `token_account` as account 8, where ix 25/31 pass the shuttle wallet
-/// ATA that the rollup clones the bundle onto.
-fn with_reimbursement(mut ix: Instruction, token_account: Pubkey) -> Instruction {
-    ix.accounts[8] = AccountMeta::new(token_account, false);
-    ix
-}
-
-/// Extends the 14-account shape with the instructions sysvar (15 accounts).
-fn with_instructions_sysvar(mut ix: Instruction) -> Instruction {
-    ix.accounts.push(AccountMeta::new_readonly(
-        solana_program::sysvar::instructions::ID,
-        false,
-    )); // 14
-    ix
-}
-
-/// A 15-account deposit whose account 8 is a real token account for the mint,
-/// as inside a sponsored private transfer's bundle.
-fn build_bundle_shaped_ix(fixture: &mut Fixture, amount: u64, split: u32, group_id: u32) -> Instruction {
+/// A 15-account deposit carrying `sponsor` as account 14, unsigned: only the
+/// program itself can sign as the rent PDA, inside a sponsored bundle.
+fn build_with_sponsor_account(fixture: &mut Fixture, sponsor: Pubkey, split: u32, group_id: u32) -> Instruction {
     let group_receipt = pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, group_id, split);
     let permission = utils::derive_group_receipt_permission(group_receipt);
-    with_instructions_sysvar(with_reimbursement(
-        with_receipt_permission(
-            build_deposit_and_queue_ix(fixture, amount, 0, 0, split, group_id, group_receipt),
-            permission,
-        ),
-        fixture.destination_ata,
-    ))
+    let mut ix = with_receipt_permission(
+        build_deposit_and_queue_ix(fixture, 10, 0, 0, split, group_id, group_receipt),
+        permission,
+    );
+    ix.accounts.push(AccountMeta::new_readonly(sponsor, false)); // 14: sponsor
+    ix
 }
 
 async fn process(fixture: &mut Fixture, ix: Instruction) -> Result<(), TransactionError> {
@@ -1354,7 +1293,7 @@ async fn queued_items(fixture: &mut Fixture) -> Vec<QueuedTransfer> {
 }
 
 /// A direct call never sponsors the recipient ATA, even when the caller sets
-/// the flag: only a sponsored private transfer's own bundle may put it on a split.
+/// the flag: only the rent PDA's signature may put it on a split.
 #[tokio::test]
 #[serial]
 async fn deposit_and_queue_transfer_strips_caller_create_ata_flag() {
@@ -1388,94 +1327,30 @@ async fn deposit_and_queue_transfer_strips_caller_create_ata_flag() {
     );
 }
 
-/// Inside the shuttle's own post-delegation bundle, exactly one split is
-/// sponsored: the one the queue delivers first.
+/// Passing the rent PDA without its signature sponsors nothing.
 #[tokio::test]
 #[serial]
-async fn deposit_and_queue_transfer_sponsors_only_the_first_delivered_split() {
+async fn deposit_and_queue_transfer_ignores_an_unsigned_rent_pda() {
     let mut fixture = setup_fixture_with_acl_mock(None).await;
-
-    // 12 units split three ways is 5, 5, 2. With equal ready_at the smallest
-    // amount is delivered first, so it (and not the first index) must be the
-    // sponsored split.
-    let unit = 10u64.pow(DECIMALS as u32);
     let split: u32 = 3;
-    let ix = build_bundle_shaped_ix(&mut fixture, 12 * unit, split, 1);
-    let clone_target = fixture.destination_ata;
-    process(&mut fixture, under_post_action_executor(ix, clone_target))
-        .await
-        .unwrap();
+    let ix = build_with_sponsor_account(&mut fixture, rent_pda(), split, 1);
+    process(&mut fixture, ix).await.unwrap();
 
     let items = queued_items(&mut fixture).await;
     assert_eq!(items.len(), split as usize);
-    let sponsored: Vec<&QueuedTransfer> = items.iter().filter(|item| item.flags != 0).collect();
-    assert_eq!(sponsored.len(), 1, "exactly one split must be sponsored");
-    let sponsored = sponsored[0];
-    assert_eq!(sponsored.flags, QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA);
-    assert_eq!(sponsored.amount, 2 * unit);
-    assert!(
-        items.iter().all(|item| !item.has_higher_priority_than(sponsored)),
-        "the sponsored split must be the first delivered"
-    );
-}
-
-/// Nothing is sponsored outside the shuttle's own bundle: not on a direct call,
-/// not in another delegation's bundle, and not when account 8 is not the token
-/// account the bundle was cloned onto.
-#[tokio::test]
-#[serial]
-async fn deposit_and_queue_transfer_sponsors_nothing_outside_the_shuttles_own_bundle() {
-    let mut fixture = setup_fixture_with_acl_mock(None).await;
-    let split: u32 = 2;
-
-    // A direct call: no executor above it.
-    let ix = build_bundle_shaped_ix(&mut fixture, 10, split, 1);
-    process(&mut fixture, ix).await.unwrap();
-
-    // Another delegation's bundle.
-    let ix = build_bundle_shaped_ix(&mut fixture, 10, split, 2);
-    let foreign_target = utils::test_pubkey("deposit_and_queue_transfer::foreign_clone_target");
-    process(&mut fixture, under_post_action_executor(ix, foreign_target))
-        .await
-        .unwrap();
-
-    // The clone target matches account 8, but account 8 is not a token account.
-    let group_receipt = pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, 3, split);
-    let permission = utils::derive_group_receipt_permission(group_receipt);
-    let ix = with_instructions_sysvar(with_receipt_permission(
-        build_deposit_and_queue_ix(&fixture, 10, 0, 0, split, 3, group_receipt),
-        permission,
-    ));
-    process(&mut fixture, under_post_action_executor(ix, PROGRAM))
-        .await
-        .unwrap();
-
-    let items = queued_items(&mut fixture).await;
-    assert_eq!(items.len(), 3 * split as usize);
     assert!(items.iter().all(|item| item.flags == 0), "no split may be sponsored");
 }
 
-/// Account 14 must be the instructions sysvar.
+/// Account 14 must be the rent PDA.
 #[tokio::test]
 #[serial]
-async fn deposit_and_queue_transfer_rejects_a_non_sysvar_account() {
+async fn deposit_and_queue_transfer_rejects_a_wrong_sponsor_account() {
     let mut fixture = setup_fixture_with_acl_mock(None).await;
-    let group_id: u32 = 1;
-    let split: u32 = 1;
-    let group_receipt = pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, group_id, split);
-    let permission = utils::derive_group_receipt_permission(group_receipt);
-
-    let mut ix = with_reimbursement(
-        with_receipt_permission(
-            build_deposit_and_queue_ix(&fixture, 10, 0, 0, split, group_id, group_receipt),
-            permission,
-        ),
-        fixture.destination_ata,
-    );
-    ix.accounts.push(AccountMeta::new_readonly(fixture.vault, false)); // 14: not the sysvar
+    let payer = fixture.payer;
+    let ix = build_with_sponsor_account(&mut fixture, payer, 1, 1);
 
     assert_eq!(
         process(&mut fixture, ix).await.unwrap_err(),
-        TransactionError::InstructionError(0, InstructionError::UnsupportedSysvar)
+        TransactionError::InstructionError(0, InstructionError::InvalidSeeds)
     );
 }

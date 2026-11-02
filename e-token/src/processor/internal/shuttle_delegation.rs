@@ -281,9 +281,16 @@ pub(crate) fn delegate_sponsored_shuttle_with_post_actions(
         ..DelegateConfig::default()
     };
 
-    let mut action_signer_accounts = alloc::vec![owner_info];
-    if owner_info.address() != payer_info.address() {
-        action_signer_accounts.push(payer_info);
+    // One signing account per bundle signer, in the bundle's order: the owner,
+    // the payer when distinct, and the rent PDA when a sponsored private
+    // transfer lists it. The rent PDA signs this CPI through `rent_signer`.
+    let mut action_signer_accounts = alloc::vec::Vec::with_capacity(post_actions.signers.len());
+    for signer in post_actions.signers.iter() {
+        let account = [owner_info, payer_info, rent_pda_info]
+            .into_iter()
+            .find(|account| account.address().as_array() == signer)
+            .ok_or(ProgramError::MissingRequiredSignature)?;
+        action_signer_accounts.push(account);
     }
 
     debug_log!("Shuttle eata: {}", shuttle_eata_info.address().to_string().as_str());

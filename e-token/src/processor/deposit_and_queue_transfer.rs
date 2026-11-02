@@ -20,7 +20,7 @@ use ephemeral_spl_api::{
 };
 use pinocchio::{
     error::ProgramError,
-    sysvars::{clock::Clock, instructions::Instructions, Sysvar},
+    sysvars::{clock::Clock, Sysvar},
     AccountView, ProgramResult,
 };
 use pinocchio_token_2022::instructions::TransferChecked;
@@ -29,17 +29,14 @@ use wheels::layout::Decodable as _;
 
 use crate::processor::internal::{
     group_receipt::derive_group_receipt_id,
-    group_receipt_create, read_mint_decimals, token_program_kind,
+    group_receipt_create, read_mint_decimals,
+    rent_pda::RENT_PDA,
+    token_program_kind,
     token_vault::{transfer_to_queue_vault_for_mint, transfer_to_vault_for_mint, validate_queue_vault_for_mint},
-    validate_token_account, GroupReceiptAccounts, GroupReceiptPermissionAccounts, POST_DELEGATION_ACTION_EXECUTOR_ID,
+    GroupReceiptAccounts, GroupReceiptPermissionAccounts,
 };
 
 const MILLIS_PER_SECOND: u64 = 1_000;
-
-/// Bincode prefix of the executor's `Execute { cloned_account_pubkey, .. }`
-/// payload: variant 0, then the 32-byte clone target.
-const POST_DELEGATION_EXECUTE_VARIANT: [u8; 4] = [0, 0, 0, 0];
-const POST_DELEGATION_EXECUTE_TARGET: core::ops::Range<usize> = 4..36;
 
 ///
 /// Executes on: ER only.
@@ -69,13 +66,13 @@ const POST_DELEGATION_EXECUTE_TARGET: core::ops::Range<usize> = 4..36;
 /// transfer, whose setup fee prepaid one recipient ATA creation on the base chain):
 ///
 ///  0-13: same as above.
-///  14: []                 - Sysvar  : Instructions sysvar.
+///  14: [signer]           - PDA     : Global rent PDA.
 ///
-/// The create-ATA flag never comes from the caller. It is set on the one split
-/// the queue delivers first, and only while the rollup's post-delegation
-/// executor is running this shuttle's own bundle (see
-/// `sponsored_by_own_post_delegation_bundle`), so the rent PDA pays for at most
-/// one ATA per paid private transfer and for none on direct calls.
+/// The create-ATA flag never comes from the caller. Only the rent PDA can
+/// authorize it, and the program signs as the rent PDA only in the bundle of a
+/// sponsored private transfer (ix 25/31), whose setup fee prepays one recipient
+/// ATA. The flag then goes on the one split the queue delivers first. Direct
+/// calls cannot produce that signature, so they sponsor nothing.
 ///
 /// Instruction Data: DepositAndQueueTransferArgs
 ///
@@ -103,7 +100,7 @@ pub fn process_deposit_and_queue_transfer(accounts: &[AccountView], instruction_
 
     // Only the 12-, 14- and 15-account shapes are valid: a partial permission
     // pair must fail loudly rather than silently create an unprotected receipt.
-    let (receipt_permission, instructions_sysvar) = match optional_accounts {
+    let (receipt_permission, sponsor) = match optional_accounts {
         [] => (None, None),
         [permission_info, permission_program] => (
             Some(GroupReceiptPermissionAccounts {
@@ -112,12 +109,12 @@ pub fn process_deposit_and_queue_transfer(accounts: &[AccountView], instruction_
             }),
             None,
         ),
-        [permission_info, permission_program, instructions_sysvar_info] => (
+        [permission_info, permission_program, sponsor_info] => (
             Some(GroupReceiptPermissionAccounts {
                 permission_info,
                 permission_program,
             }),
-            Some(instructions_sysvar_info),
+            Some(sponsor_info),
         ),
         [_] => return Err(ProgramError::NotEnoughAccountKeys),
         _ => return Err(EphemeralSplError::TooManyAccountKeys.into()),
@@ -174,13 +171,11 @@ pub fn process_deposit_and_queue_transfer(accounts: &[AccountView], instruction_
     let derived_queue = TransferQueue::derive_pda(mint_info.address(), &validator, bump)?;
     require_eq_keys!(&derived_queue, queue_info.address(), ProgramError::InvalidSeeds);
 
-    let sponsor_base_ata = match instructions_sysvar {
-        Some(instructions_sysvar_info) => sponsored_by_own_post_delegation_bundle(
-            reimbursement_token_info,
-            instructions_sysvar_info,
-            mint_info,
-            token_program_info,
-        )?,
+    let sponsor_base_ata = match sponsor {
+        Some(sponsor_info) => {
+            require_eq_keys!(sponsor_info.address(), &RENT_PDA, ProgramError::InvalidSeeds);
+            sponsor_info.is_signer()
+        }
         None => false,
     };
 
@@ -329,51 +324,6 @@ pub fn process_deposit_and_queue_transfer(accounts: &[AccountView], instruction_
     });
 
     Ok(())
-}
-
-/// Whether this call may sponsor one recipient ATA on the base chain.
-///
-/// Only the post-delegation bundle of a sponsored private transfer (ix 25/31)
-/// may, and that bundle is recognised rather than recorded: the instructions
-/// sysvar must show the rollup's executor running this bundle with account 8
-/// as its clone target. Account 8 is the shuttle wallet ATA, the token account
-/// the rollup projects the delegated shuttle eATA onto; a Token-owned account
-/// can only become a delegation target through that projection, so no other
-/// delegation's bundle can name it, and a direct call has no executor above
-/// it. A bundle runs once and ends by closing the shuttle, so the sponsorship
-/// cannot be reused.
-///
-/// This relies on no instruction accepting caller-supplied post-delegation
-/// actions: ix 25/31 are the only ones that put ix 16 in a bundle, and they
-/// charge the setup fee that pays for the ATA. A rollup that runs bundles
-/// differently fails closed: the transfer still goes through, unsponsored.
-#[inline(always)]
-fn sponsored_by_own_post_delegation_bundle(
-    reimbursement_token_info: &AccountView,
-    instructions_sysvar_info: &AccountView,
-    mint_info: &AccountView,
-    token_program_info: &AccountView,
-) -> Result<bool, ProgramError> {
-    if validate_token_account(
-        reimbursement_token_info,
-        mint_info.address(),
-        None,
-        Some(token_program_info.address()),
-    )
-    .is_err()
-    {
-        return Ok(false);
-    }
-
-    let instructions = Instructions::try_from(instructions_sysvar_info)?;
-    let current = instructions.load_instruction_at(instructions.load_current_index() as usize)?;
-    if current.get_program_id() != &POST_DELEGATION_ACTION_EXECUTOR_ID {
-        return Ok(false);
-    }
-    let data = current.get_instruction_data();
-    Ok(data.len() >= POST_DELEGATION_EXECUTE_TARGET.end
-        && data[..POST_DELEGATION_EXECUTE_VARIANT.len()] == POST_DELEGATION_EXECUTE_VARIANT
-        && data[POST_DELEGATION_EXECUTE_TARGET] == *reimbursement_token_info.address().as_ref())
 }
 
 #[derive(Copy, Clone)]

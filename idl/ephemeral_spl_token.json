@@ -709,7 +709,7 @@
         "Deposits into the vault and enqueues one or more delayed transfers.",
         "Instruction data: [0..8] amount, [8..16] min_delay_ms, [16..24] max_delay_ms, [24..28] split, optionally [28] flags.",
         "groupReceiptPermission + permissionProgram create a private ACL permission on the group receipt; legacy clients may omit both trailing accounts (12-account shape).",
-        "instructionsSysvar (15-account shape) is passed only by the post-delegation action of a sponsored private transfer, whose setup fee prepaid one recipient ATA creation: the flag is set on the first-delivered split only while the rollup's post-delegation executor runs that shuttle's own bundle. Flags passed in the instruction data never enable ATA creation."
+        "rentPda (15-account shape) signs only in the post-delegation action of a sponsored private transfer, whose setup fee prepaid one recipient ATA: with it, the first-delivered split creates the recipient's token account. Flags passed in the instruction data never enable ATA creation."
       ],
       "accounts": [
         {
@@ -763,9 +763,9 @@
           "name": "permissionProgram"
         },
         {
-          "name": "instructionsSysvar",
-          "optional": true,
-          "address": "Sysvar1nstructions1111111111111111111111111"
+          "name": "rentPda",
+          "signer": true,
+          "optional": true
         }
       ],
       "args": [

@@ -91,9 +91,8 @@ pub struct QueuedTransfer {
 }
 
 impl QueuedTransfer {
-    /// Whether the queue delivers `self` before `b`.
     #[inline(always)]
-    pub fn has_higher_priority_than(&self, b: &QueuedTransfer) -> bool {
+    fn has_higher_priority_than(&self, b: &QueuedTransfer) -> bool {
         // tuple elements are compared lexicographically (left to right).
         (
             self.ready_at,
