@@ -64,9 +64,6 @@ pub(crate) struct DepositAndDelegateShuttleCommonArgs<'a> {
     pub(crate) shuttle_id: u32,
     pub(crate) total_amount: u64,
     pub(crate) validator: Option<&'a Address>,
-    /// The setup fee prepaid one base-chain ATA creation for a private
-    /// transfer; recorded on the shuttle eATA for `DepositAndQueueTransfer`.
-    pub(crate) sponsored_base_ata: bool,
 }
 
 pub(crate) fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions(
@@ -112,9 +109,6 @@ pub(crate) fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actio
         .amount
         .checked_add(args.total_amount)
         .ok_or(ProgramError::InvalidArgument)?;
-    if args.sponsored_base_ata {
-        shuttle_eata.sponsored_base_ata = 1;
-    }
 
     // TODO (snawaz): passs structs to functions which take too many arguments.
     delegate_sponsored_shuttle_with_post_actions(

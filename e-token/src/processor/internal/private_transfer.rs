@@ -194,7 +194,6 @@ pub(crate) fn process_with_merge_and_private_transfer_inner(
             shuttle_id,
             total_amount,
             validator,
-            sponsored_base_ata: true,
         },
         ephemeral_spl_api::consts::SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS,
         actions,
@@ -239,9 +238,8 @@ fn private_transfer_action_encrypted(
             MaybeEncryptedPubkey::ClearText(MAGIC_PROGRAM_ID.to_bytes()),
             MaybeEncryptedPubkey::ClearText(group_receipt_permission.to_bytes()),
             MaybeEncryptedPubkey::ClearText(PERMISSION_PROGRAM_ID.to_bytes()),
-            // The shuttle eATA carries the prepaid recipient ATA; the instructions
-            // sysvar lets ix 16 verify it runs inside this shuttle's own bundle.
-            MaybeEncryptedPubkey::ClearText(common_accounts.shuttle_eata_info.address().to_bytes()),
+            // Lets ix 16 verify it runs inside this shuttle's own post-delegation
+            // bundle before sponsoring the recipient's ATA.
             MaybeEncryptedPubkey::ClearText(INSTRUCTIONS_ID.to_bytes()),
         ],
         instructions: alloc::vec![MaybeEncryptedInstruction {
@@ -262,7 +260,6 @@ fn private_transfer_action_encrypted(
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(13, false)),
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(14, false)),
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(15, false)),
-                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(16, false)),
             ],
             data: MaybeEncryptedIxData {
                 prefix: ESplInstruction::DepositAndQueueTransfer

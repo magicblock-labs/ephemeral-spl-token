@@ -7,10 +7,8 @@ use ephemeral_spl_api::{
     debug_log,
     error::EphemeralSplError,
     instructions::DepositAndQueueTransferArgs,
-    require, require_eq_keys, require_n_accounts_with_optionals, require_owned_by,
+    require, require_eq_keys, require_n_accounts_with_optionals,
     state::{
-        ephemeral_ata::EphemeralAta,
-        load_initialized,
         stealth_pool::StealthPool,
         transfer_queue::{
             queue_len_and_bump_for_mint_with_capacity, queue_peek_next_task_id_from_data, queue_push_from_data,
@@ -30,11 +28,10 @@ use solana_address::{address_eq, Address};
 use wheels::layout::Decodable as _;
 
 use crate::processor::internal::{
-    get_associated_token_address,
     group_receipt::derive_group_receipt_id,
     group_receipt_create, read_mint_decimals, token_program_kind,
     token_vault::{transfer_to_queue_vault_for_mint, transfer_to_vault_for_mint, validate_queue_vault_for_mint},
-    GroupReceiptAccounts, GroupReceiptPermissionAccounts, POST_DELEGATION_ACTION_EXECUTOR_ID,
+    validate_token_account, GroupReceiptAccounts, GroupReceiptPermissionAccounts, POST_DELEGATION_ACTION_EXECUTOR_ID,
 };
 
 const MILLIS_PER_SECOND: u64 = 1_000;
@@ -68,12 +65,11 @@ const POST_DELEGATION_EXECUTE_TARGET: core::ops::Range<usize> = 4..36;
 ///  12: [writable]         - PDA     : Group receipt permission (derived from ["permission:", group_receipt]).
 ///  13: []                 - Program : Permission program (ACL).
 ///
-/// Accounts (16-account shape — the post-delegation action of a sponsored private
+/// Accounts (15-account shape — the post-delegation action of a sponsored private
 /// transfer, whose setup fee prepaid one recipient ATA creation on the base chain):
 ///
 ///  0-13: same as above.
-///  14: []                 - PDA     : Shuttle eATA carrying the `sponsored_base_ata` credit.
-///  15: []                 - Sysvar  : Instructions sysvar.
+///  14: []                 - Sysvar  : Instructions sysvar.
 ///
 /// The create-ATA flag never comes from the caller. It is set on the one split
 /// the queue delivers first, and only while the rollup's post-delegation
@@ -105,10 +101,9 @@ pub fn process_deposit_and_queue_transfer(accounts: &[AccountView], instruction_
         optional_accounts,
     ) = require_n_accounts_with_optionals!(accounts, 12);
 
-    // Only the 12-, 14- and 16-account shapes are valid: a partial permission or
-    // shuttle pair must fail loudly rather than silently create an unprotected
-    // receipt or skip the sponsorship credit.
-    let (receipt_permission, sponsorship) = match optional_accounts {
+    // Only the 12-, 14- and 15-account shapes are valid: a partial permission
+    // pair must fail loudly rather than silently create an unprotected receipt.
+    let (receipt_permission, instructions_sysvar) = match optional_accounts {
         [] => (None, None),
         [permission_info, permission_program] => (
             Some(GroupReceiptPermissionAccounts {
@@ -117,14 +112,14 @@ pub fn process_deposit_and_queue_transfer(accounts: &[AccountView], instruction_
             }),
             None,
         ),
-        [permission_info, permission_program, shuttle_eata_info, instructions_sysvar_info] => (
+        [permission_info, permission_program, instructions_sysvar_info] => (
             Some(GroupReceiptPermissionAccounts {
                 permission_info,
                 permission_program,
             }),
-            Some((shuttle_eata_info, instructions_sysvar_info)),
+            Some(instructions_sysvar_info),
         ),
-        [_] | [_, _, _] => return Err(ProgramError::NotEnoughAccountKeys),
+        [_] => return Err(ProgramError::NotEnoughAccountKeys),
         _ => return Err(EphemeralSplError::TooManyAccountKeys.into()),
     };
 
@@ -179,9 +174,9 @@ pub fn process_deposit_and_queue_transfer(accounts: &[AccountView], instruction_
     let derived_queue = TransferQueue::derive_pda(mint_info.address(), &validator, bump)?;
     require_eq_keys!(&derived_queue, queue_info.address(), ProgramError::InvalidSeeds);
 
-    let sponsor_base_ata = match sponsorship {
-        Some((shuttle_eata_info, instructions_sysvar_info)) => sponsored_by_own_post_delegation_bundle(
-            shuttle_eata_info,
+    let sponsor_base_ata = match instructions_sysvar {
+        Some(instructions_sysvar_info) => sponsored_by_own_post_delegation_bundle(
+            reimbursement_token_info,
             instructions_sysvar_info,
             mint_info,
             token_program_info,
@@ -338,43 +333,38 @@ pub fn process_deposit_and_queue_transfer(accounts: &[AccountView], instruction_
 
 /// Whether this call may sponsor one recipient ATA on the base chain.
 ///
-/// Only the post-delegation bundle of a shuttle whose setup fee prepaid it
-/// (ix 25/31) may. The rollup runs that bundle once per delegation and the
-/// bundle ends by closing the shuttle, so the credit cannot be reused: a direct
-/// call has no executor above it, and another delegation's bundle names a
-/// different clone target. The eATA itself is only read: on the rollup it is a
-/// plain clone, the delegated state lives in the projected token ATA.
+/// Only the post-delegation bundle of a sponsored private transfer (ix 25/31)
+/// may, and that bundle is recognised rather than recorded: the instructions
+/// sysvar must show the rollup's executor running this bundle with account 8
+/// as its clone target. Account 8 is the shuttle wallet ATA, the token account
+/// the rollup projects the delegated shuttle eATA onto; a Token-owned account
+/// can only become a delegation target through that projection, so no other
+/// delegation's bundle can name it, and a direct call has no executor above
+/// it. A bundle runs once and ends by closing the shuttle, so the sponsorship
+/// cannot be reused.
 ///
-/// A rollup that runs bundles differently fails closed: the transfer still goes
-/// through, unsponsored.
+/// This relies on no instruction accepting caller-supplied post-delegation
+/// actions: ix 25/31 are the only ones that put ix 16 in a bundle, and they
+/// charge the setup fee that pays for the ATA. A rollup that runs bundles
+/// differently fails closed: the transfer still goes through, unsponsored.
 #[inline(always)]
 fn sponsored_by_own_post_delegation_bundle(
-    shuttle_eata_info: &AccountView,
+    reimbursement_token_info: &AccountView,
     instructions_sysvar_info: &AccountView,
     mint_info: &AccountView,
     token_program_info: &AccountView,
 ) -> Result<bool, ProgramError> {
-    require_owned_by!(shuttle_eata_info, &crate::ID);
-    let shuttle_eata = load_initialized::<EphemeralAta>(unsafe { shuttle_eata_info.borrow_unchecked() })?;
-    require_eq_keys!(
-        &shuttle_eata.mint,
+    if validate_token_account(
+        reimbursement_token_info,
         mint_info.address(),
-        ProgramError::InvalidAccountData
-    );
-    let derived_shuttle_eata = EphemeralAta::derive_pda(&shuttle_eata.owner, &shuttle_eata.mint, shuttle_eata.bump)?;
-    require_eq_keys!(
-        &derived_shuttle_eata,
-        shuttle_eata_info.address(),
-        ProgramError::InvalidSeeds
-    );
-    if shuttle_eata.sponsored_base_ata == 0 {
+        None,
+        Some(token_program_info.address()),
+    )
+    .is_err()
+    {
         return Ok(false);
     }
 
-    // The rollup projects the delegated eATA onto the shuttle's token ATA and
-    // runs the bundle with that ATA as the clone target.
-    let projected_ata =
-        get_associated_token_address(&shuttle_eata.owner, &shuttle_eata.mint, token_program_info.address());
     let instructions = Instructions::try_from(instructions_sysvar_info)?;
     let current = instructions.load_instruction_at(instructions.load_current_index() as usize)?;
     if current.get_program_id() != &POST_DELEGATION_ACTION_EXECUTOR_ID {
@@ -383,7 +373,7 @@ fn sponsored_by_own_post_delegation_bundle(
     let data = current.get_instruction_data();
     Ok(data.len() >= POST_DELEGATION_EXECUTE_TARGET.end
         && data[..POST_DELEGATION_EXECUTE_VARIANT.len()] == POST_DELEGATION_EXECUTE_VARIANT
-        && data[POST_DELEGATION_EXECUTE_TARGET] == *projected_ata.as_ref())
+        && data[POST_DELEGATION_EXECUTE_TARGET] == *reimbursement_token_info.address().as_ref())
 }
 
 #[derive(Copy, Clone)]

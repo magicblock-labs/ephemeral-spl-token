@@ -4,11 +4,8 @@ use ephemeral_rollups_pinocchio::{
     pda::magic_fee_vault_pda_from_validator,
 };
 use ephemeral_spl_api::{
-    debug_log,
-    error::EphemeralSplError,
-    instructions::ExecuteQueuedTransferArgs,
-    require, require_eq_keys, require_owned_by,
-    state::transfer_queue::{queue_views_checked, QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA},
+    debug_log, error::EphemeralSplError, instructions::ExecuteQueuedTransferArgs, require, require_eq_keys,
+    require_owned_by, state::transfer_queue::queue_views_checked,
 };
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use solana_address::Address;
@@ -77,14 +74,9 @@ impl<'a> RefundOnFailureAccounts<'a> {
     }
 }
 
-/// Schedules a base-chain refund of a failed delivery.
-///
-/// `flags` are the failed delivery's queue flags: a sponsored ATA creation the
-/// delivery never used may still be used by the refund, nothing else may.
 pub(crate) fn schedule_refund_on_failure(
     accounts: &RefundOnFailureAccounts<'_>,
     amount: u64,
-    flags: u8,
     retries_left: u8,
 ) -> ProgramResult {
     if retries_left == 0 {
@@ -120,11 +112,9 @@ pub(crate) fn schedule_refund_on_failure(
         queue_info.address(),
         magic_fee_vault_info.address(),
     );
-    let flags = flags & QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA;
     let encoded_refund_args = RefundOnFailureArgs {
         amount,
         retries_left: retries_left - 1,
-        flags: Some(flags),
     }
     .encode()?;
     let callback = create_callback(&callback_accounts, &encoded_refund_args);
@@ -140,7 +130,9 @@ pub(crate) fn schedule_refund_on_failure(
             // TODO(edwin): clarify if needed
             client_ref_id: None,
             escrow_index: EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
-            flags,
+            // A refund never creates the sender's token account: the sponsor
+            // pays for recipient ATAs only, inside the paying transfer's bundle.
+            flags: 0,
         },
     );
     let mut refund_action = action_builder.build();
@@ -164,16 +156,12 @@ pub(crate) fn schedule_refund_on_failure(
 
 // buffer_offset = 6: response.data starts at byte 14 of the original 8-byte-aligned
 // instruction buffer (1 disc + 4 variant + 1 ok + 8 data_len), and 14 % 8 = 6.
-#[variable_offset_layout(buffer_offset = 6, option = implicit)]
+#[variable_offset_layout(buffer_offset = 6)]
 pub(crate) struct RefundOnFailureArgs {
     /// Amount to be refunded
     pub amount: u64,
     /// Remaining retry attempts; when 0 the callback gives up
     pub retries_left: u8,
-    /// Queue flags of the failed delivery, so a retry keeps (only) its unused
-    /// ATA sponsorship. Callbacks scheduled before this field existed decode as
-    /// `None`, which sponsors nothing.
-    pub flags: Option<u8>,
 }
 
 fn create_callback_accounts(

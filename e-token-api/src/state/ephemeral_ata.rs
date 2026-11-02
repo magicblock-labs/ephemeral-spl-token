@@ -17,13 +17,7 @@ pub struct EphemeralAta {
     pub amount: u64,
     /// The bump of the eata
     pub bump: u8,
-    /// Non-zero on a sponsored shuttle whose setup fee prepaid one base-chain
-    /// ATA creation for the private transfer it carries. `DepositAndQueueTransfer`
-    /// honours it only inside the shuttle's own post-delegation bundle, so one
-    /// payment sponsors at most one ATA and the rent PDA never pays for an
-    /// account nobody paid for.
-    pub sponsored_base_ata: u8,
-    pub _pad0: [u8; 6],
+    pub _pad0: [u8; 7],
 }
 
 impl RawType for EphemeralAta {

@@ -72,5 +72,5 @@ pub fn process_refund_on_failure_callback(accounts: &[AccountView], instruction_
         }
     }
 
-    schedule_refund_on_failure(&accounts, args.amount(), args.flags().unwrap_or(0), args.retries_left())
+    schedule_refund_on_failure(&accounts, args.amount(), args.retries_left())
 }

@@ -3,7 +3,6 @@ use ephemeral_spl_api::{
     instruction,
     instructions::{DepositAndQueueTransferArgs, UpdateStealthPoolArgs},
     state::{
-        ephemeral_ata::EphemeralAta,
         group_receipt::GroupReceiptHeader,
         shuttle_ephemeral_ata::ShuttleMetadata,
         stealth_pool::{StealthPool, StealthPoolFlags},
@@ -11,7 +10,6 @@ use ephemeral_spl_api::{
             queue_views_checked, QueuedTransfer, TransferQueue, TransferQueueHeader, HEADER_LEN, ITEM_LEN,
             QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
         },
-        RawType,
     },
     ID as PROGRAM,
 };
@@ -1300,83 +1298,34 @@ fn under_post_action_executor(ix: Instruction, clone_target: Pubkey) -> Instruct
     }
 }
 
-fn set_program_account(context: &mut ProgramTestContext, address: Pubkey, data: Vec<u8>) {
-    let lamports = solana_program::rent::Rent::default().minimum_balance(data.len());
-    context.set_account(
-        &address,
-        &solana_account::Account {
-            lamports,
-            data,
-            owner: PROGRAM,
-            executable: false,
-            rent_epoch: 0,
-        }
-        .into(),
-    );
-}
-
-/// EphemeralAta: owner (the shuttle), mint, amount, bump, sponsored_base_ata, padding.
-fn shuttle_eata_data(shuttle: Pubkey, mint: Pubkey, bump: u8, sponsored_base_ata: u8) -> Vec<u8> {
-    let mut data = Vec::with_capacity(EphemeralAta::LEN);
-    data.extend_from_slice(shuttle.as_ref());
-    data.extend_from_slice(mint.as_ref());
-    data.extend_from_slice(&0u64.to_le_bytes());
-    data.push(bump);
-    data.push(sponsored_base_ata);
-    data.resize(EphemeralAta::LEN, 0);
-    data
-}
-
-/// Pre-creates a shuttle's eATA as the sponsored base-chain flows leave it,
-/// with the `sponsored_base_ata` credit as given. Returns (shuttle, eATA).
-fn pre_create_sponsored_shuttle_eata(
-    fixture: &mut Fixture,
-    owner: Pubkey,
-    shuttle_id: u32,
-    sponsored_base_ata: u8,
-) -> (Pubkey, Pubkey) {
-    let (shuttle, _) = utils::derive_shuttle_ephemeral_ata(PROGRAM, owner, fixture.mint, shuttle_id);
-    let (shuttle_eata, eata_bump) = utils::derive_shuttle_eata(PROGRAM, shuttle, fixture.mint);
-    set_program_account(
-        &mut fixture.context,
-        shuttle_eata,
-        shuttle_eata_data(shuttle, fixture.mint, eata_bump, sponsored_base_ata),
-    );
-    (shuttle, shuttle_eata)
-}
-
-/// The shuttle's token ATA: the rollup projects the delegated eATA onto it and
-/// names it as the clone target of the shuttle's post-delegation bundle.
-fn projected_clone_target(fixture: &Fixture, shuttle: Pubkey) -> Pubkey {
-    utils::derive_associated_token_address(shuttle, fixture.mint)
-}
-
-/// Extends the 14-account shape with the sponsorship pair (16 accounts).
-fn with_sponsorship(mut ix: Instruction, shuttle_eata: Pubkey) -> Instruction {
-    ix.accounts.push(AccountMeta::new_readonly(shuttle_eata, false)); // 14: shuttle eATA
-    ix.accounts.push(AccountMeta::new_readonly(
-        solana_program::sysvar::instructions::ID,
-        false,
-    )); // 15: instructions sysvar
+/// Uses `token_account` as account 8, where ix 25/31 pass the shuttle wallet
+/// ATA that the rollup clones the bundle onto.
+fn with_reimbursement(mut ix: Instruction, token_account: Pubkey) -> Instruction {
+    ix.accounts[8] = AccountMeta::new(token_account, false);
     ix
 }
 
-fn build_sponsored_deposit_and_queue_ix(
-    fixture: &mut Fixture,
-    amount: u64,
-    split: u32,
-    group_id: u32,
-    shuttle_eata: Pubkey,
-) -> Instruction {
+/// Extends the 14-account shape with the instructions sysvar (15 accounts).
+fn with_instructions_sysvar(mut ix: Instruction) -> Instruction {
+    ix.accounts.push(AccountMeta::new_readonly(
+        solana_program::sysvar::instructions::ID,
+        false,
+    )); // 14
+    ix
+}
+
+/// A 15-account deposit whose account 8 is a real token account for the mint,
+/// as inside a sponsored private transfer's bundle.
+fn build_bundle_shaped_ix(fixture: &mut Fixture, amount: u64, split: u32, group_id: u32) -> Instruction {
     let group_receipt = pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, group_id, split);
     let permission = utils::derive_group_receipt_permission(group_receipt);
-    with_sponsorship(
+    with_instructions_sysvar(with_reimbursement(
         with_receipt_permission(
             build_deposit_and_queue_ix(fixture, amount, 0, 0, split, group_id, group_receipt),
             permission,
         ),
-        shuttle_eata,
-    )
+        fixture.destination_ata,
+    ))
 }
 
 async fn process(fixture: &mut Fixture, ix: Instruction) -> Result<(), TransactionError> {
@@ -1404,19 +1353,8 @@ async fn queued_items(fixture: &mut Fixture) -> Vec<QueuedTransfer> {
         .collect()
 }
 
-async fn sponsored_base_ata_credit(fixture: &mut Fixture, shuttle_eata: Pubkey) -> u8 {
-    let account = fixture
-        .context
-        .banks_client
-        .get_account(shuttle_eata)
-        .await
-        .unwrap()
-        .expect("shuttle eATA must exist");
-    account.data[core::mem::offset_of!(EphemeralAta, sponsored_base_ata)]
-}
-
 /// A direct call never sponsors the recipient ATA, even when the caller sets
-/// the flag: only a sponsored shuttle's own bundle may put it on a split.
+/// the flag: only a sponsored private transfer's own bundle may put it on a split.
 #[tokio::test]
 #[serial]
 async fn deposit_and_queue_transfer_strips_caller_create_ata_flag() {
@@ -1450,22 +1388,20 @@ async fn deposit_and_queue_transfer_strips_caller_create_ata_flag() {
     );
 }
 
-/// Inside the shuttle's own post-delegation bundle, a sponsored shuttle flags
-/// exactly one split: the one the queue delivers first.
+/// Inside the shuttle's own post-delegation bundle, exactly one split is
+/// sponsored: the one the queue delivers first.
 #[tokio::test]
 #[serial]
 async fn deposit_and_queue_transfer_sponsors_only_the_first_delivered_split() {
     let mut fixture = setup_fixture_with_acl_mock(None).await;
-    let payer = fixture.payer;
-    let (shuttle, shuttle_eata) = pre_create_sponsored_shuttle_eata(&mut fixture, payer, 7, 1);
 
     // 12 units split three ways is 5, 5, 2. With equal ready_at the smallest
     // amount is delivered first, so it (and not the first index) must be the
     // sponsored split.
     let unit = 10u64.pow(DECIMALS as u32);
     let split: u32 = 3;
-    let ix = build_sponsored_deposit_and_queue_ix(&mut fixture, 12 * unit, split, 1, shuttle_eata);
-    let clone_target = projected_clone_target(&fixture, shuttle);
+    let ix = build_bundle_shaped_ix(&mut fixture, 12 * unit, split, 1);
+    let clone_target = fixture.destination_ata;
     process(&mut fixture, under_post_action_executor(ix, clone_target))
         .await
         .unwrap();
@@ -1481,36 +1417,36 @@ async fn deposit_and_queue_transfer_sponsors_only_the_first_delivered_split() {
         items.iter().all(|item| !item.has_higher_priority_than(sponsored)),
         "the sponsored split must be the first delivered"
     );
-    // The eATA is only read: the rollup cannot write it, the bundle closes it.
-    assert_eq!(sponsored_base_ata_credit(&mut fixture, shuttle_eata).await, 1);
 }
 
 /// Nothing is sponsored outside the shuttle's own bundle: not on a direct call,
-/// not in another delegation's bundle, and not for a shuttle that never prepaid.
+/// not in another delegation's bundle, and not when account 8 is not the token
+/// account the bundle was cloned onto.
 #[tokio::test]
 #[serial]
 async fn deposit_and_queue_transfer_sponsors_nothing_outside_the_shuttles_own_bundle() {
     let mut fixture = setup_fixture_with_acl_mock(None).await;
-    let payer = fixture.payer;
-    let (_, credited_eata) = pre_create_sponsored_shuttle_eata(&mut fixture, payer, 1, 1);
-    let (uncredited_shuttle, uncredited_eata) = pre_create_sponsored_shuttle_eata(&mut fixture, payer, 2, 0);
     let split: u32 = 2;
 
     // A direct call: no executor above it.
-    let ix = build_sponsored_deposit_and_queue_ix(&mut fixture, 10, split, 1, credited_eata);
+    let ix = build_bundle_shaped_ix(&mut fixture, 10, split, 1);
     process(&mut fixture, ix).await.unwrap();
 
     // Another delegation's bundle.
-    let ix = build_sponsored_deposit_and_queue_ix(&mut fixture, 10, split, 2, credited_eata);
+    let ix = build_bundle_shaped_ix(&mut fixture, 10, split, 2);
     let foreign_target = utils::test_pubkey("deposit_and_queue_transfer::foreign_clone_target");
     process(&mut fixture, under_post_action_executor(ix, foreign_target))
         .await
         .unwrap();
 
-    // The right bundle, but the shuttle never prepaid.
-    let ix = build_sponsored_deposit_and_queue_ix(&mut fixture, 10, split, 3, uncredited_eata);
-    let clone_target = projected_clone_target(&fixture, uncredited_shuttle);
-    process(&mut fixture, under_post_action_executor(ix, clone_target))
+    // The clone target matches account 8, but account 8 is not a token account.
+    let group_receipt = pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, 3, split);
+    let permission = utils::derive_group_receipt_permission(group_receipt);
+    let ix = with_instructions_sysvar(with_receipt_permission(
+        build_deposit_and_queue_ix(&fixture, 10, 0, 0, split, 3, group_receipt),
+        permission,
+    ));
+    process(&mut fixture, under_post_action_executor(ix, PROGRAM))
         .await
         .unwrap();
 
@@ -1519,50 +1455,27 @@ async fn deposit_and_queue_transfer_sponsors_nothing_outside_the_shuttles_own_bu
     assert!(items.iter().all(|item| item.flags == 0), "no split may be sponsored");
 }
 
-/// An eATA that is not at its own PDA is rejected, not treated as unsponsored.
+/// Account 14 must be the instructions sysvar.
 #[tokio::test]
 #[serial]
-async fn deposit_and_queue_transfer_rejects_mismatched_shuttle_eata() {
+async fn deposit_and_queue_transfer_rejects_a_non_sysvar_account() {
     let mut fixture = setup_fixture_with_acl_mock(None).await;
-    let payer = fixture.payer;
-    let (shuttle_a, _) = utils::derive_shuttle_ephemeral_ata(PROGRAM, payer, fixture.mint, 1);
-    let (shuttle_b, _) = utils::derive_shuttle_ephemeral_ata(PROGRAM, payer, fixture.mint, 2);
-    let (eata_b, bump_b) = utils::derive_shuttle_eata(PROGRAM, shuttle_b, fixture.mint);
-    // Data claiming shuttle A, stored at shuttle B's eATA address.
-    set_program_account(
-        &mut fixture.context,
-        eata_b,
-        shuttle_eata_data(shuttle_a, fixture.mint, bump_b, 1),
-    );
-
-    let ix = build_sponsored_deposit_and_queue_ix(&mut fixture, 10, 1, 1, eata_b);
-    assert_eq!(
-        process(&mut fixture, ix).await.unwrap_err(),
-        TransactionError::InstructionError(0, InstructionError::InvalidSeeds)
-    );
-}
-
-/// A partial sponsorship pair (15 accounts) must fail loudly instead of
-/// silently skipping the sponsorship.
-#[tokio::test]
-#[serial]
-async fn deposit_and_queue_transfer_rejects_partial_sponsorship_pair() {
-    let mut fixture = setup_fixture_with_acl_mock(None).await;
-    let payer = fixture.payer;
-    let (_, shuttle_eata) = pre_create_sponsored_shuttle_eata(&mut fixture, payer, 3, 1);
     let group_id: u32 = 1;
     let split: u32 = 1;
-    let group_receipt = pre_create_group_receipt(&mut fixture.context, fixture.queue, payer, group_id, split);
+    let group_receipt = pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, group_id, split);
     let permission = utils::derive_group_receipt_permission(group_receipt);
 
-    let mut ix = with_receipt_permission(
-        build_deposit_and_queue_ix(&fixture, 10, 0, 0, split, group_id, group_receipt),
-        permission,
+    let mut ix = with_reimbursement(
+        with_receipt_permission(
+            build_deposit_and_queue_ix(&fixture, 10, 0, 0, split, group_id, group_receipt),
+            permission,
+        ),
+        fixture.destination_ata,
     );
-    ix.accounts.push(AccountMeta::new_readonly(shuttle_eata, false)); // 14: eATA without the sysvar
+    ix.accounts.push(AccountMeta::new_readonly(fixture.vault, false)); // 14: not the sysvar
 
     assert_eq!(
         process(&mut fixture, ix).await.unwrap_err(),
-        TransactionError::InstructionError(0, InstructionError::NotEnoughAccountKeys)
+        TransactionError::InstructionError(0, InstructionError::UnsupportedSysvar)
     );
 }

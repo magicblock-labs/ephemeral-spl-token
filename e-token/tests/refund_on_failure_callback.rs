@@ -1,8 +1,6 @@
 use ephemeral_rollups_pinocchio::consts::{MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID};
 use ephemeral_spl_api::{
-    state::transfer_queue::{
-        HEADER_LEN, QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA, QUEUE_SEED, TRANSFER_QUEUE_VERSION,
-    },
+    state::transfer_queue::{HEADER_LEN, QUEUE_SEED, TRANSFER_QUEUE_VERSION},
     ID as PROGRAM,
 };
 use magicblock_magic_program_api::{instruction::CallbackInstruction, pda::CALLBACK_SIGNER, CALLBACK_PROGRAM_ID};
@@ -32,23 +30,14 @@ mod utils;
 
 // buffer_offset = 6: response.data starts at byte 14 of the original 8-byte-aligned
 // instruction buffer (1 disc + 4 variant + 1 ok + 8 data_len), and 14 % 8 = 6.
-#[variable_offset_layout(buffer_offset = 6, option = implicit)]
+#[variable_offset_layout(buffer_offset = 6)]
 struct RefundOnFailureArgs {
     pub amount: u64,
     pub retries_left: u8,
-    pub flags: Option<u8>,
 }
 
-/// `flags: None` is the legacy 9-byte payload that callbacks scheduled before
-/// the flags field existed still carry.
-fn callback_ix_data_with_flags(ok: bool, amount: u64, retries_left: u8, flags: Option<u8>) -> Vec<u8> {
-    let args = RefundOnFailureArgs {
-        amount,
-        retries_left,
-        flags,
-    }
-    .encode()
-    .unwrap();
+fn callback_ix_data(ok: bool, amount: u64, retries_left: u8) -> Vec<u8> {
+    let args = RefundOnFailureArgs { amount, retries_left }.encode().unwrap();
     let mut data = Vec::new();
     data.push(internal::RefundOnFailureCallback.discriminator());
     data.extend_from_slice(&0u32.to_le_bytes()); // variant = 0
@@ -59,9 +48,6 @@ fn callback_ix_data_with_flags(ok: bool, amount: u64, retries_left: u8, flags: O
     data.push(0u8); // no signature
     data
 }
-
-/// Offset of `flags` in the refund action data: discriminator (1) + escrow_index (1) + amount (8).
-const EXECUTE_ARGS_FLAGS_OFFSET: usize = 10;
 
 fn derive_queue(mint: Pubkey, validator: Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[QUEUE_SEED, mint.as_ref(), validator.as_ref()], &PROGRAM)
@@ -177,26 +163,6 @@ fn callback_ix(
     amount: u64,
     retries_left: u8,
 ) -> Instruction {
-    callback_ix_with_flags(
-        refund_destination_owner,
-        queue,
-        magic_fee_vault,
-        ok,
-        amount,
-        retries_left,
-        None,
-    )
-}
-
-fn callback_ix_with_flags(
-    refund_destination_owner: Pubkey,
-    queue: Pubkey,
-    magic_fee_vault: Pubkey,
-    ok: bool,
-    amount: u64,
-    retries_left: u8,
-    flags: Option<u8>,
-) -> Instruction {
     Instruction {
         program_id: PROGRAM,
         accounts: vec![
@@ -207,7 +173,7 @@ fn callback_ix_with_flags(
             AccountMeta::new(MAGIC_CONTEXT_ID, false),                  // 4: magic_context
             AccountMeta::new_readonly(MAGIC_PROGRAM_ID, false),         // 5: magic_program
         ],
-        data: callback_ix_data_with_flags(ok, amount, retries_left, flags),
+        data: callback_ix_data(ok, amount, retries_left),
     }
 }
 
@@ -220,36 +186,13 @@ fn callback_executor_ix(
     amount: u64,
     retries_left: u8,
 ) -> Instruction {
-    callback_executor_ix_with_flags(
-        validator,
+    let inner = callback_ix(
         refund_destination_owner,
         queue,
         magic_fee_vault,
         ok,
         amount,
         retries_left,
-        None,
-    )
-}
-
-fn callback_executor_ix_with_flags(
-    validator: Pubkey,
-    refund_destination_owner: Pubkey,
-    queue: Pubkey,
-    magic_fee_vault: Pubkey,
-    ok: bool,
-    amount: u64,
-    retries_left: u8,
-    flags: Option<u8>,
-) -> Instruction {
-    let inner = callback_ix_with_flags(
-        refund_destination_owner,
-        queue,
-        magic_fee_vault,
-        ok,
-        amount,
-        retries_left,
-        flags,
     );
 
     let mut account_metas = vec![
@@ -352,6 +295,8 @@ async fn refund_on_failure_schedules_intent_bundle() {
         "refund action destination must be PROGRAM"
     );
     assert_eq!(action.compute_units, 140_000);
+    // Refund action data: discriminator (1) + escrow_index (1) + amount (8) + flags (1).
+    assert_eq!(action.args.data[10], 0, "a refund must not create the sender's ATA");
 
     // One AddActionCallback CPI with RefundOnFailureCallback discriminator
     let action_callbacks = take_captured_action_callbacks(magic_program);
@@ -371,68 +316,12 @@ async fn refund_on_failure_schedules_intent_bundle() {
     );
     assert_eq!(cb.compute_units, 100_000);
 
-    // Payload encodes amount (u64, 8 bytes) + retries_left (u8, 1 byte) + flags (u8, 1 byte).
+    // Payload encodes amount (u64, 8 bytes) + retries_left (u8, 1 byte) = 9 bytes.
     // schedule_refund_on_failure decrements retries_left before encoding, so 4 → 3.
-    assert_eq!(cb.payload.len(), 10, "payload must be 10 bytes");
+    assert_eq!(cb.payload.len(), 9, "payload must be 9 bytes");
     let decoded_amount = u64::from_le_bytes(cb.payload[0..8].try_into().expect("payload too short"));
     assert_eq!(decoded_amount, AMOUNT, "callback payload must encode AMOUNT");
     assert_eq!(cb.payload[8], 3, "retries_left must be decremented to 3");
-    // A legacy payload carries no flags, so the retry sponsors nothing.
-    assert_eq!(cb.payload[9], 0, "flags must be carried as 0");
-    assert_eq!(
-        action.args.data[EXECUTE_ARGS_FLAGS_OFFSET], 0,
-        "the refund action must not ask the rent PDA to create an ATA"
-    );
-}
-
-/// The refund keeps only the failed delivery's unused ATA sponsorship: any
-/// other bit is dropped, and the sponsorship survives the retry chain.
-#[tokio::test]
-#[serial]
-async fn refund_on_failure_carries_only_the_sponsorship_flag() {
-    let (ctx, validator, _mint, queue, magic_fee_vault, refund_destination_owner) = setup_context().await;
-    let magic_program = Pubkey::new_from_array(MAGIC_PROGRAM_ID.to_bytes());
-    const AMOUNT: u64 = 1_000;
-
-    let ix = callback_executor_ix_with_flags(
-        validator.pubkey(),
-        refund_destination_owner,
-        queue,
-        magic_fee_vault,
-        false,
-        AMOUNT,
-        4,
-        Some(QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA | 0b1000_0000),
-    );
-
-    let tx = Transaction::new_signed_with_payer(
-        std::slice::from_ref(&ix),
-        Some(&validator.pubkey()),
-        &[&validator],
-        ctx.last_blockhash,
-    );
-    ctx.banks_client.process_transaction(tx).await.unwrap();
-
-    let callbacks = take_execute_callbacks();
-    assert_eq!(callbacks.len(), 1);
-
-    let bundles = take_captured_intent_bundles(magic_program);
-    assert_eq!(bundles.len(), 1, "expected exactly one intent bundle");
-    let action = &bundles[0].args.standalone_actions[0];
-    assert_eq!(
-        action.args.data[EXECUTE_ARGS_FLAGS_OFFSET], QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
-        "the refund action must sponsor the ATA the failed delivery was entitled to"
-    );
-
-    let action_callbacks = take_captured_action_callbacks(magic_program);
-    assert_eq!(action_callbacks.len(), 1, "expected exactly one AddActionCallback");
-    let cb = &action_callbacks[0].args;
-    assert_eq!(cb.payload.len(), 10, "payload must be 10 bytes");
-    assert_eq!(cb.payload[8], 3, "retries_left must be decremented to 3");
-    assert_eq!(
-        cb.payload[9], QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
-        "only the sponsorship flag may be carried to the next retry"
-    );
 }
 
 /// Exhausted retries (ok=false, retries_left=0): callback returns RefundPermanentlyFailed,
