@@ -134,6 +134,7 @@ pub fn process_execute_transfer_callback(accounts: &[AccountView], instruction_d
                     magic_program,
                 )?,
                 args.amount(),
+                args.flag(),
                 MAX_REFUND_RETRIES,
             );
         }

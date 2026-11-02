@@ -240,6 +240,7 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
             shuttle_id: args.shuttle_id(),
             total_amount: shuttled_amount,
             validator: args.validator(),
+            sponsored_base_ata: false,
         },
         &prepared.mint,
         shuttle_eata.bump,

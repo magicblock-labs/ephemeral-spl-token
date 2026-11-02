@@ -17,7 +17,7 @@ pub(crate) mod token_vault;
 pub(crate) mod transfer_queue_refill;
 pub(crate) mod unwrap_pda;
 
-pub(crate) use ephemeral_account::MAGIC_VAULT_ID;
+pub(crate) use ephemeral_account::{MAGIC_VAULT_ID, POST_DELEGATION_ACTION_EXECUTOR_ID};
 #[cfg(feature = "logging")]
 pub(crate) use group_receipt_accounts::group_receipt_log;
 pub(crate) use group_receipt_accounts::{

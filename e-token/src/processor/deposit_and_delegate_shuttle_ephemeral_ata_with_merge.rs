@@ -100,6 +100,7 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge(
             shuttle_id: args.shuttle_id(),
             total_amount: args.amount(),
             validator: args.validator(),
+            sponsored_base_ata: false,
         },
         0,
         default_post_delegation_actions(&accounts).cleartext(),

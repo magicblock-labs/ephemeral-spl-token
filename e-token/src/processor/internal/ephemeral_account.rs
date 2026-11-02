@@ -9,6 +9,11 @@ use solana_pubkey::pubkey;
 /// Vault account that collects rent for ephemeral accounts.
 pub(crate) const MAGIC_VAULT_ID: Address = pubkey!("MagicVau1t999999999999999999999999999999999");
 
+/// Program the rollup runs post-delegation actions through, right after the
+/// delegated clone. `DepositAndQueueTransfer` recognises it in the instructions
+/// sysvar to tell a shuttle's own bundle from a direct call.
+pub(crate) const POST_DELEGATION_ACTION_EXECUTOR_ID: Address = pubkey!("PostAct111111111111111111111111111111111111");
+
 /// Bincode variant index for `MagicBlockInstruction::CreateEphemeralAccount` (variant 12).
 const CREATE_EPHEMERAL_VARIANT: [u8; 4] = [12, 0, 0, 0];
 

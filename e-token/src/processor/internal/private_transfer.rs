@@ -18,7 +18,7 @@ use ephemeral_spl_api::{
     require, require_eq_keys, require_n_accounts,
     state::transfer_queue::{queue_views, TransferQueue},
 };
-use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use pinocchio::{error::ProgramError, sysvars::instructions::INSTRUCTIONS_ID, AccountView, ProgramResult};
 use solana_address::Address;
 #[cfg(not(feature = "no-fees"))]
 use solana_instruction::{AccountMeta, Instruction};
@@ -194,6 +194,7 @@ pub(crate) fn process_with_merge_and_private_transfer_inner(
             shuttle_id,
             total_amount,
             validator,
+            sponsored_base_ata: true,
         },
         ephemeral_spl_api::consts::SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS,
         actions,
@@ -238,6 +239,10 @@ fn private_transfer_action_encrypted(
             MaybeEncryptedPubkey::ClearText(MAGIC_PROGRAM_ID.to_bytes()),
             MaybeEncryptedPubkey::ClearText(group_receipt_permission.to_bytes()),
             MaybeEncryptedPubkey::ClearText(PERMISSION_PROGRAM_ID.to_bytes()),
+            // The shuttle eATA carries the prepaid recipient ATA; the instructions
+            // sysvar lets ix 16 verify it runs inside this shuttle's own bundle.
+            MaybeEncryptedPubkey::ClearText(common_accounts.shuttle_eata_info.address().to_bytes()),
+            MaybeEncryptedPubkey::ClearText(INSTRUCTIONS_ID.to_bytes()),
         ],
         instructions: alloc::vec![MaybeEncryptedInstruction {
             program_id: 1,
@@ -256,6 +261,8 @@ fn private_transfer_action_encrypted(
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(12, false)),
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(13, false)),
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(14, false)),
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(15, false)),
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(16, false)),
             ],
             data: MaybeEncryptedIxData {
                 prefix: ESplInstruction::DepositAndQueueTransfer

@@ -117,6 +117,7 @@ pub fn process_deposit_and_delegate_shuttle_with_merge_to_encrypted_destination(
             shuttle_id: args.shuttle_id(),
             total_amount: args.amount(),
             validator: args.validator(),
+            sponsored_base_ata: false,
         },
         ephemeral_spl_api::consts::SPONSORED_SHUTTLE_MERGE_TO_ENCRYPTED_DESTINATION_EXTRA_LAMPORTS,
         actions,

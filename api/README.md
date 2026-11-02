@@ -710,6 +710,7 @@ Private transfer validation:
 - `split` must be an integer between `1` and `15`
 - `split` cannot exceed the transfer amount after platform-fee adjustment
 - if both delays are present, `maxDelayMs >= minDelayMs`
+- the recipient's base-chain token account is created by the program only for `base -> base` private transfers, whose setup fee prepays exactly one ATA; it is created by the first delivered split. `ephemeral -> base` private transfers never create it, so a split addressed to a recipient without a token account for the mint is refunded to the sender
 
 Platform fee validation:
 

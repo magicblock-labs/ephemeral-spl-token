@@ -280,6 +280,15 @@
           "name": "magicFeeVault",
           "writable": true,
           "optional": true
+        },
+        {
+          "name": "shuttleEata",
+          "optional": true
+        },
+        {
+          "name": "instructionsSysvar",
+          "optional": true,
+          "address": "Sysvar1nstructions1111111111111111111111111"
         }
       ],
       "args": []
@@ -708,7 +717,8 @@
       "docs": [
         "Deposits into the vault and enqueues one or more delayed transfers.",
         "Instruction data: [0..8] amount, [8..16] min_delay_ms, [16..24] max_delay_ms, [24..28] split, optionally [28] flags.",
-        "groupReceiptPermission + permissionProgram create a private ACL permission on the group receipt; legacy clients may omit both trailing accounts (12-account shape)."
+        "groupReceiptPermission + permissionProgram create a private ACL permission on the group receipt; legacy clients may omit both trailing accounts (12-account shape).",
+        "shuttleEata + instructionsSysvar (16-account shape) are passed only by the post-delegation action of a sponsored private transfer: the shuttle eATA carries the one recipient ATA creation the setup fee prepaid, and it is honoured only while the rollup's post-delegation executor runs that shuttle's own bundle, on the first-delivered split. Flags passed in the instruction data never enable ATA creation."
       ],
       "accounts": [
         {
