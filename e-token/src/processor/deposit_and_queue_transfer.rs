@@ -11,8 +11,9 @@ use ephemeral_spl_api::{
     state::{
         stealth_pool::StealthPool,
         transfer_queue::{
-            queue_len_and_bump_for_mint_with_capacity, queue_push_from_data, queue_set_token_program_kind_from_data,
-            QueuedTransfer, TransferQueue, QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
+            queue_len_and_bump_for_mint_with_capacity, queue_peek_next_task_id_from_data, queue_push_from_data,
+            queue_set_token_program_kind_from_data, queue_sponsor_first_delivered_from_data, QueuedTransfer,
+            TransferQueue, QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
         },
         RawType,
     },
@@ -28,7 +29,9 @@ use wheels::layout::Decodable as _;
 
 use crate::processor::internal::{
     group_receipt::derive_group_receipt_id,
-    group_receipt_create, read_mint_decimals, token_program_kind,
+    group_receipt_create, read_mint_decimals,
+    rent_pda::RENT_PDA,
+    token_program_kind,
     token_vault::{transfer_to_queue_vault_for_mint, transfer_to_vault_for_mint, validate_queue_vault_for_mint},
     GroupReceiptAccounts, GroupReceiptPermissionAccounts,
 };
@@ -59,6 +62,18 @@ const MILLIS_PER_SECOND: u64 = 1_000;
 ///  12: [writable]         - PDA     : Group receipt permission (derived from ["permission:", group_receipt]).
 ///  13: []                 - Program : Permission program (ACL).
 ///
+/// Accounts (15-account shape — the post-delegation action of a sponsored private
+/// transfer, whose setup fee prepaid one recipient ATA creation on the base chain):
+///
+///  0-13: same as above.
+///  14: [signer]           - PDA     : Global rent PDA.
+///
+/// The create-ATA flag never comes from the caller. Only the rent PDA can
+/// authorize it, and the program signs as the rent PDA only in the bundle of a
+/// sponsored private transfer (ix 25/31), whose setup fee prepays one recipient
+/// ATA. The flag then goes on the one split the queue delivers first. Direct
+/// calls cannot produce that signature, so they sponsor nothing.
+///
 /// Instruction Data: DepositAndQueueTransferArgs
 ///
 #[inline(always)]
@@ -83,14 +98,24 @@ pub fn process_deposit_and_queue_transfer(accounts: &[AccountView], instruction_
         optional_accounts,
     ) = require_n_accounts_with_optionals!(accounts, 12);
 
-    // Only the 12- and 14-account shapes are valid: a partial permission pair
-    // must fail loudly rather than silently create an unprotected receipt.
-    let receipt_permission = match optional_accounts {
-        [] => None,
-        [permission_info, permission_program] => Some(GroupReceiptPermissionAccounts {
-            permission_info,
-            permission_program,
-        }),
+    // Only the 12-, 14- and 15-account shapes are valid: a partial permission
+    // pair must fail loudly rather than silently create an unprotected receipt.
+    let (receipt_permission, sponsor) = match optional_accounts {
+        [] => (None, None),
+        [permission_info, permission_program] => (
+            Some(GroupReceiptPermissionAccounts {
+                permission_info,
+                permission_program,
+            }),
+            None,
+        ),
+        [permission_info, permission_program, sponsor_info] => (
+            Some(GroupReceiptPermissionAccounts {
+                permission_info,
+                permission_program,
+            }),
+            Some(sponsor_info),
+        ),
         [_] => return Err(ProgramError::NotEnoughAccountKeys),
         _ => return Err(EphemeralSplError::TooManyAccountKeys.into()),
     };
@@ -146,6 +171,14 @@ pub fn process_deposit_and_queue_transfer(accounts: &[AccountView], instruction_
     let derived_queue = TransferQueue::derive_pda(mint_info.address(), &validator, bump)?;
     require_eq_keys!(&derived_queue, queue_info.address(), ProgramError::InvalidSeeds);
 
+    let sponsor_base_ata = match sponsor {
+        Some(sponsor_info) => {
+            require_eq_keys!(sponsor_info.address(), &RENT_PDA, ProgramError::InvalidSeeds);
+            sponsor_info.is_signer()
+        }
+        None => false,
+    };
+
     let now_ms = queue_timestamp_now()?;
 
     let destination_resolution = DestinationResolution::from_account(destination_info, token_program_info.address())?;
@@ -191,9 +224,11 @@ pub fn process_deposit_and_queue_transfer(accounts: &[AccountView], instruction_
     let source = *user_authority.address();
     let client_ref_id = args.client_ref_id().unwrap_or(0);
     let split_plan = build_split_plan(amount, split, decimals)?;
+    let caller_flags = args.flags().unwrap_or(0) & !QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA;
 
     let data = unsafe { queue_info.borrow_unchecked_mut() };
     queue_set_token_program_kind_from_data(data, queue_token_program_kind)?;
+    let first_task_id = queue_peek_next_task_id_from_data(data)?;
     let group_destination_owner =
         destination_resolution.group_destination(&source, group_id, queue_len_before, client_ref_id)?;
     for index in 0..split {
@@ -226,7 +261,7 @@ pub fn process_deposit_and_queue_transfer(accounts: &[AccountView], instruction_
             ready_at,
             client_ref_id,
             task_id: 0,
-            flags: args.flags().unwrap_or(0) | QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
+            flags: caller_flags,
             group_id: [0; 3],
         };
         queued_transfer.set_group_id(group_id)?;
@@ -244,6 +279,13 @@ pub fn process_deposit_and_queue_transfer(accounts: &[AccountView], instruction_
             selected_delay_ms,
             ready_at
         );
+    }
+
+    if sponsor_base_ata {
+        let end_task_id = first_task_id
+            .checked_add(args.split())
+            .ok_or(ProgramError::InvalidInstructionData)?;
+        queue_sponsor_first_delivered_from_data(data, first_task_id..end_task_id)?;
     }
 
     debug_log!(

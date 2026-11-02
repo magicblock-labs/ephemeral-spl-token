@@ -8,7 +8,9 @@ pub const SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS: u64 = if cfg!(feature = "
 ///
 /// 0.00153928 SOL = 1_539_280 lamports. Combined with
 /// `SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS`, the total setup fee is
-/// 0.00203928 SOL (which covers ATA creation if needed).
+/// 0.00203928 SOL. It prepays one recipient ATA creation on the base chain at
+/// the current rent, which `DepositAndQueueTransfer` grants to the
+/// first-delivered split of the private transfer.
 pub const SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS: u64 =
     if cfg!(feature = "no-fees") { 0 } else { 1_539_280 };
 

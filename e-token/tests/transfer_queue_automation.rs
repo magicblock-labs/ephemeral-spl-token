@@ -860,7 +860,8 @@ async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
         amount: expected_amount,
         client_ref_id: None,
         escrow_index: EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
-        flags: ephemeral_spl_api::state::transfer_queue::QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
+        // Enqueued by a direct call, so the delivery carries no ATA sponsorship.
+        flags: 0,
     };
     let expected_action_data = TestInternalInstruction::ExecuteReadyQueuedTransfer.with_data(&args.encode().unwrap());
 
@@ -1031,7 +1032,8 @@ async fn recurring_queue_crank_includes_client_ref_id_in_execute_action_when_pre
         amount: expected_amount,
         client_ref_id: Some(42),
         escrow_index: EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
-        flags: ephemeral_spl_api::state::transfer_queue::QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
+        // Enqueued by a direct call, so the delivery carries no ATA sponsorship.
+        flags: 0,
     };
     let expected_action_data = TestInternalInstruction::ExecuteReadyQueuedTransfer.with_data(&args.encode().unwrap());
     assert_eq!(transfer_action.args.data, expected_action_data);

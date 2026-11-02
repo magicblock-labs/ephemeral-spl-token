@@ -8,6 +8,7 @@ use ephemeral_spl_api::{
         stealth_pool::{StealthPool, StealthPoolFlags},
         transfer_queue::{
             queue_views_checked, QueuedTransfer, TransferQueue, TransferQueueHeader, HEADER_LEN, ITEM_LEN,
+            QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
         },
     },
     ID as PROGRAM,
@@ -459,10 +460,9 @@ async fn deposit_and_queue_transfer_transfers_once_and_enqueues_split_items() {
         } else {
             shared_client_ref_id = Some(client_ref_id);
         }
-        assert_eq!(
-            queued.flags,
-            ephemeral_spl_api::state::transfer_queue::QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA
-        );
+        // A direct call carries no sponsorship credit, so no split may ask the
+        // rent PDA to create the recipient ATA.
+        assert_eq!(queued.flags, 0);
         assert!(implied_now_ms >= (clock_before.unix_timestamp * 1_000) as u64);
         assert!(implied_now_ms <= (clock_after.unix_timestamp * 1_000) as u64);
     }
@@ -1243,5 +1243,114 @@ async fn deposit_and_queue_transfer_rejects_partial_permission_pair() {
     assert_eq!(
         err.unwrap(),
         TransactionError::InstructionError(0, InstructionError::NotEnoughAccountKeys)
+    );
+}
+
+// ── recipient ATA sponsorship ────────────────────────────────────────────────
+
+const RENT_PDA_SEED: &[u8] = b"rent";
+
+fn rent_pda() -> Pubkey {
+    Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM).0
+}
+
+/// A 15-account deposit carrying `sponsor` as account 14, unsigned: only the
+/// program itself can sign as the rent PDA, inside a sponsored bundle.
+fn build_with_sponsor_account(fixture: &mut Fixture, sponsor: Pubkey, split: u32, group_id: u32) -> Instruction {
+    let group_receipt = pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, group_id, split);
+    let permission = utils::derive_group_receipt_permission(group_receipt);
+    let mut ix = with_receipt_permission(
+        build_deposit_and_queue_ix(fixture, 10, 0, 0, split, group_id, group_receipt),
+        permission,
+    );
+    ix.accounts.push(AccountMeta::new_readonly(sponsor, false)); // 14: sponsor
+    ix
+}
+
+async fn process(fixture: &mut Fixture, ix: Instruction) -> Result<(), TransactionError> {
+    let blockhash = fixture.context.banks_client.get_latest_blockhash().await.unwrap();
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&fixture.payer), &[&fixture.payer_kp], blockhash);
+    fixture
+        .context
+        .banks_client
+        .process_transaction(tx)
+        .await
+        .map_err(|err| err.unwrap())
+}
+
+async fn queued_items(fixture: &mut Fixture) -> Vec<QueuedTransfer> {
+    let queue_account = fixture
+        .context
+        .banks_client
+        .get_account(fixture.queue)
+        .await
+        .unwrap()
+        .expect("queue account must exist");
+    let header = read_header_unaligned(&queue_account.data);
+    (0..header.length as usize)
+        .map(|index| read_item_unaligned(&queue_account.data, index))
+        .collect()
+}
+
+/// A direct call never sponsors the recipient ATA, even when the caller sets
+/// the flag: only the rent PDA's signature may put it on a split.
+#[tokio::test]
+#[serial]
+async fn deposit_and_queue_transfer_strips_caller_create_ata_flag() {
+    let mut fixture = setup_fixture_with_acl_mock(None).await;
+    let group_id: u32 = 1;
+    let split: u32 = 2;
+    let group_receipt = pre_create_group_receipt(&mut fixture.context, fixture.queue, fixture.payer, group_id, split);
+    let permission = utils::derive_group_receipt_permission(group_receipt);
+
+    let ix = with_receipt_permission(
+        build_deposit_and_queue_ix_with_options(
+            &fixture,
+            10,
+            0,
+            0,
+            split,
+            Some(QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA),
+            None,
+            group_id,
+            group_receipt,
+        ),
+        permission,
+    );
+    process(&mut fixture, ix).await.unwrap();
+
+    let items = queued_items(&mut fixture).await;
+    assert_eq!(items.len(), split as usize);
+    assert!(
+        items.iter().all(|item| item.flags == 0),
+        "no split may carry the create-ATA flag"
+    );
+}
+
+/// Passing the rent PDA without its signature sponsors nothing.
+#[tokio::test]
+#[serial]
+async fn deposit_and_queue_transfer_ignores_an_unsigned_rent_pda() {
+    let mut fixture = setup_fixture_with_acl_mock(None).await;
+    let split: u32 = 3;
+    let ix = build_with_sponsor_account(&mut fixture, rent_pda(), split, 1);
+    process(&mut fixture, ix).await.unwrap();
+
+    let items = queued_items(&mut fixture).await;
+    assert_eq!(items.len(), split as usize);
+    assert!(items.iter().all(|item| item.flags == 0), "no split may be sponsored");
+}
+
+/// Account 14 must be the rent PDA.
+#[tokio::test]
+#[serial]
+async fn deposit_and_queue_transfer_rejects_a_wrong_sponsor_account() {
+    let mut fixture = setup_fixture_with_acl_mock(None).await;
+    let payer = fixture.payer;
+    let ix = build_with_sponsor_account(&mut fixture, payer, 1, 1);
+
+    assert_eq!(
+        process(&mut fixture, ix).await.unwrap_err(),
+        TransactionError::InstructionError(0, InstructionError::InvalidSeeds)
     );
 }

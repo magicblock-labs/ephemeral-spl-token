@@ -1,3 +1,5 @@
+use core::ops::Range;
+
 use bytemuck::{Pod, Zeroable};
 use pinocchio::{cpi::Seed, error::ProgramError};
 use solana_address::{address_eq, Address};
@@ -472,6 +474,28 @@ pub fn queue_push_from_data(data: &mut [u8], mut transfer: QueuedTransfer) -> Re
     Ok(())
 }
 
+/// Flags the transfer the queue delivers first among `task_ids` so that its
+/// base-chain delivery creates the recipient ATA.
+///
+/// A paid private transfer sponsors one ATA, so exactly one of its splits may
+/// carry the flag, and it has to be the one that lands first: the others then
+/// find the account already there.
+pub fn queue_sponsor_first_delivered_from_data(data: &mut [u8], task_ids: Range<u32>) -> Result<(), ProgramError> {
+    let (header, items) = queue_views_mut_checked(data)?;
+    let items = &mut items[..header.length as usize];
+
+    let mut first = None;
+    for (index, item) in items.iter().enumerate() {
+        if task_ids.contains(&item.task_id) && first.is_none_or(|first| item.has_higher_priority_than(&items[first])) {
+            first = Some(index);
+        }
+    }
+
+    let first = first.ok_or(ProgramError::InvalidArgument)?;
+    items[first].flags |= QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA;
+    Ok(())
+}
+
 /// Peek the effective next task id that would be assigned by `queue_push_from_data`.
 pub fn queue_peek_next_task_id_from_data(data: &[u8]) -> Result<u32, ProgramError> {
     let (header, _) = queue_views_checked(data)?;
@@ -578,6 +602,37 @@ mod tests {
         assert_eq!(top.amount, 50);
         assert_eq!(top.source, addr(9));
         assert_eq!(top.destination_owner, addr(9));
+    }
+
+    #[test]
+    fn queue_sponsor_first_delivered_flags_only_the_first_split() {
+        let data_len = HEADER_LEN + (8 * ITEM_LEN);
+        let words = data_len.div_ceil(8);
+        let mut aligned = std::vec![0u64; words];
+        let data = &mut bytemuck::cast_slice_mut::<u64, u8>(&mut aligned)[..data_len];
+
+        init_queue(data, 1, addr(9), addr(10)).unwrap();
+
+        // An unrelated transfer ahead of the group (task 1) must never be picked.
+        queue_push_from_data(data, item(5, 5, 1, 0, 0)).unwrap();
+        // The split group is tasks 2..=4; the queue delivers them as 4, 3, 2.
+        queue_push_from_data(data, item(1, 1, 100, 30, 0)).unwrap();
+        queue_push_from_data(data, item(1, 1, 100, 20, 0)).unwrap();
+        queue_push_from_data(data, item(1, 1, 100, 10, 0)).unwrap();
+
+        queue_sponsor_first_delivered_from_data(data, 2..5).unwrap();
+
+        let mut popped = std::vec::Vec::new();
+        while let Some(transfer) = queue_pop_from_data(data).unwrap() {
+            popped.push((transfer.task_id, transfer.flags));
+        }
+        assert_eq!(
+            popped,
+            [(1, 0), (4, QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA), (3, 0), (2, 0)]
+        );
+
+        // Nothing left to flag.
+        assert!(queue_sponsor_first_delivered_from_data(data, 2..5).is_err());
     }
 
     #[test]

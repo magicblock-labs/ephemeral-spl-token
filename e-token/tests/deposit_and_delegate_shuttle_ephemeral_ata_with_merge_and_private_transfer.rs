@@ -396,6 +396,37 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_trans
         "expected stored post-delegation payload bytes"
     );
     let action_payload = &delegation_record_account.data[record_len..];
+    // The rent PDA signs the private transfer's bundle: that signature is what
+    // lets DepositAndQueueTransfer sponsor the recipient's ATA on the rollup.
+    let stored_actions =
+        <dlp_api::args::PostDelegationActions as borsh::BorshDeserialize>::deserialize(&mut &action_payload[..])
+            .expect("stored post-delegation actions must deserialize");
+    assert_eq!(
+        stored_actions.signers[..2],
+        [owner.pubkey().to_bytes(), rent_pda.to_bytes()],
+        "the bundle must be signed by the owner and the rent PDA"
+    );
+    // The delegation program rejects a bundle in which a signer is referenced as
+    // a non-signer (or the reverse), so every reference must agree with the
+    // signer ranges: inserted signers first, the remaining signers after all
+    // inserted keys.
+    let inserted_signers = stored_actions.inserted_signers as usize;
+    let inserted_total = inserted_signers + stored_actions.inserted_non_signers as usize;
+    let other_signers = stored_actions.signers.len() - inserted_signers;
+    let is_signer_index =
+        |index: usize| index < inserted_signers || (inserted_total..inserted_total + other_signers).contains(&index);
+    for instruction in &stored_actions.instructions {
+        for meta in &instruction.accounts {
+            if let dlp_api::args::MaybeEncryptedAccountMeta::ClearText(meta) = meta {
+                assert_eq!(
+                    meta.is_signer(),
+                    is_signer_index(meta.key() as usize),
+                    "account index {} must be referenced consistently as a signer",
+                    meta.key()
+                );
+            }
+        }
+    }
     let private_transfer_amount = if exact_out {
         DEPOSIT_AMOUNT
     } else {

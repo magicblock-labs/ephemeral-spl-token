@@ -4,11 +4,8 @@ use ephemeral_rollups_pinocchio::{
     pda::magic_fee_vault_pda_from_validator,
 };
 use ephemeral_spl_api::{
-    debug_log,
-    error::EphemeralSplError,
-    instructions::ExecuteQueuedTransferArgs,
-    require, require_eq_keys, require_owned_by,
-    state::transfer_queue::{queue_views_checked, QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA},
+    debug_log, error::EphemeralSplError, instructions::ExecuteQueuedTransferArgs, require, require_eq_keys,
+    require_owned_by, state::transfer_queue::queue_views_checked,
 };
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use solana_address::Address;
@@ -133,7 +130,9 @@ pub(crate) fn schedule_refund_on_failure(
             // TODO(edwin): clarify if needed
             client_ref_id: None,
             escrow_index: EXECUTE_READY_QUEUED_TRANSFER_ESCROW_INDEX,
-            flags: QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
+            // A refund never creates the sender's token account: the sponsor
+            // pays for recipient ATAs only, inside the paying transfer's bundle.
+            flags: 0,
         },
     );
     let mut refund_action = action_builder.build();

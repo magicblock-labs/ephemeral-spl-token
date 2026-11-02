@@ -295,6 +295,8 @@ async fn refund_on_failure_schedules_intent_bundle() {
         "refund action destination must be PROGRAM"
     );
     assert_eq!(action.compute_units, 140_000);
+    // Refund action data: discriminator (1) + escrow_index (1) + amount (8) + flags (1).
+    assert_eq!(action.args.data[10], 0, "a refund must not create the sender's ATA");
 
     // One AddActionCallback CPI with RefundOnFailureCallback discriminator
     let action_callbacks = take_captured_action_callbacks(magic_program);
