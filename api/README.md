@@ -710,7 +710,7 @@ Private transfer validation:
 - `split` must be an integer between `1` and `15`
 - `split` cannot exceed the transfer amount after platform-fee adjustment
 - if both delays are present, `maxDelayMs >= minDelayMs`
-- the recipient's base-chain token account is created by the program only for `base -> base` private transfers, whose setup fee prepays exactly one ATA; it is created by the first delivered split. With a stealth pool that has `splitAcrossKeys`, splits routed to other keys need an existing token account for the mint. `ephemeral -> base` private transfers never create it. A split addressed to an owner without a token account for the mint is refunded to the sender's token account, which must exist
+- the recipient's base-chain associated token account (ATA) is created by the program only for `base -> base` private transfers, whose setup fee prepays exactly one ATA; it is created by the first delivered split. With a stealth pool that has `splitAcrossKeys`, splits routed to other keys need an existing ATA for the mint. `ephemeral -> base` private transfers never create it. A token split addressed to an owner without an ATA for the mint is refunded to the sender's ATA, which must exist. Native SOL sent to a system-owned wallet is delivered as lamports and needs no ATA
 
 Platform fee validation:
 
