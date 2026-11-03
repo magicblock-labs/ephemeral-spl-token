@@ -13,6 +13,9 @@ the buffer without opening a proposal.
 After reviewing the dry run, run the workflow with `dry_run` disabled to open a
 Squads proposal that upgrades the program and records its verified build.
 
+By default the workflow builds the branch or tag it is run from. Set `ref` to a
+commit SHA, release tag, or branch to propose that source instead.
+
 ## 2. Approve and execute
 
 Multisig members approve and execute the proposal through the
