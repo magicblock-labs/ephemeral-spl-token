@@ -40,19 +40,28 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use ephemeral_rollups_sdk::{
-    consts::{MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID},
+    consts::{EPHEMERAL_VAULT_ID, MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID, TOKEN_PROGRAM_ID},
     dlp_api::pda::magic_fee_vault_pda_from_validator,
-    spl::builders::EnsureTransferQueueCrankBuilder,
+    spl::{
+        builders::{DelegateEphemeralAtaBuilder, EnsureTransferQueueCrankBuilder},
+        find_vault_ata,
+    },
 };
+use ephemeral_spl_api::{instruction::ESplInstruction, instructions::DepositAndQueueTransferArgs};
 use ephemeral_token_e2e::{
     base_programs,
-    fixture::{fund_queue_crank, private_queued_transfer_ix, queue_header, setup_queue, token_balance},
+    fixture::{
+        derive_group_receipt, fund_queue_crank, private_queued_transfer_ix, queue_header, setup_queue, token_balance,
+        PROGRAM_ID,
+    },
     rpc::{account_data, send, wait_for},
     stack::{Stack, StackConfig},
     STACK_LOCK,
 };
 use solana_client::rpc_client::RpcClient;
+use solana_instruction::{AccountMeta, Instruction};
 use solana_signer::Signer;
+use wheels::layout::Encodable as _;
 
 const DECIMALS: u8 = 6;
 
@@ -168,6 +177,109 @@ fn private_transfer_is_queued_cranked_and_settled_end_to_end() {
             token_balance(base, &fx.vault_ata)?,
             vault_before + escrowed - settled,
             "the vault paid the settlement out, keeping only the fee"
+        );
+        Ok(())
+    });
+}
+
+/// A direct `DepositAndQueueTransfer` from a rollup balance (the 12-account
+/// shape the SDK builds) sponsors nothing, so a recipient without a token
+/// account cannot be paid. The delivery fails on the base and its callback has
+/// to refund the sender. That callback must not list the receipt permission a
+/// direct call never creates: the rollup rejects a transaction that marks a
+/// nonexistent account writable, and the refund would never be scheduled.
+#[test]
+#[ignore = "spawns live validators; run with `make test-e2e`"]
+fn direct_transfer_to_a_wallet_without_a_token_account_is_refunded() {
+    with_stack(|base, er| {
+        let fx = setup_queue(base, er, DECIMALS)?;
+        let amount = 10 * 10u64.pow(DECIMALS as u32);
+        let sender_before = token_balance(base, &fx.sender_ata)?;
+        assert!(account_data(base, &fx.recipient_ata).is_none());
+
+        // As on mainnet, the global vault's eATA is delegated, so the rollup
+        // projects it over the vault's token account, which the delivery
+        // callback lists as writable.
+        send(
+            base,
+            &[DelegateEphemeralAtaBuilder {
+                payer: fx.helper.pubkey(),
+                user: fx.vault,
+                mint: fx.mint,
+                validator: Some(fx.validator),
+            }
+            .instruction()],
+            &fx.helper.pubkey(),
+            &[&fx.helper],
+        )
+        .context("delegate the global vault's eATA")?;
+
+        send(
+            er,
+            &[EnsureTransferQueueCrankBuilder {
+                payer: fx.payer.pubkey(),
+                queue: fx.queue,
+                magic_fee_vault: magic_fee_vault_pda_from_validator(&fx.validator),
+                magic_context: MAGIC_CONTEXT_ID,
+                magic_program: MAGIC_PROGRAM_ID,
+            }
+            .instruction()],
+            &fx.payer.pubkey(),
+            &[&fx.payer],
+        )
+        .context("EnsureTransferQueueCrank")?;
+        fund_queue_crank(er, &fx.payer, &fx.queue)?;
+
+        // No receipt permission and no sponsor. It spends the sender's rollup
+        // balance, held by their delegated eATA's projection onto their token
+        // account.
+        let group_id = 1;
+        let transfer = Instruction {
+            program_id: PROGRAM_ID,
+            accounts: vec![
+                AccountMeta::new(fx.queue, false),
+                AccountMeta::new_readonly(fx.queue, false),
+                AccountMeta::new_readonly(fx.mint, false),
+                AccountMeta::new(fx.sender_ata, false),
+                AccountMeta::new(find_vault_ata(&fx.mint, &fx.queue), false),
+                AccountMeta::new_readonly(fx.recipient, false),
+                AccountMeta::new_readonly(fx.payer.pubkey(), true),
+                AccountMeta::new_readonly(TOKEN_PROGRAM_ID, false),
+                AccountMeta::new(fx.sender_ata, false),
+                AccountMeta::new(derive_group_receipt(&fx.queue, &fx.payer.pubkey(), group_id), false),
+                AccountMeta::new(EPHEMERAL_VAULT_ID, false),
+                AccountMeta::new_readonly(MAGIC_PROGRAM_ID, false),
+            ],
+            data: ESplInstruction::DepositAndQueueTransfer.with_data(
+                &DepositAndQueueTransferArgs {
+                    amount,
+                    group_id: group_id.to_le_bytes()[..3].try_into()?,
+                    min_delay_ms: 0,
+                    max_delay_ms: 0,
+                    split: 1,
+                    flags: None,
+                    client_ref_id: None,
+                }
+                .encode()?,
+            ),
+        };
+        send(er, &[transfer], &fx.payer.pubkey(), &[&fx.payer]).context("direct DepositAndQueueTransfer")?;
+
+        // Refunds land in the sender's token account on the base.
+        let refunded = wait_for(SETTLE_TIMEOUT * 2, "the sender to be refunded on the base", || {
+            token_balance(base, &fx.sender_ata)
+                .ok()
+                .filter(|balance| *balance > sender_before)
+        })?;
+
+        assert_eq!(
+            refunded,
+            sender_before + amount,
+            "the sender gets the whole amount back"
+        );
+        assert!(
+            account_data(base, &fx.recipient_ata).is_none(),
+            "nothing sponsored the recipient's token account"
         );
         Ok(())
     });

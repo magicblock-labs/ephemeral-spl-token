@@ -8,7 +8,7 @@ use ephemeral_spl_api::{
         stealth_pool::{StealthPool, StealthPoolFlags},
         transfer_queue::{
             queue_views_checked, QueuedTransfer, TransferQueue, TransferQueueHeader, HEADER_LEN, ITEM_LEN,
-            QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA,
+            QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA, QUEUED_TRANSFER_FLAG_NO_RECEIPT_PERMISSION,
         },
     },
     ID as PROGRAM,
@@ -461,8 +461,9 @@ async fn deposit_and_queue_transfer_transfers_once_and_enqueues_split_items() {
             shared_client_ref_id = Some(client_ref_id);
         }
         // A direct call carries no sponsorship credit, so no split may ask the
-        // rent PDA to create the recipient ATA.
-        assert_eq!(queued.flags, 0);
+        // rent PDA to create the recipient ATA. Without permission accounts the
+        // receipt has no permission for the delivery callback to close.
+        assert_eq!(queued.flags, QUEUED_TRANSFER_FLAG_NO_RECEIPT_PERMISSION);
         assert!(implied_now_ms >= (clock_before.unix_timestamp * 1_000) as u64);
         assert!(implied_now_ms <= (clock_after.unix_timestamp * 1_000) as u64);
     }
@@ -1292,11 +1293,13 @@ async fn queued_items(fixture: &mut Fixture) -> Vec<QueuedTransfer> {
         .collect()
 }
 
-/// A direct call never sponsors the recipient ATA, even when the caller sets
-/// the flag: only the rent PDA's signature may put it on a split.
+/// Both bits are the program's to set. A direct call never sponsors the
+/// recipient ATA, even when the caller sets the flag: only the rent PDA's
+/// signature may put it on a split. Nor can a caller mark a receipt that has a
+/// permission as having none.
 #[tokio::test]
 #[serial]
-async fn deposit_and_queue_transfer_strips_caller_create_ata_flag() {
+async fn deposit_and_queue_transfer_strips_program_flags_set_by_the_caller() {
     let mut fixture = setup_fixture_with_acl_mock(None).await;
     let group_id: u32 = 1;
     let split: u32 = 2;
@@ -1310,7 +1313,7 @@ async fn deposit_and_queue_transfer_strips_caller_create_ata_flag() {
             0,
             0,
             split,
-            Some(QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA),
+            Some(QUEUED_TRANSFER_FLAG_CREATE_IDEMPOTENT_ATA | QUEUED_TRANSFER_FLAG_NO_RECEIPT_PERMISSION),
             None,
             group_id,
             group_receipt,
@@ -1323,7 +1326,7 @@ async fn deposit_and_queue_transfer_strips_caller_create_ata_flag() {
     assert_eq!(items.len(), split as usize);
     assert!(
         items.iter().all(|item| item.flags == 0),
-        "no split may carry the create-ATA flag"
+        "no split may carry a flag the caller set"
     );
 }
 

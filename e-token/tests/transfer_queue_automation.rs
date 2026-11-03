@@ -2,7 +2,8 @@ use std::sync::{Mutex, OnceLock};
 
 use common::magic_mock::{
     clear_all_captured, clear_captured_cancels, clear_captured_intent_bundles, clear_captured_schedules,
-    peek_captured_intent_bundles, take_captured_cancels, take_captured_schedules, CapturedScheduleAccount,
+    peek_captured_intent_bundles, take_captured_action_callbacks, take_captured_cancels, take_captured_schedules,
+    CapturedScheduleAccount,
 };
 use ephemeral_spl_api::{
     instruction,
@@ -10,7 +11,8 @@ use ephemeral_spl_api::{
     state::{
         ephemeral_ata::EphemeralAta,
         transfer_queue::{
-            QueuedTransfer, SplTokenProgram, TransferQueue, TransferQueueHeader, HEADER_LEN, ITEM_LEN, QUEUE_SEED,
+            QueuedTransfer, SplTokenProgram, TransferQueue, TransferQueueHeader, HEADER_LEN, ITEM_LEN,
+            QUEUED_TRANSFER_FLAG_NO_RECEIPT_PERMISSION, QUEUE_SEED,
         },
     },
     ID as PROGRAM,
@@ -923,6 +925,101 @@ async fn recurring_queue_crank_executes_ready_transfer_via_magic_bundle() {
         QUEUED_AMOUNT
     );
     assert_eq!(token_amount(&mut fixture.context, fixture.destination_ata).await, 0);
+}
+
+/// Runs the recurring crank once and returns the callback attached to the
+/// delivery it schedules, as (pubkey, is_writable) pairs.
+async fn delivery_callback_accounts(fixture: &mut Fixture) -> Vec<(Pubkey, bool)> {
+    let blockhash = latest_blockhash(&mut fixture.context).await;
+    let tx = Transaction::new_signed_with_payer(
+        &[ensure_queue_crank_ix(fixture)],
+        Some(&fixture.payer),
+        &[&fixture.payer_kp],
+        blockhash,
+    );
+    fixture.context.banks_client.process_transaction(tx).await.unwrap();
+
+    let captured = take_captured_schedules(fixture.magic_program);
+    let scheduled = &captured[0].args.instructions[0];
+    let scheduled_ix = Instruction {
+        program_id: convert_magic_pubkey(scheduled.program_id),
+        accounts: scheduled
+            .accounts
+            .iter()
+            .map(|meta| AccountMeta {
+                pubkey: convert_magic_pubkey(meta.pubkey),
+                is_signer: meta.is_signer,
+                is_writable: meta.is_writable,
+            })
+            .collect(),
+        data: scheduled.data.clone(),
+    };
+    let blockhash = latest_blockhash(&mut fixture.context).await;
+    let tx = Transaction::new_signed_with_payer(&[scheduled_ix], Some(&fixture.payer), &[&fixture.payer_kp], blockhash);
+    fixture.context.banks_client.process_transaction(tx).await.unwrap();
+
+    let callbacks = take_captured_action_callbacks(fixture.magic_program);
+    assert_eq!(callbacks.len(), 1, "the delivery must carry exactly one callback");
+    callbacks[0]
+        .args
+        .accounts
+        .iter()
+        .map(|meta| (convert_magic_pubkey(meta.pubkey), meta.is_writable))
+        .collect()
+}
+
+/// A transfer queued without permission accounts has no receipt permission on
+/// the ER. Its callback must not list one as writable, or the ER rejects the
+/// callback and a failed delivery is never refunded.
+#[tokio::test(flavor = "current_thread")]
+async fn delivery_callback_omits_a_receipt_permission_that_was_never_created() {
+    let _test_guard = test_lock().lock().unwrap();
+    let mut fixture = setup_fixture().await;
+    enqueue_transfer(&mut fixture, 0, "tq_auto::enqueue_without_permission").await;
+
+    let accounts = delivery_callback_accounts(&mut fixture).await;
+
+    let group_receipt = accounts[1].0;
+    let permission = utils::derive_group_receipt_permission(group_receipt);
+    assert_eq!(
+        accounts.len(),
+        13,
+        "the refund-capable shape without the permission pair"
+    );
+    assert!(accounts.iter().all(|(pubkey, _)| *pubkey != permission));
+    assert_eq!(
+        accounts[12].0, fixture.magic_context,
+        "the shape ends at the Magic context"
+    );
+
+    // Delivery data: discriminator (1) + escrow_index (1) + amount (8) + flags (1).
+    let bundles = peek_captured_intent_bundles(fixture.magic_program);
+    assert_eq!(
+        bundles[0].args.standalone_actions[0].args.data[10], 0,
+        "the receipt bit must not reach the base delivery"
+    );
+}
+
+/// A transfer queued before the receipt bit existed, or with permission
+/// accounts, keeps the 15-account callback that closes the permission.
+#[tokio::test(flavor = "current_thread")]
+async fn delivery_callback_closes_the_receipt_permission_when_one_exists() {
+    let _test_guard = test_lock().lock().unwrap();
+    let mut fixture = setup_fixture().await;
+    enqueue_transfer(&mut fixture, 0, "tq_auto::enqueue_with_permission").await;
+
+    let mut queue = queue_account(&mut fixture.context, fixture.queue).await;
+    let mut item = read_item_unaligned(&queue.data, 0);
+    item.flags &= !QUEUED_TRANSFER_FLAG_NO_RECEIPT_PERMISSION;
+    queue.data[HEADER_LEN..HEADER_LEN + ITEM_LEN].copy_from_slice(bytemuck::bytes_of(&item));
+    fixture.context.set_account(&fixture.queue, &queue.into());
+
+    let accounts = delivery_callback_accounts(&mut fixture).await;
+
+    let permission = utils::derive_group_receipt_permission(accounts[1].0);
+    assert_eq!(accounts.len(), 15);
+    assert_eq!(accounts[13], (permission, true));
+    assert_eq!(accounts[14], (utils::permission_program_id(), false));
 }
 
 #[tokio::test(flavor = "current_thread")]
