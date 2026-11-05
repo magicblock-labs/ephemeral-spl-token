@@ -623,7 +623,7 @@ Add `"gasless": true` to either request to use the configured sponsor for transa
 - A relay fee of `200000` (0.2 USDC/USDT) in the same mint is charged upfront from the owner's existing base-chain ATA to the sponsor ATA. For a deposit of 1 USDC, the wallet needs 1.2 USDC. For a withdrawal of 1 USDC, the wallet needs 0.2 USDC on the base chain and 1 USDC in the ephemeral balance; the relay fee cannot come from the pending withdrawal proceeds.
 - `GASLESS_SPONSOR_SECRET_KEY` must be configured, and the sponsor ATA for the selected mint must already exist. The sponsor must have SOL for transaction fees and instruction payer costs.
 - Sponsored deposits and withdrawals reject custom clusters and off-curve owners. These restrictions do not change requests where `gasless` is omitted or `false`.
-- Sponsored responses include `fees.tokens: "200000"` for the owner-paid relay fee and `fees.lamports: "500000"` for the sponsor-paid shuttle delegation fee, or `"0"` when `idempotent: false` skips the shuttle flow. These values exclude network transaction fees and account rent.
+- Sponsored responses include `fees.tokens: "200000"` for the owner-paid relay fee and `fees.lamports: "3000000"` for the sponsor-paid shuttle delegation fee, or `"0"` when `idempotent: false` skips the shuttle flow. These values exclude network transaction fees and account rent.
 
 For shuttle flows (`idempotent` omitted or `true`), the relay fee is collected when the base-chain transaction succeeds, before asynchronous settlement completes; a later settlement failure does not automatically refund it.
 
