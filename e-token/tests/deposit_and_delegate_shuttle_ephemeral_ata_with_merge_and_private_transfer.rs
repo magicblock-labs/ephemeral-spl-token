@@ -11,7 +11,7 @@ use ephemeral_spl_api::{
         SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS,
     },
     instruction,
-    instructions::{DepositAndDelegateShuttleWithPrivateTransferArgs, DepositAndQueueTransferArgs},
+    instructions::{CloseStashArgs, DepositAndDelegateShuttleWithPrivateTransferArgs, DepositAndQueueTransferArgs},
     state::{
         ephemeral_ata::EphemeralAta,
         load,
@@ -22,6 +22,7 @@ use ephemeral_spl_api::{
     ID as PROGRAM,
 };
 use solana_account::Account;
+use solana_address::Address;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program::rent::Rent;
 use solana_program_pack::Pack;
@@ -31,7 +32,7 @@ use solana_signer::Signer;
 use solana_system_interface::instruction::transfer;
 use solana_transaction::Transaction;
 use spl_token_interface::state::Account as SplAccount;
-use wheels::layout::Encodable as _;
+use wheels::layout::{Decodable as _, Encodable as _, PrefixDecodable as _};
 
 mod common;
 mod utils;
@@ -45,6 +46,55 @@ const MIN_DELAY_MS: u64 = 5_000;
 const MAX_DELAY_MS: u64 = 15_000;
 const SPLIT: u32 = 4;
 const TRANSFER_CHECKED_DISCRIMINATOR: u8 = 12;
+
+fn private_transfer_args(encrypted_data_suffix: Vec<u8>) -> DepositAndDelegateShuttleWithPrivateTransferArgs {
+    DepositAndDelegateShuttleWithPrivateTransferArgs {
+        shuttle_id: 9,
+        amount: DEPOSIT_AMOUNT,
+        exact_out: false,
+        validator: None,
+        encrypted_destination: [0x44; 80],
+        encrypted_data_suffix,
+    }
+}
+
+#[test]
+fn private_transfer_decodes_without_stash_close_tail() {
+    let encrypted_suffix = vec![0xAA, 0xBB, 0xCC];
+    let args = private_transfer_args(encrypted_suffix.clone());
+
+    let instruction_data =
+        instruction::ESplInstruction::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer
+            .with_data(&args.encode().unwrap());
+    let (decoded_args, remaining) =
+        DepositAndDelegateShuttleWithPrivateTransferArgs::decode_prefix(&instruction_data[1..]).unwrap();
+    assert_eq!(decoded_args.encrypted_data_suffix(), encrypted_suffix.as_slice());
+    assert!(Option::<CloseStashArgs>::decode(remaining).unwrap().is_none());
+}
+
+#[test]
+fn private_transfer_decodes_stash_close_tail_after_encrypted_suffix() {
+    let encrypted_suffix = vec![0xAA, 0xBB, 0xCC];
+    let args = private_transfer_args(encrypted_suffix.clone());
+    let close_stash = CloseStashArgs {
+        user: Address::new_from_array([0x11; 32]),
+        stash_bump: 254,
+    };
+
+    let mut private_transfer_data = args.encode().unwrap();
+    private_transfer_data.extend_from_slice(&close_stash.encode().unwrap());
+    let instruction_data =
+        instruction::ESplInstruction::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer
+            .with_data(&private_transfer_data);
+
+    let (decoded_args, remaining) =
+        DepositAndDelegateShuttleWithPrivateTransferArgs::decode_prefix(&instruction_data[1..]).unwrap();
+    assert_eq!(decoded_args.encrypted_data_suffix(), encrypted_suffix.as_slice());
+
+    let decoded_close_stash = Option::<CloseStashArgs>::decode(remaining).unwrap().unwrap();
+    assert_eq!(*decoded_close_stash.user(), close_stash.user);
+    assert_eq!(decoded_close_stash.stash_bump(), close_stash.stash_bump);
+}
 
 fn read_header_unaligned(data: &[u8]) -> TransferQueueHeader {
     assert!(data.len() >= HEADER_LEN);

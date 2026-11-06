@@ -27,7 +27,7 @@ lint = "nightly-2025-02-16"
 [workspace.dependencies]
 ephemeral-rollups-pinocchio = "0.16.2"
 ephemeral-rollups-sdk = { version = "0.16.2", features = ["spl"] }
-wheels = { git = "https://github.com/magicblock-labs/magicblock-wheels.git" }
+wheels = { git = "https://github.com/magicblock-labs/magicblock-wheels.git", rev = "5c4f690288acb95f662734edc0853e7c0e2f9f1c" }
 
 pinocchio = { version = "0.10.1", features = ["cpi"] }
 solana-address = { version = "2.0", features = ["curve25519"] }
