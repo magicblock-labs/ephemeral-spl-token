@@ -3,7 +3,7 @@ use ephemeral_rollups_pinocchio::{
     consts::{DELEGATION_PROGRAM_ID, MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID},
     types::DelegateConfig,
 };
-use ephemeral_spl_api::{instructions::AmountAndSaltArgs, require, require_eq_keys, require_n_accounts};
+use ephemeral_spl_api::{instructions::StartAsyncLamportsTransferArgs, require, require_eq_keys, require_n_accounts};
 use pinocchio::{
     cpi::{Seed, Signer},
     error::ProgramError,
@@ -45,7 +45,7 @@ use crate::{
 /// Instruction Data: amount (u64) + salt ([u8; 32])
 ///
 #[inline(never)]
-pub fn process_sponsored_lamports_transfer(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
+pub fn process_start_async_lamports_transfer(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         payer_info, // force multi-line
         rent_pda_info,
@@ -60,7 +60,7 @@ pub fn process_sponsored_lamports_transfer(accounts: &[AccountView], instruction
         destination_delegation_record_info,
     ] = require_n_accounts!(accounts, 11);
 
-    let args = AmountAndSaltArgs::decode(instruction_data)?;
+    let args = StartAsyncLamportsTransferArgs::decode(instruction_data)?;
 
     require!(args.amount() != 0, ProgramError::InvalidArgument);
     require!(payer_info.is_signer(), ProgramError::MissingRequiredSignature);
@@ -176,7 +176,7 @@ fn transfer_lamports_pda_action(
     salt: &[u8; 32],
 ) -> Instruction {
     let data = ESplInternalInstruction::TransferLamportsPda
-        .with(&AmountAndSaltArgs { amount, salt: *salt })
+        .with(&StartAsyncLamportsTransferArgs { amount, salt: *salt })
         .unwrap();
 
     Instruction {

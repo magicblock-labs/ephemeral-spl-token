@@ -32,6 +32,31 @@ types, a transaction-building HTTP API, and local integration tooling.
 | **Permissions and stealth pools** | Control account access and use handles to address payments. |
 | **Application integration** | Build transactions through the [HTTP API](api/README.md) or accept [delegated-USDC payments](api/PAYMENTS.md). |
 
+## Instruction catalog
+
+### Shuttle flows
+
+- `11` `InitializeShuttle` — initialize or validate shuttle metadata, its shuttle Ephemeral ATA, and the shuttle wallet ATA for `[owner, mint, shuttle_id]`.
+- `13` `DelegateShuttle` — delegate a shuttle Ephemeral ATA.
+- `14` `StartAsyncShuttleClose` — undelegate a shuttle and schedule close/refund handling.
+- `15` `SweepShuttleBalance` — transfer the entire shuttle wallet ATA balance into a destination token account.
+- `24` `StartAsyncShuttleTransfer` — set up, deposit into, and delegate a shuttle, then schedule merge and cleanup.
+- `25` `StartAsyncPrivateTransfer` — start a queue-backed private transfer that settles to the recipient later.
+- `26` `StartAsyncShuttleWithdraw` — delegate a shuttle, then schedule the owner-to-shuttle transfer and cleanup.
+- `34` `DepositAndDelegateShuttleWithMergeToEncryptedDestination` — start a private transfer with an encrypted destination.
+- `35` `MergeShuttleIntoMagicAta` — create a destination Magic ATA and merge the shuttle balance into it.
+- `36` `EnsureMagicAtaDestination` — create a destination Magic ATA before a same-transaction SPL transfer.
+- `37` `WithdrawThroughDelegatedShuttleWithFee` — withdraw through instruction 26 while sending a fee to the transfer queue.
+
+### Transfer queue and automation
+
+- `12` `InitializeTransferQueue` — create the per-mint transfer queue PDA.
+- `16` `DepositAndQueueTransfer` — deposit into the vault and enqueue delayed transfers.
+- `17` `EnsureTransferQueueCrank` — ensure recurring transfer-queue processing is scheduled.
+- `19` `DelegateTransferQueue` — delegate the per-mint transfer queue PDA.
+- `20` `StartAsyncLamportsTransfer` — start a sponsored lamports transfer with scheduled cleanup.
+- `28` `StartAsyncTransferQueueRefill` — start the async transfer-queue refill path.
+
 ## 🌉 How it fits together
 
 **Vault → Delegated execution → Settlement**

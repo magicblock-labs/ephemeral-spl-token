@@ -6,7 +6,7 @@ use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
 use ephemeral_spl_api::{
     debug_log,
     error::EphemeralSplError,
-    instructions::DepositAndDelegateShuttleArgs,
+    instructions::StartAsyncShuttleWithdrawArgs,
     require, require_eq_keys, require_n_accounts,
     state::{
         ephemeral_ata::EphemeralAta,
@@ -26,13 +26,13 @@ const CLOSE_MAGIC_ATA_DISCRIMINATOR: u32 = 26;
 use crate::processor::internal::{
     get_associated_token_address, read_mint_decimals,
     shuttle_delegation::{
-        build_undelegate_and_close_shuttle_instruction, delegate_sponsored_shuttle_with_post_actions,
-        prepare_sponsored_shuttle_delegation, DepositAndDelegateShuttleCommonArgs,
+        build_start_async_shuttle_close_instruction, delegate_sponsored_shuttle_with_post_actions,
+        prepare_sponsored_shuttle_delegation, StartAsyncShuttleCommonArgs,
     },
     validate_token_account,
 };
 
-struct WithdrawThroughDelegatedShuttleAccounts<'a> {
+struct StartAsyncShuttleWithdrawAccounts<'a> {
     pub(crate) payer_info: &'a AccountView,
     pub(crate) rent_pda_info: &'a AccountView,
     pub(crate) shuttle_info: &'a AccountView,
@@ -72,11 +72,11 @@ struct WithdrawThroughDelegatedShuttleAccounts<'a> {
 /// 15: []                  - SPL     : Token program.
 /// 16: []                  - PDA     : Delegated transfer queue (`with_fee` only).
 ///
-/// Instruction Data: DepositAndDelegateShuttleArgs, then fee (u64 LE) when
+/// Instruction Data: StartAsyncShuttleWithdrawArgs, then fee (u64 LE) when
 /// `with_fee`; the fee goes to the queue vault ATA in the same ER transaction.
 ///
 #[inline(never)]
-pub fn process_withdraw_through_delegated_shuttle_with_merge(
+pub fn process_start_async_shuttle_withdraw(
     accounts: &[AccountView],
     instruction_data: &[u8],
     with_fee: bool,
@@ -112,7 +112,7 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
         token_program_info,
     ] = require_n_accounts!(accounts, 16);
 
-    let args = DepositAndDelegateShuttleArgs::decode(instruction_data)?;
+    let args = StartAsyncShuttleWithdrawArgs::decode(instruction_data)?;
     let fee = match fee {
         Some((fee, queue_info)) => {
             require!(fee > 0 && fee < args.amount(), ProgramError::InvalidArgument);
@@ -132,7 +132,7 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
     };
     let shuttled_amount = args.amount() - fee.map_or(0, |(fee, _)| fee);
 
-    let accounts = WithdrawThroughDelegatedShuttleAccounts {
+    let accounts = StartAsyncShuttleWithdrawAccounts {
         payer_info,
         rent_pda_info,
         shuttle_info,
@@ -209,7 +209,7 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
             shuttled_amount,
             decimals,
         ),
-        build_undelegate_and_close_shuttle_instruction(
+        build_start_async_shuttle_close_instruction(
             accounts.payer_info.address(),
             accounts.rent_pda_info.address(),
             accounts.shuttle_info.address(),
@@ -236,7 +236,7 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
         accounts.delegation_record,
         accounts.delegation_metadata,
         accounts.system_program,
-        DepositAndDelegateShuttleCommonArgs {
+        StartAsyncShuttleCommonArgs {
             shuttle_id: args.shuttle_id(),
             total_amount: shuttled_amount,
             validator: args.validator(),
@@ -250,7 +250,7 @@ pub fn process_withdraw_through_delegated_shuttle_with_merge(
 /// Closes the owner's ER-side source account when it is a fully drained
 /// Magic ATA; the Magic Program no-ops in every other case, so this
 /// action is safe on eATA-backed and partial withdrawals alike.
-fn close_magic_ata_source_action(accounts: &WithdrawThroughDelegatedShuttleAccounts<'_>) -> Instruction {
+fn close_magic_ata_source_action(accounts: &StartAsyncShuttleWithdrawAccounts<'_>) -> Instruction {
     Instruction {
         program_id: MAGIC_PROGRAM_ID,
         accounts: alloc::vec![
@@ -262,7 +262,7 @@ fn close_magic_ata_source_action(accounts: &WithdrawThroughDelegatedShuttleAccou
 }
 
 fn transfer_owner_tokens_action(
-    accounts: &WithdrawThroughDelegatedShuttleAccounts<'_>,
+    accounts: &StartAsyncShuttleWithdrawAccounts<'_>,
     destination: &Address,
     amount: u64,
     decimals: u8,

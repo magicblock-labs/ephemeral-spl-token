@@ -6,7 +6,7 @@ use ephemeral_rollups_pinocchio::pda::{
 use ephemeral_spl_api::{
     consts::SPONSORED_LAMPORTS_TRANSFER_SETUP_LAMPORTS,
     instruction::{self, ESplInstruction},
-    instructions::AmountAndSaltArgs,
+    instructions::StartAsyncLamportsTransferArgs,
     ID as PROGRAM,
 };
 use solana_account::Account;
@@ -40,10 +40,10 @@ fn derive_lamports_pda(program: Pubkey, payer: Pubkey, destination: Pubkey, salt
 }
 
 #[tokio::test]
-async fn sponsored_lamports_transfer_delegates_zero_data_pda_and_charges_fee() {
+async fn start_async_lamports_transfer_delegates_zero_data_pda_and_charges_fee() {
     let validator = utils::test_pubkey("validator");
     let destination =
-        utils::test_keypair("sponsored_lamports_transfer_delegates_zero_data_pda_and_charges_fee::destination");
+        utils::test_keypair("start_async_lamports_transfer_delegates_zero_data_pda_and_charges_fee::destination");
     let destination_delegation_record_pda = delegation_record_pda_from_delegated_account(&destination.pubkey());
     let mut destination_delegation_record_data = vec![0u8; DelegationRecord::size_with_discriminator()];
     DelegationRecord {
@@ -133,8 +133,8 @@ async fn sponsored_lamports_transfer_delegates_zero_data_pda_and_charges_fee() {
             AccountMeta::new(destination.pubkey(), false),
             AccountMeta::new_readonly(destination_delegation_record_pda, false),
         ],
-        data: ESplInstruction::SponsoredLamportsTransfer
-            .with(&AmountAndSaltArgs {
+        data: ESplInstruction::StartAsyncLamportsTransfer
+            .with(&StartAsyncLamportsTransferArgs {
                 amount: TRANSFER_AMOUNT,
                 salt: SALT,
             })
@@ -149,7 +149,7 @@ async fn sponsored_lamports_transfer_delegates_zero_data_pda_and_charges_fee() {
     common::metrics::process_transaction_record_cu(
         &context.banks_client,
         tx_sponsored_transfer,
-        "lamports_pda::sponsored_lamports_transfer",
+        "lamports_pda::start_async_lamports_transfer",
     )
     .await
     .unwrap();

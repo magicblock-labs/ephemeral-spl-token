@@ -7,7 +7,7 @@ use dlp_api::{
 use ephemeral_spl_api::{
     error::EphemeralSplError,
     instruction::ESplInstruction,
-    instructions::DepositAndDelegateShuttleArgs,
+    instructions::StartAsyncShuttleTransferArgs,
     state::transfer_queue::{TransferQueue, TransferQueueHeader, HEADER_LEN},
     ID as PROGRAM,
 };
@@ -143,7 +143,7 @@ impl Fixture {
             AccountMeta::new_readonly(self.mint, false),
             AccountMeta::new_readonly(spl_token_interface::ID, false),
         ];
-        let mut data = DepositAndDelegateShuttleArgs {
+        let mut data = StartAsyncShuttleTransferArgs {
             shuttle_id: SHUTTLE_ID,
             amount: AMOUNT,
             validator: None,
@@ -151,7 +151,7 @@ impl Fixture {
         .encode()
         .unwrap();
         let discriminator = match fee {
-            None => ESplInstruction::WithdrawThroughDelegatedShuttleWithMerge,
+            None => ESplInstruction::StartAsyncShuttleWithdraw,
             Some(fee) => {
                 accounts.push(AccountMeta::new_readonly(self.queue, false));
                 data.extend_from_slice(&fee.to_le_bytes());
@@ -265,7 +265,7 @@ async fn withdraw_with_fee_pays_the_queue_vault_before_funding_the_shuttle() {
     assert_eq!(actions[1], fx.transfer_action(fx.ata(fx.shuttle().0), AMOUNT - FEE));
     assert_eq!(
         actions[2].2[0],
-        ESplInstruction::UndelegateAndCloseShuttleToOwner.value()
+        ESplInstruction::StartAsyncShuttleClose.value()
     );
     assert_eq!(actions[3].0, utils::magic_program_id());
 }

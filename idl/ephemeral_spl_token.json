@@ -472,7 +472,7 @@
       "args": []
     },
     {
-      "name": "initializeShuttleEphemeralAta",
+      "name": "initializeShuttle",
       "discriminator": [
         11
       ],
@@ -569,7 +569,7 @@
       ]
     },
     {
-      "name": "delegateShuttleEphemeralAta",
+      "name": "delegateShuttle",
       "discriminator": [
         13
       ],
@@ -617,7 +617,7 @@
       "args": []
     },
     {
-      "name": "undelegateShuttleEphemeralAta",
+      "name": "startAsyncShuttleClose",
       "discriminator": [
         14
       ],
@@ -668,7 +668,7 @@
       ]
     },
     {
-      "name": "mergeShuttleIntoEphemeralAta",
+      "name": "sweepShuttleBalance",
       "discriminator": [
         15
       ],
@@ -871,7 +871,7 @@
       "args": []
     },
     {
-      "name": "sponsoredLamportsTransfer",
+      "name": "startAsyncLamportsTransfer",
       "discriminator": [
         20
       ],
@@ -967,7 +967,7 @@
       "args": []
     },
     {
-      "name": "setupAndDelegateShuttleEphemeralAtaWithMerge",
+      "name": "startAsyncShuttleTransfer",
       "discriminator": [
         24
       ],
@@ -1062,7 +1062,7 @@
       ]
     },
     {
-      "name": "depositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer",
+      "name": "startAsyncPrivateTransfer",
       "discriminator": [
         25
       ],
@@ -1157,7 +1157,7 @@
       ]
     },
     {
-      "name": "withdrawThroughDelegatedShuttleWithMerge",
+      "name": "startAsyncShuttleWithdraw",
       "discriminator": [
         26
       ],

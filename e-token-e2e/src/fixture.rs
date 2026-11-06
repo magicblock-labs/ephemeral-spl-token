@@ -31,7 +31,7 @@ use ephemeral_rollups_sdk::{
 };
 use ephemeral_spl_api::{
     instruction::ESplInstruction,
-    instructions::DepositAndDelegateShuttleWithPrivateTransferArgs,
+    instructions::StartAsyncPrivateTransferArgs,
     state::transfer_queue::{TransferQueueHeader, HEADER_LEN},
 };
 use solana_client::rpc_client::RpcClient;
@@ -421,8 +421,8 @@ pub fn private_queued_transfer_ix(
             AccountMeta::new(find_vault_ata(mint, &vault), false),
             AccountMeta::new(queue, false),
         ],
-        data: ESplInstruction::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer.with_data(
-            &DepositAndDelegateShuttleWithPrivateTransferArgs {
+        data: ESplInstruction::StartAsyncPrivateTransfer.with_data(
+            &StartAsyncPrivateTransferArgs {
                 shuttle_id,
                 amount,
                 exact_out: true,
