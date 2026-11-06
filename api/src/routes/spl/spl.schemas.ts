@@ -13,7 +13,7 @@ const textEncoder = new TextEncoder();
 
 export const transferFeesSchema = z.object({
   lamports: z.string().openapi({
-    example: "2039280",
+    example: "4539280",
     description: "Operation lamport fees, excluding network fees and account rent. Paid by the sponsor for gasless transactions. Returns \"0\" when no lamport fee is charged.",
   }),
   tokens: z.string().openapi({

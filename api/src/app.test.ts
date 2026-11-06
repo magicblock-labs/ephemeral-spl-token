@@ -4940,7 +4940,7 @@ describe("app", () => {
         kind: operation,
         version: "legacy",
         sendTo: "base",
-        fees: { lamports: "500000", tokens: "200000" },
+        fees: { lamports: "3000000", tokens: "200000" },
       });
       expect(json.requiredSigners).toEqual([sponsor.publicKey.toBase58(), body.owner]);
       const bytes = Buffer.from(json.transactionBase64, "base64");
@@ -4992,7 +4992,7 @@ describe("app", () => {
       const response = await request({ ...options, initIfMissing: true, initAtasIfMissing: true, initVaultIfMissing: true });
       expect(response.status).toBe(200);
       const json = await response.json() as TransactionResponse;
-      expect(json.fees).toEqual({ lamports: options.idempotent ? "500000" : "0", tokens: "200000" });
+      expect(json.fees).toEqual({ lamports: options.idempotent ? "3000000" : "0", tokens: "200000" });
       const transaction = Transaction.from(Buffer.from(json.transactionBase64, "base64"));
       transaction.partialSign(wallet);
       expect(transaction.verifySignatures()).toBe(true);
@@ -5097,7 +5097,7 @@ describe("app", () => {
       const response = await request();
       expect(response.status).toBe(200);
       const json = await response.json() as TransactionResponse;
-      expect(json).toMatchObject({ kind: "withdraw", sendTo: "base", fees: { lamports: "500000", tokens: "200000" } });
+      expect(json).toMatchObject({ kind: "withdraw", sendTo: "base", fees: { lamports: "3000000", tokens: "200000" } });
       expect(json.requiredSigners).toEqual([sponsor.publicKey.toBase58(), body.owner]);
       const transaction = Transaction.from(Buffer.from(json.transactionBase64, "base64"));
       expect(transaction.feePayer?.equals(sponsor.publicKey)).toBe(true);
@@ -5272,7 +5272,7 @@ describe("app", () => {
       };
     };
     expect(json.fees).toEqual({
-      lamports: "2039280",
+      lamports: "4539280",
       tokens: "200500",
     });
     expect(json.requiredSigners).toEqual(
@@ -5413,7 +5413,7 @@ describe("app", () => {
     };
     expect(json.version).toBe("v0");
     expect(json.fees).toEqual({
-      lamports: "2039280",
+      lamports: "4539280",
       tokens: "255000",
     });
     expect(json.requiredSigners).toEqual(
