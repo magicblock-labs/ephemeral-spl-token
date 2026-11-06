@@ -7,7 +7,7 @@ use dlp_api::{
 use ephemeral_spl_api::{
     error::EphemeralSplError,
     instruction::ESplInstruction,
-    instructions::DepositAndDelegateShuttleArgs,
+    instructions::StartAsyncShuttleTransferArgs,
     state::transfer_queue::{TransferQueue, TransferQueueHeader, HEADER_LEN},
     ID as PROGRAM,
 };
@@ -143,7 +143,7 @@ impl Fixture {
             AccountMeta::new_readonly(self.mint, false),
             AccountMeta::new_readonly(spl_token_interface::ID, false),
         ];
-        let mut data = DepositAndDelegateShuttleArgs {
+        let mut data = StartAsyncShuttleTransferArgs {
             shuttle_id: SHUTTLE_ID,
             amount: AMOUNT,
             validator: None,

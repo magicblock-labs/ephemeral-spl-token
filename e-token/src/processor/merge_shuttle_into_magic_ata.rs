@@ -3,7 +3,7 @@ use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
 use crate::processor::{
     internal::magic_ata_destination::{ensure_magic_ata_destination, MagicAtaDestinationAccounts},
-    merge_shuttle_into_ephemeral_ata::merge_shuttle_balance,
+    sweep_shuttle_balance::merge_shuttle_balance,
 };
 
 ///

@@ -14,8 +14,8 @@ use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use wheels::layout::Decodable as _;
 
 use crate::processor::internal::shuttle_delegation::{
-    process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions, undelegate_and_close_shuttle_action,
-    DepositAndDelegateShuttleAccounts, DepositAndDelegateShuttleCommonArgs,
+    process_start_async_shuttle_with_post_actions, start_async_shuttle_close_action, StartAsyncShuttleAccounts,
+    StartAsyncShuttleCommonArgs,
 };
 
 ///
@@ -81,7 +81,7 @@ pub fn process_deposit_and_delegate_shuttle_with_merge_to_encrypted_destination(
 
     require!(args.amount() != 0, ProgramError::InvalidInstructionData);
 
-    let common_accounts = DepositAndDelegateShuttleAccounts {
+    let common_accounts = StartAsyncShuttleAccounts {
         payer_info,
         rent_pda_info,
         shuttle_info,
@@ -107,13 +107,13 @@ pub fn process_deposit_and_delegate_shuttle_with_merge_to_encrypted_destination(
             args.encrypted_destination_ata(),
         );
 
-        alloc::vec![undelegate_and_close_shuttle_action(&common_accounts, None)]
+        alloc::vec![start_async_shuttle_close_action(&common_accounts, None)]
             .cleartext_with_insertable(ensure_and_merge, 0)
     };
 
-    process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions(
+    process_start_async_shuttle_with_post_actions(
         &common_accounts,
-        DepositAndDelegateShuttleCommonArgs {
+        StartAsyncShuttleCommonArgs {
             shuttle_id: args.shuttle_id(),
             total_amount: args.amount(),
             validator: args.validator(),
@@ -126,7 +126,7 @@ pub fn process_deposit_and_delegate_shuttle_with_merge_to_encrypted_destination(
 /// Build the encrypted instruction-33 action: the destination owner and ATA
 /// stay encrypted and are decrypted by the validator inside the ER.
 fn merge_to_encrypted_destination_action(
-    common_accounts: &DepositAndDelegateShuttleAccounts<'_>,
+    common_accounts: &StartAsyncShuttleAccounts<'_>,
     encrypted_destination_owner: &[u8; 80],
     encrypted_destination_ata: &[u8; 80],
 ) -> PostDelegationActions {

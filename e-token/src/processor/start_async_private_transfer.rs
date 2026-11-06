@@ -219,7 +219,17 @@ pub fn process_start_async_private_transfer(accounts: &[AccountView], instructio
             ));
         }
 
-        post_actions.push(start_async_shuttle_close_action(&common_accounts, close_stash));
+        // DLP requires every reference to a bundle signer to be a signer reference,
+        // and the rent PDA signs this bundle (see the private transfer action).
+        let mut close_shuttle = start_async_shuttle_close_action(&common_accounts, close_stash);
+        for meta in close_shuttle
+            .accounts
+            .iter_mut()
+            .filter(|meta| meta.pubkey.to_bytes() == RENT_PDA.to_bytes())
+        {
+            meta.is_signer = true;
+        }
+        post_actions.push(close_shuttle);
         post_actions.cleartext_with_insertable(private_transfer, 1)
     };
 
