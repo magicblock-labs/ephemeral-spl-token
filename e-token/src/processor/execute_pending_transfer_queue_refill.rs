@@ -8,7 +8,6 @@ use pinocchio::{
     AccountView, ProgramResult,
 };
 use solana_address::Address;
-use wheels::layout::Encodable as _;
 
 use crate::processor::internal::{
     lamports_pda::derive_lamports_pda,
@@ -129,16 +128,14 @@ fn trigger_queue_refill_via_sponsored_transfer(
         InstructionAccount::writable(queue_info.address()),
         InstructionAccount::readonly(queue_delegation_record_info.address()),
     ];
+    let sponsored_transfer_data = ESplInstruction::SponsoredLamportsTransfer.with(&AmountAndSaltArgs {
+        amount: refill_lamports,
+        salt: *salt,
+    })?;
     let sponsored_transfer_instruction = InstructionView {
         program_id: owner_program_info.address(),
         accounts: &sponsored_transfer_accounts,
-        data: &ESplInstruction::SponsoredLamportsTransfer.with_data(
-            &AmountAndSaltArgs {
-                amount: refill_lamports,
-                salt: *salt,
-            }
-            .encode()?,
-        ),
+        data: &sponsored_transfer_data,
     };
     let sponsored_transfer_account_refs = [
         rent_pda_info,

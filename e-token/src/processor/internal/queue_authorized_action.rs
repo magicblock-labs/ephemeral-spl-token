@@ -88,8 +88,9 @@ impl QueuedTransferActionBuilder {
         token_program: &Address,
         args: ExecuteQueuedTransferArgs,
     ) -> Self {
-        let data =
-            crate::instruction::ESplInternalInstruction::ExecuteReadyQueuedTransfer.with_data(&args.encode().unwrap());
+        let data = crate::instruction::ESplInternalInstruction::ExecuteReadyQueuedTransfer
+            .with(&args)
+            .unwrap();
 
         Self {
             queue_info: queue_info.clone(),
