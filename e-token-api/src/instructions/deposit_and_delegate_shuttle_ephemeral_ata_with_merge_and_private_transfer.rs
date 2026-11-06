@@ -14,7 +14,7 @@ pub struct DepositAndDelegateShuttleWithPrivateTransferArgs {
     pub encrypted_data_suffix: Vec<u8>,
 }
 
-#[variable_offset_layout(buffer_offset = unaligned)]
+#[variable_offset_layout(buffer_offset = unknown)]
 #[derive(Clone, Copy)]
 pub struct CloseStashArgs {
     pub user: Address,

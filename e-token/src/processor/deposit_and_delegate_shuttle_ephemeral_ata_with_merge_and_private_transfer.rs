@@ -8,7 +8,10 @@ use dlp_api::{
     },
     compact::{self, ClearTextWithInsertable},
 };
-use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
+use ephemeral_rollups_pinocchio::{
+    acl::{consts::PERMISSION_PROGRAM_ID, pda::permission_pda_from_permissioned_account},
+    consts::MAGIC_PROGRAM_ID,
+};
 use ephemeral_spl_api::{
     consts, debug_log,
     instruction::ESplInstruction,
@@ -29,6 +32,7 @@ use crate::processor::internal::read_mint_decimals;
 use crate::processor::internal::{
     get_associated_token_address,
     group_receipt::derive_group_receipt_id,
+    rent_pda::RENT_PDA,
     shuttle_delegation::{
         merge_shuttle_into_token_account_action, process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions,
         undelegate_and_close_shuttle_action, DepositAndDelegateShuttleAccounts, DepositAndDelegateShuttleCommonArgs,
@@ -218,7 +222,17 @@ pub fn process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private
             ));
         }
 
-        post_actions.push(undelegate_and_close_shuttle_action(&common_accounts, close_stash));
+        // DLP requires every reference to a bundle signer to be a signer reference,
+        // and the rent PDA signs this bundle (see the private transfer action).
+        let mut undelegate = undelegate_and_close_shuttle_action(&common_accounts, close_stash);
+        for meta in undelegate
+            .accounts
+            .iter_mut()
+            .filter(|meta| meta.pubkey.to_bytes() == RENT_PDA.to_bytes())
+        {
+            meta.is_signer = true;
+        }
+        post_actions.push(undelegate);
         post_actions.cleartext_with_insertable(private_transfer, 1)
     };
 
@@ -250,10 +264,15 @@ fn private_transfer_action_encrypted(
     let group_id = u32::from(group_id_raw[0]) | (u32::from(group_id_raw[1]) << 8) | (u32::from(group_id_raw[2]) << 16);
     let group_receipt_info =
         derive_group_receipt_id(queue_info.address(), common_accounts.owner_info.address(), group_id).0;
+    // Cleartext is fine: the permission PDA derives from the receipt address,
+    // which is already cleartext below, and reveals nothing further.
+    let group_receipt_permission = permission_pda_from_permissioned_account(&group_receipt_info);
     Ok(PostDelegationActions {
         inserted_signers: 0,
         inserted_non_signers: 0,
-        signers: alloc::vec![common_accounts.owner_info.address().to_bytes()],
+        // The rent PDA signs only this bundle: it authorizes ix 16 to sponsor the
+        // one recipient ATA the setup fee paid for.
+        signers: alloc::vec![common_accounts.owner_info.address().to_bytes(), RENT_PDA.to_bytes()],
         non_signers: alloc::vec![
             MaybeEncryptedPubkey::ClearText(crate::ID.to_bytes()),
             MaybeEncryptedPubkey::ClearText(queue_info.address().to_bytes()),
@@ -267,22 +286,28 @@ fn private_transfer_action_encrypted(
             MaybeEncryptedPubkey::ClearText(group_receipt_info.to_bytes()),
             MaybeEncryptedPubkey::ClearText(MAGIC_VAULT_ID.to_bytes()),
             MaybeEncryptedPubkey::ClearText(MAGIC_PROGRAM_ID.to_bytes()),
+            MaybeEncryptedPubkey::ClearText(group_receipt_permission.to_bytes()),
+            MaybeEncryptedPubkey::ClearText(PERMISSION_PROGRAM_ID.to_bytes()),
         ],
         instructions: alloc::vec![MaybeEncryptedInstruction {
-            program_id: 1,
+            // Indices: 0 owner, 1 rent PDA (signers), then the non-signers from 2.
+            program_id: 2,
             accounts: alloc::vec![
-                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(2, false)),
-                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(3, false)),
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(3, false)),
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(4, false)),
-                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(5, false)),
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(5, false)),
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(6, false)),
-                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(7, false)),
-                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(0, true)),
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(7, false)),
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(8, false)),
-                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(9, false)),
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(0, true)),
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(9, false)),
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(10, false)),
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(11, false)),
-                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(12, false)),
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(12, false)),
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(13, false)),
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new(14, false)),
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(15, false)),
+                MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(1, true)),
             ],
             data: MaybeEncryptedIxData {
                 prefix: ESplInstruction::DepositAndQueueTransfer
