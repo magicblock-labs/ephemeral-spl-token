@@ -130,7 +130,7 @@ fn sponsored_withdraw_pays_the_fee_from_the_rollup_balance() {
             }
             .instruction();
             withdraw.accounts.push(AccountMeta::new_readonly(fx.queue, false));
-            withdraw.data[0] = ESplInstruction::WithdrawThroughDelegatedShuttleWithFee.value();
+            withdraw.data[0] = ESplInstruction::StartAsyncShuttleWithdrawWithFee.value();
             withdraw.data.extend_from_slice(&FEE.to_le_bytes());
             send(
                 base,

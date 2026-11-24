@@ -245,21 +245,22 @@ pub enum ESplInstruction {
     ///      Instruction data:
     ///      [0..32]  salt ([u8; 32])
     CloseLamportsPda = 33,
-    /// 34 - DepositAndDelegateShuttleWithMergeToEncryptedDestination: private base->ephemeral
-    ///      transfer where the destination never appears in cleartext on base. Same
-    ///      setup/deposit/delegate shuttle flow as instruction 24, but the destination is
-    ///      carried only inside encrypted post-delegation actions: on the ER the first action
-    ///      runs instruction 35 (Magic ATA creation + merge), then the second
-    ///      undelegates and closes the shuttle.
-    ///      Instruction data: DepositAndDelegateShuttleWithMergeToEncryptedDestinationArgs
-    DepositAndDelegateShuttleWithMergeToEncryptedDestination = 34,
+    /// 34 - StartAsyncPrivateTransferToEncryptedDestination: start a private base-to-ephemeral
+    ///      transfer whose destination never appears in cleartext on base. Uses the same
+    ///      shuttle setup/deposit/delegation flow as instruction 24, then runs encrypted
+    ///      post-delegation actions on the ER to create the destination Magic ATA and sweep
+    ///      the shuttle balance into it before closing the shuttle.
+    ///      Instruction data: StartAsyncPrivateTransferToEncryptedDestinationArgs
+    ///      Old Name: DepositAndDelegateShuttleWithMergeToEncryptedDestination
+    StartAsyncPrivateTransferToEncryptedDestination = 34,
 
-    /// 35 - MergeShuttleIntoMagicAta: executes on the ER only, as the decrypted
+    /// 35 - SweepShuttleBalanceToMagicAta: executes on the ER only, as the decrypted
     ///      post-delegation action of instruction 34. Creates the destination ATA as an
-    ///      idempotent Magic ATA (Magic program CPI), then transfers the whole
-    ///      shuttle wallet ATA balance into the destination ATA.
+    ///      idempotent Magic ATA (Magic program CPI), then sweeps the whole shuttle wallet
+    ///      ATA balance into the destination ATA.
     ///      Instruction data: none
-    MergeShuttleIntoMagicAta = 35,
+    ///      Old Name: MergeShuttleIntoMagicAta
+    SweepShuttleBalanceToMagicAta = 35,
 
     /// 36 - EnsureMagicAtaDestination: executes on the ER only. Idempotently creates the
     ///      destination's ATA as a Magic ATA (Magic program CPI) so a plain SPL
@@ -267,11 +268,12 @@ pub enum ESplInstruction {
     ///      Instruction data: none
     EnsureMagicAtaDestination = 36,
 
-    /// 37 - WithdrawThroughDelegatedShuttleWithFee: instruction 26 that first moves `fee` from the
-    ///      owner's ER balance into the delegated transfer queue's vault ATA, in the same ER
-    ///      transaction, and withdraws `amount - fee`. Accounts: instruction 26's, then the queue.
+    /// 37 - StartAsyncShuttleWithdrawWithFee: starts the instruction 26 shuttle withdrawal,
+    ///      routing `fee` from the owner's ER balance to the delegated transfer queue's vault
+    ///      ATA before withdrawing `amount - fee`. Accounts: instruction 26's, then the queue.
     ///      Instruction data: instruction 26's, then fee (u64 LE), 0 < fee < amount.
-    WithdrawThroughDelegatedShuttleWithFee = 37,
+    ///      Old Name: WithdrawThroughDelegatedShuttleWithFee
+    StartAsyncShuttleWithdrawWithFee = 37,
 }
 
 impl ESplInstruction {
@@ -345,10 +347,10 @@ impl TryFrom<u8> for ESplInstruction {
             30 => Ok(Self::ExecuteScheduledPrivateTransfer),
             32 => Ok(Self::RecoverAndCloseShuttleToOwner),
             33 => Ok(Self::CloseLamportsPda),
-            34 => Ok(Self::DepositAndDelegateShuttleWithMergeToEncryptedDestination),
-            35 => Ok(Self::MergeShuttleIntoMagicAta),
+            34 => Ok(Self::StartAsyncPrivateTransferToEncryptedDestination),
+            35 => Ok(Self::SweepShuttleBalanceToMagicAta),
             36 => Ok(Self::EnsureMagicAtaDestination),
-            37 => Ok(Self::WithdrawThroughDelegatedShuttleWithFee),
+            37 => Ok(Self::StartAsyncShuttleWithdrawWithFee),
             _ => Err(()),
         }
     }

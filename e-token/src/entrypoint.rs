@@ -148,8 +148,8 @@ fn process_public_instruction(accounts: &[AccountView], instruction_data: &[u8])
 
             process_start_async_shuttle_withdraw(accounts, data, false)
         }
-        ESplInstruction::WithdrawThroughDelegatedShuttleWithFee => {
-            debug_log!("Instruction: WithdrawThroughDelegatedShuttleWithFee");
+        ESplInstruction::StartAsyncShuttleWithdrawWithFee => {
+            debug_log!("Instruction: StartAsyncShuttleWithdrawWithFee");
 
             process_start_async_shuttle_withdraw(accounts, data, true)
         }
@@ -228,15 +228,15 @@ fn process_public_instruction(accounts: &[AccountView], instruction_data: &[u8])
 
             process_close_lamports_pda(accounts, data)
         }
-        ESplInstruction::DepositAndDelegateShuttleWithMergeToEncryptedDestination => {
-            debug_log!("Instruction: DepositAndDelegateShuttleWithMergeToEncryptedDestination");
+        ESplInstruction::StartAsyncPrivateTransferToEncryptedDestination => {
+            debug_log!("Instruction: StartAsyncPrivateTransferToEncryptedDestination");
 
-            process_deposit_and_delegate_shuttle_with_merge_to_encrypted_destination(accounts, data)
+            process_start_async_private_transfer_to_encrypted_destination(accounts, data)
         }
-        ESplInstruction::MergeShuttleIntoMagicAta => {
-            debug_log!("Instruction: MergeShuttleIntoMagicAta");
+        ESplInstruction::SweepShuttleBalanceToMagicAta => {
+            debug_log!("Instruction: SweepShuttleBalanceToMagicAta");
 
-            process_merge_shuttle_into_magic_ata(accounts, data)
+            process_sweep_shuttle_balance_to_magic_ata(accounts, data)
         }
         ESplInstruction::EnsureMagicAtaDestination => {
             debug_log!("Instruction: EnsureMagicAtaDestination");

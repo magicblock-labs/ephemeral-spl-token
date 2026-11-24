@@ -127,7 +127,7 @@ async fn setup(label: &str, shuttle_id: u32) -> Fixture {
     }
 }
 
-fn merge_ix(fixture: &Fixture, destination_ata: Pubkey) -> Instruction {
+fn sweep_ix(fixture: &Fixture, destination_ata: Pubkey) -> Instruction {
     Instruction {
         program_id: PROGRAM,
         accounts: vec![
@@ -140,25 +140,25 @@ fn merge_ix(fixture: &Fixture, destination_ata: Pubkey) -> Instruction {
             AccountMeta::new_readonly(spl_token_interface::ID, false),
             AccountMeta::new_readonly(MAGIC_PROGRAM, false),
         ],
-        data: instruction::ESplInstruction::MergeShuttleIntoMagicAta.to_vec(),
+        data: instruction::ESplInstruction::SweepShuttleBalanceToMagicAta.to_vec(),
     }
 }
 
 #[tokio::test]
 #[serial]
-async fn merge_shuttle_into_magic_ata_creates_ata_and_merges() {
+async fn sweep_shuttle_balance_to_magic_ata_creates_ata_and_sweeps() {
     common::magic_mock::take_captured_magic_ata_creates(MAGIC_PROGRAM);
 
-    let fixture = setup("merge_magic_ata", 7).await;
+    let fixture = setup("sweep_magic_ata", 7).await;
     let payer = fixture.payer_kp.pubkey();
 
     let tx = Transaction::new_signed_with_payer(
-        &[merge_ix(&fixture, fixture.destination_ata)],
+        &[sweep_ix(&fixture, fixture.destination_ata)],
         Some(&payer),
         &[&fixture.payer_kp],
         fixture.context.last_blockhash,
     );
-    common::metrics::process_transaction_record_cu(&fixture.context.banks_client, tx, "merge_magic_ata::merge")
+    common::metrics::process_transaction_record_cu(&fixture.context.banks_client, tx, "sweep_magic_ata::sweep")
         .await
         .unwrap();
 
@@ -195,7 +195,7 @@ async fn merge_shuttle_into_magic_ata_creates_ata_and_merges() {
     // The extra self-transfer differentiates the signature from the first tx.
     let tx_rerun = Transaction::new_signed_with_payer(
         &[
-            merge_ix(&fixture, fixture.destination_ata),
+            sweep_ix(&fixture, fixture.destination_ata),
             solana_system_interface::instruction::transfer(&payer, &payer, 1),
         ],
         Some(&payer),
@@ -225,15 +225,15 @@ async fn merge_shuttle_into_magic_ata_creates_ata_and_merges() {
 
 #[tokio::test]
 #[serial]
-async fn merge_shuttle_into_magic_ata_rejects_mismatched_destination_ata() {
+async fn sweep_shuttle_balance_to_magic_ata_rejects_mismatched_destination_ata() {
     common::magic_mock::take_captured_magic_ata_creates(MAGIC_PROGRAM);
 
-    let fixture = setup("merge_magic_ata_mismatch", 8).await;
+    let fixture = setup("sweep_magic_ata_mismatch", 8).await;
     let payer = fixture.payer_kp.pubkey();
 
-    let wrong_ata = utils::test_pubkey("merge_magic_ata_mismatch::wrong_ata");
+    let wrong_ata = utils::test_pubkey("sweep_magic_ata_mismatch::wrong_ata");
     let tx = Transaction::new_signed_with_payer(
-        &[merge_ix(&fixture, wrong_ata)],
+        &[sweep_ix(&fixture, wrong_ata)],
         Some(&payer),
         &[&fixture.payer_kp],
         fixture.context.last_blockhash,

@@ -43,10 +43,10 @@ types, a transaction-building HTTP API, and local integration tooling.
 - `24` `StartAsyncShuttleTransfer` — set up, deposit into, and delegate a shuttle, then schedule merge and cleanup.
 - `25` `StartAsyncPrivateTransfer` — start a queue-backed private transfer that settles to the recipient later.
 - `26` `StartAsyncShuttleWithdraw` — delegate a shuttle, then schedule the owner-to-shuttle transfer and cleanup.
-- `34` `DepositAndDelegateShuttleWithMergeToEncryptedDestination` — start a private transfer with an encrypted destination.
-- `35` `MergeShuttleIntoMagicAta` — create a destination Magic ATA and merge the shuttle balance into it.
+- `34` `StartAsyncPrivateTransferToEncryptedDestination` — start a private transfer whose destination remains encrypted on base.
+- `35` `SweepShuttleBalanceToMagicAta` — create the destination Magic ATA and sweep the full shuttle balance into it.
 - `36` `EnsureMagicAtaDestination` — create a destination Magic ATA before a same-transaction SPL transfer.
-- `37` `WithdrawThroughDelegatedShuttleWithFee` — withdraw through instruction 26 while sending a fee to the transfer queue.
+- `37` `StartAsyncShuttleWithdrawWithFee` — start the instruction 26 withdrawal with a relay fee routed to the transfer queue.
 
 ### Transfer queue and automation
 

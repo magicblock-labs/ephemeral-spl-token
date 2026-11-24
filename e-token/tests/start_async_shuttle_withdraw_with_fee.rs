@@ -155,7 +155,7 @@ impl Fixture {
             Some(fee) => {
                 accounts.push(AccountMeta::new_readonly(self.queue, false));
                 data.extend_from_slice(&fee.to_le_bytes());
-                ESplInstruction::WithdrawThroughDelegatedShuttleWithFee
+                ESplInstruction::StartAsyncShuttleWithdrawWithFee
             }
         };
         Instruction {

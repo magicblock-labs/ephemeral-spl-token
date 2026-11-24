@@ -1,7 +1,7 @@
 pub mod create_ephemeral_ata_permission;
 pub mod delegate_ephemeral_ata;
 pub mod delegate_shuttle;
-pub mod deposit_and_delegate_shuttle_with_merge_to_encrypted_destination;
+pub mod start_async_private_transfer_to_encrypted_destination;
 pub mod deposit_and_queue_transfer;
 pub mod deposit_spl_tokens;
 pub mod ensure_stealth_pool_delegated;
@@ -21,7 +21,7 @@ pub mod withdraw_spl_tokens;
 pub use create_ephemeral_ata_permission::CreateEphemeralAtaPermissionArgs;
 pub use delegate_ephemeral_ata::DelegateArgs;
 pub use delegate_shuttle::DelegateShuttleArgs;
-pub use deposit_and_delegate_shuttle_with_merge_to_encrypted_destination::DepositAndDelegateShuttleWithMergeToEncryptedDestinationArgs;
+pub use start_async_private_transfer_to_encrypted_destination::StartAsyncPrivateTransferToEncryptedDestinationArgs;
 pub use deposit_and_queue_transfer::DepositAndQueueTransferArgs;
 pub use deposit_spl_tokens::DepositArgs;
 pub use ensure_stealth_pool_delegated::EnsureStealthPoolDelegatedArgs;
