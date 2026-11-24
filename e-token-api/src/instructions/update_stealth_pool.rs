@@ -6,7 +6,7 @@ use wheels::variable_offset_layout;
 #[variable_offset_layout(buffer_offset = 1)]
 pub struct UpdateStealthPoolArgs {
     pub handle: [u8; 256],
-    // TODO (snawaz): support enum based flags in data-layout
+    // TODO (snawaz): Support enum-based flags in wheels::variable_offset_layout.
     pub flags: u8,
     #[flexible = 1]
     pub destinations: Vec<Address>,
