@@ -118,4 +118,3 @@ the [Squads upgrade workflow](docs/upgrades.md).
 | [`e-token/tests`](e-token/tests) | In-process program tests and external-program mocks. |
 | [`e-token-e2e`](e-token-e2e) | Live base-validator and rollup tests for private-transfer settlement. |
 | [`compare-metrics`](compare-metrics) | Compare compute-unit measurements collected by program tests. |
-| [`data-layout`](data-layout/README.md) | Local layout-macro utility with its own encoding reference. |
