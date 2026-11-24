@@ -1,7 +1,7 @@
 use solana_address::Address;
 use wheels::variable_offset_layout;
 
-#[variable_offset_layout(buffer_offset = 1, option = implicit)]
+#[variable_offset_layout(buffer_offset = any, option = implicit)]
 pub struct DelegateShuttleArgs {
     pub validator: Option<Address>,
 }

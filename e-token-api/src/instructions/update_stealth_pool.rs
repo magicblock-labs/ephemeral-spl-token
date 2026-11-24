@@ -3,7 +3,7 @@ use alloc::vec::Vec;
 use solana_address::Address;
 use wheels::variable_offset_layout;
 
-#[variable_offset_layout(buffer_offset = 1)]
+#[variable_offset_layout(buffer_offset = any)]
 pub struct UpdateStealthPoolArgs {
     pub handle: [u8; 256],
     // TODO (snawaz): Support enum-based flags in wheels::variable_offset_layout.

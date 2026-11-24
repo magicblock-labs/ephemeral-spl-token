@@ -1,6 +1,6 @@
 use wheels::variable_offset_layout;
 
-#[variable_offset_layout(buffer_offset = 1, option = implicit)]
+#[variable_offset_layout(buffer_offset = any, option = implicit)]
 pub struct InitializeTransferQueueArgs {
     pub requested_items: Option<u32>,
 }

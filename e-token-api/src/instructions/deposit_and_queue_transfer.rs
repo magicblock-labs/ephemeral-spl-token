@@ -1,6 +1,6 @@
 use wheels::variable_offset_layout;
 
-#[variable_offset_layout(buffer_offset = 1, option = implicit)]
+#[variable_offset_layout(buffer_offset = any, option = implicit)]
 pub struct DepositAndQueueTransferArgs {
     pub amount: u64,
     pub group_id: [u8; 3],
