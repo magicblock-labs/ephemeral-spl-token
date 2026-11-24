@@ -1,6 +1,6 @@
 use wheels::variable_offset_layout;
 
-#[variable_offset_layout(buffer_offset = 1, option = implicit)]
+#[variable_offset_layout(buffer_offset = any, option = implicit)]
 pub struct ExecuteQueuedTransferArgs {
     pub escrow_index: u8,
     pub amount: u64,

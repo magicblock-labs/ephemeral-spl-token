@@ -1,7 +1,7 @@
 use solana_address::Address;
 use wheels::variable_offset_layout;
 
-#[variable_offset_layout(buffer_offset = 1)]
+#[variable_offset_layout(buffer_offset = any)]
 pub struct AsyncPrivateTransferToEncryptedDestinationArgs {
     pub shuttle_id: u32,
     pub amount: u64,

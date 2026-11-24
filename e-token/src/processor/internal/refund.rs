@@ -154,9 +154,7 @@ pub(crate) fn schedule_refund_on_failure(
     )
 }
 
-// buffer_offset = 6: response.data starts at byte 14 of the original 8-byte-aligned
-// instruction buffer (1 disc + 4 variant + 1 ok + 8 data_len), and 14 % 8 = 6.
-#[variable_offset_layout(buffer_offset = 6)]
+#[variable_offset_layout(buffer_offset = any)]
 pub(crate) struct RefundOnFailureArgs {
     /// Amount to be refunded
     pub amount: u64,

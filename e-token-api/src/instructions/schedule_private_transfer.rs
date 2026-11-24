@@ -3,7 +3,7 @@ use alloc::vec::Vec;
 use solana_address::Address;
 use wheels::variable_offset_layout;
 
-#[variable_offset_layout(buffer_offset = 1)]
+#[variable_offset_layout(buffer_offset = any)]
 pub struct SchedulePrivateTransferArgs {
     pub shuttle_id: u32,
     pub stash_bump: u8,

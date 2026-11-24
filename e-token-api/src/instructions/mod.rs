@@ -1,3 +1,7 @@
+//! Use `buffer_offset = any` for instruction argument layouts. Use a numeric offset
+//! only when a borrowed field needs the alignment guarantee and every caller supplies
+//! a payload with that starting address modulo eight.
+
 pub mod create_ephemeral_ata_permission;
 pub mod delegate_ephemeral_ata;
 pub mod delegate_shuttle;
