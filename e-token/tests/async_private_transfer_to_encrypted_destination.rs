@@ -9,7 +9,7 @@ use ephemeral_spl_api::{
         SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS, SPONSORED_SHUTTLE_MERGE_TO_ENCRYPTED_DESTINATION_EXTRA_LAMPORTS,
     },
     instruction,
-    instructions::DepositAndDelegateShuttleWithMergeToEncryptedDestinationArgs,
+    instructions::AsyncPrivateTransferToEncryptedDestinationArgs,
     state::{ephemeral_ata::EphemeralAta, load, shuttle_ephemeral_ata::ShuttleMetadata, Initializable},
     ID as PROGRAM,
 };
@@ -46,9 +46,9 @@ fn contains_window(haystack: &[u8], needle: &[u8]) -> bool {
 }
 
 #[tokio::test]
-async fn deposit_and_delegate_shuttle_with_merge_to_encrypted_destination_stores_encrypted_action() {
-    let owner = utils::test_keypair("merge_to_encrypted_destination::owner");
-    let owner_token = utils::test_keypair("merge_to_encrypted_destination::owner_token");
+async fn async_private_transfer_to_encrypted_destination_stores_encrypted_action() {
+    let owner = utils::test_keypair("sweep_to_encrypted_destination::owner");
+    let owner_token = utils::test_keypair("sweep_to_encrypted_destination::owner_token");
 
     let mut context = utils::start_program_test_with(PROGRAM, |pt| {
         pt.add_account(
@@ -66,17 +66,17 @@ async fn deposit_and_delegate_shuttle_with_merge_to_encrypted_destination_stores
 
     let payer_kp = utils::fixed_payer_keypair();
     let payer = payer_kp.pubkey();
-    let mint_kp = utils::test_keypair("merge_to_encrypted_destination::mint");
+    let mint_kp = utils::test_keypair("sweep_to_encrypted_destination::mint");
     let mint = mint_kp.pubkey();
     let shuttle_id = 11_u32;
-    let validator = utils::test_keypair("merge_to_encrypted_destination::validator").pubkey();
+    let validator = utils::test_keypair("sweep_to_encrypted_destination::validator").pubkey();
 
     let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
 
     let _setup =
         utils::setup_mint_and_token_accounts(&mut context, &payer_kp, &mint_kp, DECIMALS, STARTING_BALANCE, 1).await;
 
-    let destination_owner = utils::test_pubkey("merge_to_encrypted_destination::destination_owner");
+    let destination_owner = utils::test_pubkey("sweep_to_encrypted_destination::destination_owner");
     let destination_ata = utils::derive_associated_token_address(destination_owner, mint);
 
     let (shuttle_metadata, _) = ShuttleMetadata::find_pda(&owner.pubkey(), &mint, shuttle_id);
@@ -168,7 +168,7 @@ async fn deposit_and_delegate_shuttle_with_merge_to_encrypted_destination_stores
     let encrypted_destination_owner = encrypt_pubkey(&destination_owner, &validator);
     let encrypted_destination_ata = encrypt_pubkey(&destination_ata, &validator);
 
-    let args = DepositAndDelegateShuttleWithMergeToEncryptedDestinationArgs {
+    let args = AsyncPrivateTransferToEncryptedDestinationArgs {
         shuttle_id,
         amount: DEPOSIT_AMOUNT,
         encrypted_destination_owner,
@@ -198,7 +198,7 @@ async fn deposit_and_delegate_shuttle_with_merge_to_encrypted_destination_stores
             AccountMeta::new(owner_source_ata, false),
             AccountMeta::new(vault_ata, false),
         ],
-        data: instruction::ESplInstruction::DepositAndDelegateShuttleWithMergeToEncryptedDestination
+        data: instruction::ESplInstruction::AsyncPrivateTransferToEncryptedDestination
             .with_data(&args.encode().unwrap()),
     };
 
@@ -211,7 +211,7 @@ async fn deposit_and_delegate_shuttle_with_merge_to_encrypted_destination_stores
     common::metrics::process_transaction_record_cu(
         &context.banks_client,
         tx_delegate,
-        "merge_to_encrypted_destination::shuttle",
+        "sweep_to_encrypted_destination::shuttle",
     )
     .await
     .unwrap();
@@ -309,12 +309,12 @@ async fn deposit_and_delegate_shuttle_with_merge_to_encrypted_destination_stores
     assert_eq!(
         actions.instructions.len(),
         2,
-        "expected the merge and undelegate-and-close actions"
+        "expected the sweep and undelegate-and-close actions"
     );
     assert_eq!(
         actions.instructions[0].data.prefix,
-        instruction::ESplInstruction::MergeShuttleIntoMagicAta.to_vec(),
-        "the first stored action must be the Magic ATA merge instruction"
+        instruction::ESplInstruction::SweepShuttleBalanceToMagicAta.to_vec(),
+        "the first stored action must be the Magic ATA sweep instruction"
     );
 
     let rent_pda_after = context
@@ -349,8 +349,8 @@ async fn deposit_and_delegate_shuttle_with_merge_to_encrypted_destination_stores
 }
 
 #[tokio::test]
-async fn deposit_and_delegate_shuttle_with_merge_to_encrypted_destination_rejects_zero_amount() {
-    let owner = utils::test_keypair("merge_to_encrypted_destination_zero::owner");
+async fn async_private_transfer_to_encrypted_destination_rejects_zero_amount() {
+    let owner = utils::test_keypair("sweep_to_encrypted_destination_zero::owner");
 
     let context = utils::start_program_test_with(PROGRAM, |pt| {
         pt.add_account(
@@ -368,12 +368,12 @@ async fn deposit_and_delegate_shuttle_with_merge_to_encrypted_destination_reject
 
     let payer_kp = utils::fixed_payer_keypair();
     let payer = payer_kp.pubkey();
-    let mint = utils::test_pubkey("merge_to_encrypted_destination_zero::mint");
+    let mint = utils::test_pubkey("sweep_to_encrypted_destination_zero::mint");
     let shuttle_id = 12_u32;
-    let validator = utils::test_keypair("merge_to_encrypted_destination_zero::validator").pubkey();
+    let validator = utils::test_keypair("sweep_to_encrypted_destination_zero::validator").pubkey();
 
     let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
-    let destination_owner = utils::test_pubkey("merge_to_encrypted_destination_zero::destination_owner");
+    let destination_owner = utils::test_pubkey("sweep_to_encrypted_destination_zero::destination_owner");
     let destination_ata = utils::derive_associated_token_address(destination_owner, mint);
 
     let (shuttle_metadata, _) = ShuttleMetadata::find_pda(&owner.pubkey(), &mint, shuttle_id);
@@ -382,9 +382,9 @@ async fn deposit_and_delegate_shuttle_with_merge_to_encrypted_destination_reject
     let pdas = utils::derive_pdas(PROGRAM, owner.pubkey(), mint);
     let vault = pdas.vault;
     let vault_ata = utils::derive_associated_token_address(vault, mint);
-    let owner_source_ata = utils::test_pubkey("merge_to_encrypted_destination_zero::owner_source");
+    let owner_source_ata = utils::test_pubkey("sweep_to_encrypted_destination_zero::owner_source");
 
-    let args = DepositAndDelegateShuttleWithMergeToEncryptedDestinationArgs {
+    let args = AsyncPrivateTransferToEncryptedDestinationArgs {
         shuttle_id,
         amount: 0,
         encrypted_destination_owner: encrypt_pubkey(&destination_owner, &validator),
@@ -417,7 +417,7 @@ async fn deposit_and_delegate_shuttle_with_merge_to_encrypted_destination_reject
             AccountMeta::new(owner_source_ata, false),
             AccountMeta::new(vault_ata, false),
         ],
-        data: instruction::ESplInstruction::DepositAndDelegateShuttleWithMergeToEncryptedDestination
+        data: instruction::ESplInstruction::AsyncPrivateTransferToEncryptedDestination
             .with_data(&args.encode().unwrap()),
     };
 

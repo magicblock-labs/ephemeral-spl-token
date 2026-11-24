@@ -32,6 +32,31 @@ types, a transaction-building HTTP API, and local integration tooling.
 | **Permissions and stealth pools** | Control account access and use handles to address payments. |
 | **Application integration** | Build transactions through the [HTTP API](api/README.md) or accept [delegated-USDC payments](api/PAYMENTS.md). |
 
+## Instruction catalog
+
+### Shuttle flows
+
+- `11` `InitializeShuttle` — initialize or validate shuttle metadata, its shuttle Ephemeral ATA, and the shuttle wallet ATA for `[owner, mint, shuttle_id]`.
+- `13` `DelegateShuttle` — delegate a shuttle Ephemeral ATA.
+- `14` `AsyncShuttleClose` — undelegate a shuttle and schedule close/refund handling.
+- `15` `SweepShuttleBalance` — transfer the entire shuttle wallet ATA balance into a destination token account.
+- `24` `AsyncShuttleTransfer` — set up, deposit into, and delegate a shuttle, then schedule merge and cleanup.
+- `25` `AsyncPrivateTransfer` — start a queue-backed private transfer that settles to the recipient later.
+- `26` `AsyncShuttleWithdraw` — delegate a shuttle, then schedule the owner-to-shuttle transfer and cleanup.
+- `34` `AsyncPrivateTransferToEncryptedDestination` — start a private transfer whose destination remains encrypted on base.
+- `35` `SweepShuttleBalanceToMagicAta` — create the destination Magic ATA and sweep the full shuttle balance into it.
+- `36` `EnsureMagicAtaDestination` — create a destination Magic ATA before a same-transaction SPL transfer.
+- `37` `AsyncShuttleWithdrawWithFee` — start the instruction 26 withdrawal with a relay fee routed to the transfer queue.
+
+### Transfer queue and automation
+
+- `12` `InitializeTransferQueue` — create the per-mint transfer queue PDA.
+- `16` `DepositAndQueueTransfer` — deposit into the vault and enqueue delayed transfers.
+- `17` `EnsureTransferQueueCrank` — ensure recurring transfer-queue processing is scheduled.
+- `19` `DelegateTransferQueue` — delegate the per-mint transfer queue PDA.
+- `20` `AsyncLamportsTransfer` — start a sponsored lamports transfer with scheduled cleanup.
+- `28` `AsyncTransferQueueRefill` — start the async transfer-queue refill path.
+
 ## 🌉 How it fits together
 
 **Vault → Delegated execution → Settlement**

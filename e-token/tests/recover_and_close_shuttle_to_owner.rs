@@ -57,7 +57,7 @@ async fn recover_and_close_shuttle_to_owner_settles_full_balance_to_owner_token_
             AccountMeta::new_readonly(utils::associated_token_program_id(), false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: instruction::ESplInstruction::InitializeShuttleEphemeralAta.with_data(&shuttle_id.to_le_bytes()),
+        data: instruction::ESplInstruction::InitializeShuttle.with_data(&shuttle_id.to_le_bytes()),
     };
 
     let ix_init_vault = Instruction {
@@ -214,7 +214,7 @@ async fn recover_and_close_shuttle_to_owner_settles_full_balance_to_owner_token_
             AccountMeta::new_readonly(utils::associated_token_program_id(), false),
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
-        data: instruction::ESplInstruction::InitializeShuttleEphemeralAta.with_data(&zero_shuttle_id.to_le_bytes()),
+        data: instruction::ESplInstruction::InitializeShuttle.with_data(&zero_shuttle_id.to_le_bytes()),
     };
     let tx_init_zero_shuttle = Transaction::new_signed_with_payer(
         &[ix_init_zero_shuttle],

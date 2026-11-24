@@ -101,7 +101,7 @@ pub(crate) fn initialize_ephemeral_ata_with_sponsor(
 
 #[allow(clippy::too_many_arguments)]
 #[inline(never)]
-pub(crate) fn initialize_shuttle_ephemeral_ata_with_sponsor(
+pub(crate) fn initialize_shuttle_with_sponsor(
     sponsor_info: &AccountView,
     sponsor_signer: Option<Signer<'_, '_>>,
     shuttle_info: &AccountView,
