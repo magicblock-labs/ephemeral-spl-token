@@ -36,7 +36,7 @@ use crate::processor::internal::{
 
 pub(crate) const DEFAULT_ESCROW_INDEX: u8 = u8::MAX;
 
-pub(crate) struct StartAsyncShuttleAccounts<'a> {
+pub(crate) struct AsyncShuttleAccounts<'a> {
     pub(crate) payer_info: &'a AccountView,
     pub(crate) rent_pda_info: &'a AccountView,
     pub(crate) shuttle_info: &'a AccountView,
@@ -61,15 +61,15 @@ pub(crate) struct PreparedShuttleDelegation {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct StartAsyncShuttleCommonArgs<'a> {
+pub(crate) struct AsyncShuttleCommonArgs<'a> {
     pub(crate) shuttle_id: u32,
     pub(crate) total_amount: u64,
     pub(crate) validator: Option<&'a Address>,
 }
 
-pub(crate) fn process_start_async_shuttle_with_post_actions(
-    accounts: &StartAsyncShuttleAccounts<'_>,
-    args: StartAsyncShuttleCommonArgs<'_>,
+pub(crate) fn process_async_shuttle_with_post_actions(
+    accounts: &AsyncShuttleAccounts<'_>,
+    args: AsyncShuttleCommonArgs<'_>,
     extra_setup_lamports: u64,
     post_actions: PostDelegationActions,
 ) -> ProgramResult {
@@ -267,7 +267,7 @@ pub(crate) fn delegate_sponsored_shuttle_with_post_actions(
     delegation_record: &AccountView,
     delegation_metadata: &AccountView,
     system_program: &AccountView,
-    args: StartAsyncShuttleCommonArgs,
+    args: AsyncShuttleCommonArgs,
     mint: &Address,
     shuttle_eata_bump: u8,
     post_actions: PostDelegationActions,
@@ -314,7 +314,7 @@ pub(crate) fn delegate_sponsored_shuttle_with_post_actions(
 }
 
 pub(crate) fn sweep_shuttle_balance_action(
-    accounts: &StartAsyncShuttleAccounts<'_>,
+    accounts: &AsyncShuttleAccounts<'_>,
     destination_token_info: &AccountView,
 ) -> Instruction {
     Instruction {
@@ -331,11 +331,11 @@ pub(crate) fn sweep_shuttle_balance_action(
     }
 }
 
-pub(crate) fn start_async_shuttle_close_action(
-    accounts: &StartAsyncShuttleAccounts<'_>,
+pub(crate) fn async_shuttle_close_action(
+    accounts: &AsyncShuttleAccounts<'_>,
     close_stash: Option<CloseStashArgsView<'_>>,
 ) -> Instruction {
-    build_start_async_shuttle_close_instruction(
+    build_async_shuttle_close_instruction(
         accounts.payer_info.address(),
         accounts.rent_pda_info.address(),
         accounts.shuttle_info.address(),
@@ -347,7 +347,7 @@ pub(crate) fn start_async_shuttle_close_action(
     )
 }
 
-pub(crate) fn build_start_async_shuttle_close_instruction(
+pub(crate) fn build_async_shuttle_close_instruction(
     payer: &Address,
     rent_pda: &Address,
     shuttle: &Address,
@@ -368,7 +368,7 @@ pub(crate) fn build_start_async_shuttle_close_instruction(
         AccountMeta::new(Pubkey::from(MAGIC_CONTEXT_ID.to_bytes()), false),
         AccountMeta::new_readonly(Pubkey::from(MAGIC_PROGRAM_ID.to_bytes()), false),
     ];
-    let mut data = ESplInstruction::StartAsyncShuttleClose.to_vec();
+    let mut data = ESplInstruction::AsyncShuttleClose.to_vec();
     if let Some(close) = close_stash {
         // Explicit escrow_index byte: the parser would otherwise consume `user[0]` as it.
         data.push(DEFAULT_ESCROW_INDEX);

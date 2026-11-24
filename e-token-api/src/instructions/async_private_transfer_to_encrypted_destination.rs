@@ -2,7 +2,7 @@ use solana_address::Address;
 use wheels::variable_offset_layout;
 
 #[variable_offset_layout(buffer_offset = 1)]
-pub struct StartAsyncPrivateTransferToEncryptedDestinationArgs {
+pub struct AsyncPrivateTransferToEncryptedDestinationArgs {
     pub shuttle_id: u32,
     pub amount: u64,
     pub encrypted_destination_owner: [u8; 80],
@@ -11,6 +11,6 @@ pub struct StartAsyncPrivateTransferToEncryptedDestinationArgs {
 }
 
 static_assertions::const_assert!(matches!(
-    StartAsyncPrivateTransferToEncryptedDestinationArgs::DATA_LENS,
+    AsyncPrivateTransferToEncryptedDestinationArgs::DATA_LENS,
     [173, 205]
 ));

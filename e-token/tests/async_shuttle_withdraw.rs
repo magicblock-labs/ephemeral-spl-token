@@ -6,7 +6,7 @@ use std::{
 use dlp_api::state::DelegationRecord;
 use ephemeral_spl_api::{
     instruction,
-    instructions::StartAsyncShuttleWithdrawArgs,
+    instructions::AsyncShuttleWithdrawArgs,
     state::{
         ephemeral_ata::EphemeralAta, load, load_initialized, load_mut, shuttle_ephemeral_ata::ShuttleMetadata,
         Initializable, RawType,
@@ -122,10 +122,10 @@ fn associated_token_create_idempotent_ix(funding: Pubkey, ata: Pubkey, wallet: P
 }
 
 #[tokio::test]
-async fn start_async_shuttle_withdraw_stores_transfer_and_cleanup_actions() {
-    let owner = utils::test_keypair("start_async_shuttle_withdraw_stores_transfer_and_cleanup_actions::owner");
+async fn async_shuttle_withdraw_stores_transfer_and_cleanup_actions() {
+    let owner = utils::test_keypair("async_shuttle_withdraw_stores_transfer_and_cleanup_actions::owner");
     let owner_token =
-        utils::test_keypair("start_async_shuttle_withdraw_stores_transfer_and_cleanup_actions::owner_token");
+        utils::test_keypair("async_shuttle_withdraw_stores_transfer_and_cleanup_actions::owner_token");
 
     let mut context = utils::start_program_test_with(PROGRAM, |pt| {
         pt.add_account(
@@ -143,10 +143,10 @@ async fn start_async_shuttle_withdraw_stores_transfer_and_cleanup_actions() {
 
     let payer_kp = utils::fixed_payer_keypair();
     let payer = payer_kp.pubkey();
-    let mint_kp = utils::test_keypair("start_async_shuttle_withdraw_stores_transfer_and_cleanup_actions::mint");
+    let mint_kp = utils::test_keypair("async_shuttle_withdraw_stores_transfer_and_cleanup_actions::mint");
     let mint = mint_kp.pubkey();
     let shuttle_id = 9_u32;
-    let validator = utils::test_pubkey("start_async_shuttle_withdraw_stores_transfer_and_cleanup_actions::validator");
+    let validator = utils::test_pubkey("async_shuttle_withdraw_stores_transfer_and_cleanup_actions::validator");
     let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
 
     let (shuttle_metadata, _) = utils::derive_shuttle_ephemeral_ata(PROGRAM, owner.pubkey(), mint, shuttle_id);
@@ -237,8 +237,8 @@ async fn start_async_shuttle_withdraw_stores_transfer_and_cleanup_actions() {
             AccountMeta::new_readonly(mint, false),
             AccountMeta::new_readonly(spl_token_interface::ID, false),
         ],
-        data: instruction::ESplInstruction::StartAsyncShuttleWithdraw
-            .with(&StartAsyncShuttleWithdrawArgs {
+        data: instruction::ESplInstruction::AsyncShuttleWithdraw
+            .with(&AsyncShuttleWithdrawArgs {
                 shuttle_id,
                 amount: TRANSFER_AMOUNT,
                 validator: Some(validator),
@@ -430,7 +430,7 @@ async fn undelegate_and_close_shuttle_ephemeral_ata_schedules_close_action() {
             AccountMeta::new(magic_context, false),
             AccountMeta::new_readonly(magic_program, false),
         ],
-        data: instruction::ESplInstruction::StartAsyncShuttleClose.to_vec(),
+        data: instruction::ESplInstruction::AsyncShuttleClose.to_vec(),
     };
     let tx_undelegate = Transaction::new_signed_with_payer(
         &[ix_undelegate],

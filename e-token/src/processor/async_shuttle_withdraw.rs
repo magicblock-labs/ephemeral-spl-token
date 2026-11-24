@@ -6,7 +6,7 @@ use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
 use ephemeral_spl_api::{
     debug_log,
     error::EphemeralSplError,
-    instructions::StartAsyncShuttleWithdrawArgs,
+    instructions::AsyncShuttleWithdrawArgs,
     require, require_eq_keys, require_n_accounts,
     state::{
         ephemeral_ata::EphemeralAta,
@@ -26,13 +26,13 @@ const CLOSE_MAGIC_ATA_DISCRIMINATOR: u32 = 26;
 use crate::processor::internal::{
     get_associated_token_address, read_mint_decimals,
     shuttle_delegation::{
-        build_start_async_shuttle_close_instruction, delegate_sponsored_shuttle_with_post_actions,
-        prepare_sponsored_shuttle_delegation, StartAsyncShuttleCommonArgs,
+        build_async_shuttle_close_instruction, delegate_sponsored_shuttle_with_post_actions,
+        prepare_sponsored_shuttle_delegation, AsyncShuttleCommonArgs,
     },
     validate_token_account,
 };
 
-struct StartAsyncShuttleWithdrawAccounts<'a> {
+struct AsyncShuttleWithdrawAccounts<'a> {
     pub(crate) payer_info: &'a AccountView,
     pub(crate) rent_pda_info: &'a AccountView,
     pub(crate) shuttle_info: &'a AccountView,
@@ -72,11 +72,11 @@ struct StartAsyncShuttleWithdrawAccounts<'a> {
 /// 15: []                  - SPL     : Token program.
 /// 16: []                  - PDA     : Delegated transfer queue (`with_fee` only).
 ///
-/// Instruction Data: StartAsyncShuttleWithdrawArgs, then fee (u64 LE) when
+/// Instruction Data: AsyncShuttleWithdrawArgs, then fee (u64 LE) when
 /// `with_fee`; the fee goes to the queue vault ATA in the same ER transaction.
 ///
 #[inline(never)]
-pub fn process_start_async_shuttle_withdraw(
+pub fn process_async_shuttle_withdraw(
     accounts: &[AccountView],
     instruction_data: &[u8],
     with_fee: bool,
@@ -112,7 +112,7 @@ pub fn process_start_async_shuttle_withdraw(
         token_program_info,
     ] = require_n_accounts!(accounts, 16);
 
-    let args = StartAsyncShuttleWithdrawArgs::decode(instruction_data)?;
+    let args = AsyncShuttleWithdrawArgs::decode(instruction_data)?;
     let fee = match fee {
         Some((fee, queue_info)) => {
             require!(fee > 0 && fee < args.amount(), ProgramError::InvalidArgument);
@@ -132,7 +132,7 @@ pub fn process_start_async_shuttle_withdraw(
     };
     let shuttled_amount = args.amount() - fee.map_or(0, |(fee, _)| fee);
 
-    let accounts = StartAsyncShuttleWithdrawAccounts {
+    let accounts = AsyncShuttleWithdrawAccounts {
         payer_info,
         rent_pda_info,
         shuttle_info,
@@ -209,7 +209,7 @@ pub fn process_start_async_shuttle_withdraw(
             shuttled_amount,
             decimals,
         ),
-        build_start_async_shuttle_close_instruction(
+        build_async_shuttle_close_instruction(
             accounts.payer_info.address(),
             accounts.rent_pda_info.address(),
             accounts.shuttle_info.address(),
@@ -236,7 +236,7 @@ pub fn process_start_async_shuttle_withdraw(
         accounts.delegation_record,
         accounts.delegation_metadata,
         accounts.system_program,
-        StartAsyncShuttleCommonArgs {
+        AsyncShuttleCommonArgs {
             shuttle_id: args.shuttle_id(),
             total_amount: shuttled_amount,
             validator: args.validator(),
@@ -250,7 +250,7 @@ pub fn process_start_async_shuttle_withdraw(
 /// Closes the owner's ER-side source account when it is a fully drained
 /// Magic ATA; the Magic Program no-ops in every other case, so this
 /// action is safe on eATA-backed and partial withdrawals alike.
-fn close_magic_ata_source_action(accounts: &StartAsyncShuttleWithdrawAccounts<'_>) -> Instruction {
+fn close_magic_ata_source_action(accounts: &AsyncShuttleWithdrawAccounts<'_>) -> Instruction {
     Instruction {
         program_id: MAGIC_PROGRAM_ID,
         accounts: alloc::vec![
@@ -262,7 +262,7 @@ fn close_magic_ata_source_action(accounts: &StartAsyncShuttleWithdrawAccounts<'_
 }
 
 fn transfer_owner_tokens_action(
-    accounts: &StartAsyncShuttleWithdrawAccounts<'_>,
+    accounts: &AsyncShuttleWithdrawAccounts<'_>,
     destination: &Address,
     amount: u64,
     decimals: u8,

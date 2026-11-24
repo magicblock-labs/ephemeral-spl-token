@@ -9,7 +9,7 @@ use ephemeral_spl_api::{
         SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS, SPONSORED_SHUTTLE_MERGE_TO_ENCRYPTED_DESTINATION_EXTRA_LAMPORTS,
     },
     instruction,
-    instructions::StartAsyncPrivateTransferToEncryptedDestinationArgs,
+    instructions::AsyncPrivateTransferToEncryptedDestinationArgs,
     state::{ephemeral_ata::EphemeralAta, load, shuttle_ephemeral_ata::ShuttleMetadata, Initializable},
     ID as PROGRAM,
 };
@@ -46,7 +46,7 @@ fn contains_window(haystack: &[u8], needle: &[u8]) -> bool {
 }
 
 #[tokio::test]
-async fn start_async_private_transfer_to_encrypted_destination_stores_encrypted_action() {
+async fn async_private_transfer_to_encrypted_destination_stores_encrypted_action() {
     let owner = utils::test_keypair("sweep_to_encrypted_destination::owner");
     let owner_token = utils::test_keypair("sweep_to_encrypted_destination::owner_token");
 
@@ -168,7 +168,7 @@ async fn start_async_private_transfer_to_encrypted_destination_stores_encrypted_
     let encrypted_destination_owner = encrypt_pubkey(&destination_owner, &validator);
     let encrypted_destination_ata = encrypt_pubkey(&destination_ata, &validator);
 
-    let args = StartAsyncPrivateTransferToEncryptedDestinationArgs {
+    let args = AsyncPrivateTransferToEncryptedDestinationArgs {
         shuttle_id,
         amount: DEPOSIT_AMOUNT,
         encrypted_destination_owner,
@@ -198,7 +198,7 @@ async fn start_async_private_transfer_to_encrypted_destination_stores_encrypted_
             AccountMeta::new(owner_source_ata, false),
             AccountMeta::new(vault_ata, false),
         ],
-        data: instruction::ESplInstruction::StartAsyncPrivateTransferToEncryptedDestination
+        data: instruction::ESplInstruction::AsyncPrivateTransferToEncryptedDestination
             .with_data(&args.encode().unwrap()),
     };
 
@@ -349,7 +349,7 @@ async fn start_async_private_transfer_to_encrypted_destination_stores_encrypted_
 }
 
 #[tokio::test]
-async fn start_async_private_transfer_to_encrypted_destination_rejects_zero_amount() {
+async fn async_private_transfer_to_encrypted_destination_rejects_zero_amount() {
     let owner = utils::test_keypair("sweep_to_encrypted_destination_zero::owner");
 
     let context = utils::start_program_test_with(PROGRAM, |pt| {
@@ -384,7 +384,7 @@ async fn start_async_private_transfer_to_encrypted_destination_rejects_zero_amou
     let vault_ata = utils::derive_associated_token_address(vault, mint);
     let owner_source_ata = utils::test_pubkey("sweep_to_encrypted_destination_zero::owner_source");
 
-    let args = StartAsyncPrivateTransferToEncryptedDestinationArgs {
+    let args = AsyncPrivateTransferToEncryptedDestinationArgs {
         shuttle_id,
         amount: 0,
         encrypted_destination_owner: encrypt_pubkey(&destination_owner, &validator),
@@ -417,7 +417,7 @@ async fn start_async_private_transfer_to_encrypted_destination_rejects_zero_amou
             AccountMeta::new(owner_source_ata, false),
             AccountMeta::new(vault_ata, false),
         ],
-        data: instruction::ESplInstruction::StartAsyncPrivateTransferToEncryptedDestination
+        data: instruction::ESplInstruction::AsyncPrivateTransferToEncryptedDestination
             .with_data(&args.encode().unwrap()),
     };
 

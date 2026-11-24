@@ -15,7 +15,7 @@ use ephemeral_rollups_pinocchio::{
 use ephemeral_spl_api::{
     consts, debug_log,
     instruction::ESplInstruction,
-    instructions::{CloseStashArgs, StartAsyncPrivateTransferArgs},
+    instructions::{CloseStashArgs, AsyncPrivateTransferArgs},
     require, require_eq_keys, require_n_accounts,
     state::{
         stash::StashPda,
@@ -34,8 +34,8 @@ use crate::processor::internal::{
     group_receipt::derive_group_receipt_id,
     rent_pda::RENT_PDA,
     shuttle_delegation::{
-        process_start_async_shuttle_with_post_actions, start_async_shuttle_close_action, sweep_shuttle_balance_action,
-        StartAsyncShuttleAccounts, StartAsyncShuttleCommonArgs,
+        process_async_shuttle_with_post_actions, async_shuttle_close_action, sweep_shuttle_balance_action,
+        AsyncShuttleAccounts, AsyncShuttleCommonArgs,
     },
     MAGIC_VAULT_ID,
 };
@@ -74,12 +74,12 @@ pub(crate) const SCHEDULED_PT_ACCOUNTS: usize = SCHEDULED_PT_INNER_ACCOUNTS + 2;
 /// 17: [writable]          - SPL     : Vault token account.
 /// 18: [writable]          - PDA     : Transfer queue account.
 ///
-/// Instruction Data: StartAsyncPrivateTransferArgs,
+/// Instruction Data: AsyncPrivateTransferArgs,
 /// optionally followed by `[user(32) | stash_bump(1)]` for scheduled
 /// stash-close private transfers.
 ///
 #[inline(never)]
-pub fn process_start_async_private_transfer(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
+pub fn process_async_private_transfer(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
     let [
         payer_info, // force multi-line
         rent_pda_info,
@@ -102,7 +102,7 @@ pub fn process_start_async_private_transfer(accounts: &[AccountView], instructio
         queue_info,
     ] = require_n_accounts!(accounts, 19);
 
-    let (args, remaining) = StartAsyncPrivateTransferArgs::decode_prefix(instruction_data)?;
+    let (args, remaining) = AsyncPrivateTransferArgs::decode_prefix(instruction_data)?;
 
     require!(args.amount() != 0, ProgramError::InvalidInstructionData);
 
@@ -116,7 +116,7 @@ pub fn process_start_async_private_transfer(accounts: &[AccountView], instructio
         require_eq_keys!(payer_info.address(), &derived_stash_pda, ProgramError::InvalidSeeds);
     }
 
-    let common_accounts = StartAsyncShuttleAccounts {
+    let common_accounts = AsyncShuttleAccounts {
         payer_info,
         rent_pda_info,
         shuttle_info,
@@ -221,7 +221,7 @@ pub fn process_start_async_private_transfer(accounts: &[AccountView], instructio
 
         // DLP requires every reference to a bundle signer to be a signer reference,
         // and the rent PDA signs this bundle (see the private transfer action).
-        let mut close_shuttle = start_async_shuttle_close_action(&common_accounts, close_stash);
+        let mut close_shuttle = async_shuttle_close_action(&common_accounts, close_stash);
         for meta in close_shuttle
             .accounts
             .iter_mut()
@@ -233,9 +233,9 @@ pub fn process_start_async_private_transfer(accounts: &[AccountView], instructio
         post_actions.cleartext_with_insertable(private_transfer, 1)
     };
 
-    process_start_async_shuttle_with_post_actions(
+    process_async_shuttle_with_post_actions(
         &common_accounts,
-        StartAsyncShuttleCommonArgs {
+        AsyncShuttleCommonArgs {
             shuttle_id: args.shuttle_id(),
             total_amount,
             validator: args.validator(),
@@ -246,7 +246,7 @@ pub fn process_start_async_private_transfer(accounts: &[AccountView], instructio
 }
 
 fn private_transfer_action_encrypted(
-    common_accounts: &StartAsyncShuttleAccounts<'_>,
+    common_accounts: &AsyncShuttleAccounts<'_>,
     queue_info: &AccountView,
     queue_vault_ata: &Address,
     encrypted_destination: &[u8; 80],
@@ -326,7 +326,7 @@ fn private_transfer_fee_amount(amount: u64) -> Result<u64, ProgramError> {
 
 #[cfg(not(feature = "no-fees"))]
 fn private_transfer_fee_action(
-    common_accounts: &StartAsyncShuttleAccounts<'_>,
+    common_accounts: &AsyncShuttleAccounts<'_>,
     queue_vault_ata: &Address,
     fee_amount: u64,
     mint_decimals: u8,

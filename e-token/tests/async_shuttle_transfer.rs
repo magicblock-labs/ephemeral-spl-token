@@ -5,7 +5,7 @@ use ephemeral_rollups_pinocchio::pda::{
 };
 use ephemeral_spl_api::{
     instruction,
-    instructions::StartAsyncShuttleTransferArgs,
+    instructions::AsyncShuttleTransferArgs,
     state::{ephemeral_ata::EphemeralAta, load_initialized, shuttle_ephemeral_ata::ShuttleMetadata},
     ID as PROGRAM,
 };
@@ -29,9 +29,9 @@ const STARTING_BALANCE: u64 = 1_000 * 10u64.pow(DECIMALS as u32);
 const DEPOSIT_AMOUNT: u64 = 100 * 10u64.pow(DECIMALS as u32);
 
 #[tokio::test]
-async fn start_async_shuttle_transfer_deposits_and_stores_post_delegation_action() {
-    let owner = utils::test_keypair("start_async_shuttle_transfer::owner");
-    let owner_token = utils::test_keypair("start_async_shuttle_transfer::owner_token");
+async fn async_shuttle_transfer_deposits_and_stores_post_delegation_action() {
+    let owner = utils::test_keypair("async_shuttle_transfer::owner");
+    let owner_token = utils::test_keypair("async_shuttle_transfer::owner_token");
 
     let mut context = utils::start_program_test_with(PROGRAM, |pt| {
         pt.add_account(
@@ -49,10 +49,10 @@ async fn start_async_shuttle_transfer_deposits_and_stores_post_delegation_action
 
     let payer_kp = utils::fixed_payer_keypair();
     let payer = payer_kp.pubkey();
-    let mint_kp = utils::test_keypair("start_async_shuttle_transfer::mint");
+    let mint_kp = utils::test_keypair("async_shuttle_transfer::mint");
     let mint = mint_kp.pubkey();
     let shuttle_id = 9_u32;
-    let validator = utils::test_pubkey("start_async_shuttle_transfer::validator");
+    let validator = utils::test_pubkey("async_shuttle_transfer::validator");
     let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
 
     let setup =
@@ -161,8 +161,8 @@ async fn start_async_shuttle_transfer_deposits_and_stores_post_delegation_action
             AccountMeta::new(owner_source_ata, false),
             AccountMeta::new(vault_ata, false),
         ],
-        data: instruction::ESplInstruction::StartAsyncShuttleTransfer
-            .with(&StartAsyncShuttleTransferArgs {
+        data: instruction::ESplInstruction::AsyncShuttleTransfer
+            .with(&AsyncShuttleTransferArgs {
                 shuttle_id,
                 amount: DEPOSIT_AMOUNT,
                 validator: Some(validator),

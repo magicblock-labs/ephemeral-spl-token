@@ -1,5 +1,5 @@
 use ephemeral_spl_api::{
-    instruction::ESplInstruction, instructions::StartAsyncLamportsTransferArgs, require, require_eq_keys,
+    instruction::ESplInstruction, instructions::AsyncLamportsTransferArgs, require, require_eq_keys,
     require_n_accounts,
 };
 use pinocchio::{
@@ -37,7 +37,7 @@ const START_ASYNC_LAMPORTS_TRANSFER_CPI_ACCOUNTS: usize = 11;
 /// Instruction Data: None
 ///
 #[inline(never)]
-pub fn process_start_async_transfer_queue_refill(accounts: &[AccountView], _instruction_data: &[u8]) -> ProgramResult {
+pub fn process_async_transfer_queue_refill(accounts: &[AccountView], _instruction_data: &[u8]) -> ProgramResult {
     let [
         refill_state_info, // force multi-line
         queue_info,
@@ -127,7 +127,7 @@ fn trigger_queue_refill_via_sponsored_transfer(
         InstructionAccount::readonly(queue_delegation_record_info.address()),
     ];
     let sponsored_transfer_data =
-        ESplInstruction::StartAsyncLamportsTransfer.with(&StartAsyncLamportsTransferArgs {
+        ESplInstruction::AsyncLamportsTransfer.with(&AsyncLamportsTransferArgs {
             amount: refill_lamports,
             salt: *salt,
         })?;

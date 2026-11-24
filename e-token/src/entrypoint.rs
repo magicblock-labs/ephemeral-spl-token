@@ -133,30 +133,30 @@ fn process_public_instruction(accounts: &[AccountView], instruction_data: &[u8])
 
             process_delegate_shuttle(accounts, data)
         }
-        ESplInstruction::StartAsyncShuttleTransfer => {
-            debug_log!("Instruction: StartAsyncShuttleTransfer");
+        ESplInstruction::AsyncShuttleTransfer => {
+            debug_log!("Instruction: AsyncShuttleTransfer");
 
-            process_start_async_shuttle_transfer(accounts, data)
+            process_async_shuttle_transfer(accounts, data)
         }
-        ESplInstruction::StartAsyncPrivateTransfer => {
-            debug_log!("Instruction: StartAsyncPrivateTransfer");
+        ESplInstruction::AsyncPrivateTransfer => {
+            debug_log!("Instruction: AsyncPrivateTransfer");
 
-            process_start_async_private_transfer(accounts, data)
+            process_async_private_transfer(accounts, data)
         }
-        ESplInstruction::StartAsyncShuttleWithdraw => {
-            debug_log!("Instruction: StartAsyncShuttleWithdraw");
+        ESplInstruction::AsyncShuttleWithdraw => {
+            debug_log!("Instruction: AsyncShuttleWithdraw");
 
-            process_start_async_shuttle_withdraw(accounts, data, false)
+            process_async_shuttle_withdraw(accounts, data, false)
         }
-        ESplInstruction::StartAsyncShuttleWithdrawWithFee => {
-            debug_log!("Instruction: StartAsyncShuttleWithdrawWithFee");
+        ESplInstruction::AsyncShuttleWithdrawWithFee => {
+            debug_log!("Instruction: AsyncShuttleWithdrawWithFee");
 
-            process_start_async_shuttle_withdraw(accounts, data, true)
+            process_async_shuttle_withdraw(accounts, data, true)
         }
-        ESplInstruction::StartAsyncShuttleClose => {
-            debug_log!("Instruction: StartAsyncShuttleClose");
+        ESplInstruction::AsyncShuttleClose => {
+            debug_log!("Instruction: AsyncShuttleClose");
 
-            process_start_async_shuttle_close(accounts, data)
+            process_async_shuttle_close(accounts, data)
         }
         ESplInstruction::SweepShuttleBalance => {
             debug_log!("Instruction: SweepShuttleBalance");
@@ -188,10 +188,10 @@ fn process_public_instruction(accounts: &[AccountView], instruction_data: &[u8])
 
             process_delegate_transfer_queue(accounts, data)
         }
-        ESplInstruction::StartAsyncLamportsTransfer => {
-            debug_log!("Instruction: StartAsyncLamportsTransfer");
+        ESplInstruction::AsyncLamportsTransfer => {
+            debug_log!("Instruction: AsyncLamportsTransfer");
 
-            process_start_async_lamports_transfer(accounts, data)
+            process_async_lamports_transfer(accounts, data)
         }
         ESplInstruction::InitializeRentPda => {
             debug_log!("Instruction: InitializeRentPda");
@@ -203,10 +203,10 @@ fn process_public_instruction(accounts: &[AccountView], instruction_data: &[u8])
 
             process_allocate_transfer_queue(accounts, data)
         }
-        ESplInstruction::StartAsyncTransferQueueRefill => {
-            debug_log!("Instruction: StartAsyncTransferQueueRefill");
+        ESplInstruction::AsyncTransferQueueRefill => {
+            debug_log!("Instruction: AsyncTransferQueueRefill");
 
-            process_start_async_transfer_queue_refill(accounts, data)
+            process_async_transfer_queue_refill(accounts, data)
         }
         ESplInstruction::ExecuteScheduledPrivateTransfer => {
             debug_log!("Instruction: ExecuteScheduledPrivateTransfer");
@@ -228,10 +228,10 @@ fn process_public_instruction(accounts: &[AccountView], instruction_data: &[u8])
 
             process_close_lamports_pda(accounts, data)
         }
-        ESplInstruction::StartAsyncPrivateTransferToEncryptedDestination => {
-            debug_log!("Instruction: StartAsyncPrivateTransferToEncryptedDestination");
+        ESplInstruction::AsyncPrivateTransferToEncryptedDestination => {
+            debug_log!("Instruction: AsyncPrivateTransferToEncryptedDestination");
 
-            process_start_async_private_transfer_to_encrypted_destination(accounts, data)
+            process_async_private_transfer_to_encrypted_destination(accounts, data)
         }
         ESplInstruction::SweepShuttleBalanceToMagicAta => {
             debug_log!("Instruction: SweepShuttleBalanceToMagicAta");

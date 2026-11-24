@@ -11,7 +11,7 @@ use ephemeral_spl_api::{
         SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS,
     },
     instruction,
-    instructions::{CloseStashArgs, DepositAndQueueTransferArgs, StartAsyncPrivateTransferArgs},
+    instructions::{CloseStashArgs, DepositAndQueueTransferArgs, AsyncPrivateTransferArgs},
     state::{
         ephemeral_ata::EphemeralAta,
         load,
@@ -47,8 +47,8 @@ const MAX_DELAY_MS: u64 = 15_000;
 const SPLIT: u32 = 4;
 const TRANSFER_CHECKED_DISCRIMINATOR: u8 = 12;
 
-fn private_transfer_args(encrypted_data_suffix: Vec<u8>) -> StartAsyncPrivateTransferArgs {
-    StartAsyncPrivateTransferArgs {
+fn private_transfer_args(encrypted_data_suffix: Vec<u8>) -> AsyncPrivateTransferArgs {
+    AsyncPrivateTransferArgs {
         shuttle_id: 9,
         amount: DEPOSIT_AMOUNT,
         exact_out: false,
@@ -64,10 +64,10 @@ fn private_transfer_decodes_without_stash_close_tail() {
     let args = private_transfer_args(encrypted_suffix.clone());
 
     let instruction_data =
-        instruction::ESplInstruction::StartAsyncPrivateTransfer
+        instruction::ESplInstruction::AsyncPrivateTransfer
             .with_data(&args.encode().unwrap());
     let (decoded_args, remaining) =
-        StartAsyncPrivateTransferArgs::decode_prefix(&instruction_data[1..]).unwrap();
+        AsyncPrivateTransferArgs::decode_prefix(&instruction_data[1..]).unwrap();
     assert_eq!(decoded_args.encrypted_data_suffix(), encrypted_suffix.as_slice());
     assert!(Option::<CloseStashArgs>::decode(remaining).unwrap().is_none());
 }
@@ -84,11 +84,11 @@ fn private_transfer_decodes_stash_close_tail_after_encrypted_suffix() {
     let mut private_transfer_data = args.encode().unwrap();
     private_transfer_data.extend_from_slice(&close_stash.encode().unwrap());
     let instruction_data =
-        instruction::ESplInstruction::StartAsyncPrivateTransfer
+        instruction::ESplInstruction::AsyncPrivateTransfer
             .with_data(&private_transfer_data);
 
     let (decoded_args, remaining) =
-        StartAsyncPrivateTransferArgs::decode_prefix(&instruction_data[1..]).unwrap();
+        AsyncPrivateTransferArgs::decode_prefix(&instruction_data[1..]).unwrap();
     assert_eq!(decoded_args.encrypted_data_suffix(), encrypted_suffix.as_slice());
 
     let decoded_close_stash = Option::<CloseStashArgs>::decode(remaining).unwrap().unwrap();
@@ -102,18 +102,18 @@ fn read_header_unaligned(data: &[u8]) -> TransferQueueHeader {
 }
 
 #[tokio::test]
-async fn start_async_private_transfer_stores_third_action_exact_in() {
-    start_async_private_transfer_stores_third_action(false).await;
+async fn async_private_transfer_stores_third_action_exact_in() {
+    async_private_transfer_stores_third_action(false).await;
 }
 
 #[tokio::test]
-async fn start_async_private_transfer_stores_third_action_exact_out() {
-    start_async_private_transfer_stores_third_action(true).await;
+async fn async_private_transfer_stores_third_action_exact_out() {
+    async_private_transfer_stores_third_action(true).await;
 }
 
-async fn start_async_private_transfer_stores_third_action(exact_out: bool) {
-    let owner = utils::test_keypair("start_async_private_transfer::owner");
-    let owner_token = utils::test_keypair("start_async_private_transfer::owner_token");
+async fn async_private_transfer_stores_third_action(exact_out: bool) {
+    let owner = utils::test_keypair("async_private_transfer::owner");
+    let owner_token = utils::test_keypair("async_private_transfer::owner_token");
 
     let mut context = utils::start_program_test_with(PROGRAM, |pt| {
         pt.add_account(
@@ -131,10 +131,10 @@ async fn start_async_private_transfer_stores_third_action(exact_out: bool) {
 
     let payer_kp = utils::fixed_payer_keypair();
     let payer = payer_kp.pubkey();
-    let mint_kp = utils::test_keypair("start_async_private_transfer::mint");
+    let mint_kp = utils::test_keypair("async_private_transfer::mint");
     let mint = mint_kp.pubkey();
     let shuttle_id = 9_u32;
-    let validator = utils::test_keypair("start_async_private_transfer::validator").pubkey();
+    let validator = utils::test_keypair("async_private_transfer::validator").pubkey();
 
     let (rent_pda, _) = Pubkey::find_program_address(&[RENT_PDA_SEED], &PROGRAM);
 
@@ -235,7 +235,7 @@ async fn start_async_private_transfer_stores_third_action(exact_out: bool) {
     let delegation_record_pda = delegation_record_pda_from_delegated_account(&shuttle_eata);
     let delegation_metadata_pda = delegation_metadata_pda_from_delegated_account(&shuttle_eata);
 
-    let args = StartAsyncPrivateTransferArgs {
+    let args = AsyncPrivateTransferArgs {
         shuttle_id,
         amount: DEPOSIT_AMOUNT,
         exact_out,
@@ -287,7 +287,7 @@ async fn start_async_private_transfer_stores_third_action(exact_out: bool) {
             AccountMeta::new(vault_ata, false),
             AccountMeta::new(queue, false),
         ],
-        data: instruction::ESplInstruction::StartAsyncPrivateTransfer
+        data: instruction::ESplInstruction::AsyncPrivateTransfer
             .with(&args)
             .unwrap(),
     };

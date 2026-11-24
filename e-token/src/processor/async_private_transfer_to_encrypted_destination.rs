@@ -7,15 +7,15 @@ use dlp_api::{
 };
 use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
 use ephemeral_spl_api::{
-    instruction::ESplInstruction, instructions::StartAsyncPrivateTransferToEncryptedDestinationArgs, require,
+    instruction::ESplInstruction, instructions::AsyncPrivateTransferToEncryptedDestinationArgs, require,
     require_n_accounts,
 };
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use wheels::layout::Decodable as _;
 
 use crate::processor::internal::shuttle_delegation::{
-    process_start_async_shuttle_with_post_actions, start_async_shuttle_close_action, StartAsyncShuttleAccounts,
-    StartAsyncShuttleCommonArgs,
+    process_async_shuttle_with_post_actions, async_shuttle_close_action, AsyncShuttleAccounts,
+    AsyncShuttleCommonArgs,
 };
 
 ///
@@ -49,14 +49,14 @@ use crate::processor::internal::shuttle_delegation::{
 /// 16: [writable]          - SPL     : Owner source token account.
 /// 17: [writable]          - SPL     : Vault token account.
 ///
-/// Instruction Data: StartAsyncPrivateTransferToEncryptedDestinationArgs
+/// Instruction Data: AsyncPrivateTransferToEncryptedDestinationArgs
 ///
 #[inline(never)]
-pub fn process_start_async_private_transfer_to_encrypted_destination(
+pub fn process_async_private_transfer_to_encrypted_destination(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let args = StartAsyncPrivateTransferToEncryptedDestinationArgs::decode(instruction_data)?;
+    let args = AsyncPrivateTransferToEncryptedDestinationArgs::decode(instruction_data)?;
 
     let [
         payer_info, // force multi-line
@@ -81,7 +81,7 @@ pub fn process_start_async_private_transfer_to_encrypted_destination(
 
     require!(args.amount() != 0, ProgramError::InvalidInstructionData);
 
-    let common_accounts = StartAsyncShuttleAccounts {
+    let common_accounts = AsyncShuttleAccounts {
         payer_info,
         rent_pda_info,
         shuttle_info,
@@ -107,13 +107,13 @@ pub fn process_start_async_private_transfer_to_encrypted_destination(
             args.encrypted_destination_ata(),
         );
 
-        alloc::vec![start_async_shuttle_close_action(&common_accounts, None)]
+        alloc::vec![async_shuttle_close_action(&common_accounts, None)]
             .cleartext_with_insertable(ensure_and_sweep, 0)
     };
 
-    process_start_async_shuttle_with_post_actions(
+    process_async_shuttle_with_post_actions(
         &common_accounts,
-        StartAsyncShuttleCommonArgs {
+        AsyncShuttleCommonArgs {
             shuttle_id: args.shuttle_id(),
             total_amount: args.amount(),
             validator: args.validator(),
@@ -126,7 +126,7 @@ pub fn process_start_async_private_transfer_to_encrypted_destination(
 /// Build the encrypted instruction-35 action: the destination owner and ATA
 /// stay encrypted and are decrypted by the validator inside the ER.
 fn sweep_to_encrypted_destination_action(
-    common_accounts: &StartAsyncShuttleAccounts<'_>,
+    common_accounts: &AsyncShuttleAccounts<'_>,
     encrypted_destination_owner: &[u8; 80],
     encrypted_destination_ata: &[u8; 80],
 ) -> PostDelegationActions {

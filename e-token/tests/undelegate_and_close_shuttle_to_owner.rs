@@ -83,7 +83,7 @@ fn undelegate_and_close_ix(fixture: &Fixture, shuttle_eata: Pubkey) -> Instructi
             AccountMeta::new(utils::magic_context_id(), false),
             AccountMeta::new_readonly(utils::magic_program_id(), false),
         ],
-        data: instruction::ESplInstruction::StartAsyncShuttleClose.to_vec(),
+        data: instruction::ESplInstruction::AsyncShuttleClose.to_vec(),
     }
 }
 

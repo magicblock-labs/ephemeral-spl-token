@@ -31,7 +31,7 @@ use crate::processor::{
         derive_ata, derive_hydra_seed, get_associated_token_address, is_supported_token_program,
         rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
     },
-    start_async_private_transfer::SCHEDULED_PT_ACCOUNTS,
+    async_private_transfer::SCHEDULED_PT_ACCOUNTS,
 };
 
 const SETUP_LAMPORTS: u64 = ephemeral_spl_api::consts::SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS

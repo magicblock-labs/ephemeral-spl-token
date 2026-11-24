@@ -69,10 +69,10 @@ pub enum ESplInstruction {
     ///      Old Name: DelegateShuttleEphemeralAta
     DelegateShuttle = 13,
 
-    /// 14 - StartAsyncShuttleClose: revoke delegation on a shuttle ATA
+    /// 14 - AsyncShuttleClose: revoke delegation on a shuttle ATA
     ///      and schedule settlement/close using an owner-owned destination token account.
     ///      Old Name: UndelegateAndCloseShuttleToOwner
-    StartAsyncShuttleClose = 14,
+    AsyncShuttleClose = 14,
 
     /// 15 - SweepShuttleBalance: transfer all shuttle ATA funds into destination ATA and keep shuttle account open
     ///      Old Name: MergeShuttleIntoEphemeralAta
@@ -102,7 +102,7 @@ pub enum ESplInstruction {
     ///      []        no instruction args
     DelegateTransferQueue = 19,
 
-    /// 20 - StartAsyncLamportsTransfer: create a zero-data PDA derived from
+    /// 20 - AsyncLamportsTransfer: create a zero-data PDA derived from
     ///      [b"lamports", payer, destination, salt], fund it with the requested
     ///      lamports plus sponsored rent from the global rent PDA, delegate it,
     ///      then schedule post-delegation transfer + cleanup actions.
@@ -110,7 +110,7 @@ pub enum ESplInstruction {
     ///      [0..8]   amount (u64 LE)
     ///      [8..40]  salt ([u8; 32])
     ///      Old Name: SponsoredLamportsTransfer
-    StartAsyncLamportsTransfer = 20,
+    AsyncLamportsTransfer = 20,
 
     /// 21 - UpdateStealthPool: write or rotate stealth-pool data inside the
     ///      already delegated ER account. The stored authority must sign
@@ -129,7 +129,7 @@ pub enum ESplInstruction {
     ///      []        no instruction args
     InitializeRentPda = 23,
 
-    /// 24 - StartAsyncShuttleTransfer: initialize shuttle metadata/EATA/wallet ATA,
+    /// 24 - AsyncShuttleTransfer: initialize shuttle metadata/EATA/wallet ATA,
     ///      deposit tokens into the shuttle EATA through the global vault, sponsor delegation from
     ///      the global rent PDA, and schedule post-delegation merge + cleanup.
     ///      Instruction data:
@@ -138,9 +138,9 @@ pub enum ESplInstruction {
     ///      [5..13] deposit amount (u64 LE)
     ///      [13..45] optional validator pubkey
     ///      Old Name: SetupAndDelegateShuttleEphemeralAtaWithMerge
-    StartAsyncShuttleTransfer = 24,
+    AsyncShuttleTransfer = 24,
 
-    /// 25 - StartAsyncPrivateTransfer:
+    /// 25 - AsyncPrivateTransfer:
     ///      same setup/deposit/delegate flow as instruction 24, but instead of using instruction 24's
     ///      merge-to-destination behavior, the first post-delegation action restores the owner's
     ///      source token account by merging the shuttle balance back there, then a third post-delegation
@@ -158,9 +158,9 @@ pub enum ESplInstruction {
     ///               (min_delay_ms:u64, max_delay_ms:u64, split:u32, client_ref_id?:u64)
     ///               Legacy payloads may still append flags before client_ref_id.
     ///      Old Name: DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer
-    StartAsyncPrivateTransfer = 25,
+    AsyncPrivateTransfer = 25,
 
-    /// 26 - StartAsyncShuttleWithdraw: initialize shuttle metadata/EATA/wallet ATA,
+    /// 26 - AsyncShuttleWithdraw: initialize shuttle metadata/EATA/wallet ATA,
     ///      sponsor delegation from the global rent PDA, then schedule a post-delegation transfer
     ///      from the owner ATA into the shuttle wallet ATA followed by shuttle undelegate
     ///      and close/refund.
@@ -170,7 +170,7 @@ pub enum ESplInstruction {
     ///      [5..13] transfer amount (u64 LE)
     ///      [13..45] optional validator pubkey
     ///      Old Name: WithdrawThroughDelegatedShuttleWithMerge
-    StartAsyncShuttleWithdraw = 26,
+    AsyncShuttleWithdraw = 26,
 
     /// 27 - AllocateTransferQueue: allocates more space for the transfer queue
     AllocateTransferQueue = 27,
@@ -181,7 +181,7 @@ pub enum ESplInstruction {
     ///      Instruction data:
     ///      []        no instruction args
     ///      Old Name: ExecutePendingTransferQueueRefill
-    StartAsyncTransferQueueRefill = 28,
+    AsyncTransferQueueRefill = 28,
 
     /// 29 - SchedulePrivateTransfer: small user-signed ix that creates the
     ///      stash PDA on first use, funds it + a Hydra crank from the global
@@ -245,14 +245,14 @@ pub enum ESplInstruction {
     ///      Instruction data:
     ///      [0..32]  salt ([u8; 32])
     CloseLamportsPda = 33,
-    /// 34 - StartAsyncPrivateTransferToEncryptedDestination: start a private base-to-ephemeral
+    /// 34 - AsyncPrivateTransferToEncryptedDestination: start a private base-to-ephemeral
     ///      transfer whose destination never appears in cleartext on base. Uses the same
     ///      shuttle setup/deposit/delegation flow as instruction 24, then runs encrypted
     ///      post-delegation actions on the ER to create the destination Magic ATA and sweep
     ///      the shuttle balance into it before closing the shuttle.
-    ///      Instruction data: StartAsyncPrivateTransferToEncryptedDestinationArgs
+    ///      Instruction data: AsyncPrivateTransferToEncryptedDestinationArgs
     ///      Old Name: DepositAndDelegateShuttleWithMergeToEncryptedDestination
-    StartAsyncPrivateTransferToEncryptedDestination = 34,
+    AsyncPrivateTransferToEncryptedDestination = 34,
 
     /// 35 - SweepShuttleBalanceToMagicAta: executes on the ER only, as the decrypted
     ///      post-delegation action of instruction 34. Creates the destination ATA as an
@@ -268,12 +268,12 @@ pub enum ESplInstruction {
     ///      Instruction data: none
     EnsureMagicAtaDestination = 36,
 
-    /// 37 - StartAsyncShuttleWithdrawWithFee: starts the instruction 26 shuttle withdrawal,
+    /// 37 - AsyncShuttleWithdrawWithFee: starts the instruction 26 shuttle withdrawal,
     ///      routing `fee` from the owner's ER balance to the delegated transfer queue's vault
     ///      ATA before withdrawing `amount - fee`. Accounts: instruction 26's, then the queue.
     ///      Instruction data: instruction 26's, then fee (u64 LE), 0 < fee < amount.
     ///      Old Name: WithdrawThroughDelegatedShuttleWithFee
-    StartAsyncShuttleWithdrawWithFee = 37,
+    AsyncShuttleWithdrawWithFee = 37,
 }
 
 impl ESplInstruction {
@@ -329,28 +329,28 @@ impl TryFrom<u8> for ESplInstruction {
             11 => Ok(Self::InitializeShuttle),
             12 => Ok(Self::InitializeTransferQueue),
             13 => Ok(Self::DelegateShuttle),
-            14 => Ok(Self::StartAsyncShuttleClose),
+            14 => Ok(Self::AsyncShuttleClose),
             15 => Ok(Self::SweepShuttleBalance),
             16 => Ok(Self::DepositAndQueueTransfer),
             17 => Ok(Self::EnsureTransferQueueCrank),
             19 => Ok(Self::DelegateTransferQueue),
-            20 => Ok(Self::StartAsyncLamportsTransfer),
+            20 => Ok(Self::AsyncLamportsTransfer),
             21 => Ok(Self::UpdateStealthPool),
             22 => Ok(Self::EnsureStealthPoolDelegated),
             23 => Ok(Self::InitializeRentPda),
-            24 => Ok(Self::StartAsyncShuttleTransfer),
-            25 => Ok(Self::StartAsyncPrivateTransfer),
-            26 => Ok(Self::StartAsyncShuttleWithdraw),
+            24 => Ok(Self::AsyncShuttleTransfer),
+            25 => Ok(Self::AsyncPrivateTransfer),
+            26 => Ok(Self::AsyncShuttleWithdraw),
             27 => Ok(Self::AllocateTransferQueue),
-            28 => Ok(Self::StartAsyncTransferQueueRefill),
+            28 => Ok(Self::AsyncTransferQueueRefill),
             29 => Ok(Self::SchedulePrivateTransfer),
             30 => Ok(Self::ExecuteScheduledPrivateTransfer),
             32 => Ok(Self::RecoverAndCloseShuttleToOwner),
             33 => Ok(Self::CloseLamportsPda),
-            34 => Ok(Self::StartAsyncPrivateTransferToEncryptedDestination),
+            34 => Ok(Self::AsyncPrivateTransferToEncryptedDestination),
             35 => Ok(Self::SweepShuttleBalanceToMagicAta),
             36 => Ok(Self::EnsureMagicAtaDestination),
-            37 => Ok(Self::StartAsyncShuttleWithdrawWithFee),
+            37 => Ok(Self::AsyncShuttleWithdrawWithFee),
             _ => Err(()),
         }
     }

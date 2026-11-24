@@ -122,7 +122,7 @@
   "lamports_pda::allow_extra_lamports": {
     "compute_units_consumed": 1869
   },
-  "lamports_pda::start_async_lamports_transfer": {
+  "lamports_pda::async_lamports_transfer": {
     "compute_units_consumed": 61110
   },
   "lamports_pda::transfer_lamports_pda": {

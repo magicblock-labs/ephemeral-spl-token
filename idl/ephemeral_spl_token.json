@@ -617,7 +617,7 @@
       "args": []
     },
     {
-      "name": "startAsyncShuttleClose",
+      "name": "asyncShuttleClose",
       "discriminator": [
         14
       ],
@@ -871,7 +871,7 @@
       "args": []
     },
     {
-      "name": "startAsyncLamportsTransfer",
+      "name": "asyncLamportsTransfer",
       "discriminator": [
         20
       ],
@@ -967,7 +967,7 @@
       "args": []
     },
     {
-      "name": "startAsyncShuttleTransfer",
+      "name": "asyncShuttleTransfer",
       "discriminator": [
         24
       ],
@@ -1062,7 +1062,7 @@
       ]
     },
     {
-      "name": "startAsyncPrivateTransfer",
+      "name": "asyncPrivateTransfer",
       "discriminator": [
         25
       ],
@@ -1157,7 +1157,7 @@
       ]
     },
     {
-      "name": "startAsyncShuttleWithdraw",
+      "name": "asyncShuttleWithdraw",
       "discriminator": [
         26
       ],
@@ -1262,7 +1262,7 @@
       "args": []
     },
     {
-      "name": "startAsyncPrivateTransferToEncryptedDestination",
+      "name": "asyncPrivateTransferToEncryptedDestination",
       "discriminator": [
         34
       ],
@@ -1450,7 +1450,7 @@
       "args": []
     },
     {
-      "name": "startAsyncShuttleWithdrawWithFee",
+      "name": "asyncShuttleWithdrawWithFee",
       "discriminator": [
         37
       ],
