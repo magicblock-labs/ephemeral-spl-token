@@ -14,7 +14,7 @@ pub struct AsyncPrivateTransferArgs {
     pub encrypted_data_suffix: Vec<u8>,
 }
 
-#[variable_offset_layout(buffer_offset = unknown)]
+#[variable_offset_layout(buffer_offset = any)]
 #[derive(Clone, Copy)]
 pub struct CloseStashArgs {
     pub user: Address,
