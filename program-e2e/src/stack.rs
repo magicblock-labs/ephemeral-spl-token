@@ -428,7 +428,7 @@ impl TempDir {
             .duration_since(std::time::UNIX_EPOCH)
             .expect("system clock after unix epoch")
             .as_nanos();
-        p.push(format!("e-token-e2e-{nanos}"));
+        p.push(format!("program-e2e-{nanos}"));
         fs::create_dir_all(&p).with_context(|| format!("create temp dir {}", p.display()))?;
         Ok(TempDir(p))
     }

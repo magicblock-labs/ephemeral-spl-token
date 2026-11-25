@@ -165,7 +165,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: e2e-validator-logs
-          path: /tmp/e-token-e2e-*
+          path: /tmp/program-e2e-*
           if-no-files-found: ignore
 
       - name: Stop any orphaned validators

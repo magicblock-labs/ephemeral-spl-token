@@ -116,5 +116,5 @@ the [Squads upgrade workflow](docs/upgrades.md).
 | [`interface`](interface/src/lib.rs) | `no_std` Rust API: program ID, instruction data, account layouts, and PDA derivation. |
 | [`api`](api/README.md) | Cloudflare Worker HTTP API for transaction building and payment integration. |
 | [`program/tests`](program/tests) | In-process program tests and external-program mocks. |
-| [`e-token-e2e`](e-token-e2e) | Live base-validator and rollup tests for private-transfer settlement. |
+| [`program-e2e`](program-e2e) | Live base-validator and rollup tests for private-transfer settlement. |
 | [`compare-metrics`](compare-metrics) | Compare compute-unit measurements collected by program tests. |

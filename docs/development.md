@@ -82,7 +82,7 @@ Use `make e2e-stop` to stop validators left behind by an interrupted run.
 The packaged `ephemeral-validator` executes scheduled tasks without an external
 cranker. A `magicblock-validator` setup using Hydra also needs a running cranker
 and execution funding; the suite's
-[`fund_queue_crank`](../e-token-e2e/src/fixture.rs) helper supplies crank funding
+[`fund_queue_crank`](../program-e2e/src/fixture.rs) helper supplies crank funding
 when applicable, but does not start a cranker.
 
 ## Compute-unit comparisons

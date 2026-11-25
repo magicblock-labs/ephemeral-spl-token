@@ -60,7 +60,7 @@ use anyhow::{bail, Result};
 /// test panics).
 pub static STACK_LOCK: Mutex<()> = Mutex::new(());
 
-/// Repository root (`e-token-e2e` → `..`).
+/// Repository root (`program-e2e` → `..`).
 pub fn workspace_root() -> PathBuf {
     let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     p.pop();
