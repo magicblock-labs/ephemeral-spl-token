@@ -29,7 +29,7 @@ use ephemeral_rollups_sdk::{
         find_vault_ata, GlobalVault,
     },
 };
-use ephemeral_spl_api::{
+use ephemeral_spl_interface::{
     instruction::ESplInstruction,
     instructions::AsyncPrivateTransferArgs,
     state::transfer_queue::{TransferQueueHeader, HEADER_LEN},
@@ -53,9 +53,9 @@ pub const LAMPORTS_PER_SOL: u64 = 1_000_000_000;
 
 /// The ephemeral SPL token program under test.
 pub const PROGRAM_ID: Pubkey = ESPL_TOKEN_PROGRAM_ID;
-/// ACL / permission program (`e-token/tests/fixtures/acl.so`).
+/// ACL / permission program (`program/tests/fixtures/acl.so`).
 pub use ephemeral_rollups_sdk::consts::PERMISSION_PROGRAM_ID;
-/// Hydra's rollup-side program (`e-token/tests/fixtures/hydra_ephemeral.so`),
+/// Hydra's rollup-side program (`program/tests/fixtures/hydra_ephemeral.so`),
 /// which the rollup's task scheduler creates cranks through. Not preloaded by
 /// `mb-test-validator`, so the base has to carry it for the rollup to clone.
 ///

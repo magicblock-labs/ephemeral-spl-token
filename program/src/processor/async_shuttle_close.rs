@@ -1,0 +1,281 @@
+use ephemeral_rollups_pinocchio::intent_bundle::{ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta};
+use ephemeral_spl_interface::{
+    require, require_eq_keys, require_n_accounts,
+    state::{load_initialized, shuttle_ephemeral_ata::ShuttleMetadata},
+};
+use pinocchio::{error::ProgramError, AccountView, ProgramResult};
+use pinocchio_system::ID as SYSTEM_PROGRAM_ID;
+use solana_address::{address_eq, Address};
+use spl_token_interface::ID as SPL_TOKEN_PROGRAM_ID;
+
+use crate::{
+    instruction::ESplInternalInstruction,
+    processor::internal::{
+        get_associated_token_address, read_token_account, shuttle_delegation::DEFAULT_ESCROW_INDEX,
+        unwrap_pda::NATIVE_MINT, validate_token_account,
+    },
+};
+
+const INTENT_BUNDLE_DATA_BUF_SIZE: usize = 1536;
+const CLOSE_SHUTTLE_ATA_COMPUTE_UNITS: u32 = 100_000;
+const CLOSE_SHUTTLE_ATA_NATIVE_COMPUTE_UNITS: u32 = 140_000;
+const CLOSE_STASH_DATA_LEN: usize = 33;
+
+struct CloseStashForward {
+    user: [u8; 32],
+    stash_bump: u8,
+}
+
+///
+/// Executes on:
+///
+/// Accounts:
+///
+///  0: [signer]            - Keypair : Executor payer.
+///  1: []                  - Any     : Rent reimbursement account (must match `shuttle.payer`).
+///  2: []                  - PDA     : Shuttle metadata account (PDA derived from [owner, mint, shuttle_id]).
+///  3: []                  - PDA     : Shuttle EATA account.
+///  4: [writable]          - SPL     : Shuttle wallet ATA account (ATA for [shuttle_metadata, mint]).
+///  5: []                  - SPL     : Refund token ATA.
+///  6: []                  - SPL     : Token program account.
+///  7: [writable]          - Any     : Magic context account.
+///  8: []                  - Program : Magic program.
+///
+/// Instruction Data: optional escrow_index (u8), optionally followed by
+/// `[user(32) | stash_bump(1)]` for the stash close path. In that path the
+/// executor is the stash PDA and account 1 is the rent sink.
+///
+pub fn process_async_shuttle_close(accounts: &[AccountView], instruction_data: &[u8]) -> ProgramResult {
+    let head_accounts = match accounts.len() {
+        9 | 11 => &accounts[..9],
+        _ => return Err(ProgramError::NotEnoughAccountKeys),
+    };
+    let [
+        executor, // force multi-line
+        rent_reimbursement,
+        shuttle_info,
+        shuttle_ephemeral_ata_info,
+        shuttle_wallet_ata_info,
+        refund_token_info,
+        token_program_info,
+        magic_context,
+        magic_program,
+    ] = require_n_accounts!(head_accounts, 9);
+
+    let (escrow_index, close_stash_seeds) = parse_instruction_data(instruction_data)?;
+    if close_stash_seeds.is_some() && accounts.len() == 11 {
+        require_eq_keys!(accounts[9].address(), executor.address(), ProgramError::InvalidSeeds);
+        require_eq_keys!(
+            accounts[10].address(),
+            rent_reimbursement.address(),
+            ProgramError::InvalidSeeds
+        );
+    }
+    let close_stash = close_stash_seeds.map(|(user, stash_bump)| CloseStashForward { user, stash_bump });
+
+    // TODO (snawaz):  unauthorized third-party cleanup/cancellation is possible.
+    //
+    // it is currently permissionless, means anyone (executor) could
+    // force undelegate-and-close shuttle of other users and force shuttle into refund/cleanup.
+    //
+    // enforce: executor == shuttle.owner
+    require!(executor.is_signer(), ProgramError::MissingRequiredSignature);
+
+    require!(shuttle_info.owned_by(&crate::ID), ProgramError::InvalidAccountOwner);
+
+    let shuttle = load_initialized::<ShuttleMetadata>(unsafe { shuttle_info.borrow_unchecked() })?;
+    require_eq_keys!(
+        &shuttle.payer,
+        rent_reimbursement.address(),
+        ProgramError::IncorrectAuthority
+    );
+
+    // The mint comes from the shuttle wallet ATA, the account this instruction
+    // commits; the shuttle EATA is bound by address only. A reused shuttle address
+    // can reach the ER while it still holds the previous round's closed EATA, and
+    // the base-side settle re-validates the EATA itself.
+    let mint = *read_token_account(shuttle_wallet_ata_info)?.mint();
+    let deliver_native =
+        address_eq(&mint, &NATIVE_MINT) && address_eq(token_program_info.address(), &SPL_TOKEN_PROGRAM_ID);
+
+    let (derived_shuttle_ephemeral_ata, _) =
+        Address::find_program_address(&[shuttle_info.address().as_ref(), mint.as_ref()], &crate::ID);
+    require_eq_keys!(
+        &derived_shuttle_ephemeral_ata,
+        shuttle_ephemeral_ata_info.address(),
+        ProgramError::InvalidSeeds
+    );
+
+    let expected_shuttle_wallet_ata =
+        get_associated_token_address(shuttle_info.address(), &mint, token_program_info.address());
+    require_eq_keys!(
+        &expected_shuttle_wallet_ata,
+        shuttle_wallet_ata_info.address(),
+        ProgramError::InvalidAccountData
+    );
+
+    validate_token_account(
+        shuttle_wallet_ata_info,
+        &mint,
+        Some(shuttle_info.address()),
+        Some(token_program_info.address()),
+    )?;
+    validate_token_account(
+        refund_token_info,
+        &mint,
+        Some(&shuttle.owner),
+        Some(token_program_info.address()),
+    )?;
+
+    schedule_shuttle_close_after_undelegate(
+        executor,
+        rent_reimbursement,
+        shuttle_info,
+        shuttle_ephemeral_ata_info,
+        shuttle_wallet_ata_info,
+        refund_token_info,
+        &mint,
+        token_program_info,
+        magic_context,
+        magic_program,
+        escrow_index,
+        close_stash.as_ref(),
+        &shuttle.owner,
+        deliver_native,
+    )
+}
+
+#[inline(always)]
+fn parse_instruction_data(instruction_data: &[u8]) -> Result<(u8, Option<([u8; 32], u8)>), ProgramError> {
+    let (escrow_index, tail) = match instruction_data.split_first() {
+        None => (DEFAULT_ESCROW_INDEX, &[][..]),
+        Some((first, rest)) => (*first, rest),
+    };
+    let close_stash = match tail.len() {
+        0 => None,
+        n if n == CLOSE_STASH_DATA_LEN => {
+            let mut user = [0u8; 32];
+            user.copy_from_slice(&tail[0..32]);
+            Some((user, tail[32]))
+        }
+        _ => return Err(ProgramError::InvalidInstructionData),
+    };
+    Ok((escrow_index, close_stash))
+}
+
+#[inline(never)]
+#[allow(clippy::too_many_arguments)]
+fn schedule_shuttle_close_after_undelegate(
+    executor: &AccountView,
+    rent_reimbursement: &AccountView,
+    shuttle_info: &AccountView,
+    shuttle_ephemeral_ata_info: &AccountView,
+    shuttle_wallet_ata_info: &AccountView,
+    destination_token_info: &AccountView,
+    mint: &Address,
+    token_program_info: &AccountView,
+    magic_context: &AccountView,
+    magic_program: &AccountView,
+    escrow_index: u8,
+    close_stash: Option<&CloseStashForward>,
+    owner: &Address,
+    deliver_native: bool,
+) -> ProgramResult {
+    let (vault_info, _) = Address::find_program_address(&[mint.as_ref()], &crate::ID);
+    let vault_token_info = get_associated_token_address(&vault_info, mint, token_program_info.address());
+    let mut close_handler_data = ESplInternalInstruction::SettleAndCloseShuttleIntent.with_data(&[escrow_index]);
+    if let Some(close) = close_stash {
+        close_handler_data.extend_from_slice(&close.user);
+        close_handler_data.push(close.stash_bump);
+    }
+    let mut close_handler_accounts = alloc::vec![
+        ShortAccountMeta {
+            pubkey: *rent_reimbursement.address(),
+            is_writable: true,
+        },
+        ShortAccountMeta {
+            pubkey: *shuttle_info.address(),
+            is_writable: true,
+        },
+        ShortAccountMeta {
+            pubkey: *shuttle_ephemeral_ata_info.address(),
+            is_writable: true,
+        },
+        ShortAccountMeta {
+            pubkey: *shuttle_wallet_ata_info.address(),
+            is_writable: shuttle_wallet_ata_info.is_writable(),
+        },
+        ShortAccountMeta {
+            pubkey: *destination_token_info.address(),
+            is_writable: true,
+        },
+        ShortAccountMeta {
+            pubkey: *mint,
+            is_writable: false,
+        },
+        ShortAccountMeta {
+            pubkey: vault_info,
+            is_writable: false,
+        },
+        ShortAccountMeta {
+            pubkey: vault_token_info,
+            is_writable: true,
+        },
+        ShortAccountMeta {
+            pubkey: *token_program_info.address(),
+            is_writable: false,
+        },
+    ];
+    if deliver_native {
+        close_handler_accounts.extend(native_close_action_accounts(owner));
+    }
+    let close_handler = [CallHandler {
+        destination_program: crate::ID,
+        escrow_authority: executor.clone(),
+        args: ActionArgs::new(&close_handler_data).with_escrow_index(escrow_index),
+        compute_units: if deliver_native {
+            CLOSE_SHUTTLE_ATA_NATIVE_COMPUTE_UNITS
+        } else {
+            CLOSE_SHUTTLE_ATA_COMPUTE_UNITS
+        },
+        accounts: &close_handler_accounts,
+        callback: None,
+    }];
+    let committed_accounts = [shuttle_wallet_ata_info.clone()];
+    let mut intent_bundle_data = [0u8; INTENT_BUNDLE_DATA_BUF_SIZE];
+
+    MagicIntentBundleBuilder::new(executor.clone(), magic_context.clone(), magic_program.clone())
+        .commit_and_undelegate(&committed_accounts)
+        .add_post_undelegate_actions(&close_handler)
+        .build_and_invoke(&mut intent_bundle_data)
+}
+
+#[inline(always)]
+fn native_close_action_accounts(owner: &Address) -> [ShortAccountMeta; 2] {
+    [
+        ShortAccountMeta {
+            pubkey: *owner,
+            is_writable: true,
+        },
+        ShortAccountMeta {
+            pubkey: SYSTEM_PROGRAM_ID,
+            is_writable: false,
+        },
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_close_action_includes_owner_and_system_program() {
+        let owner = Address::new_from_array([1; 32]);
+        let accounts = native_close_action_accounts(&owner);
+
+        assert_eq!(accounts[0].pubkey, owner);
+        assert!(accounts[0].is_writable);
+        assert_eq!(accounts[1].pubkey, SYSTEM_PROGRAM_ID);
+        assert!(!accounts[1].is_writable);
+    }
+}

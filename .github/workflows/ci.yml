@@ -83,7 +83,7 @@ jobs:
 
       - name: Run SBF tests with logging feature
         run: |
-          cargo test-sbf --manifest-path e-token/Cargo.toml --features logging
+          cargo test-sbf --manifest-path program/Cargo.toml --features logging
 
       - name: Upload test logs on failure
         if: failure()

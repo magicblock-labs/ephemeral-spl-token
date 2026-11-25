@@ -28,10 +28,10 @@ PERMISSION_PROGRAM_ID := ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1
 HYDRA_EPHEMERAL_PROGRAM_ID := eHyd5BU8QffvHi4GnXwxrK4WpS7pM2x9UGKHBWii7mf
 
 E_TOKEN_SO := target/deploy/ephemeral_token_program.so
-PERMISSION_SO := e-token/tests/fixtures/acl.so
-HYDRA_EPHEMERAL_SO := e-token/tests/fixtures/hydra_ephemeral.so
+PERMISSION_SO := program/tests/fixtures/acl.so
+HYDRA_EPHEMERAL_SO := program/tests/fixtures/hydra_ephemeral.so
 
-PROGRAM_MANIFEST := e-token/Cargo.toml
+PROGRAM_MANIFEST := program/Cargo.toml
 
 E2E_LEDGER ?= .e2e/base-ledger
 E2E_ER_STORAGE ?= .e2e/er-storage

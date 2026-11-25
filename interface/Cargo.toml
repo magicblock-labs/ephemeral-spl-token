@@ -1,0 +1,27 @@
+[package]
+name = "ephemeral-spl-interface"
+version = "0.1.0"
+description = "Shared crate with the Ephemeral SPL program ID"
+authors = { workspace = true }
+repository = { workspace = true }
+license = { workspace = true }
+edition = { workspace = true }
+
+[features]
+logging = []
+no-fees = []
+
+[dependencies]
+pinocchio = { workspace = true }
+pinocchio-log = { workspace = true }
+pinocchio-pubkey = { workspace = true }
+solana-address = { workspace = true, features = ["bytemuck"] }
+solana-signature = { workspace = true, features = ["bytemuck"] }
+ephemeral-rollups-pinocchio = { workspace = true }
+bytemuck = { workspace = true }
+const-crypto = { workspace = true }
+static_assertions = { workspace = true }
+wheels = { workspace = true }
+
+[lints]
+workspace = true

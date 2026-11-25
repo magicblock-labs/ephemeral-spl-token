@@ -22,7 +22,7 @@ use ephemeral_rollups_sdk::{
         find_vault_ata,
     },
 };
-use ephemeral_spl_api::instruction::ESplInstruction;
+use ephemeral_spl_interface::instruction::ESplInstruction;
 use ephemeral_token_e2e::{
     base_programs,
     fixture::{setup_queue, token_balance, SYSTEM_PROGRAM_ID},

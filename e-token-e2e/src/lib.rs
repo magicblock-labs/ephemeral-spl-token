@@ -89,7 +89,7 @@ pub fn base_programs() -> Result<Vec<(String, PathBuf)>> {
         ),
         (
             fixture::PERMISSION_PROGRAM_ID.to_string(),
-            artifact("e-token/tests/fixtures/acl.so")?,
+            artifact("program/tests/fixtures/acl.so")?,
         ),
         // The rollup's task scheduler creates every crank through this program.
         // Without it, `EnsureTransferQueueCrank` still succeeds and the queue
@@ -98,7 +98,7 @@ pub fn base_programs() -> Result<Vec<(String, PathBuf)>> {
         // and no crank account is ever created — so nothing ticks.
         (
             fixture::HYDRA_EPHEMERAL_PROGRAM_ID.to_string(),
-            artifact("e-token/tests/fixtures/hydra_ephemeral.so")?,
+            artifact("program/tests/fixtures/hydra_ephemeral.so")?,
         ),
     ])
 }
