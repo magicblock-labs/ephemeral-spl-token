@@ -83,7 +83,7 @@ jobs:
 
       - name: Run SBF tests with logging feature
         run: |
-          cargo test-sbf --manifest-path e-token/Cargo.toml --features logging
+          cargo test-sbf --manifest-path program/Cargo.toml --features logging
 
       - name: Upload test logs on failure
         if: failure()
@@ -165,7 +165,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: e2e-validator-logs
-          path: /tmp/e-token-e2e-*
+          path: /tmp/program-e2e-*
           if-no-files-found: ignore
 
       - name: Stop any orphaned validators

@@ -19,7 +19,7 @@ also requires `jq`.
 make build
 ```
 
-The build uses `e-token/Cargo.toml` and produces
+The build uses `program/Cargo.toml` and produces
 `target/deploy/ephemeral_token_program.so`.
 
 ## In-process tests
@@ -31,10 +31,10 @@ make test
 The target runs `cargo test-sbf` with program logging enabled. To select a test:
 
 ```bash
-cargo test-sbf --manifest-path e-token/Cargo.toml --features logging delegate_ephemeral_ata
+cargo test-sbf --manifest-path program/Cargo.toml --features logging delegate_ephemeral_ata
 ```
 
-Tests under [`e-token/tests`](../e-token/tests) exercise accounting, delegation,
+Tests under [`program/tests`](../program/tests) exercise accounting, delegation,
 permissions, shuttle flows, and queue behavior. Scheduling mocks capture
 requests without executing them; use the live-validator suite to check
 scheduled settlement.
@@ -82,7 +82,7 @@ Use `make e2e-stop` to stop validators left behind by an interrupted run.
 The packaged `ephemeral-validator` executes scheduled tasks without an external
 cranker. A `magicblock-validator` setup using Hydra also needs a running cranker
 and execution funding; the suite's
-[`fund_queue_crank`](../e-token-e2e/src/fixture.rs) helper supplies crank funding
+[`fund_queue_crank`](../program-e2e/src/fixture.rs) helper supplies crank funding
 when applicable, but does not start a cranker.
 
 ## Compute-unit comparisons

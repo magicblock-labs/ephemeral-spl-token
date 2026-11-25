@@ -1950,7 +1950,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ephemeral-spl-api"
+name = "ephemeral-spl-interface"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
@@ -1971,7 +1971,7 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "ephemeral-rollups-sdk",
- "ephemeral-spl-api",
+ "ephemeral-spl-interface",
  "solana-client",
  "solana-commitment-config 3.1.0",
  "solana-instruction 3.5.0",
@@ -1996,7 +1996,7 @@ dependencies = [
  "bytemuck",
  "const-crypto",
  "ephemeral-rollups-pinocchio",
- "ephemeral-spl-api",
+ "ephemeral-spl-interface",
  "fslock",
  "hydra-api",
  "magicblock-delegation-program-api 0.3.0",

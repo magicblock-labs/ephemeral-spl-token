@@ -80,7 +80,7 @@ The queue for the selected mint and validator must already exist and be delegate
 
 The token program owns vault accounting and transfer orchestration. The
 delegation, Magic, ACL, and scheduling programs supply the surrounding execution
-and automation services. See the [program guide](e-token/README.md) for account
+and automation services. See the [program guide](program/README.md) for account
 roles and source entry points.
 
 ## 🚀 Get started
@@ -112,9 +112,9 @@ the [Squads upgrade workflow](docs/upgrades.md).
 
 | Area | Responsibility |
 | :-- | :-- |
-| [`e-token`](e-token/README.md) | Pinocchio-based on-chain program: vaults, delegation, shuttles, and queued settlement. |
-| [`e-token-api`](e-token-api/src/lib.rs) | `no_std` Rust API: program ID, instruction data, account layouts, and PDA derivation. |
+| [`program`](program/README.md) | Pinocchio-based on-chain program: vaults, delegation, shuttles, and queued settlement. |
+| [`interface`](interface/src/lib.rs) | `no_std` Rust API: program ID, instruction data, account layouts, and PDA derivation. |
 | [`api`](api/README.md) | Cloudflare Worker HTTP API for transaction building and payment integration. |
-| [`e-token/tests`](e-token/tests) | In-process program tests and external-program mocks. |
-| [`e-token-e2e`](e-token-e2e) | Live base-validator and rollup tests for private-transfer settlement. |
+| [`program/tests`](program/tests) | In-process program tests and external-program mocks. |
+| [`program-e2e`](program-e2e) | Live base-validator and rollup tests for private-transfer settlement. |
 | [`compare-metrics`](compare-metrics) | Compare compute-unit measurements collected by program tests. |
