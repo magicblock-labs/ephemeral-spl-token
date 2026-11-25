@@ -1,7 +1,7 @@
 use ephemeral_rollups_pinocchio::{instruction::DelegateAccountCpiBuilder, types::DelegateConfig};
 use ephemeral_spl_interface::{
     debug_log,
-    instructions::DelegateShuttleArgs,
+    args::DelegateShuttleArgs,
     require, require_eq_keys, require_n_accounts,
     state::{ephemeral_ata::EphemeralAta, load_initialized, shuttle_ephemeral_ata::ShuttleMetadata},
 };

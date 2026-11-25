@@ -5,7 +5,7 @@ use ephemeral_rollups_pinocchio::pda::{
 };
 use ephemeral_spl_interface::{
     instruction,
-    instructions::AsyncShuttleTransferArgs,
+    args::AsyncShuttleTransferArgs,
     state::{ephemeral_ata::EphemeralAta, load_initialized, shuttle_ephemeral_ata::ShuttleMetadata},
     ID as PROGRAM,
 };

@@ -1,5 +1,5 @@
 use ephemeral_spl_interface::{
-    instructions::DepositArgs,
+    args::DepositArgs,
     require, require_n_accounts,
     state::{ephemeral_ata::EphemeralAta, load_initialized, load_mut_initialized},
 };

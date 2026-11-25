@@ -5,7 +5,7 @@ use ephemeral_rollups_pinocchio::{instruction::DelegateAccountCpiBuilder, types:
 use ephemeral_spl_interface::{
     debug_log,
     error::EphemeralSplError,
-    instructions::DelegateArgs,
+    args::DelegateArgs,
     require_n_accounts,
     state::{ephemeral_ata::EphemeralAta, load_initialized},
 };

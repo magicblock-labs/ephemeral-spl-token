@@ -11,7 +11,7 @@ use ephemeral_spl_interface::{
         SPONSORED_SHUTTLE_PRIVATE_TRANSFER_EXTRA_LAMPORTS,
     },
     instruction,
-    instructions::{CloseStashArgs, DepositAndQueueTransferArgs, AsyncPrivateTransferArgs},
+    args::{CloseStashArgs, DepositAndQueueTransferArgs, AsyncPrivateTransferArgs},
     state::{
         ephemeral_ata::EphemeralAta,
         load,

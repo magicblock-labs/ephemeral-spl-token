@@ -5,7 +5,7 @@ use ephemeral_rollups_pinocchio::pda::{
 use ephemeral_spl_interface::{
     error::EphemeralSplError,
     instruction,
-    instructions::DelegateArgs,
+    args::DelegateArgs,
     state::{ephemeral_ata::EphemeralAta, RawType},
     ID as PROGRAM,
 };

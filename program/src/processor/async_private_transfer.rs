@@ -15,7 +15,7 @@ use ephemeral_rollups_pinocchio::{
 use ephemeral_spl_interface::{
     consts, debug_log,
     instruction::ESplInstruction,
-    instructions::{CloseStashArgs, AsyncPrivateTransferArgs},
+    args::{CloseStashArgs, AsyncPrivateTransferArgs},
     require, require_eq_keys, require_n_accounts,
     state::{
         stash::StashPda,

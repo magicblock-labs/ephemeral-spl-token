@@ -40,7 +40,7 @@ macro_rules! debug_log {
 pub mod consts;
 pub mod error;
 pub mod instruction;
-pub mod instructions;
+pub mod args;
 pub mod requires;
 pub mod state;
 pub mod program {

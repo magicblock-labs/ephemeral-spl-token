@@ -6,7 +6,7 @@ use ephemeral_rollups_pinocchio::{
     },
 };
 use ephemeral_spl_interface::{
-    instruction, instructions::CreateEphemeralAtaPermissionArgs, state::ephemeral_ata::EphemeralAta, ID as PROGRAM,
+    instruction, args::CreateEphemeralAtaPermissionArgs, state::ephemeral_ata::EphemeralAta, ID as PROGRAM,
 };
 use solana_account::Account;
 use solana_instruction::{AccountMeta, Instruction};

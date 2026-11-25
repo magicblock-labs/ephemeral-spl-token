@@ -4,7 +4,7 @@ use ephemeral_rollups_pinocchio::acl::{
     types::{Member, MemberFlags, MembersArgs},
 };
 use ephemeral_spl_interface::{
-    instructions::ResetEphemeralAtaPermissionArgs,
+    args::ResetEphemeralAtaPermissionArgs,
     require, require_eq_keys, require_n_accounts,
     state::{ephemeral_ata::EphemeralAta, load_initialized},
 };

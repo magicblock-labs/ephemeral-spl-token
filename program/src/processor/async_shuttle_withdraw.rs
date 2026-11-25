@@ -6,7 +6,7 @@ use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
 use ephemeral_spl_interface::{
     debug_log,
     error::EphemeralSplError,
-    instructions::AsyncShuttleWithdrawArgs,
+    args::AsyncShuttleWithdrawArgs,
     require, require_eq_keys, require_n_accounts,
     state::{
         ephemeral_ata::EphemeralAta,

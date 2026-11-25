@@ -1,5 +1,5 @@
 use ephemeral_rollups_pinocchio::acl::permission_pda_from_permissioned_account;
-use ephemeral_spl_interface::{instruction, instructions::CreateEphemeralAtaPermissionArgs, ID as PROGRAM};
+use ephemeral_spl_interface::{instruction, args::CreateEphemeralAtaPermissionArgs, ID as PROGRAM};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program_test::tokio;
 use solana_pubkey::Pubkey;

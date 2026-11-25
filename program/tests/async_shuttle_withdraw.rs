@@ -6,7 +6,7 @@ use std::{
 use dlp_api::state::DelegationRecord;
 use ephemeral_spl_interface::{
     instruction,
-    instructions::AsyncShuttleWithdrawArgs,
+    args::AsyncShuttleWithdrawArgs,
     state::{
         ephemeral_ata::EphemeralAta, load, load_initialized, load_mut, shuttle_ephemeral_ata::ShuttleMetadata,
         Initializable, RawType,

@@ -47,7 +47,7 @@ use ephemeral_rollups_sdk::{
         find_vault_ata,
     },
 };
-use ephemeral_spl_interface::{instruction::ESplInstruction, instructions::DepositAndQueueTransferArgs};
+use ephemeral_spl_interface::{instruction::ESplInstruction, args::DepositAndQueueTransferArgs};
 use ephemeral_token_e2e::{
     base_programs,
     fixture::{

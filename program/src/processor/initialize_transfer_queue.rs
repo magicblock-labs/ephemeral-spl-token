@@ -8,7 +8,7 @@ use ephemeral_rollups_pinocchio::{
 };
 use ephemeral_spl_interface::{
     consts::TRANSFER_QUEUE_INITIAL_BUFFER_LAMPORTS,
-    instructions::InitializeTransferQueueArgs,
+    args::InitializeTransferQueueArgs,
     require, require_eq_keys, require_n_accounts,
     state::{
         ephemeral_ata::EphemeralAta,

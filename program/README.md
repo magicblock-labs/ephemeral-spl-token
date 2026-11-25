@@ -48,7 +48,7 @@ completion points.
 | Reference | Where to look |
 | :-- | :-- |
 | Public instruction discriminators | [Instruction enum](../interface/src/instruction.rs) |
-| Argument layouts | [Instruction types](../interface/src/instructions) |
+| Argument layouts | [Argument types](../interface/src/args) |
 | Account layouts and PDA derivation | [State types](../interface/src/state) |
 | Instruction routing and execution | [Dispatcher](src/instruction.rs) and [processors](src/processor) |
 

@@ -4,7 +4,7 @@ use ephemeral_rollups_pinocchio::pda::{
 };
 use ephemeral_spl_interface::{
     instruction,
-    instructions::DelegateShuttleArgs,
+    args::DelegateShuttleArgs,
     state::{ephemeral_ata::EphemeralAta, shuttle_ephemeral_ata::ShuttleMetadata, RawType},
     ID as PROGRAM,
 };

@@ -3,7 +3,7 @@ use core::mem::MaybeUninit;
 
 use ephemeral_spl_interface::{
     instruction::ESplInstruction,
-    instructions::{CloseStashArgs, ExecuteScheduledPrivateTransferArgs, AsyncPrivateTransferArgs},
+    args::{CloseStashArgs, ExecuteScheduledPrivateTransferArgs, AsyncPrivateTransferArgs},
     require, require_eq_keys, require_n_accounts,
     state::stash::StashPda,
 };

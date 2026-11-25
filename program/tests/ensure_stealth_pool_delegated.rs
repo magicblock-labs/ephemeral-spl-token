@@ -7,7 +7,7 @@ use ephemeral_rollups_pinocchio::{
 };
 use ephemeral_spl_interface::{
     instruction,
-    instructions::EnsureStealthPoolDelegatedArgs,
+    args::EnsureStealthPoolDelegatedArgs,
     state::{stealth_pool::StealthPool, RawType},
     ID as PROGRAM,
 };

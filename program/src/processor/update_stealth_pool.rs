@@ -1,5 +1,5 @@
 use ephemeral_spl_interface::{
-    instructions::UpdateStealthPoolArgs,
+    args::UpdateStealthPoolArgs,
     require, require_eq_keys, require_n_accounts,
     state::{
         stealth_pool::{StealthPool, StealthPoolFlags},

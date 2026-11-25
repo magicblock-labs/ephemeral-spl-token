@@ -9,7 +9,7 @@ use ephemeral_spl_interface::{
         SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS, SPONSORED_SHUTTLE_MERGE_TO_ENCRYPTED_DESTINATION_EXTRA_LAMPORTS,
     },
     instruction,
-    instructions::AsyncPrivateTransferToEncryptedDestinationArgs,
+    args::AsyncPrivateTransferToEncryptedDestinationArgs,
     state::{ephemeral_ata::EphemeralAta, load, shuttle_ephemeral_ata::ShuttleMetadata, Initializable},
     ID as PROGRAM,
 };

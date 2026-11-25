@@ -7,7 +7,7 @@ use common::magic_mock::{
 };
 use ephemeral_spl_interface::{
     instruction,
-    instructions::{DepositAndQueueTransferArgs, ExecuteQueuedTransferArgs},
+    args::{DepositAndQueueTransferArgs, ExecuteQueuedTransferArgs},
     state::{
         ephemeral_ata::EphemeralAta,
         transfer_queue::{

@@ -3,7 +3,7 @@ use ephemeral_rollups_pinocchio::{
     consts::{DELEGATION_PROGRAM_ID, MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID},
     types::DelegateConfig,
 };
-use ephemeral_spl_interface::{instructions::AsyncLamportsTransferArgs, require, require_eq_keys, require_n_accounts};
+use ephemeral_spl_interface::{args::AsyncLamportsTransferArgs, require, require_eq_keys, require_n_accounts};
 use pinocchio::{
     cpi::{Seed, Signer},
     error::ProgramError,

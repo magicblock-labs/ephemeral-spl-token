@@ -12,7 +12,7 @@ use ephemeral_rollups_pinocchio::{
 use ephemeral_spl_interface::{
     debug_log,
     instruction::ESplInstruction,
-    instructions::CloseStashArgsView,
+    args::CloseStashArgsView,
     require, require_eq_keys, require_owned_by,
     state::{
         ephemeral_ata::EphemeralAta, load_initialized, load_mut_initialized, shuttle_ephemeral_ata::ShuttleMetadata,

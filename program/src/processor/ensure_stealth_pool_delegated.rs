@@ -10,7 +10,7 @@ use ephemeral_rollups_pinocchio::{
     utils::make_seed_buf,
 };
 use ephemeral_spl_interface::{
-    instructions::EnsureStealthPoolDelegatedArgs,
+    args::EnsureStealthPoolDelegatedArgs,
     require, require_eq_keys, require_n_accounts,
     state::{stealth_pool::StealthPool, Initializable, RawType},
 };

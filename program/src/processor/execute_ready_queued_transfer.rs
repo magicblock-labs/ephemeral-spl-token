@@ -1,6 +1,6 @@
 use ephemeral_rollups_pinocchio::pda::ephemeral_balance_pda_from_payer;
 use ephemeral_spl_interface::{
-    instructions::ExecuteQueuedTransferArgs, require, require_eq_keys, require_n_accounts,
+    args::ExecuteQueuedTransferArgs, require, require_eq_keys, require_n_accounts,
     state::global_vault::GlobalVault,
 };
 use pinocchio::{

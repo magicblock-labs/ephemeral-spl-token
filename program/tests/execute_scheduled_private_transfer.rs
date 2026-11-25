@@ -1,5 +1,5 @@
 use ephemeral_spl_interface::{
-    instruction::ESplInstruction, instructions::ExecuteScheduledPrivateTransferArgs, state::stash::StashPda,
+    instruction::ESplInstruction, args::ExecuteScheduledPrivateTransferArgs, state::stash::StashPda,
     ID as PROGRAM,
 };
 use hydra_api::{state::load_crank_mut, CRANK_HEADER_SIZE, CRANK_SEED_PREFIX};

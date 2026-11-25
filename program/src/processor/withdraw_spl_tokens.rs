@@ -1,4 +1,4 @@
-use ephemeral_spl_interface::{instructions::WithdrawArgs, require_n_accounts};
+use ephemeral_spl_interface::{args::WithdrawArgs, require_n_accounts};
 use pinocchio::{AccountView, ProgramResult};
 use wheels::layout::Decodable as _;
 

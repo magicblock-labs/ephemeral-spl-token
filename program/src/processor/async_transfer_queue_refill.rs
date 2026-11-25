@@ -1,5 +1,5 @@
 use ephemeral_spl_interface::{
-    instruction::ESplInstruction, instructions::AsyncLamportsTransferArgs, require, require_eq_keys,
+    instruction::ESplInstruction, args::AsyncLamportsTransferArgs, require, require_eq_keys,
     require_n_accounts,
 };
 use pinocchio::{

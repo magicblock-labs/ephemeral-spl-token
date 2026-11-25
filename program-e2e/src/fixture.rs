@@ -31,7 +31,7 @@ use ephemeral_rollups_sdk::{
 };
 use ephemeral_spl_interface::{
     instruction::ESplInstruction,
-    instructions::AsyncPrivateTransferArgs,
+    args::AsyncPrivateTransferArgs,
     state::transfer_queue::{TransferQueueHeader, HEADER_LEN},
 };
 use solana_client::rpc_client::RpcClient;

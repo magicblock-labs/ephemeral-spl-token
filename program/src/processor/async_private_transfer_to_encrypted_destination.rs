@@ -7,7 +7,7 @@ use dlp_api::{
 };
 use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
 use ephemeral_spl_interface::{
-    instruction::ESplInstruction, instructions::AsyncPrivateTransferToEncryptedDestinationArgs, require,
+    instruction::ESplInstruction, args::AsyncPrivateTransferToEncryptedDestinationArgs, require,
     require_n_accounts,
 };
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};

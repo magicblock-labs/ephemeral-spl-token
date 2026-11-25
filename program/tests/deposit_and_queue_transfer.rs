@@ -1,7 +1,7 @@
 use bytemuck::Zeroable;
 use ephemeral_spl_interface::{
     instruction,
-    instructions::{DepositAndQueueTransferArgs, UpdateStealthPoolArgs},
+    args::{DepositAndQueueTransferArgs, UpdateStealthPoolArgs},
     state::{
         group_receipt::GroupReceiptHeader,
         shuttle_ephemeral_ata::ShuttleMetadata,

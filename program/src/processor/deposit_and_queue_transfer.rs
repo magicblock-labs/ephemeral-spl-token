@@ -6,7 +6,7 @@ use ephemeral_spl_interface::state::transfer_queue::capacity_from_data_len;
 use ephemeral_spl_interface::{
     debug_log,
     error::EphemeralSplError,
-    instructions::DepositAndQueueTransferArgs,
+    args::DepositAndQueueTransferArgs,
     require, require_eq_keys, require_n_accounts_with_optionals,
     state::{
         stealth_pool::StealthPool,

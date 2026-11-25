@@ -4,7 +4,7 @@ use ephemeral_rollups_pinocchio::{
     intent_bundle::{ActionArgs, CallHandler, MagicIntentBundleBuilder, ShortAccountMeta},
     pda::magic_fee_vault_pda_from_validator,
 };
-use ephemeral_spl_interface::{instructions::ExecuteQueuedTransferArgs, require, state::transfer_queue::QUEUE_SEED};
+use ephemeral_spl_interface::{args::ExecuteQueuedTransferArgs, require, state::transfer_queue::QUEUE_SEED};
 use pinocchio::{
     cpi::{Seed, Signer},
     error::ProgramError,

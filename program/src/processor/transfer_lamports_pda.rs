@@ -1,4 +1,4 @@
-use ephemeral_spl_interface::{instructions::AsyncLamportsTransferArgs, require, require_eq_keys, require_n_accounts};
+use ephemeral_spl_interface::{args::AsyncLamportsTransferArgs, require, require_eq_keys, require_n_accounts};
 use pinocchio::{
     error::ProgramError,
     sysvars::{rent::Rent, Sysvar},

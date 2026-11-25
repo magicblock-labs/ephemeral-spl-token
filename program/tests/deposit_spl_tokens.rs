@@ -1,6 +1,6 @@
 use ephemeral_spl_interface::{
     instruction,
-    instructions::DepositArgs,
+    args::DepositArgs,
     state::{ephemeral_ata::EphemeralAta, load_initialized, RawType},
     ID as PROGRAM,
 };

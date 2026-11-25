@@ -8,7 +8,7 @@ use ephemeral_rollups_pinocchio::{
 };
 use ephemeral_spl_interface::{
     debug_log,
-    instructions::ExecuteQueuedTransferArgs,
+    args::ExecuteQueuedTransferArgs,
     require, require_eq_keys, require_n_accounts,
     state::transfer_queue::{
         queue_peek_from_data, queue_pop_from_data, queue_views_checked, QueuedTransfer,

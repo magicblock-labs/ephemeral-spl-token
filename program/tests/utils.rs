@@ -11,7 +11,7 @@ use ephemeral_rollups_pinocchio::{
 };
 use ephemeral_spl_interface::{
     instruction,
-    instructions::InitializeTransferQueueArgs,
+    args::InitializeTransferQueueArgs,
     state::{group_receipt::GroupReceipt, stealth_pool::StealthPool, RawType},
     ID as PROGRAM,
 };

@@ -7,7 +7,7 @@ use dlp_api::{
 use ephemeral_spl_interface::{
     error::EphemeralSplError,
     instruction::ESplInstruction,
-    instructions::AsyncShuttleTransferArgs,
+    args::AsyncShuttleTransferArgs,
     state::transfer_queue::{TransferQueue, TransferQueueHeader, HEADER_LEN},
     ID as PROGRAM,
 };

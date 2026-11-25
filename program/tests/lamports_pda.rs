@@ -6,7 +6,7 @@ use ephemeral_rollups_pinocchio::pda::{
 use ephemeral_spl_interface::{
     consts::SPONSORED_LAMPORTS_TRANSFER_SETUP_LAMPORTS,
     instruction::{self, ESplInstruction},
-    instructions::AsyncLamportsTransferArgs,
+    args::AsyncLamportsTransferArgs,
     ID as PROGRAM,
 };
 use solana_account::Account;

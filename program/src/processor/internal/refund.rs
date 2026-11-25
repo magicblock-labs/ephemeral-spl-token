@@ -4,7 +4,7 @@ use ephemeral_rollups_pinocchio::{
     pda::magic_fee_vault_pda_from_validator,
 };
 use ephemeral_spl_interface::{
-    debug_log, error::EphemeralSplError, instructions::ExecuteQueuedTransferArgs, require, require_eq_keys,
+    debug_log, error::EphemeralSplError, args::ExecuteQueuedTransferArgs, require, require_eq_keys,
     require_owned_by, state::transfer_queue::queue_views_checked,
 };
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};

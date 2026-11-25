@@ -3,7 +3,7 @@ use alloc::{borrow::ToOwned, vec::Vec};
 use ephemeral_rollups_pinocchio::consts::{BUFFER, DELEGATION_METADATA, DELEGATION_PROGRAM_ID, DELEGATION_RECORD};
 use ephemeral_spl_interface::{
     instruction::ESplInstruction,
-    instructions::{ExecuteScheduledPrivateTransferArgs, SchedulePrivateTransferArgs},
+    args::{ExecuteScheduledPrivateTransferArgs, SchedulePrivateTransferArgs},
     require, require_eq_keys, require_n_accounts,
     state::{
         ephemeral_ata::EphemeralAta, global_vault::GlobalVault, shuttle_ephemeral_ata::ShuttleMetadata,
