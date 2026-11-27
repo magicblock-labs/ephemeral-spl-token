@@ -248,7 +248,6 @@ fn schedule_execute_ready_transfer(
         tick_accounts.queue_info.address(),
         tick_accounts.magic_fee_vault_info.address(),
         queued_transfer,
-        &vault,
         &queue_state.mint,
         &queue_state.token_program,
     );
@@ -326,16 +325,19 @@ fn pop_executed_transfer(queue_info: &AccountView, queued_transfer: QueuedTransf
 /// the permission program follow.
 const CALLBACK_ACCOUNTS_WITHOUT_RECEIPT_PERMISSION: usize = 13;
 
+/// The callback runs on the queue's ER, which rejects a transaction that asks
+/// to write an account it does not hold. The vault is therefore the queue's
+/// own, not the mint's global one that a single validator holds, and only the
+/// accounts the handler writes are writable.
 #[inline(never)]
 fn create_action_callback_accounts(
     queue_address: &Address,
     magic_fee_vault: &Address,
     queued_transfer: &QueuedTransfer,
-    vault: &Address,
     mint: &Address,
     token_program: &Address,
 ) -> [ShortAccountMeta; 15] {
-    let vault_token_account = get_associated_token_address(vault, mint, token_program);
+    let queue_vault_token_account = get_associated_token_address(queue_address, mint, token_program);
     let source_token_account = get_associated_token_address(&queued_transfer.source, mint, token_program);
     let (group_receipt_account, _) =
         derive_group_receipt_id(queue_address, &queued_transfer.source, queued_transfer.group_id());
@@ -353,8 +355,9 @@ fn create_action_callback_accounts(
             pubkey: *queue_address,
             is_writable: true,
         },
+        // The queue is the authority of its own vault, as in `DepositAndQueueTransfer`.
         ShortAccountMeta {
-            pubkey: *vault,
+            pubkey: *queue_address,
             is_writable: false,
         },
         ShortAccountMeta {
@@ -362,8 +365,8 @@ fn create_action_callback_accounts(
             is_writable: false,
         },
         ShortAccountMeta {
-            pubkey: vault_token_account,
-            is_writable: true,
+            pubkey: queue_vault_token_account,
+            is_writable: false,
         },
         ShortAccountMeta {
             pubkey: queued_transfer.source,
@@ -371,7 +374,7 @@ fn create_action_callback_accounts(
         },
         ShortAccountMeta {
             pubkey: source_token_account,
-            is_writable: true,
+            is_writable: false,
         },
         ShortAccountMeta {
             pubkey: *token_program,

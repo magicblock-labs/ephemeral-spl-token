@@ -26,9 +26,9 @@ use crate::processor::internal::{
 ///  0: [signer]             - PDA     : Callback signer (CALLBACK_SIGNER).
 ///  1: [writable]           - PDA     : Group receipt account.
 ///  2: [writable]           - PDA     : Transfer queue account.
-///  3: []                   - PDA     : Vault account (unused).
+///  3: []                   - PDA     : Vault authority, the transfer queue itself (unused).
 ///  4: []                   - SPL     : Mint account.
-///  5: []                   - SPL     : Vault token account (unused).
+///  5: []                   - SPL     : Queue vault token account (unused).
 ///  6: []                   - Any     : Source owner account.
 ///  7: []                   - SPL     : Source token account (unused).
 ///  8: []                   - Builtin : Token program (unused).
