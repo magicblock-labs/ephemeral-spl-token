@@ -60,6 +60,7 @@ use ephemeral_token_e2e::{
 };
 use solana_client::rpc_client::RpcClient;
 use solana_instruction::{AccountMeta, Instruction};
+use solana_keypair::Keypair;
 use solana_signer::Signer;
 use wheels::layout::Encodable as _;
 
@@ -187,7 +188,9 @@ fn private_transfer_is_queued_cranked_and_settled_end_to_end() {
 /// account cannot be paid. The delivery fails on the base and its callback has
 /// to refund the sender. That callback must not list the receipt permission a
 /// direct call never creates: the rollup rejects a transaction that marks a
-/// nonexistent account writable, and the refund would never be scheduled.
+/// nonexistent account writable, and the refund would never be scheduled. The
+/// same goes for the global vault's token account, which only the validator
+/// holding the vault's eATA can write.
 #[test]
 #[ignore = "spawns live validators; run with `make test-e2e`"]
 fn direct_transfer_to_a_wallet_without_a_token_account_is_refunded() {
@@ -197,22 +200,22 @@ fn direct_transfer_to_a_wallet_without_a_token_account_is_refunded() {
         let sender_before = token_balance(base, &fx.sender_ata)?;
         assert!(account_data(base, &fx.recipient_ata).is_none());
 
-        // As on mainnet, the global vault's eATA is delegated, so the rollup
-        // projects it over the vault's token account, which the delivery
-        // callback lists as writable.
+        // As for a TEE queue on mainnet, another validator holds the global
+        // vault's eATA, so this rollup cannot write the vault's token account
+        // and its delivery callback must not ask to.
         send(
             base,
             &[DelegateEphemeralAtaBuilder {
                 payer: fx.helper.pubkey(),
                 user: fx.vault,
                 mint: fx.mint,
-                validator: Some(fx.validator),
+                validator: Some(Keypair::new().pubkey()),
             }
             .instruction()],
             &fx.helper.pubkey(),
             &[&fx.helper],
         )
-        .context("delegate the global vault's eATA")?;
+        .context("delegate the global vault's eATA to another validator")?;
 
         send(
             er,

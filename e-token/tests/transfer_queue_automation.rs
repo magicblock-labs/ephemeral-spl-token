@@ -1022,6 +1022,61 @@ async fn delivery_callback_closes_the_receipt_permission_when_one_exists() {
     assert_eq!(accounts[14], (utils::permission_program_id(), false));
 }
 
+/// The callback runs on the queue's ER, which rejects a transaction that asks
+/// to write an account it does not hold. A single validator holds the mint's
+/// global vault, and a sender's token account can leave this one before the
+/// delivery lands, so the callback names the queue's own vault and asks to
+/// write only what its handler writes.
+#[tokio::test(flavor = "current_thread")]
+async fn delivery_callback_writes_only_what_its_handler_writes() {
+    let _test_guard = test_lock().lock().unwrap();
+    let mut fixture = setup_fixture().await;
+    enqueue_transfer(&mut fixture, 0, "tq_auto::enqueue_for_callback_accounts").await;
+
+    // Keep the receipt permission, so the callback takes its longest shape.
+    let mut queue = queue_account(&mut fixture.context, fixture.queue).await;
+    let mut item = read_item_unaligned(&queue.data, 0);
+    item.flags &= !QUEUED_TRANSFER_FLAG_NO_RECEIPT_PERMISSION;
+    queue.data[HEADER_LEN..HEADER_LEN + ITEM_LEN].copy_from_slice(bytemuck::bytes_of(&item));
+    fixture.context.set_account(&fixture.queue, &queue.into());
+
+    let accounts = delivery_callback_accounts(&mut fixture).await;
+
+    let group_receipt = accounts[1].0;
+    let queue_vault_ata = utils::derive_associated_token_address(fixture.queue, fixture.mint);
+    let sender_ata = utils::derive_associated_token_address(fixture.payer, fixture.mint);
+    assert_eq!(
+        accounts[3],
+        (fixture.queue, false),
+        "the queue is its vault's authority"
+    );
+    assert_eq!(accounts[5], (queue_vault_ata, false));
+    assert_eq!(accounts[7], (sender_ata, false));
+    assert!(
+        accounts
+            .iter()
+            .all(|(pubkey, _)| *pubkey != fixture.vault && *pubkey != fixture.vault_ata),
+        "the mint's global vault stays out of the ER callback"
+    );
+
+    let writable: Vec<Pubkey> = accounts
+        .iter()
+        .filter(|(_, is_writable)| *is_writable)
+        .map(|(pubkey, _)| *pubkey)
+        .collect();
+    assert_eq!(
+        writable,
+        vec![
+            group_receipt,
+            fixture.queue,
+            utils::MAGIC_VAULT,
+            fixture.magic_fee_vault,
+            fixture.magic_context,
+            utils::derive_group_receipt_permission(group_receipt),
+        ]
+    );
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn process_transfer_queue_tick_uses_token_2022_accounts_from_queue_header() {
     let _test_guard = test_lock().lock().unwrap();
