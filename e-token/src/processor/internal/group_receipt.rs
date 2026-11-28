@@ -15,9 +15,7 @@ pub(crate) fn derive_group_receipt_id(queue_address: &Address, source: &Address,
     )
 }
 
-// buffer_offset = 6: response.data starts at byte 14 of the original 8-byte-aligned
-// instruction buffer (1 disc + 4 variant + 1 ok + 8 data_len), and 14 % 8 = 6.
-#[variable_offset_layout(buffer_offset = 6)]
+#[variable_offset_layout(buffer_offset = any)]
 pub(crate) struct TransferCallbackArgs {
     /// Amount was transferred in action
     pub amount: u64,

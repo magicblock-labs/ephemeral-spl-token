@@ -1,5 +1,6 @@
 use ephemeral_spl_api::{
     instruction,
+    instructions::DepositArgs,
     state::{ephemeral_ata::EphemeralAta, load_initialized, RawType},
     ID as PROGRAM,
 };
@@ -9,12 +10,27 @@ use solana_program_test::tokio;
 use solana_signer::Signer;
 use solana_transaction::Transaction;
 use spl_token_interface::state::Account;
+use wheels::layout::{Decodable, Encodable};
 
 mod common;
 mod utils;
 
 const DECIMALS: u8 = 6; // canonical USDC decimals
 const STARTING_BALANCE: u64 = 10_000 * 10u64.pow(DECIMALS as u32); // payer holds 10,000 tokens
+
+#[test]
+fn deposit_bytes_decode_at_every_offset() {
+    let amount = 0x0807_0605_0403_0201;
+    let expected = [1, 2, 3, 4, 5, 6, 7, 8];
+    assert_eq!(DepositArgs { amount }.encode().unwrap(), expected);
+
+    let mut buffer = [0; DepositArgs::DATA_LEN + 7];
+    for start in 0..8 {
+        let payload = &mut buffer[start..start + expected.len()];
+        payload.copy_from_slice(&expected);
+        assert_eq!(DepositArgs::decode(payload).unwrap().amount(), amount);
+    }
+}
 
 #[tokio::test]
 async fn deposit_spl_tokens_increments_ephemeral_amount() {
