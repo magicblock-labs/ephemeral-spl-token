@@ -221,12 +221,6 @@ pub enum ESplInstruction {
     ///      [...]    len-prefixed encrypted packed suffix (same format as ix 25)
     ExecuteScheduledPrivateTransfer = 30,
 
-    /// 31 - DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransferAndStashClose:
-    ///      ix 25 + a fixed `stash_close_seeds: [user(32) | stash_bump(1)]` appended
-    ///      before `encrypted_data_suffix`. Self-CPI'd by `ExecuteScheduledPrivateTransfer`.
-    ///      Triggers stash ATA + stash PDA refund to the rent PDA after settlement.
-    DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransferAndStashClose = 31,
-
     /// 32 - RecoverAndCloseShuttleToOwner: permissionless recovery for an already
     ///      undelegated shuttle. Settles the full shuttle EATA balance and any
     ///      remaining shuttle wallet ATA balance to a token account owned by the
@@ -330,7 +324,6 @@ impl TryFrom<u8> for ESplInstruction {
             28 => Ok(Self::ExecutePendingTransferQueueRefill),
             29 => Ok(Self::SchedulePrivateTransfer),
             30 => Ok(Self::ExecuteScheduledPrivateTransfer),
-            31 => Ok(Self::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransferAndStashClose),
             32 => Ok(Self::RecoverAndCloseShuttleToOwner),
             33 => Ok(Self::CloseLamportsPda),
             34 => Ok(Self::DepositAndDelegateShuttleWithMergeToEncryptedDestination),

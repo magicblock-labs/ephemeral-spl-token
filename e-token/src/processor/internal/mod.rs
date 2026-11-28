@@ -7,7 +7,6 @@ pub(crate) mod lamports_pda;
 pub(crate) mod magic;
 pub(crate) mod magic_ata_destination;
 pub(crate) mod pda;
-pub(crate) mod private_transfer;
 pub(crate) mod queue_authorized_action;
 pub(crate) mod refund;
 pub(crate) mod rent_pda;

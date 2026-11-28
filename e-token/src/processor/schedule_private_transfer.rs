@@ -26,10 +26,12 @@ use solana_address::Address;
 use solana_pubkey::Pubkey;
 use wheels::layout::{Decodable as _, Encodable as _};
 
-use crate::processor::internal::{
-    derive_ata, derive_hydra_seed, get_associated_token_address, is_supported_token_program,
-    private_transfer::SCHEDULED_PT_ACCOUNTS,
-    rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
+use crate::processor::{
+    deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer::SCHEDULED_PT_ACCOUNTS,
+    internal::{
+        derive_ata, derive_hydra_seed, get_associated_token_address, is_supported_token_program,
+        rent_pda::{RENT_PDA, RENT_PDA_BUMP, RENT_PDA_SEED},
+    },
 };
 
 const SETUP_LAMPORTS: u64 = ephemeral_spl_api::consts::SPONSORED_SHUTTLE_DELEGATION_SETUP_LAMPORTS
@@ -39,7 +41,7 @@ const SETUP_LAMPORTS: u64 = ephemeral_spl_api::consts::SPONSORED_SHUTTLE_DELEGAT
 /// Executes on: BASE only. User-signed.
 ///
 /// Appended to a swap transaction to schedule a private transfer
-/// (instruction 31 via Hydra) over whatever balance ends up in the stash
+/// (scheduled ix 25 with a stash-close tail via Hydra) over whatever balance ends up in the stash
 /// ATA when the crank fires. Keeps the outer ix small: every account that
 /// would only be read for its pubkey is derived on-chain using the bumps
 /// supplied in the instruction data; hard-coded program IDs stand in for
@@ -130,7 +132,7 @@ pub fn process_schedule_private_transfer(accounts: &[AccountView], instruction_d
     let user_ata = get_associated_token_address(user_info.address(), args.mint(), &token_program_id);
     let queue = TransferQueue::derive_pda(args.mint(), args.validator(), args.queue_bump())?;
 
-    // Slots 0..18 mirror ix 31's layout. Slot 5 aliases slot 0 (stash PDA).
+    // Slots 0..18 mirror the scheduled ix 25 layout. Slot 5 aliases slot 0 (stash PDA).
     // Slot 20 aliases Trigger's crank account; the flag must match Solana's
     // tx-level writable union, so it remains writable.
     let sched_metas: [(&Address, bool); SCHEDULED_PT_ACCOUNTS] = [
