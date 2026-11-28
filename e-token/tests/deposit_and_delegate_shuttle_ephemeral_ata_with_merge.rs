@@ -19,7 +19,6 @@ use solana_signer::Signer;
 use solana_system_interface::instruction::transfer;
 use solana_transaction::Transaction;
 use spl_token_interface::state::Account as SplAccount;
-use wheels::layout::Encodable as _;
 
 mod common;
 mod utils;
@@ -162,15 +161,13 @@ async fn deposit_and_delegate_shuttle_ephemeral_ata_with_merge_deposits_and_stor
             AccountMeta::new(owner_source_ata, false),
             AccountMeta::new(vault_ata, false),
         ],
-        data: instruction::ESplInstruction::SetupAndDelegateShuttleEphemeralAtaWithMerge.with_data(
-            &DepositAndDelegateShuttleArgs {
+        data: instruction::ESplInstruction::SetupAndDelegateShuttleEphemeralAtaWithMerge
+            .with(&DepositAndDelegateShuttleArgs {
                 shuttle_id,
                 amount: DEPOSIT_AMOUNT,
                 validator: Some(validator),
-            }
-            .encode()
+            })
             .unwrap(),
-        ),
     };
 
     let tx_delegate = Transaction::new_signed_with_payer(

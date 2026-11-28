@@ -133,14 +133,12 @@ async fn sponsored_lamports_transfer_delegates_zero_data_pda_and_charges_fee() {
             AccountMeta::new(destination.pubkey(), false),
             AccountMeta::new_readonly(destination_delegation_record_pda, false),
         ],
-        data: ESplInstruction::SponsoredLamportsTransfer.with_data(
-            &AmountAndSaltArgs {
+        data: ESplInstruction::SponsoredLamportsTransfer
+            .with(&AmountAndSaltArgs {
                 amount: TRANSFER_AMOUNT,
                 salt: SALT,
-            }
-            .encode()
+            })
             .unwrap(),
-        ),
     };
     let tx_sponsored_transfer = Transaction::new_signed_with_payer(
         &[ix_sponsored_transfer],

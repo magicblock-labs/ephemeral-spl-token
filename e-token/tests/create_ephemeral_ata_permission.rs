@@ -1,5 +1,5 @@
 use ephemeral_rollups_pinocchio::acl::permission_pda_from_permissioned_account;
-use ephemeral_spl_api::{instruction, ID as PROGRAM};
+use ephemeral_spl_api::{instruction, instructions::CreateEphemeralAtaPermissionArgs, ID as PROGRAM};
 use solana_instruction::{AccountMeta, Instruction};
 use solana_program_test::tokio;
 use solana_pubkey::Pubkey;
@@ -46,7 +46,9 @@ async fn create_ephemeral_ata_permission() {
         ],
         data: {
             let flag = ephemeral_rollups_pinocchio::acl::types::MemberFlags::default().to_acl_flag_byte();
-            instruction::ESplInstruction::CreateEphemeralAtaPermission.with_data(&[flag])
+            instruction::ESplInstruction::CreateEphemeralAtaPermission
+                .with(&CreateEphemeralAtaPermissionArgs { flag_byte: flag })
+                .unwrap()
         },
     };
 
@@ -109,7 +111,9 @@ async fn create_ephemeral_ata_permission_permissionless_default() {
         ],
         data: {
             let flag = ephemeral_rollups_pinocchio::acl::types::MemberFlags::default().to_acl_flag_byte();
-            instruction::ESplInstruction::CreateEphemeralAtaPermission.with_data(&[flag])
+            instruction::ESplInstruction::CreateEphemeralAtaPermission
+                .with(&CreateEphemeralAtaPermissionArgs { flag_byte: flag })
+                .unwrap()
         },
     };
 

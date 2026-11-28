@@ -14,7 +14,6 @@ use solana_program::instruction::InstructionError;
 use solana_program_test::tokio;
 use solana_signer::Signer;
 use solana_transaction::{Transaction, TransactionError};
-use wheels::layout::Encodable as _;
 
 mod common;
 mod utils;
@@ -100,13 +99,11 @@ async fn delegate_ephemeral_ata_succeeds() {
             AccountMeta::new_readonly(ephemeral_rollups_pinocchio::ID, false), // delegation program
             AccountMeta::new_readonly(solana_system_interface::program::ID, false), // system program
         ],
-        data: instruction::ESplInstruction::DelegateEphemeralAta.with_data(
-            &DelegateArgs {
+        data: instruction::ESplInstruction::DelegateEphemeralAta
+            .with(&DelegateArgs {
                 validator: Some(validator),
-            }
-            .encode()
+            })
             .unwrap(),
-        ),
     };
 
     let tx = Transaction::new_signed_with_payer(
@@ -134,13 +131,11 @@ async fn delegate_ephemeral_ata_succeeds() {
     .unwrap();
 
     let ix_redelegate_other_validator = Instruction {
-        data: instruction::ESplInstruction::DelegateEphemeralAta.with_data(
-            &DelegateArgs {
+        data: instruction::ESplInstruction::DelegateEphemeralAta
+            .with(&DelegateArgs {
                 validator: Some(other_validator),
-            }
-            .encode()
+            })
             .unwrap(),
-        ),
         ..ix_delegate
     };
 
@@ -284,7 +279,8 @@ async fn delegate_ephemeral_ata_non_owner_succeeds() {
             AccountMeta::new_readonly(solana_system_interface::program::ID, false),
         ],
         data: instruction::ESplInstruction::DelegateEphemeralAta
-            .with_data(&DelegateArgs { validator: None }.encode().unwrap()),
+            .with(&DelegateArgs { validator: None })
+            .unwrap(),
     };
 
     let tx = Transaction::new_signed_with_payer(&[ix_delegate], Some(&payer), &[&payer_kp], context.last_blockhash);
