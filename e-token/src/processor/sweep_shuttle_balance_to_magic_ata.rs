@@ -3,16 +3,16 @@ use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 
 use crate::processor::{
     internal::magic_ata_destination::{ensure_magic_ata_destination, MagicAtaDestinationAccounts},
-    merge_shuttle_into_ephemeral_ata::merge_shuttle_balance,
+    sweep_shuttle_balance::merge_shuttle_balance,
 };
 
 ///
 /// Executes on: ER only (decrypted post-delegation action of instruction 34).
 ///
 /// Creates the destination ATA as an idempotent Magic ATA through the
-/// Magic program, then merges the whole shuttle wallet ATA balance into it.
+/// Magic program, then sweeps the whole shuttle wallet ATA balance into it.
 /// The Magic ATA must end the transaction with a positive amount, which
-/// the merge guarantees since instruction 34 rejects zero amounts. Read access
+/// the sweep guarantees since instruction 34 rejects zero amounts. Read access
 /// is owner-gated by the private RPC's token-account default.
 ///
 /// Accounts:
@@ -29,7 +29,7 @@ use crate::processor::{
 /// Instruction Data: None
 ///
 #[inline(never)]
-pub fn process_merge_shuttle_into_magic_ata(accounts: &[AccountView], _instruction_data: &[u8]) -> ProgramResult {
+pub fn process_sweep_shuttle_balance_to_magic_ata(accounts: &[AccountView], _instruction_data: &[u8]) -> ProgramResult {
     let [
         owner_info, // force multi-line
         destination_owner_info,

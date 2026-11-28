@@ -118,50 +118,50 @@ fn process_public_instruction(accounts: &[AccountView], instruction_data: &[u8])
 
             process_close_ephemeral_ata(accounts, data)
         }
-        ESplInstruction::InitializeShuttleEphemeralAta => {
-            debug_log!("Instruction: InitializeShuttleEphemeralAta");
+        ESplInstruction::InitializeShuttle => {
+            debug_log!("Instruction: InitializeShuttle");
 
-            process_initialize_shuttle_ephemeral_ata(accounts, data)
+            process_initialize_shuttle(accounts, data)
         }
         ESplInstruction::InitializeTransferQueue => {
             debug_log!("Instruction: InitializeTransferQueue");
 
             process_initialize_transfer_queue(accounts, data)
         }
-        ESplInstruction::DelegateShuttleEphemeralAta => {
-            debug_log!("Instruction: DelegateShuttleEphemeralAta");
+        ESplInstruction::DelegateShuttle => {
+            debug_log!("Instruction: DelegateShuttle");
 
-            process_delegate_shuttle_ephemeral_ata(accounts, data)
+            process_delegate_shuttle(accounts, data)
         }
-        ESplInstruction::SetupAndDelegateShuttleEphemeralAtaWithMerge => {
-            debug_log!("Instruction: SetupAndDelegateShuttleEphemeralAtaWithMerge");
+        ESplInstruction::AsyncShuttleTransfer => {
+            debug_log!("Instruction: AsyncShuttleTransfer");
 
-            process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge(accounts, data)
+            process_async_shuttle_transfer(accounts, data)
         }
-        ESplInstruction::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer => {
-            debug_log!("Instruction: DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer");
+        ESplInstruction::AsyncPrivateTransfer => {
+            debug_log!("Instruction: AsyncPrivateTransfer");
 
-            process_deposit_and_delegate_shuttle_ephemeral_ata_with_merge_and_private_transfer(accounts, data)
+            process_async_private_transfer(accounts, data)
         }
-        ESplInstruction::WithdrawThroughDelegatedShuttleWithMerge => {
-            debug_log!("Instruction: WithdrawThroughDelegatedShuttleWithMerge");
+        ESplInstruction::AsyncShuttleWithdraw => {
+            debug_log!("Instruction: AsyncShuttleWithdraw");
 
-            process_withdraw_through_delegated_shuttle_with_merge(accounts, data, false)
+            process_async_shuttle_withdraw(accounts, data, false)
         }
-        ESplInstruction::WithdrawThroughDelegatedShuttleWithFee => {
-            debug_log!("Instruction: WithdrawThroughDelegatedShuttleWithFee");
+        ESplInstruction::AsyncShuttleWithdrawWithFee => {
+            debug_log!("Instruction: AsyncShuttleWithdrawWithFee");
 
-            process_withdraw_through_delegated_shuttle_with_merge(accounts, data, true)
+            process_async_shuttle_withdraw(accounts, data, true)
         }
-        ESplInstruction::UndelegateAndCloseShuttleToOwner => {
-            debug_log!("Instruction: UndelegateAndCloseShuttleToOwner");
+        ESplInstruction::AsyncShuttleClose => {
+            debug_log!("Instruction: AsyncShuttleClose");
 
-            process_undelegate_and_close_shuttle_to_owner(accounts, data)
+            process_async_shuttle_close(accounts, data)
         }
-        ESplInstruction::MergeShuttleIntoEphemeralAta => {
-            debug_log!("Instruction: MergeShuttleIntoEphemeralAta");
+        ESplInstruction::SweepShuttleBalance => {
+            debug_log!("Instruction: SweepShuttleBalance");
 
-            process_merge_shuttle_into_ephemeral_ata(accounts, data)
+            process_sweep_shuttle_balance(accounts, data)
         }
         ESplInstruction::DepositAndQueueTransfer => {
             debug_log!("Instruction: DepositAndQueueTransfer");
@@ -188,10 +188,10 @@ fn process_public_instruction(accounts: &[AccountView], instruction_data: &[u8])
 
             process_delegate_transfer_queue(accounts, data)
         }
-        ESplInstruction::SponsoredLamportsTransfer => {
-            debug_log!("Instruction: SponsoredLamportsTransfer");
+        ESplInstruction::AsyncLamportsTransfer => {
+            debug_log!("Instruction: AsyncLamportsTransfer");
 
-            process_sponsored_lamports_transfer(accounts, data)
+            process_async_lamports_transfer(accounts, data)
         }
         ESplInstruction::InitializeRentPda => {
             debug_log!("Instruction: InitializeRentPda");
@@ -203,10 +203,10 @@ fn process_public_instruction(accounts: &[AccountView], instruction_data: &[u8])
 
             process_allocate_transfer_queue(accounts, data)
         }
-        ESplInstruction::ExecutePendingTransferQueueRefill => {
-            debug_log!("Instruction: ExecutePendingTransferQueueRefill");
+        ESplInstruction::AsyncTransferQueueRefill => {
+            debug_log!("Instruction: AsyncTransferQueueRefill");
 
-            process_execute_pending_transfer_queue_refill(accounts, data)
+            process_async_transfer_queue_refill(accounts, data)
         }
         ESplInstruction::ExecuteScheduledPrivateTransfer => {
             debug_log!("Instruction: ExecuteScheduledPrivateTransfer");
@@ -228,15 +228,15 @@ fn process_public_instruction(accounts: &[AccountView], instruction_data: &[u8])
 
             process_close_lamports_pda(accounts, data)
         }
-        ESplInstruction::DepositAndDelegateShuttleWithMergeToEncryptedDestination => {
-            debug_log!("Instruction: DepositAndDelegateShuttleWithMergeToEncryptedDestination");
+        ESplInstruction::AsyncPrivateTransferToEncryptedDestination => {
+            debug_log!("Instruction: AsyncPrivateTransferToEncryptedDestination");
 
-            process_deposit_and_delegate_shuttle_with_merge_to_encrypted_destination(accounts, data)
+            process_async_private_transfer_to_encrypted_destination(accounts, data)
         }
-        ESplInstruction::MergeShuttleIntoMagicAta => {
-            debug_log!("Instruction: MergeShuttleIntoMagicAta");
+        ESplInstruction::SweepShuttleBalanceToMagicAta => {
+            debug_log!("Instruction: SweepShuttleBalanceToMagicAta");
 
-            process_merge_shuttle_into_magic_ata(accounts, data)
+            process_sweep_shuttle_balance_to_magic_ata(accounts, data)
         }
         ESplInstruction::EnsureMagicAtaDestination => {
             debug_log!("Instruction: EnsureMagicAtaDestination");

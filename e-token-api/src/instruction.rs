@@ -52,11 +52,12 @@ pub enum ESplInstruction {
     /// 10 - CloseEphemeralAta: close an empty ephemeral ATA and refund rent to recipient
     CloseEphemeralAta = 10,
 
-    /// 11 - InitializeShuttleEphemeralAta: initialize shuttle account derived from [owner, mint, shuttle_id]
+    /// 11 - InitializeShuttle: initialize shuttle account derived from [owner, mint, shuttle_id]
     ///      Instruction data:
     ///      [0..4] shuttle_id (u32 LE)
     ///      [4]    bump
-    InitializeShuttleEphemeralAta = 11,
+    ///      Old Name: InitializeShuttleEphemeralAta
+    InitializeShuttle = 11,
 
     /// 12 - InitializeTransferQueue: initialize per-mint transfer queue PDA derived from [QUEUE_SEED, mint]
     ///      Instruction data:
@@ -64,15 +65,18 @@ pub enum ESplInstruction {
     ///      [0..4]    optional queue size in bytes (u32 LE), 0 => default
     InitializeTransferQueue = 12,
 
-    /// 13 - DelegateShuttleEphemeralAta: delegate shuttle account to a DLP program using PDA seeds
-    DelegateShuttleEphemeralAta = 13,
+    /// 13 - DelegateShuttle: delegate shuttle account to a DLP program using PDA seeds
+    ///      Old Name: DelegateShuttleEphemeralAta
+    DelegateShuttle = 13,
 
-    /// 14 - UndelegateAndCloseShuttleToOwner: revoke delegation on a shuttle ATA
+    /// 14 - AsyncShuttleClose: revoke delegation on a shuttle ATA
     ///      and schedule settlement/close using an owner-owned destination token account.
-    UndelegateAndCloseShuttleToOwner = 14,
+    ///      Old Name: UndelegateAndCloseShuttleToOwner
+    AsyncShuttleClose = 14,
 
-    /// 15 - MergeShuttleIntoEphemeralAta: transfer all shuttle ATA funds into destination ATA and keep shuttle account open
-    MergeShuttleIntoEphemeralAta = 15,
+    /// 15 - SweepShuttleBalance: transfer all shuttle ATA funds into destination ATA and keep shuttle account open
+    ///      Old Name: MergeShuttleIntoEphemeralAta
+    SweepShuttleBalance = 15,
 
     /// 16 - DepositAndQueueTransfer: transfer tokens from signer into the vault ATA and enqueue one or more delayed transfers
     ///      Instruction data:
@@ -98,14 +102,15 @@ pub enum ESplInstruction {
     ///      []        no instruction args
     DelegateTransferQueue = 19,
 
-    /// 20 - SponsoredLamportsTransfer: create a zero-data PDA derived from
+    /// 20 - AsyncLamportsTransfer: create a zero-data PDA derived from
     ///      [b"lamports", payer, destination, salt], fund it with the requested
     ///      lamports plus sponsored rent from the global rent PDA, delegate it,
     ///      then schedule post-delegation transfer + cleanup actions.
     ///      Instruction data:
     ///      [0..8]   amount (u64 LE)
     ///      [8..40]  salt ([u8; 32])
-    SponsoredLamportsTransfer = 20,
+    ///      Old Name: SponsoredLamportsTransfer
+    AsyncLamportsTransfer = 20,
 
     /// 21 - UpdateStealthPool: write or rotate stealth-pool data inside the
     ///      already delegated ER account. The stored authority must sign
@@ -124,7 +129,7 @@ pub enum ESplInstruction {
     ///      []        no instruction args
     InitializeRentPda = 23,
 
-    /// 24 - SetupAndDelegateShuttleEphemeralAtaWithMerge: initialize shuttle metadata/EATA/wallet ATA,
+    /// 24 - AsyncShuttleTransfer: initialize shuttle metadata/EATA/wallet ATA,
     ///      deposit tokens into the shuttle EATA through the global vault, sponsor delegation from
     ///      the global rent PDA, and schedule post-delegation merge + cleanup.
     ///      Instruction data:
@@ -132,9 +137,10 @@ pub enum ESplInstruction {
     ///      [4]    shuttle metadata bump
     ///      [5..13] deposit amount (u64 LE)
     ///      [13..45] optional validator pubkey
-    SetupAndDelegateShuttleEphemeralAtaWithMerge = 24,
+    ///      Old Name: SetupAndDelegateShuttleEphemeralAtaWithMerge
+    AsyncShuttleTransfer = 24,
 
-    /// 25 - DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer:
+    /// 25 - AsyncPrivateTransfer:
     ///      same setup/deposit/delegate flow as instruction 24, but instead of using instruction 24's
     ///      merge-to-destination behavior, the first post-delegation action restores the owner's
     ///      source token account by merging the shuttle balance back there, then a third post-delegation
@@ -151,9 +157,10 @@ pub enum ESplInstruction {
     ///      [...]    len-prefixed encrypted packed suffix
     ///               (min_delay_ms:u64, max_delay_ms:u64, split:u32, client_ref_id?:u64)
     ///               Legacy payloads may still append flags before client_ref_id.
-    DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer = 25,
+    ///      Old Name: DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer
+    AsyncPrivateTransfer = 25,
 
-    /// 26 - WithdrawThroughDelegatedShuttleWithMerge: initialize shuttle metadata/EATA/wallet ATA,
+    /// 26 - AsyncShuttleWithdraw: initialize shuttle metadata/EATA/wallet ATA,
     ///      sponsor delegation from the global rent PDA, then schedule a post-delegation transfer
     ///      from the owner ATA into the shuttle wallet ATA followed by shuttle undelegate
     ///      and close/refund.
@@ -162,7 +169,8 @@ pub enum ESplInstruction {
     ///      [4]    shuttle metadata bump
     ///      [5..13] transfer amount (u64 LE)
     ///      [13..45] optional validator pubkey
-    WithdrawThroughDelegatedShuttleWithMerge = 26,
+    ///      Old Name: WithdrawThroughDelegatedShuttleWithMerge
+    AsyncShuttleWithdraw = 26,
 
     /// 27 - AllocateTransferQueue: allocates more space for the transfer queue
     AllocateTransferQueue = 27,
@@ -172,7 +180,8 @@ pub enum ESplInstruction {
     ///      lamports from the global rent PDA.
     ///      Instruction data:
     ///      []        no instruction args
-    ExecutePendingTransferQueueRefill = 28,
+    ///      Old Name: ExecutePendingTransferQueueRefill
+    AsyncTransferQueueRefill = 28,
 
     /// 29 - SchedulePrivateTransfer: small user-signed ix that creates the
     ///      stash PDA on first use, funds it + a Hydra crank from the global
@@ -236,21 +245,22 @@ pub enum ESplInstruction {
     ///      Instruction data:
     ///      [0..32]  salt ([u8; 32])
     CloseLamportsPda = 33,
-    /// 34 - DepositAndDelegateShuttleWithMergeToEncryptedDestination: private base->ephemeral
-    ///      transfer where the destination never appears in cleartext on base. Same
-    ///      setup/deposit/delegate shuttle flow as instruction 24, but the destination is
-    ///      carried only inside encrypted post-delegation actions: on the ER the first action
-    ///      runs instruction 35 (Magic ATA creation + merge), then the second
-    ///      undelegates and closes the shuttle.
-    ///      Instruction data: DepositAndDelegateShuttleWithMergeToEncryptedDestinationArgs
-    DepositAndDelegateShuttleWithMergeToEncryptedDestination = 34,
+    /// 34 - AsyncPrivateTransferToEncryptedDestination: start a private base-to-ephemeral
+    ///      transfer whose destination never appears in cleartext on base. Uses the same
+    ///      shuttle setup/deposit/delegation flow as instruction 24, then runs encrypted
+    ///      post-delegation actions on the ER to create the destination Magic ATA and sweep
+    ///      the shuttle balance into it before closing the shuttle.
+    ///      Instruction data: AsyncPrivateTransferToEncryptedDestinationArgs
+    ///      Old Name: DepositAndDelegateShuttleWithMergeToEncryptedDestination
+    AsyncPrivateTransferToEncryptedDestination = 34,
 
-    /// 35 - MergeShuttleIntoMagicAta: executes on the ER only, as the decrypted
+    /// 35 - SweepShuttleBalanceToMagicAta: executes on the ER only, as the decrypted
     ///      post-delegation action of instruction 34. Creates the destination ATA as an
-    ///      idempotent Magic ATA (Magic program CPI), then transfers the whole
-    ///      shuttle wallet ATA balance into the destination ATA.
+    ///      idempotent Magic ATA (Magic program CPI), then sweeps the whole shuttle wallet
+    ///      ATA balance into the destination ATA.
     ///      Instruction data: none
-    MergeShuttleIntoMagicAta = 35,
+    ///      Old Name: MergeShuttleIntoMagicAta
+    SweepShuttleBalanceToMagicAta = 35,
 
     /// 36 - EnsureMagicAtaDestination: executes on the ER only. Idempotently creates the
     ///      destination's ATA as a Magic ATA (Magic program CPI) so a plain SPL
@@ -258,11 +268,12 @@ pub enum ESplInstruction {
     ///      Instruction data: none
     EnsureMagicAtaDestination = 36,
 
-    /// 37 - WithdrawThroughDelegatedShuttleWithFee: instruction 26 that first moves `fee` from the
-    ///      owner's ER balance into the delegated transfer queue's vault ATA, in the same ER
-    ///      transaction, and withdraws `amount - fee`. Accounts: instruction 26's, then the queue.
+    /// 37 - AsyncShuttleWithdrawWithFee: starts the instruction 26 shuttle withdrawal,
+    ///      routing `fee` from the owner's ER balance to the delegated transfer queue's vault
+    ///      ATA before withdrawing `amount - fee`. Accounts: instruction 26's, then the queue.
     ///      Instruction data: instruction 26's, then fee (u64 LE), 0 < fee < amount.
-    WithdrawThroughDelegatedShuttleWithFee = 37,
+    ///      Old Name: WithdrawThroughDelegatedShuttleWithFee
+    AsyncShuttleWithdrawWithFee = 37,
 }
 
 impl ESplInstruction {
@@ -315,31 +326,31 @@ impl TryFrom<u8> for ESplInstruction {
             8 => Ok(Self::UndelegateEphemeralAtaPermission),
             9 => Ok(Self::ResetEphemeralAtaPermission),
             10 => Ok(Self::CloseEphemeralAta),
-            11 => Ok(Self::InitializeShuttleEphemeralAta),
+            11 => Ok(Self::InitializeShuttle),
             12 => Ok(Self::InitializeTransferQueue),
-            13 => Ok(Self::DelegateShuttleEphemeralAta),
-            14 => Ok(Self::UndelegateAndCloseShuttleToOwner),
-            15 => Ok(Self::MergeShuttleIntoEphemeralAta),
+            13 => Ok(Self::DelegateShuttle),
+            14 => Ok(Self::AsyncShuttleClose),
+            15 => Ok(Self::SweepShuttleBalance),
             16 => Ok(Self::DepositAndQueueTransfer),
             17 => Ok(Self::EnsureTransferQueueCrank),
             19 => Ok(Self::DelegateTransferQueue),
-            20 => Ok(Self::SponsoredLamportsTransfer),
+            20 => Ok(Self::AsyncLamportsTransfer),
             21 => Ok(Self::UpdateStealthPool),
             22 => Ok(Self::EnsureStealthPoolDelegated),
             23 => Ok(Self::InitializeRentPda),
-            24 => Ok(Self::SetupAndDelegateShuttleEphemeralAtaWithMerge),
-            25 => Ok(Self::DepositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer),
-            26 => Ok(Self::WithdrawThroughDelegatedShuttleWithMerge),
+            24 => Ok(Self::AsyncShuttleTransfer),
+            25 => Ok(Self::AsyncPrivateTransfer),
+            26 => Ok(Self::AsyncShuttleWithdraw),
             27 => Ok(Self::AllocateTransferQueue),
-            28 => Ok(Self::ExecutePendingTransferQueueRefill),
+            28 => Ok(Self::AsyncTransferQueueRefill),
             29 => Ok(Self::SchedulePrivateTransfer),
             30 => Ok(Self::ExecuteScheduledPrivateTransfer),
             32 => Ok(Self::RecoverAndCloseShuttleToOwner),
             33 => Ok(Self::CloseLamportsPda),
-            34 => Ok(Self::DepositAndDelegateShuttleWithMergeToEncryptedDestination),
-            35 => Ok(Self::MergeShuttleIntoMagicAta),
+            34 => Ok(Self::AsyncPrivateTransferToEncryptedDestination),
+            35 => Ok(Self::SweepShuttleBalanceToMagicAta),
             36 => Ok(Self::EnsureMagicAtaDestination),
-            37 => Ok(Self::WithdrawThroughDelegatedShuttleWithFee),
+            37 => Ok(Self::AsyncShuttleWithdrawWithFee),
             _ => Err(()),
         }
     }

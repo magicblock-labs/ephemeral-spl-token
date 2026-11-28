@@ -7,15 +7,15 @@ use dlp_api::{
 };
 use ephemeral_rollups_pinocchio::consts::MAGIC_PROGRAM_ID;
 use ephemeral_spl_api::{
-    instruction::ESplInstruction, instructions::DepositAndDelegateShuttleWithMergeToEncryptedDestinationArgs, require,
+    instruction::ESplInstruction, instructions::AsyncPrivateTransferToEncryptedDestinationArgs, require,
     require_n_accounts,
 };
 use pinocchio::{error::ProgramError, AccountView, ProgramResult};
 use wheels::layout::Decodable as _;
 
 use crate::processor::internal::shuttle_delegation::{
-    process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions, undelegate_and_close_shuttle_action,
-    DepositAndDelegateShuttleAccounts, DepositAndDelegateShuttleCommonArgs,
+    process_async_shuttle_with_post_actions, async_shuttle_close_action, AsyncShuttleAccounts,
+    AsyncShuttleCommonArgs,
 };
 
 ///
@@ -23,7 +23,7 @@ use crate::processor::internal::shuttle_delegation::{
 ///
 /// Private base->ephemeral transfer with an encrypted destination: deposits the
 /// amount into a shuttle EATA and delegates it with post-delegation actions
-/// that, on the ER, create the destination's Magic ATA and merge the
+/// that, on the ER, create the destination's Magic ATA and sweep the
 /// shuttle balance into it (instruction 35), then undelegate and close the
 /// shuttle. The destination owner and ATA are carried only as encrypted
 /// buffers and never appear in cleartext on base.
@@ -49,14 +49,14 @@ use crate::processor::internal::shuttle_delegation::{
 /// 16: [writable]          - SPL     : Owner source token account.
 /// 17: [writable]          - SPL     : Vault token account.
 ///
-/// Instruction Data: DepositAndDelegateShuttleWithMergeToEncryptedDestinationArgs
+/// Instruction Data: AsyncPrivateTransferToEncryptedDestinationArgs
 ///
 #[inline(never)]
-pub fn process_deposit_and_delegate_shuttle_with_merge_to_encrypted_destination(
+pub fn process_async_private_transfer_to_encrypted_destination(
     accounts: &[AccountView],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let args = DepositAndDelegateShuttleWithMergeToEncryptedDestinationArgs::decode(instruction_data)?;
+    let args = AsyncPrivateTransferToEncryptedDestinationArgs::decode(instruction_data)?;
 
     let [
         payer_info, // force multi-line
@@ -81,7 +81,7 @@ pub fn process_deposit_and_delegate_shuttle_with_merge_to_encrypted_destination(
 
     require!(args.amount() != 0, ProgramError::InvalidInstructionData);
 
-    let common_accounts = DepositAndDelegateShuttleAccounts {
+    let common_accounts = AsyncShuttleAccounts {
         payer_info,
         rent_pda_info,
         shuttle_info,
@@ -101,19 +101,19 @@ pub fn process_deposit_and_delegate_shuttle_with_merge_to_encrypted_destination(
     };
 
     let actions = {
-        let ensure_and_merge = merge_to_encrypted_destination_action(
+        let ensure_and_sweep = sweep_to_encrypted_destination_action(
             &common_accounts,
             args.encrypted_destination_owner(),
             args.encrypted_destination_ata(),
         );
 
-        alloc::vec![undelegate_and_close_shuttle_action(&common_accounts, None)]
-            .cleartext_with_insertable(ensure_and_merge, 0)
+        alloc::vec![async_shuttle_close_action(&common_accounts, None)]
+            .cleartext_with_insertable(ensure_and_sweep, 0)
     };
 
-    process_deposit_and_delegate_shuttle_ephemeral_ata_with_post_actions(
+    process_async_shuttle_with_post_actions(
         &common_accounts,
-        DepositAndDelegateShuttleCommonArgs {
+        AsyncShuttleCommonArgs {
             shuttle_id: args.shuttle_id(),
             total_amount: args.amount(),
             validator: args.validator(),
@@ -123,10 +123,10 @@ pub fn process_deposit_and_delegate_shuttle_with_merge_to_encrypted_destination(
     )
 }
 
-/// Build the encrypted instruction-33 action: the destination owner and ATA
+/// Build the encrypted instruction-35 action: the destination owner and ATA
 /// stay encrypted and are decrypted by the validator inside the ER.
-fn merge_to_encrypted_destination_action(
-    common_accounts: &DepositAndDelegateShuttleAccounts<'_>,
+fn sweep_to_encrypted_destination_action(
+    common_accounts: &AsyncShuttleAccounts<'_>,
     encrypted_destination_owner: &[u8; 80],
     encrypted_destination_ata: &[u8; 80],
 ) -> PostDelegationActions {
@@ -157,7 +157,7 @@ fn merge_to_encrypted_destination_action(
                 MaybeEncryptedAccountMeta::ClearText(compact::AccountMeta::new_readonly(8, false)),
             ],
             data: MaybeEncryptedIxData {
-                prefix: ESplInstruction::MergeShuttleIntoMagicAta.to_vec(),
+                prefix: ESplInstruction::SweepShuttleBalanceToMagicAta.to_vec(),
                 suffix: EncryptedBuffer::default(),
             },
         }],

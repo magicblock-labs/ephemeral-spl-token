@@ -472,7 +472,7 @@
       "args": []
     },
     {
-      "name": "initializeShuttleEphemeralAta",
+      "name": "initializeShuttle",
       "discriminator": [
         11
       ],
@@ -569,7 +569,7 @@
       ]
     },
     {
-      "name": "delegateShuttleEphemeralAta",
+      "name": "delegateShuttle",
       "discriminator": [
         13
       ],
@@ -617,7 +617,7 @@
       "args": []
     },
     {
-      "name": "undelegateShuttleEphemeralAta",
+      "name": "asyncShuttleClose",
       "discriminator": [
         14
       ],
@@ -668,7 +668,7 @@
       ]
     },
     {
-      "name": "mergeShuttleIntoEphemeralAta",
+      "name": "sweepShuttleBalance",
       "discriminator": [
         15
       ],
@@ -871,7 +871,7 @@
       "args": []
     },
     {
-      "name": "sponsoredLamportsTransfer",
+      "name": "asyncLamportsTransfer",
       "discriminator": [
         20
       ],
@@ -967,7 +967,7 @@
       "args": []
     },
     {
-      "name": "setupAndDelegateShuttleEphemeralAtaWithMerge",
+      "name": "asyncShuttleTransfer",
       "discriminator": [
         24
       ],
@@ -1062,7 +1062,7 @@
       ]
     },
     {
-      "name": "depositAndDelegateShuttleEphemeralAtaWithMergeAndPrivateTransfer",
+      "name": "asyncPrivateTransfer",
       "discriminator": [
         25
       ],
@@ -1157,7 +1157,7 @@
       ]
     },
     {
-      "name": "withdrawThroughDelegatedShuttleWithMerge",
+      "name": "asyncShuttleWithdraw",
       "discriminator": [
         26
       ],
@@ -1262,12 +1262,12 @@
       "args": []
     },
     {
-      "name": "depositAndDelegateShuttleWithMergeToEncryptedDestination",
+      "name": "asyncPrivateTransferToEncryptedDestination",
       "discriminator": [
         34
       ],
       "docs": [
-        "Private base->ephemeral transfer with an encrypted destination. Same sponsored shuttle setup/deposit/delegate flow as discriminator 24, but the destination is carried only inside encrypted post-delegation actions: on the ER the first action runs discriminator 35 (Magic ATA + merge), the second undelegates and closes the shuttle.",
+        "Private base->ephemeral transfer with an encrypted destination. Same sponsored shuttle setup/deposit/delegate flow as discriminator 24, but the destination is carried only inside encrypted post-delegation actions: on the ER the first action runs discriminator 35 (Magic ATA creation + balance sweep), the second undelegates and closes the shuttle.",
         "Instruction data: [0..4] shuttle_id (u32 LE), [4..12] amount (u64 LE), then two 80-byte encrypted buffers (destination owner, destination ATA), followed by an option tag byte and, when set, the 32-byte validator pubkey."
       ],
       "accounts": [
@@ -1377,12 +1377,12 @@
       ]
     },
     {
-      "name": "mergeShuttleIntoMagicAta",
+      "name": "sweepShuttleBalanceToMagicAta",
       "discriminator": [
         35
       ],
       "docs": [
-        "Executes on the ER only, as the decrypted post-delegation action of discriminator 34. Creates the destination ATA as an idempotent Magic ATA (Magic program CPI), then transfers the whole shuttle wallet ATA balance into it. Read access is owner-gated by the private RPC's token-account default."
+        "Executes on the ER only, as the decrypted post-delegation action of discriminator 34. Creates the destination ATA as an idempotent Magic ATA (Magic program CPI), then sweeps the whole shuttle wallet ATA balance into it. Read access is owner-gated by the private RPC's token-account default."
       ],
       "accounts": [
         {
@@ -1450,12 +1450,12 @@
       "args": []
     },
     {
-      "name": "withdrawThroughDelegatedShuttleWithFee",
+      "name": "asyncShuttleWithdrawWithFee",
       "discriminator": [
         37
       ],
       "docs": [
-        "Instruction 26 that first moves `fee` from the owner's ER balance into the delegated transfer queue's vault ATA, in the same ER transaction, and withdraws `amount - fee`.",
+        "Starts the instruction 26 shuttle withdrawal, routing `fee` from the owner's ER balance into the delegated transfer queue's vault ATA before withdrawing `amount - fee`.",
         "Instruction data: instruction 26's data followed by fee (u64 LE), 0 < fee < amount."
       ],
       "accounts": [
